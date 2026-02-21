@@ -43,6 +43,8 @@ release:
 		vocab-trainer \
 		deploy/vocab-trainer.service \
 		deploy/nginx.conf \
+		cmd/tts/generate.py \
+		cmd/tts/requirements.txt \
 		$(RSYNC_DEST)/
 	@echo ""
 	@echo "Done. On the Pi, run once to install the service:"
@@ -53,6 +55,12 @@ release:
 	@echo "  sudo cp /opt/vocab-trainer/nginx.conf /etc/nginx/sites-available/vocab-trainer"
 	@echo "  sudo ln -sf /etc/nginx/sites-available/vocab-trainer /etc/nginx/sites-enabled/vocab-trainer"
 	@echo "  sudo nginx -t && sudo systemctl reload nginx"
+	@echo ""
+	@echo "To enable TTS on the Pi (run once):"
+	@echo "  cd /opt/vocab-trainer && python3 -m venv tts-venv"
+	@echo "  tts-venv/bin/pip install --upgrade pip setuptools"
+	@echo "  tts-venv/bin/pip install -r requirements.txt"
+	@echo "  sudo systemctl restart vocab-trainer"
 
 ## test: run all tests (Go + JS)
 test: test-go test-js

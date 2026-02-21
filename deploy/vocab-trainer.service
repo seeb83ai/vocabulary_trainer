@@ -20,6 +20,12 @@ WorkingDirectory=/opt/vocab-trainer
 # DB stored next to the binary; override with DB_PATH env var if preferred
 Environment=DB_PATH=/opt/vocab-trainer/data/vocab.db
 
+# TTS: remove these lines to disable audio generation
+# Requires: cd /opt/vocab-trainer && python3 -m venv tts-venv && tts-venv/bin/pip install -r requirements.txt
+Environment=TTS_SCRIPT=/opt/vocab-trainer/generate.py
+Environment=VENV_PYTHON=/opt/vocab-trainer/tts-venv/bin/python3
+Environment=AUDIO_DIR=/opt/vocab-trainer/data/audio
+
 ExecStart=/opt/vocab-trainer/vocab-trainer
 Restart=on-failure
 RestartSec=3s
