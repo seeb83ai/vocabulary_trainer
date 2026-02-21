@@ -20,7 +20,13 @@ var frontendFS embed.FS
 func main() {
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
-		dbPath = "/data/vocab.db"
+		dbPath = "data/vocab.db"
+	}
+
+	if dir := filepath.Dir(dbPath); dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("Failed to create data directory %s: %v", dir, err)
+		}
 	}
 
 	store, err := db.Open(dbPath)
@@ -92,7 +98,11 @@ func main() {
 		fileServer.ServeHTTP(w, r)
 	})
 
-	addr := ":8080"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
 	log.Printf("Vocabulary Trainer listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
 }

@@ -14,11 +14,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=pi
+User=www-data
+Group=www-data
 WorkingDirectory=/opt/vocab-trainer
 
 # DB stored next to the binary; override with DB_PATH env var if preferred
 Environment=DB_PATH=/opt/vocab-trainer/data/vocab.db
+Environment=PORT=8080
 
 # TTS: remove these lines to disable audio generation
 # Requires: cd /opt/vocab-trainer && python3 -m venv tts-venv && tts-venv/bin/pip install -r requirements.txt
