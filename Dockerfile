@@ -13,16 +13,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vocab-trainer .
 # Stage 2: Runtime
 FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates && \
-    mkdir -p /data && \
-    adduser -D -H -u 1001 appuser && \
-    chown appuser /data
+RUN apk add --no-cache ca-certificates && mkdir -p /data
 
 WORKDIR /app
 COPY --from=builder /vocab-trainer /app/vocab-trainer
 
 EXPOSE 8080
-
-USER appuser
 
 ENTRYPOINT ["/app/vocab-trainer"]

@@ -1,4 +1,4 @@
-.PHONY: build run stop logs dev tidy clean
+.PHONY: build run stop logs dev tidy clean import
 
 ## build: build the Docker image
 build:
@@ -25,6 +25,11 @@ dev:
 ## tidy: tidy Go module dependencies
 tidy:
 	go mod tidy
+
+## import: import vocabulary from a text file (FILE=voc.txt DB=data/vocab.db)
+import:
+	mkdir -p data
+	go run ./cmd/import -db $(or $(DB),data/vocab.db) -file $(or $(FILE),voc.txt)
 
 ## clean: stop containers and remove build artifacts
 clean:

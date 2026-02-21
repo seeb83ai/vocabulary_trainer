@@ -89,23 +89,35 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int) ([]mo
 	}
 	defer rows.Close()
 
+	// Collect rows first, then close before issuing per-word queries.
+	// Required because db.SetMaxOpenConns(1) — nested queries on the same
+	// connection while rows is open causes a deadlock.
 	var words []models.WordDetail
 	for rows.Next() {
 		var wd models.WordDetail
-		if err := rows.Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &wd.CreatedAt); err != nil {
+		var createdAt string
+		if err := rows.Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
 		}
-		enTexts, err := s.getEnTextsForZhWord(ctx, wd.ID)
+		wd.CreatedAt = parseDateTime(createdAt)
+		words = append(words, wd)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	rows.Close() // release connection before issuing per-word queries
+
+	for i := range words {
+		enTexts, err := s.getEnTextsForZhWord(ctx, words[i].ID)
 		if err != nil {
 			return nil, 0, err
 		}
-		wd.EnTexts = enTexts
-		words = append(words, wd)
+		words[i].EnTexts = enTexts
 	}
 	if words == nil {
 		words = []models.WordDetail{}
 	}
-	return words, total, rows.Err()
+	return words, total, nil
 }
 
 func (s *Store) getEnTextsForZhWord(ctx context.Context, zhID int64) ([]string, error) {
@@ -135,9 +147,11 @@ func (s *Store) getEnTextsForZhWord(ctx context.Context, zhID int64) ([]string, 
 // GetWordByID returns a single zh word with all its English translations.
 func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, error) {
 	var wd models.WordDetail
+	var createdAt string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT id, text, pinyin, created_at FROM words WHERE id = ? AND language = 'zh'`, id).
-		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &wd.CreatedAt)
+		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt)
+	wd.CreatedAt = parseDateTime(createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -272,11 +286,14 @@ func (s *Store) GetNextCard(ctx context.Context) (*models.Word, *models.SM2Progr
 		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, where))
 		var w models.Word
 		var p models.SM2Progress
+		var createdAt, dueDate string
 		err := row.Scan(
-			&w.ID, &w.Text, &w.Language, &w.Pinyin, &w.CreatedAt,
-			&p.Repetitions, &p.Easiness, &p.IntervalDays, &p.DueDate,
+			&w.ID, &w.Text, &w.Language, &w.Pinyin, &createdAt,
+			&p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
 			&p.TotalCorrect, &p.TotalAttempts,
 		)
+		w.CreatedAt = parseDateTime(createdAt)
+		p.DueDate = parseDateTime(dueDate)
 		if err == sql.ErrNoRows {
 			return nil, nil, nil
 		}
@@ -319,9 +336,11 @@ func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, target
 	var words []models.Word
 	for rows.Next() {
 		var w models.Word
-		if err := rows.Scan(&w.ID, &w.Text, &w.Language, &w.Pinyin, &w.CreatedAt); err != nil {
+		var createdAt string
+		if err := rows.Scan(&w.ID, &w.Text, &w.Language, &w.Pinyin, &createdAt); err != nil {
 			return nil, err
 		}
+		w.CreatedAt = parseDateTime(createdAt)
 		words = append(words, w)
 	}
 	return words, rows.Err()
@@ -330,11 +349,13 @@ func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, target
 // GetSM2Progress returns the SM-2 progress for a word.
 func (s *Store) GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Progress, error) {
 	var p models.SM2Progress
+	var dueDate string
 	err := s.db.QueryRowContext(ctx,
 		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts
 		 FROM sm2_progress WHERE word_id = ?`, wordID).
-		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &p.DueDate,
+		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
 			&p.TotalCorrect, &p.TotalAttempts)
+	p.DueDate = parseDateTime(dueDate)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -376,6 +397,21 @@ func (s *Store) GetStats(ctx context.Context) (dueToday, total int, err error) {
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND p.due_date <= CURRENT_TIMESTAMP`).Scan(&dueToday)
 	return
+}
+
+// parseDateTime parses SQLite datetime strings into time.Time.
+// SQLite stores datetimes as "2006-01-02 15:04:05" or RFC3339; handle both.
+func parseDateTime(s string) time.Time {
+	for _, layout := range []string{
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+	} {
+		if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // upsertWord inserts a word if it doesn't exist and returns its ID.
