@@ -1,4 +1,4 @@
-.PHONY: build run stop logs dev tidy clean import release
+.PHONY: build run stop logs dev tidy clean import release test test-go test-js
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -53,6 +53,17 @@ release:
 	@echo "  sudo cp /opt/vocab-trainer/nginx.conf /etc/nginx/sites-available/vocab-trainer"
 	@echo "  sudo ln -sf /etc/nginx/sites-available/vocab-trainer /etc/nginx/sites-enabled/vocab-trainer"
 	@echo "  sudo nginx -t && sudo systemctl reload nginx"
+
+## test: run all tests (Go + JS)
+test: test-go test-js
+
+## test-go: run Go tests (uses in-memory SQLite, no server needed)
+test-go:
+	go test ./... -count=1
+
+## test-js: run frontend tests with Vitest (requires Node; run 'npm install' first)
+test-js:
+	npm test
 
 ## clean: stop containers and remove build artifacts
 clean:
