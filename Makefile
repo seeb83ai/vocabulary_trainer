@@ -1,4 +1,8 @@
-.PHONY: build run stop logs dev tidy clean import
+.PHONY: build run stop logs dev tidy clean import release
+
+# Load .env if present (for RSYNC_DEST)
+-include .env
+export
 
 ## build: build the Docker image
 build:
@@ -30,6 +34,25 @@ tidy:
 import:
 	mkdir -p data
 	go run ./cmd/import -db $(or $(DB),data/vocab.db) -file $(or $(FILE),voc.txt)
+
+## release: cross-compile for Raspberry Pi (arm64) and rsync to RSYNC_DEST
+release:
+	@test -n "$(RSYNC_DEST)" || (echo "RSYNC_DEST is not set. Copy .env.example to .env and fill it in." && exit 1)
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o vocab-trainer .
+	rsync -avz --progress \
+		vocab-trainer \
+		deploy/vocab-trainer.service \
+		deploy/nginx.conf \
+		$(RSYNC_DEST)/
+	@echo ""
+	@echo "Done. On the Pi, run once to install the service:"
+	@echo "  sudo cp /opt/vocab-trainer/vocab-trainer.service /etc/systemd/system/vocab-trainer.service"
+	@echo "  sudo systemctl daemon-reload && sudo systemctl enable --now vocab-trainer"
+	@echo ""
+	@echo "To install nginx config:"
+	@echo "  sudo cp /opt/vocab-trainer/nginx.conf /etc/nginx/sites-available/vocab-trainer"
+	@echo "  sudo ln -sf /etc/nginx/sites-available/vocab-trainer /etc/nginx/sites-enabled/vocab-trainer"
+	@echo "  sudo nginx -t && sudo systemctl reload nginx"
 
 ## clean: stop containers and remove build artifacts
 clean:
