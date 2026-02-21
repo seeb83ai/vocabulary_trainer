@@ -181,6 +181,41 @@ func TestCheckAnswer_SlashAndParens_Combined(t *testing.T) {
 	}
 }
 
+// ── Trailing punctuation stripping ───────────────────────────────────────────
+
+func TestCheckAnswer_TrailingChinesePeriod_UserAdds(t *testing.T) {
+	// User types "你好。" but stored answer is "你好"
+	if !CheckAnswer("你好。", []string{"你好"}) {
+		t.Error("trailing 。 in user answer should be ignored")
+	}
+}
+
+func TestCheckAnswer_TrailingChinesePeriod_StoredHas(t *testing.T) {
+	// Stored answer is "你好。" but user types "你好"
+	if !CheckAnswer("你好", []string{"你好。"}) {
+		t.Error("trailing 。 in stored answer should be ignored")
+	}
+}
+
+func TestCheckAnswer_TrailingChinesePeriod_BothHave(t *testing.T) {
+	if !CheckAnswer("你好。", []string{"你好。"}) {
+		t.Error("both having 。 should still match")
+	}
+}
+
+func TestCheckAnswer_TrailingASCIIPeriod(t *testing.T) {
+	if !CheckAnswer("hello.", []string{"hello"}) {
+		t.Error("trailing ASCII period in user answer should be ignored")
+	}
+}
+
+func TestCheckAnswer_TrailingPunctNotMidString(t *testing.T) {
+	// A period in the middle should not be stripped
+	if CheckAnswer("hello", []string{"hel.lo"}) {
+		t.Error("mid-string period should not be stripped")
+	}
+}
+
 // ── SelectMode ────────────────────────────────────────────────────────────────
 
 func TestSelectMode_ValidMode(t *testing.T) {

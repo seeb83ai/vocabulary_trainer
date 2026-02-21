@@ -12,6 +12,9 @@ import (
 // reParens matches a parenthesized segment and any surrounding whitespace.
 var reParens = regexp.MustCompile(`\s*\([^)]*\)\s*`)
 
+// reTrailingPunct matches trailing Chinese or ASCII sentence-ending punctuation.
+var reTrailingPunct = regexp.MustCompile(`[。.！!？?]+$`)
+
 const (
 	QualityCorrect = 4
 	QualityWrong   = 0
@@ -61,7 +64,7 @@ func Update(p models.SM2Progress, quality int) models.SM2Progress {
 //
 // All combinations of the two rules are tried.
 func CheckAnswer(userAnswer string, accepted []string) bool {
-	ua := strings.ToLower(strings.TrimSpace(userAnswer))
+	ua := normalize(userAnswer)
 	for _, a := range accepted {
 		for _, variant := range expandVariants(a) {
 			if variant == ua {
@@ -72,12 +75,19 @@ func CheckAnswer(userAnswer string, accepted []string) bool {
 	return false
 }
 
+// normalize lowercases, trims whitespace, and strips trailing sentence punctuation.
+func normalize(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.TrimSpace(reTrailingPunct.ReplaceAllString(s, ""))
+	return s
+}
+
 // expandVariants returns all valid answer strings derived from a single
 // accepted answer by applying the optional-parens and slash-split rules.
 func expandVariants(a string) []string {
 	seen := map[string]struct{}{}
 	add := func(s string) {
-		s = strings.ToLower(strings.TrimSpace(s))
+		s = normalize(s)
 		if s != "" {
 			seen[s] = struct{}{}
 		}
