@@ -33,7 +33,7 @@ func Update(p models.SM2Progress, quality int) models.SM2Progress {
 
 	if quality < 3 {
 		repetitions = 0
-		intervalDays = 1
+		intervalDays = 0
 	} else {
 		switch p.Repetitions {
 		case 0:

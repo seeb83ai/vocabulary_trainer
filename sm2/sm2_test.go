@@ -66,8 +66,8 @@ func TestUpdate_WrongResetsRepetitions(t *testing.T) {
 	if got.Repetitions != 0 {
 		t.Errorf("repetitions should reset to 0 after wrong, got %d", got.Repetitions)
 	}
-	if got.IntervalDays != 1 {
-		t.Errorf("interval_days should reset to 1 after wrong, got %d", got.IntervalDays)
+	if got.IntervalDays != 0 {
+		t.Errorf("interval_days should reset to 0 after wrong, got %d", got.IntervalDays)
 	}
 }
 
