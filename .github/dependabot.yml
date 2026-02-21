@@ -1,0 +1,30 @@
+version: 2
+
+updates:
+  # Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+
+  # npm (JS dev dependencies — Vitest etc.)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+
+  # Python (edge-tts and its dependencies)
+  - package-ecosystem: "pip"
+    directory: "/cmd/tts"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5

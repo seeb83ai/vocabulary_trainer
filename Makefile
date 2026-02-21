@@ -68,7 +68,8 @@ test-js:
 ## tts-setup: create Python venv and install edge-tts (run once on host or Pi)
 tts-setup:
 	python3 -m venv tts-venv
-	tts-venv/bin/pip install --upgrade pip setuptools edge-tts
+	tts-venv/bin/pip install --upgrade pip setuptools
+	tts-venv/bin/pip install -r cmd/tts/requirements.txt
 	@echo ""
 	@echo "Venv ready. Set these env vars to enable TTS:"
 	@echo "  TTS_SCRIPT=$(CURDIR)/cmd/tts/generate.py"
