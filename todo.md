@@ -1,1 +1,0 @@
-- switch keyboard to chinese / german if possible
