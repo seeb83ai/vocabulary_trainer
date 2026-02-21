@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test-go:
+    name: Go tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Run tests
+        run: go test ./... -count=1 -race
+
+  test-js:
+    name: JS tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
