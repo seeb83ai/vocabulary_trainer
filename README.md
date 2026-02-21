@@ -8,10 +8,14 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - N:N word relationships — the same English or Chinese word can be shared across entries
 - Three quiz modes chosen at random: English → Chinese, Chinese → English, Chinese + Pinyin → English
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
-- Full vocabulary management: add, edit, delete, search, paginate
+- Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
+- On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
+- Vocabulary management: add, edit, delete, search, paginate; SM-2 progress shown per word
+- Bulk import from a structured text file (see `cmd/import`)
 - Single-user, no login required
 - SQLite database stored on the host filesystem
-- Runs entirely in Docker; static frontend embedded in the Go binary
+- Runs in Docker or natively; static frontend is embedded in the Go binary
+- Deploy to Raspberry Pi with `make release` (cross-compiles for `linux/arm64`, rsyncs via SSH)
 
 ## Quick start
 
@@ -40,7 +44,47 @@ The SQLite database is stored in `./data/vocab.db` on your host.
 | `make logs` | Tail container logs |
 | `make dev` | Run locally without Docker (requires Go 1.22+) |
 | `make tidy` | Tidy Go module dependencies |
+| `make import` | Import vocabulary from a text file (see below) |
+| `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
 | `make clean` | Stop containers and remove build artifacts |
+
+## Bulk import
+
+Vocabulary can be imported from a plain-text file in the following format (3 lines per entry, blank lines ignored):
+
+```
+pinyin / 汉字
+translation(s), comma-separated
+rating string (ignored)
+```
+
+```bash
+# Default: reads voc.txt, writes to data/vocab.db
+make import
+
+# Custom paths
+make import FILE=my_vocab.txt DB=data/vocab.db
+
+# Preview without writing
+go run ./cmd/import -db data/vocab.db -file voc.txt -dry-run
+```
+
+Duplicate detection prevents re-inserting entries where both the Chinese text/pinyin and the English translation already exist.
+
+## Deploy to Raspberry Pi
+
+Copy `.env.example` to `.env` and set `RSYNC_DEST`:
+
+```bash
+cp .env.example .env
+# edit: RSYNC_DEST=pi@raspberrypi.local:/opt/vocab-trainer
+
+make release
+```
+
+This cross-compiles for `linux/arm64` and rsyncs the binary plus `deploy/nginx.conf` and `deploy/vocab-trainer.service` to the Pi. Follow the printed instructions to install the systemd service (auto-restarts when the binary is updated) and the nginx reverse proxy.
+
+> If your Pi runs a 32-bit OS, change `GOARCH=arm64` to `GOARCH=arm GOARM=7` in the Makefile.
 
 ## Running without Docker
 
@@ -56,21 +100,25 @@ The server listens on `:8080` and stores the database at `data/vocab.db`.
 
 ```
 vocabulary_trainer/
-├── main.go              # Server entry point, router, embedded static files
+├── main.go                  # Server entry point, router, embedded static files
 ├── db/
-│   ├── schema.sql       # SQLite schema (auto-applied on startup)
-│   └── db.go            # Data access layer (Store)
+│   ├── schema.sql           # SQLite schema (auto-applied on startup)
+│   └── db.go                # Data access layer (Store)
 ├── handlers/
-│   ├── quiz.go          # GET /api/quiz/next, POST /api/quiz/answer
-│   └── words.go         # CRUD /api/words
-├── models/models.go     # Shared structs and mode constants
-├── sm2/sm2.go           # SM-2 algorithm and answer checking
+│   ├── quiz.go              # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
+│   └── words.go             # CRUD /api/words + POST /api/words/{id}/translations
+├── models/models.go         # Shared structs and mode constants
+├── sm2/sm2.go               # SM-2 algorithm, answer checking, variant expansion
+├── cmd/import/main.go       # Standalone vocabulary import tool
+├── deploy/
+│   ├── nginx.conf           # Sample nginx reverse-proxy config
+│   └── vocab-trainer.service # systemd unit (auto-restart on binary change)
 └── frontend/
-    ├── index.html       # Training page
-    ├── vocab.html       # Vocabulary management page
-    ├── app.js           # Shared fetch utilities
-    ├── train.js         # Training page logic
-    └── vocab.js         # Vocabulary management logic
+    ├── index.html           # Training page
+    ├── vocab.html           # Vocabulary management page
+    ├── app.js               # Shared fetch utilities and DOM helpers
+    ├── train.js             # Training page logic
+    └── vocab.js             # Vocabulary management logic
 ```
 
 ## API
@@ -85,6 +133,7 @@ vocabulary_trainer/
 | `GET` | `/api/words/{id}` | Get a single word with translations |
 | `PUT` | `/api/words/{id}` | Update a word |
 | `DELETE` | `/api/words/{id}` | Delete a word |
+| `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 
 ## License
 
