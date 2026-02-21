@@ -10,6 +10,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
+- 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS via `edge-tts`), falls back silently to the browser's Web Speech API
 - Vocabulary management: add, edit, delete, search, paginate; SM-2 progress shown per word
 - Bulk import from a structured text file (see `cmd/import`)
 - Single-user, no login required
@@ -38,14 +39,18 @@ The SQLite database is stored in `./data/vocab.db` on your host.
 
 | Target | Description |
 |---|---|
+| Target | Description |
+|---|---|
 | `make build` | Build the Docker image |
 | `make run` | Start the app in the background |
 | `make stop` | Stop the running container |
 | `make logs` | Tail container logs |
-| `make dev` | Run locally without Docker (requires Go 1.22+) |
+| `make dev` | Run locally without Docker (requires Go 1.24+) |
 | `make tidy` | Tidy Go module dependencies |
 | `make import` | Import vocabulary from a text file (see below) |
+| `make tts-setup` | Create Python venv and install `edge-tts` (run once, host only) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
+| `make test` | Run all Go and JS tests |
 | `make clean` | Stop containers and remove build artifacts |
 
 ## Bulk import
@@ -86,9 +91,31 @@ This cross-compiles for `linux/arm64` and rsyncs the binary plus `deploy/nginx.c
 
 > If your Pi runs a 32-bit OS, change `GOARCH=arm64` to `GOARCH=arm GOARM=7` in the Makefile.
 
+## Text-to-speech (TTS)
+
+Audio is generated using [edge-tts](https://github.com/rany2/edge-tts) (Microsoft Edge's free neural TTS, no API key required) with the `zh-CN-XiaoxiaoNeural` voice. MP3 files are cached in `data/audio/` and served by the Go server.
+
+**Docker** (`make run`): TTS is included in the image automatically — no setup needed.
+
+**Native / Raspberry Pi**: run once to create the venv:
+
+```bash
+make tts-setup
+```
+
+Then set the env vars before starting the server (or add them to `.env`):
+
+```bash
+export TTS_SCRIPT=$(pwd)/cmd/tts/generate.py
+export VENV_PYTHON=$(pwd)/tts-venv/bin/python3
+make dev
+```
+
+If `TTS_SCRIPT` is not set, TTS is disabled and the play button falls back to the browser's Web Speech API.
+
 ## Running without Docker
 
-Requires Go 1.22 or later.
+Requires Go 1.24 or later.
 
 ```bash
 make dev
@@ -106,10 +133,13 @@ vocabulary_trainer/
 │   └── db.go                # Data access layer (Store)
 ├── handlers/
 │   ├── quiz.go              # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
-│   └── words.go             # CRUD /api/words + POST /api/words/{id}/translations
+│   ├── words.go             # CRUD /api/words + POST /api/words/{id}/translations
+│   └── audio.go             # GET /api/audio/{id} — serve/generate cached MP3
 ├── models/models.go         # Shared structs and mode constants
 ├── sm2/sm2.go               # SM-2 algorithm, answer checking, variant expansion
 ├── cmd/import/main.go       # Standalone vocabulary import tool
+├── cmd/tts/generate.py      # edge-tts wrapper — called by the server to generate MP3s
+├── cmd/tts/requirements.txt # Python dependencies
 ├── deploy/
 │   ├── nginx.conf           # Sample nginx reverse-proxy config
 │   └── vocab-trainer.service # systemd unit (auto-restart on binary change)
@@ -134,6 +164,7 @@ vocabulary_trainer/
 | `PUT` | `/api/words/{id}` | Update a word |
 | `DELETE` | `/api/words/{id}` | Delete a word |
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
+| `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
 
 ## License
 
