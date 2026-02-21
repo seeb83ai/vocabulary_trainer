@@ -49,6 +49,9 @@ type AnswerRequest struct {
 type AnswerResponse struct {
 	Correct        bool      `json:"correct"`
 	CorrectAnswers []string  `json:"correct_answers"`
+	ZhText         string    `json:"zh_text"`
+	Pinyin         *string   `json:"pinyin"`
+	EnTexts        []string  `json:"en_texts"`
 	NextDue        time.Time `json:"next_due"`
 	IntervalDays   int       `json:"interval_days"`
 	TotalCorrect   int       `json:"total_correct"`
@@ -68,11 +71,17 @@ type UpdateWordRequest struct {
 }
 
 type WordDetail struct {
-	ID        int64     `json:"id"`
-	ZhText    string    `json:"zh_text"`
-	Pinyin    *string   `json:"pinyin"`
-	EnTexts   []string  `json:"en_texts"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	ZhText        string    `json:"zh_text"`
+	Pinyin        *string   `json:"pinyin"`
+	EnTexts       []string  `json:"en_texts"`
+	CreatedAt     time.Time `json:"created_at"`
+	Repetitions   int       `json:"repetitions"`
+	Easiness      float64   `json:"easiness"`
+	IntervalDays  int       `json:"interval_days"`
+	TotalCorrect  int       `json:"total_correct"`
+	TotalAttempts int       `json:"total_attempts"`
+	DueDate       time.Time `json:"due_date"`
 }
 
 type WordListResponse struct {

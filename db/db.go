@@ -72,7 +72,13 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int) ([]mo
 	}
 
 	listQuery := `
-		SELECT w.id, w.text, w.pinyin, w.created_at FROM words w
+		SELECT w.id, w.text, w.pinyin, w.created_at,
+		       COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
+		       COALESCE(p.interval_days, 1),
+		       COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
+		       COALESCE(p.due_date, CURRENT_TIMESTAMP)
+		FROM words w
+		LEFT JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh'
 		  AND (? = '' OR w.text LIKE '%' || ? || '%'
 		       OR w.pinyin LIKE '%' || ? || '%'
@@ -95,11 +101,16 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int) ([]mo
 	var words []models.WordDetail
 	for rows.Next() {
 		var wd models.WordDetail
-		var createdAt string
-		if err := rows.Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt); err != nil {
+		var createdAt, dueDate string
+		if err := rows.Scan(
+			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
+			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
+			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate,
+		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
 		}
 		wd.CreatedAt = parseDateTime(createdAt)
+		wd.DueDate = parseDateTime(dueDate)
 		words = append(words, wd)
 	}
 	if err := rows.Err(); err != nil {
@@ -147,11 +158,21 @@ func (s *Store) getEnTextsForZhWord(ctx context.Context, zhID int64) ([]string, 
 // GetWordByID returns a single zh word with all its English translations.
 func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, error) {
 	var wd models.WordDetail
-	var createdAt string
+	var createdAt, dueDate string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, text, pinyin, created_at FROM words WHERE id = ? AND language = 'zh'`, id).
-		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt)
+		`SELECT w.id, w.text, w.pinyin, w.created_at,
+		        COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
+		        COALESCE(p.interval_days, 1),
+		        COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
+		        COALESCE(p.due_date, CURRENT_TIMESTAMP)
+		 FROM words w
+		 LEFT JOIN sm2_progress p ON p.word_id = w.id
+		 WHERE w.id = ? AND w.language = 'zh'`, id).
+		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
+			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
+			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate)
 	wd.CreatedAt = parseDateTime(createdAt)
+	wd.DueDate = parseDateTime(dueDate)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -272,18 +293,20 @@ func (s *Store) DeleteWord(ctx context.Context, id int64) error {
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
 func (s *Store) GetNextCard(ctx context.Context) (*models.Word, *models.SM2Progress, error) {
+	// Only quiz on zh words — they are the canonical unit; en words are just
+	// answer targets and should never appear as quiz prompts on their own.
 	query := `
 		SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
 		       p.repetitions, p.easiness, p.interval_days, p.due_date,
 		       p.total_correct, p.total_attempts
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
-		%s
+		WHERE w.language = 'zh' %s
 		ORDER BY p.due_date ASC
 		LIMIT 1`
 
-	tryQuery := func(where string) (*models.Word, *models.SM2Progress, error) {
-		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, where))
+	tryQuery := func(extra string) (*models.Word, *models.SM2Progress, error) {
+		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, extra))
 		var w models.Word
 		var p models.SM2Progress
 		var createdAt, dueDate string
@@ -304,7 +327,7 @@ func (s *Store) GetNextCard(ctx context.Context) (*models.Word, *models.SM2Progr
 		return &w, &p, nil
 	}
 
-	w, p, err := tryQuery("WHERE p.due_date <= CURRENT_TIMESTAMP")
+	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP")
 	if err != nil || w != nil {
 		return w, p, err
 	}

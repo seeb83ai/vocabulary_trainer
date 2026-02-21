@@ -37,6 +37,7 @@ function renderTable(words) {
       <td class="py-3 px-4 text-lg font-medium">${escHtml(word.zh_text)}</td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4">${word.en_texts.map(escHtml).join(', ')}</td>
+      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderProgress(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap">
         <button class="btn-edit text-blue-600 hover:text-blue-800 mr-3 font-medium" data-id="${word.id}">Edit</button>
         <button class="btn-delete text-red-600 hover:text-red-800 font-medium" data-id="${word.id}">Delete</button>
@@ -146,12 +147,33 @@ async function deleteWord(id) {
   }
 }
 
-function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function renderProgress(word) {
+  if (word.total_attempts === 0) {
+    return '<span class="text-gray-400">New</span>';
+  }
+  const pct = word.total_attempts > 0
+    ? Math.round((word.total_correct / word.total_attempts) * 100)
+    : 0;
+  const due = new Date(word.due_date);
+  const now = new Date();
+  const diffDays = Math.round((due - now) / 86400000);
+  const dueStr = diffDays <= 0 ? '<span class="text-orange-500">Due</span>'
+    : `in ${diffDays}d`;
+
+  let barColor = 'bg-red-400';
+  if (pct >= 80) barColor = 'bg-green-400';
+  else if (pct >= 50) barColor = 'bg-yellow-400';
+
+  return `
+    <div class="flex flex-col gap-0.5 min-w-[90px]">
+      <div class="flex items-center gap-1">
+        <div class="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div class="${barColor} h-full rounded-full" style="width:${pct}%"></div>
+        </div>
+        <span class="text-gray-500">${pct}%</span>
+      </div>
+      <div class="text-gray-400">${word.repetitions} reps · ${dueStr}</div>
+    </div>`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

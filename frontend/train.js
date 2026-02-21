@@ -77,6 +77,29 @@ async function submitAnswer(e) {
     }
 
     setText('correct-answers', result.correct_answers.join(' / '));
+
+    // On wrong answers show what was typed vs the correct answer
+    const breakdown = $('word-breakdown');
+    if (!result.correct) {
+      const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
+      breakdown.innerHTML = `
+        <div class="mt-4 space-y-2 text-left">
+          <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
+            <div class="text-xs text-red-400 uppercase tracking-wide mb-1">Your answer</div>
+            <div class="text-lg font-medium text-red-700">${escHtml(answer)}</div>
+          </div>
+          <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
+            <div class="text-xs text-green-500 uppercase tracking-wide mb-1">Correct</div>
+            <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
+            <div class="text-gray-600 text-sm mt-0.5">${result.en_texts.map(escHtml).join(' · ')}</div>
+          </div>
+        </div>`;
+      show('word-breakdown');
+    } else {
+      breakdown.innerHTML = '';
+      hide('word-breakdown');
+    }
+
     setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
     setText('attempt-stats',
       `Correct: ${result.total_correct} / ${result.total_attempts}`);

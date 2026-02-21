@@ -3,10 +3,14 @@ package sm2
 import (
 	"math"
 	"math/rand"
+	"regexp"
 	"strings"
 	"time"
 	"vocabulary_trainer/models"
 )
+
+// reParens matches a parenthesized segment and any surrounding whitespace.
+var reParens = regexp.MustCompile(`\s*\([^)]*\)\s*`)
 
 const (
 	QualityCorrect = 4
@@ -48,14 +52,58 @@ func Update(p models.SM2Progress, quality int) models.SM2Progress {
 
 // CheckAnswer returns true if the user's answer matches any accepted answer
 // (case-insensitive, whitespace-trimmed).
+//
+// Two normalisation rules apply to each accepted answer before comparing:
+//  1. Parenthesized segments are optional: "(das Gehörte) nicht verstehen"
+//     also accepts "nicht verstehen".
+//  2. Slash-separated alternatives are each valid on their own:
+//     "Essen / Gericht" also accepts "Essen" or "Gericht".
+//
+// All combinations of the two rules are tried.
 func CheckAnswer(userAnswer string, accepted []string) bool {
 	ua := strings.ToLower(strings.TrimSpace(userAnswer))
 	for _, a := range accepted {
-		if strings.ToLower(strings.TrimSpace(a)) == ua {
-			return true
+		for _, variant := range expandVariants(a) {
+			if variant == ua {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// expandVariants returns all valid answer strings derived from a single
+// accepted answer by applying the optional-parens and slash-split rules.
+func expandVariants(a string) []string {
+	seen := map[string]struct{}{}
+	add := func(s string) {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s != "" {
+			seen[s] = struct{}{}
+		}
+	}
+
+	// Full form (with parens, with slashes)
+	add(a)
+
+	// Form with parens stripped
+	noParens := strings.TrimSpace(reParens.ReplaceAllString(a, " "))
+	add(noParens)
+
+	// Slash-split variants of both the original and the paren-stripped form
+	for _, base := range []string{a, noParens} {
+		for _, part := range strings.Split(base, "/") {
+			add(part)
+			// Also strip parens from each slash part
+			add(strings.TrimSpace(reParens.ReplaceAllString(part, " ")))
+		}
+	}
+
+	out := make([]string, 0, len(seen))
+	for s := range seen {
+		out = append(out, s)
+	}
+	return out
 }
 
 // SelectMode randomly picks one of the three quiz modes with equal probability.

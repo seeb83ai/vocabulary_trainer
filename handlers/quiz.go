@@ -91,31 +91,22 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine what language the accepted answers are in
-	// word_id is always the zh word; for en_to_zh the user types zh, for zh_to_en types en
-	var targetLang string
-	var correctTexts []string
+	// Look up the zh word (word_id is always the zh word)
+	zhWord, err := h.Store.GetWordByID(r.Context(), req.WordID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if zhWord == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
 
+	var correctTexts []string
 	switch req.Mode {
 	case models.ModeEnToZh:
-		// User typed Chinese; correct answers are the zh word itself
-		// word_id is the zh word
-		targetLang = "zh"
-		_ = targetLang
-		// The accepted answer is the zh word's text
-		// Look up the zh word directly
-		wd, err := h.Store.GetWordByID(r.Context(), req.WordID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if wd == nil {
-			writeError(w, http.StatusNotFound, "word not found")
-			return
-		}
-		correctTexts = []string{wd.ZhText}
+		correctTexts = []string{zhWord.ZhText}
 	case models.ModeZhToEn, models.ModeZhPinyinToEn:
-		// User typed English; correct answers are linked EN words
 		enWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, "en")
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -160,6 +151,9 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.AnswerResponse{
 		Correct:        correct,
 		CorrectAnswers: correctTexts,
+		ZhText:         zhWord.ZhText,
+		Pinyin:         zhWord.Pinyin,
+		EnTexts:        zhWord.EnTexts,
 		NextDue:        updated.DueDate,
 		IntervalDays:   updated.IntervalDays,
 		TotalCorrect:   updated.TotalCorrect,
