@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vocabulary Trainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+      <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
+      <div class="flex gap-4">
+        <a href="/" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5">Train</a>
+        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium">Vocabulary</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Stats bar -->
+  <div class="bg-blue-50 border-b border-blue-100">
+    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-6 text-sm text-blue-700">
+      <span>Due today: <strong id="stats-due">—</strong></span>
+      <span>Total words: <strong id="stats-total">—</strong></span>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <main class="flex-1 flex items-start justify-center px-4 py-10">
+    <div class="w-full max-w-lg">
+
+      <!-- Empty state -->
+      <div id="empty-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
+        <div class="text-5xl mb-4">📚</div>
+        <h2 class="text-xl font-semibold text-gray-700 mb-2">No vocabulary yet</h2>
+        <p class="text-gray-500 mb-6">Add some words to start training.</p>
+        <a href="/vocab" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition">
+          Add Vocabulary
+        </a>
+      </div>
+
+      <!-- Error state -->
+      <div id="error-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
+        <div class="text-4xl mb-4">⚠️</div>
+        <p id="error-msg" class="text-red-600"></p>
+      </div>
+
+      <!-- Card area -->
+      <div id="card-area" class="hidden">
+        <div class="bg-white rounded-2xl shadow p-8">
+          <div id="mode-label" class="text-sm font-medium text-blue-600 uppercase tracking-wider mb-6"></div>
+
+          <div id="prompt-word" class="text-4xl font-bold text-gray-800 mb-3 break-words"></div>
+          <div id="pinyin-hint" class="hidden text-xl text-gray-500 mb-6"></div>
+
+          <form id="answer-form" class="mt-6">
+            <input
+              id="answer-input"
+              type="text"
+              autocomplete="off"
+              autocorrect="off"
+              spellcheck="false"
+              placeholder="Type your answer…"
+              class="w-full border border-gray-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+            >
+            <button
+              type="submit"
+              class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
+            >
+              Submit
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Result area -->
+      <div id="result-area" class="hidden">
+        <div class="bg-white rounded-2xl shadow p-8 text-center">
+          <div id="result-icon" class="text-3xl font-bold mb-4"></div>
+
+          <div class="mb-2 text-gray-500 text-sm uppercase tracking-wide">Correct answer</div>
+          <div id="correct-answers" class="text-2xl font-semibold text-gray-800 mb-6 break-words"></div>
+
+          <div class="flex justify-center gap-6 text-sm text-gray-500 mb-8">
+            <span id="next-due-info"></span>
+            <span id="attempt-stats"></span>
+          </div>
+
+          <button
+            id="next-btn"
+            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script src="train.js"></script>
+</body>
+</html>

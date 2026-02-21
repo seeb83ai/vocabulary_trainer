@@ -1,0 +1,15 @@
+# Build output
+vocab-trainer
+
+# Database
+data/
+
+# Go
+*.test
+*.out
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
