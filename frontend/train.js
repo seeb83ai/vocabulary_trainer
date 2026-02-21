@@ -16,6 +16,7 @@ async function loadNextCard() {
   hide('result-area');
   hide('empty-state');
   hide('error-state');
+  hide('add-translation-btn');
   $('answer-input').value = '';
 
   try {
@@ -95,9 +96,32 @@ async function submitAnswer(e) {
           </div>
         </div>`;
       show('word-breakdown');
+
+      // "Add as correct answer" button
+      const addBtn = $('add-translation-btn');
+      addBtn.textContent = `Add "${answer}" as correct answer`;
+      addBtn.disabled = false;
+      addBtn.className = 'mt-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
+      show('add-translation-btn');
+
+      addBtn.onclick = async () => {
+        addBtn.disabled = true;
+        try {
+          await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
+            method: 'POST',
+            body: JSON.stringify({ en_text: answer }),
+          });
+          addBtn.textContent = '✓ Added';
+          addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
+        } catch (err) {
+          addBtn.disabled = false;
+          alert('Could not add translation: ' + err.message);
+        }
+      };
     } else {
       breakdown.innerHTML = '';
       hide('word-breakdown');
+      hide('add-translation-btn');
     }
 
     setText('next-due-info', `Next review in ${result.interval_days} day(s)`);

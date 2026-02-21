@@ -47,6 +47,7 @@ func main() {
 				r.Get("/", wordsH.GetByID)
 				r.Put("/", wordsH.Update)
 				r.Delete("/", wordsH.Delete)
+				r.Post("/translations", wordsH.AddTranslation)
 			})
 		})
 	})

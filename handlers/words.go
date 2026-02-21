@@ -136,6 +136,35 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, wd)
 }
 
+func (h *WordsHandler) AddTranslation(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	var body struct {
+		EnText string `json:"en_text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	body.EnText = strings.TrimSpace(body.EnText)
+	if body.EnText == "" {
+		writeError(w, http.StatusBadRequest, "en_text is required")
+		return
+	}
+	if err := h.Store.AddTranslation(r.Context(), id, body.EnText); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "word not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *WordsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)
 	if err != nil {

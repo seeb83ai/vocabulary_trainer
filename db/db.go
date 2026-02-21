@@ -277,6 +277,40 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 	return tx.Commit()
 }
 
+// AddTranslation appends a single EN text as a new translation for the given zh word ID.
+// If the EN word already exists it is reused; if the link already exists it is a no-op.
+func (s *Store) AddTranslation(ctx context.Context, zhID int64, enText string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Verify the zh word exists
+	var exists int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM words WHERE id = ? AND language = 'zh'`, zhID).Scan(&exists); err != nil {
+		return fmt.Errorf("check word: %w", err)
+	}
+	if exists == 0 {
+		return sql.ErrNoRows
+	}
+
+	enID, err := upsertWord(ctx, tx, enText, "en", nil)
+	if err != nil {
+		return err
+	}
+	if err := initSM2(ctx, tx, enID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
+		enID, zhID); err != nil {
+		return fmt.Errorf("link translation: %w", err)
+	}
+	return tx.Commit()
+}
+
 // DeleteWord deletes a word by ID. Cascades to translations and sm2_progress.
 func (s *Store) DeleteWord(ctx context.Context, id int64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM words WHERE id = ?`, id)
