@@ -60,6 +60,7 @@ func TestUpdate_CorrectThirdRep(t *testing.T) {
 }
 
 func TestUpdate_WrongResetsRepetitions(t *testing.T) {
+	before := time.Now()
 	p := models.SM2Progress{Repetitions: 5, Easiness: 2.5, IntervalDays: 30}
 	got := Update(p, QualityWrong)
 
@@ -68,6 +69,11 @@ func TestUpdate_WrongResetsRepetitions(t *testing.T) {
 	}
 	if got.IntervalDays != 0 {
 		t.Errorf("interval_days should reset to 0 after wrong, got %d", got.IntervalDays)
+	}
+	wantMin := before.Add(2 * time.Minute)
+	wantMax := time.Now().Add(2 * time.Minute)
+	if got.DueDate.Before(wantMin) || got.DueDate.After(wantMax) {
+		t.Errorf("due_date after wrong answer should be ~2 minutes from now, got %v", got.DueDate)
 	}
 }
 

@@ -34,6 +34,11 @@ func Update(p models.SM2Progress, quality int) models.SM2Progress {
 	if quality < 3 {
 		repetitions = 0
 		intervalDays = 0
+		p.Easiness = ef
+		p.Repetitions = repetitions
+		p.IntervalDays = intervalDays
+		p.DueDate = time.Now().UTC().Add(2 * time.Minute)
+		return p
 	} else {
 		switch p.Repetitions {
 		case 0:
