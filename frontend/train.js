@@ -17,6 +17,7 @@ async function loadNextCard() {
   hide('empty-state');
   hide('error-state');
   hide('add-translation-btn');
+  hide('result-play-btn');
   $('answer-input').value = '';
 
   try {
@@ -36,6 +37,16 @@ async function loadNextCard() {
   show('card-area');
   setText('mode-label', MODE_LABELS[currentCard.mode] || currentCard.mode);
   setText('prompt-word', currentCard.prompt);
+
+  // Show play button only when the prompt is Chinese
+  const isZhPrompt = currentCard.mode === 'zh_to_en' || currentCard.mode === 'zh_pinyin_to_en';
+  const playBtn = $('play-btn');
+  if (isZhPrompt) {
+    playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+    show('play-btn');
+  } else {
+    hide('play-btn');
+  }
 
   if (currentCard.pinyin) {
     setText('pinyin-hint', currentCard.pinyin);
@@ -79,9 +90,10 @@ async function submitAnswer(e) {
 
     setText('correct-answers', result.correct_answers.join(' / '));
 
-    // On wrong answers show what was typed vs the correct answer
+    // On wrong answers show what was typed vs the correct answer (play button inside breakdown)
     const breakdown = $('word-breakdown');
     if (!result.correct) {
+      hide('result-play-btn');
       const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
       breakdown.innerHTML = `
         <div class="mt-4 space-y-2 text-left">
@@ -91,10 +103,14 @@ async function submitAnswer(e) {
           </div>
           <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
             <div class="text-xs text-green-500 uppercase tracking-wide mb-1">Correct</div>
-            <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
+            <div class="flex items-center gap-2">
+              <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
+              <button class="btn-breakdown-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+            </div>
             <div class="text-gray-600 text-sm mt-0.5">${result.en_texts.map(escHtml).join(' · ')}</div>
           </div>
         </div>`;
+      breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       show('word-breakdown');
 
       // "Add as correct answer" button
@@ -122,6 +138,9 @@ async function submitAnswer(e) {
       breakdown.innerHTML = '';
       hide('word-breakdown');
       hide('add-translation-btn');
+      const playBtn = $('result-play-btn');
+      playBtn.onclick = () => playAudio(currentCard.word_id, result.zh_text);
+      show('result-play-btn');
     }
 
     setText('next-due-info', `Next review in ${result.interval_days} day(s)`);

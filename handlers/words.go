@@ -15,6 +15,7 @@ import (
 
 type WordsHandler struct {
 	Store *db.Store
+	Audio *AudioHandler // optional; nil = TTS disabled
 }
 
 func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +70,9 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if h.Audio != nil {
+		go h.Audio.generate(id, req.ZhText)
 	}
 	writeJSON(w, http.StatusCreated, map[string]int64{"id": id})
 }
@@ -127,6 +131,9 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if h.Audio != nil {
+		go h.Audio.regenerate(id, req.ZhText)
 	}
 	wd, err := h.Store.GetWordByID(r.Context(), id)
 	if err != nil {

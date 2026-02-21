@@ -1,2 +1,1 @@
-- make 。optional at the end of a translation when training
 - switch keyboard to chinese / german if possible

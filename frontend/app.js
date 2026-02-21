@@ -42,6 +42,19 @@ function setText(id, text) {
   if (el) el.textContent = text;
 }
 
+// playAudio plays the server-cached MP3 for wordId.
+// Falls back silently to the Web Speech API if the MP3 is unavailable.
+function playAudio(wordId, zhText) {
+  const audio = new Audio(`/api/audio/${wordId}`);
+  audio.play().catch(() => {
+    if ('speechSynthesis' in window) {
+      const u = new SpeechSynthesisUtterance(zhText);
+      u.lang = 'zh-CN';
+      speechSynthesis.speak(u);
+    }
+  });
+}
+
 function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')

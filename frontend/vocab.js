@@ -34,7 +34,10 @@ function renderTable(words) {
     const tr = document.createElement('tr');
     tr.className = 'border-b border-gray-200 hover:bg-gray-50';
     tr.innerHTML = `
-      <td class="py-3 px-4 text-lg font-medium">${escHtml(word.zh_text)}</td>
+      <td class="py-3 px-4 text-lg font-medium">
+        <span class="mr-1">${escHtml(word.zh_text)}</span>
+        <button class="btn-play text-base text-gray-400 hover:text-blue-500 transition leading-none align-middle" data-id="${word.id}" data-zh="${escHtml(word.zh_text)}" title="Read aloud">🔊</button>
+      </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4">${word.en_texts.map(escHtml).join(', ')}</td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderProgress(word)}</td>
@@ -45,6 +48,9 @@ function renderTable(words) {
     tbody.appendChild(tr);
   }
 
+  tbody.querySelectorAll('.btn-play').forEach(btn => {
+    btn.addEventListener('click', () => playAudio(parseInt(btn.dataset.id), btn.dataset.zh));
+  });
   tbody.querySelectorAll('.btn-edit').forEach(btn => {
     btn.addEventListener('click', () => openEditForm(words.find(w => w.id == btn.dataset.id)));
   });

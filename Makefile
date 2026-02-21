@@ -1,4 +1,4 @@
-.PHONY: build run stop logs dev tidy clean import release test test-go test-js
+.PHONY: build run stop logs dev tidy clean import release test test-go test-js tts-setup
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -64,6 +64,16 @@ test-go:
 ## test-js: run frontend tests with Vitest (requires Node; run 'npm install' first)
 test-js:
 	npm test
+
+## tts-setup: create Python venv and install edge-tts (run once on host or Pi)
+tts-setup:
+	python3 -m venv tts-venv
+	tts-venv/bin/pip install --upgrade pip setuptools edge-tts
+	@echo ""
+	@echo "Venv ready. Set these env vars to enable TTS:"
+	@echo "  TTS_SCRIPT=$(CURDIR)/cmd/tts/generate.py"
+	@echo "  VENV_PYTHON=$(CURDIR)/tts-venv/bin/python3"
+	@echo "  AUDIO_DIR=data/audio  (or wherever your data lives)"
 
 ## clean: stop containers and remove build artifacts
 clean:

@@ -13,3 +13,11 @@ data/
 .idea/
 *.swp
 *.swo
+
+# Env
+.env
+
+# Python TTS venv
+tts-venv/
+__pycache__/
+*.pyc

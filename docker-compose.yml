@@ -7,4 +7,6 @@ services:
       - ./data:/data
     environment:
       - DB_PATH=/data/vocab.db
+      - TTS_SCRIPT=/opt/vocab-trainer/cmd/tts/generate.py
+      - AUDIO_DIR=/data/audio
     restart: unless-stopped

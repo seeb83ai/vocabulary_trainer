@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM golang:1.22-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vocab-trainer .
 # Stage 2: Runtime
 FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates && mkdir -p /data
+RUN apk add --no-cache ca-certificates python3 py3-pip && \
+    pip3 install --break-system-packages --upgrade setuptools edge-tts && \
+    mkdir -p /data /opt/vocab-trainer/cmd/tts
+
+COPY cmd/tts/generate.py /opt/vocab-trainer/cmd/tts/generate.py
 
 WORKDIR /app
 COPY --from=builder /vocab-trainer /app/vocab-trainer

@@ -52,7 +52,10 @@
         <div class="bg-white rounded-2xl shadow p-8">
           <div id="mode-label" class="text-sm font-medium text-blue-600 uppercase tracking-wider mb-6"></div>
 
-          <div id="prompt-word" class="text-4xl font-bold text-gray-800 mb-3 break-words"></div>
+          <div class="flex items-center gap-3 mb-3">
+            <div id="prompt-word" class="text-4xl font-bold text-gray-800 break-words flex-1"></div>
+            <button id="play-btn" type="button" class="hidden text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+          </div>
           <div id="pinyin-hint" class="hidden text-xl text-gray-500 mb-6"></div>
 
           <form id="answer-form" class="mt-6">
@@ -81,7 +84,10 @@
           <div id="result-icon" class="text-3xl font-bold mb-4"></div>
 
           <div class="mb-2 text-gray-500 text-sm uppercase tracking-wide">Correct answer</div>
-          <div id="correct-answers" class="text-2xl font-semibold text-gray-800 mb-2 break-words"></div>
+          <div class="flex items-center justify-center gap-2 mb-2">
+            <div id="correct-answers" class="text-2xl font-semibold text-gray-800 break-words"></div>
+            <button id="result-play-btn" type="button" class="hidden text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+          </div>
 
           <div id="word-breakdown" class="hidden mb-2"></div>
           <button id="add-translation-btn" class="hidden"></button>
