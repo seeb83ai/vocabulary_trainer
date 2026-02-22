@@ -16,8 +16,9 @@ var reParens = regexp.MustCompile(`\s*\([^)]*\)\s*`)
 var reTrailingPunct = regexp.MustCompile(`[\p{P}\p{S}\s]+$`)
 
 const (
-	QualityCorrect = 4
-	QualityWrong   = 0
+	QualityCorrect  = 4
+	QualityWrong    = 0
+	WrongRetryDelay = 3 * time.Minute
 )
 
 // Update applies the SM-2 algorithm and returns an updated SM2Progress.
@@ -37,7 +38,7 @@ func Update(p models.SM2Progress, quality int) models.SM2Progress {
 		p.Easiness = ef
 		p.Repetitions = repetitions
 		p.IntervalDays = intervalDays
-		p.DueDate = time.Now().UTC().Add(3 * time.Minute)
+		p.DueDate = time.Now().UTC().Add(WrongRetryDelay)
 		return p
 	} else {
 		switch p.Repetitions {

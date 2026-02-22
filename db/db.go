@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"vocabulary_trainer/models"
+	"vocabulary_trainer/sm2"
 
 	_ "modernc.org/sqlite"
 )
@@ -365,7 +366,13 @@ func (s *Store) GetNextCard(ctx context.Context) (*models.Word, *models.SM2Progr
 	if err != nil || w != nil {
 		return w, p, err
 	}
-	// No overdue cards — pick the nearest upcoming one
+	// No overdue cards — prefer cards outside the wrong-retry window so a
+	// recently failed card is not immediately repeated.
+	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds')", int(sm2.WrongRetryDelay.Seconds())))
+	if err != nil || w != nil {
+		return w, p, err
+	}
+	// All remaining cards are within the retry window; return the soonest one.
 	return tryQuery("")
 }
 
@@ -430,7 +437,7 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 		     total_correct = ?, total_attempts = ?
 		 WHERE word_id = ?`,
 		p.Repetitions, p.Easiness, p.IntervalDays,
-		p.DueDate.UTC().Format(time.RFC3339),
+		p.DueDate.UTC().Format("2006-01-02 15:04:05"),
 		p.TotalCorrect, p.TotalAttempts, p.WordID)
 	if err != nil {
 		return fmt.Errorf("update sm2: %w", err)
