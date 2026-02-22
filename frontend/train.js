@@ -2,6 +2,16 @@
 
 let currentCard = null;
 let isSubmitted = false;
+let selectedMode = localStorage.getItem('quizMode') || 'random';
+
+function applyModeButtons() {
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    const active = btn.dataset.mode === selectedMode;
+    btn.className = active
+      ? 'mode-btn px-3 py-1 rounded-full text-sm font-medium transition bg-blue-600 text-white'
+      : 'mode-btn px-3 py-1 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
+  });
+}
 
 async function loadStats() {
   try {
@@ -21,7 +31,8 @@ async function loadNextCard() {
   $('answer-input').value = '';
 
   try {
-    currentCard = await apiFetch('/api/quiz/next');
+    const url = selectedMode === 'random' ? '/api/quiz/next' : `/api/quiz/next?mode=${selectedMode}`;
+    currentCard = await apiFetch(url);
   } catch (e) {
     if (e.message === 'no words available') {
       hide('card-area');
@@ -156,6 +167,15 @@ async function submitAnswer(e) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  applyModeButtons();
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedMode = btn.dataset.mode;
+      localStorage.setItem('quizMode', selectedMode);
+      applyModeButtons();
+      loadNextCard();
+    });
+  });
   $('answer-form').addEventListener('submit', submitAnswer);
   $('next-btn').addEventListener('click', loadNextCard);
   loadNextCard();

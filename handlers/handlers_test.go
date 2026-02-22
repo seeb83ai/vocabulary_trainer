@@ -143,6 +143,36 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	}
 }
 
+func TestQuizNext_ModeParam(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	for _, mode := range []string{models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn} {
+		rec := do(t, r, "GET", "/api/quiz/next?mode="+mode, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("mode=%s: want 200, got %d: %s", mode, rec.Code, rec.Body)
+		}
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.Mode != mode {
+			t.Errorf("mode=%s: want card.Mode=%s, got %s", mode, mode, card.Mode)
+		}
+	}
+
+	// Invalid mode falls back to a valid random mode
+	rec := do(t, r, "GET", "/api/quiz/next?mode=invalid", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("invalid mode: want 200, got %d", rec.Code)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	validModes := map[string]bool{models.ModeEnToZh: true, models.ModeZhToEn: true, models.ModeZhPinyinToEn: true}
+	if !validModes[card.Mode] {
+		t.Errorf("invalid mode param: got unexpected mode %s", card.Mode)
+	}
+}
+
 // ── POST /api/quiz/answer ─────────────────────────────────────────────────────
 
 func TestQuizAnswer_Correct(t *testing.T) {

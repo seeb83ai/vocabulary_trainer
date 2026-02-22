@@ -27,7 +27,13 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mode := sm2.SelectMode()
+	var mode string
+	switch r.URL.Query().Get("mode") {
+	case models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn:
+		mode = r.URL.Query().Get("mode")
+	default:
+		mode = sm2.SelectMode()
+	}
 
 	// zh_pinyin_to_en requires pinyin; fall back if missing
 	if mode == models.ModeZhPinyinToEn && (word.Pinyin == nil || *word.Pinyin == "") {
