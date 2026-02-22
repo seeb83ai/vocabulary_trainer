@@ -2,6 +2,22 @@
 
 A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2).
 
+## Features
+
+- Add vocabulary with Chinese characters, pinyin, and one or more English translations
+- N:N word relationships — the same English or Chinese word can be shared across entries
+- Three quiz modes chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English
+- [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
+- Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
+- On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
+- 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS via `edge-tts`), falls back silently to the browser's Web Speech API
+- Vocabulary management: add, edit, delete, search, paginate; SM-2 progress shown per word
+- Bulk import from a structured text file (see `cmd/import`)
+- Single-user, no login required
+- SQLite database stored on the host filesystem
+- Runs in Docker or natively; static frontend is embedded in the Go binary
+- Deploy to Raspberry Pi with `make release` (cross-compiles for `linux/arm64`, rsyncs via SSH)
+
 ## Screenshots
 
 Training — question 
@@ -13,21 +29,6 @@ Training — answer
 Vocabulary management |
 ![Vocabulary management](images/chinese_vocabulary.png)
 
-## Features
-
-- Add vocabulary with Chinese characters, pinyin, and one or more English translations
-- N:N word relationships — the same English or Chinese word can be shared across entries
-- Three quiz modes chosen at random: English → Chinese, Chinese → English, Chinese + Pinyin → English
-- [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
-- Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
-- On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
-- 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS via `edge-tts`), falls back silently to the browser's Web Speech API
-- Vocabulary management: add, edit, delete, search, paginate; SM-2 progress shown per word
-- Bulk import from a structured text file (see `cmd/import`)
-- Single-user, no login required
-- SQLite database stored on the host filesystem
-- Runs in Docker or natively; static frontend is embedded in the Go binary
-- Deploy to Raspberry Pi with `make release` (cross-compiles for `linux/arm64`, rsyncs via SSH)
 
 ## Quick start
 
