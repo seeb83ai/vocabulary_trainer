@@ -37,7 +37,7 @@ func Update(p models.SM2Progress, quality int) models.SM2Progress {
 		p.Easiness = ef
 		p.Repetitions = repetitions
 		p.IntervalDays = intervalDays
-		p.DueDate = time.Now().UTC().Add(2 * time.Minute)
+		p.DueDate = time.Now().UTC().Add(3 * time.Minute)
 		return p
 	} else {
 		switch p.Repetitions {
