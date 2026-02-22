@@ -101,18 +101,60 @@ Duplicate detection prevents re-inserting entries where both the Chinese text/pi
 
 ## Deploy to Raspberry Pi
 
-Copy `.env.example` to `.env` and set `RSYNC_DEST`:
+### Initial setup
 
+locally copy `.env.example` to `.env` and set `RSYNC_DEST` to configure the deployment target:
+(only `.env.example` will be synced with make release, not `.env`)
 ```bash
 cp .env.example .env
 # edit: RSYNC_DEST=pi@raspberrypi.local:/opt/vocab-trainer
-
-make release
 ```
+
+run `make release` to copy all needed files
 
 This cross-compiles for `linux/arm64` and rsyncs the binary plus `deploy/nginx.conf` and `deploy/vocab-trainer.service` to the Pi. Follow the printed instructions to install the systemd service (auto-restarts when the binary is updated) and the nginx reverse proxy.
 
 > If your Pi runs a 32-bit OS, change `GOARCH=arm64` to `GOARCH=arm GOARM=7` in the Makefile.
+
+Copy the .env.example file and adjust the settings
+
+```
+cp <deploy-dir>/.env.example <deploy-dir>/.env
+```
+
+Then cp or move the service files and eventually edit them to fix the path and port settings
+
+```
+sudo cp <deploy-dir>/vocab-trainer.service /etc/systemd/system/
+sudo cp <deploy-dir>/vocab-trainer-watcher.service /etc/systemd/system/
+sudo cp <deploy-dir>/vocab-trainer-watcher.path /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now vocab-trainer
+sudo systemctl enable --now vocab-trainer-watcher.path vocab-trainer-watcher.service
+sudo systemctl start --now vocab-trainer
+sudo systemctl start --now vocab-trainer-watcher.path vocab-trainer-watcher.service
+```
+
+To install nginx config:
+
+```
+sudo cp <deploy-dir>/nginx.conf /etc/nginx/sites-available/vocab-trainer
+sudo ln -sf /etc/nginx/sites-available/vocab-trainer /etc/nginx/sites-enabled/vocab-trainer
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+To enable TTS on the Pi (run once):
+
+```
+cd /opt/vocab-trainer && python3 -m venv tts-venv"
+tts-venv/bin/pip install --upgrade pip setuptools"
+tts-venv/bin/pip install -r requirements.txt"
+sudo systemctl restart vocab-trainer"
+```
+
+### Release changes
+
+just running `make release` is good enough now to build the binary, deploy it and restart the service
 
 ## Text-to-speech (TTS)
 

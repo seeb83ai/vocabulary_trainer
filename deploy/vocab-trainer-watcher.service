@@ -1,0 +1,12 @@
+[Unit]
+Description=Restart vocab-trainer when binary changes
+After=network.target
+StartLimitIntervalSec=10
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl restart vocab-trainer.service
+
+[Install]
+WantedBy=multi-user.target

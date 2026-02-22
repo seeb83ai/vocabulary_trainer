@@ -1,0 +1,6 @@
+[Path]
+Unit=vocab-trainer-watcher.service
+PathChanged=/opt/vocab-trainer/vocab-trainer
+
+[Install]
+WantedBy=multi-user.target

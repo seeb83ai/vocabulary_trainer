@@ -1,12 +1,12 @@
 # systemd service for vocab-trainer
 #
 # Install:
-#   sudo cp deploy/vocab-trainer.service /etc/systemd/system/vocab-trainer.service
+#   sudo cp deploy/vocab-trainer.service /etc/systemd/system/
+#   sudo cp deploy/vocab-trainer-watcher.service /etc/systemd/system/
+#   sudo cp deploy/vocab-trainer-watcher.path /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now vocab-trainer
-#
-# The service automatically restarts whenever the binary is replaced
-# (WatchPaths triggers a restart on inotify events for the binary file).
+#   sudo systemctl enable --now vocab-trainer-watcher.path vocab-trainer-watcher.service
 
 [Unit]
 Description=Vocabulary Trainer
@@ -28,12 +28,12 @@ Environment=TTS_SCRIPT=/opt/vocab-trainer/generate.py
 Environment=VENV_PYTHON=/opt/vocab-trainer/tts-venv/bin/python3
 Environment=AUDIO_DIR=/opt/vocab-trainer/data/audio
 
+# Optional overrides (AUTH_USER, AUTH_PASSWORD, PORT, etc.) — file may be absent
+EnvironmentFile=-/opt/vocab-trainer/.env
+
 ExecStart=/opt/vocab-trainer/vocab-trainer
 Restart=on-failure
 RestartSec=3s
-
-# Restart automatically when the binary is updated via rsync
-WatchPaths=/opt/vocab-trainer/vocab-trainer
 
 StandardOutput=journal
 StandardError=journal
