@@ -5,6 +5,9 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
+    env_file:
+      - path: .env
+        required: false
     environment:
       - DB_PATH=/data/vocab.db
       - TTS_SCRIPT=/opt/vocab-trainer/cmd/tts/generate.py

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login · Vocabulary Trainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow p-8">
+    <h1 class="text-2xl font-bold text-gray-800 mb-2 text-center">词汇训练 · Vocab Trainer</h1>
+    <p class="text-gray-500 text-center mb-8 text-sm">Sign in to continue</p>
+
+    <form id="login-form" class="flex flex-col gap-4">
+      <input
+        id="username"
+        type="text"
+        autocomplete="username"
+        placeholder="Username"
+        class="border border-gray-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        required
+      >
+      <input
+        id="password"
+        type="password"
+        autocomplete="current-password"
+        placeholder="Password"
+        class="border border-gray-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        required
+      >
+      <p id="error-msg" class="hidden text-red-600 text-sm text-center"></p>
+      <button
+        type="submit"
+        class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
+      >
+        Sign in
+      </button>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById('error-msg');
+      errEl.classList.add('hidden');
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        if (res.ok) {
+          window.location.href = '/';
+        } else {
+          const body = await res.json().catch(() => ({}));
+          errEl.textContent = body.error || 'Login failed';
+          errEl.classList.remove('hidden');
+        }
+      } catch (_) {
+        errEl.textContent = 'Network error';
+        errEl.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

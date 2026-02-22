@@ -11,6 +11,10 @@ async function apiFetch(path, options = {}) {
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     ...options,
   });
+  if (res.status === 401) {
+    window.location.href = '/login';
+    return;
+  }
   if (!res.ok) {
     let errMsg = res.statusText;
     try {
@@ -22,6 +26,22 @@ async function apiFetch(path, options = {}) {
   if (res.status === 204) return null;
   return res.json();
 }
+
+async function logout() {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/login';
+}
+
+// Show the logout button only when auth is enabled.
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const res = await fetch('/api/auth/status');
+    if (res.ok) {
+      const btn = document.getElementById('logout-btn');
+      if (btn) btn.classList.remove('hidden');
+    }
+  } catch (_) {}
+});
 
 function $(id) {
   return document.getElementById(id);

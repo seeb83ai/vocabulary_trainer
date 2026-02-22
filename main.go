@@ -53,15 +53,31 @@ func main() {
 		log.Printf("TTS enabled: script=%s audio=%s", ttsScript, audioDir)
 	}
 
+	authH, err := handlers.NewAuthHandler(os.Getenv("AUTH_USER"), os.Getenv("AUTH_PASSWORD"))
+	if err != nil {
+		log.Fatalf("Failed to initialise auth: %v", err)
+	}
+	if authH != nil {
+		log.Printf("Auth enabled: user=%s", os.Getenv("AUTH_USER"))
+	}
+
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
 	quizH := &handlers.QuizHandler{Store: store}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	if authH != nil {
+		r.Use(authH.Middleware)
+	}
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
+		r.Get("/auth/status", handlers.AuthStatus(authH))
+		if authH != nil {
+			r.Post("/login", authH.Login)
+			r.Post("/logout", authH.Logout)
+		}
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
 		r.Get("/quiz/stats", quizH.Stats)
@@ -93,6 +109,9 @@ func main() {
 	})
 	r.Get("/vocab", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "vocab.html")
+	})
+	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "login.html")
 	})
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)

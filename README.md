@@ -13,7 +13,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS via `edge-tts`), falls back silently to the browser's Web Speech API
 - Vocabulary management: add, edit, delete, search, paginate; SM-2 progress shown per word
 - Bulk import from a structured text file (see `cmd/import`)
-- Single-user, no login required
+- Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
 - SQLite database stored on the host filesystem
 - Runs in Docker or natively; static frontend is embedded in the Go binary
 - Deploy to Raspberry Pi with `make release` (cross-compiles for `linux/arm64`, rsyncs via SSH)
@@ -46,6 +46,17 @@ Then open [http://localhost:8080](http://localhost:8080).
 2. Return to **Train** (`/`) to start a quiz session.
 
 The SQLite database is stored in `./data/vocab.db` on your host.
+
+## Authentication
+
+Authentication is disabled by default. To enable it, set `AUTH_USER` and `AUTH_PASSWORD` in your `.env` file:
+
+```bash
+AUTH_USER=admin
+AUTH_PASSWORD=yourpassword
+```
+
+When enabled, all pages and API endpoints require a valid session. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours. The session secret is generated randomly at startup, so all sessions are invalidated when the server restarts.
 
 ## Makefile targets
 
