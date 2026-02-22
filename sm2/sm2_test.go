@@ -222,6 +222,24 @@ func TestCheckAnswer_TrailingPunctNotMidString(t *testing.T) {
 	}
 }
 
+func TestCheckAnswer_TrailingComma(t *testing.T) {
+	if !CheckAnswer("hello,", []string{"hello"}) {
+		t.Error("trailing comma in user answer should be ignored")
+	}
+}
+
+func TestCheckAnswer_TrailingColon(t *testing.T) {
+	if !CheckAnswer("hello:", []string{"hello"}) {
+		t.Error("trailing colon in user answer should be ignored")
+	}
+}
+
+func TestCheckAnswer_TrailingWhitespace(t *testing.T) {
+	if !CheckAnswer("hello   ", []string{"hello"}) {
+		t.Error("trailing whitespace in user answer should be ignored")
+	}
+}
+
 // ── SelectMode ────────────────────────────────────────────────────────────────
 
 func TestSelectMode_ValidMode(t *testing.T) {

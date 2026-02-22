@@ -12,8 +12,8 @@ import (
 // reParens matches a parenthesized segment and any surrounding whitespace.
 var reParens = regexp.MustCompile(`\s*\([^)]*\)\s*`)
 
-// reTrailingPunct matches trailing Chinese or ASCII sentence-ending punctuation.
-var reTrailingPunct = regexp.MustCompile(`[。.！!？?]+$`)
+// reTrailingPunct matches any trailing punctuation (Unicode \p{P} and \p{S}) and whitespace.
+var reTrailingPunct = regexp.MustCompile(`[\p{P}\p{S}\s]+$`)
 
 const (
 	QualityCorrect = 4
@@ -80,10 +80,10 @@ func CheckAnswer(userAnswer string, accepted []string) bool {
 	return false
 }
 
-// normalize lowercases, trims whitespace, and strips trailing sentence punctuation.
+// normalize lowercases, trims whitespace, and strips all trailing punctuation and whitespace.
 func normalize(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
-	s = strings.TrimSpace(reTrailingPunct.ReplaceAllString(s, ""))
+	s = reTrailingPunct.ReplaceAllString(s, "")
 	return s
 }
 
