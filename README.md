@@ -2,6 +2,17 @@
 
 A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2).
 
+## Screenshots
+
+Training — question 
+![Training question](images/chinese_train.png)
+
+Training — answer
+![Training answer](images/chinese_train_answer.png)
+
+Vocabulary management |
+![Vocabulary management](images/chinese_vocabulary.png)
+
 ## Features
 
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations
