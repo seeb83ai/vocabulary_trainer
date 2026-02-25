@@ -25,3 +25,18 @@ CREATE TABLE IF NOT EXISTS sm2_progress (
 
 CREATE INDEX IF NOT EXISTS idx_sm2_due ON sm2_progress(due_date);
 CREATE INDEX IF NOT EXISTS idx_words_text_lang ON words(text, language);
+
+-- Tracks wrong answers that matched a different known vocabulary word.
+-- zh_word_id: the word being quizzed (always a zh word)
+-- confused_with_id: the zh word whose translation the user typed instead
+-- mode: quiz mode (en_to_zh | zh_to_en | zh_pinyin_to_en)
+-- count: how many times this exact confusion occurred
+-- last_seen: timestamp of most recent occurrence
+CREATE TABLE IF NOT EXISTS confusion_pairs (
+  zh_word_id       INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+  confused_with_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+  mode             TEXT    NOT NULL,
+  count            INTEGER NOT NULL DEFAULT 1,
+  last_seen        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (zh_word_id, confused_with_id, mode)
+);

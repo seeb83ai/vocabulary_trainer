@@ -468,3 +468,111 @@ func TestParseDateTime_InvalidReturnsZero(t *testing.T) {
 		t.Errorf("invalid input should return zero time, got %v", got)
 	}
 }
+
+// ── Confusion pairs ───────────────────────────────────────────────────────────
+
+func TestLookupConfusion_ZhToEn_Found(t *testing.T) {
+	s := openTestDB(t)
+	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	confusedWithID, found, err := s.LookupConfusion(context.Background(), zhID, "Buch", "zh_to_en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found")
+	}
+	if confusedWithID == zhID {
+		t.Error("confused_with_id must differ from zh_word_id")
+	}
+}
+
+func TestLookupConfusion_ZhToEn_NoMatch(t *testing.T) {
+	s := openTestDB(t)
+	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+
+	_, found, err := s.LookupConfusion(context.Background(), zhID, "Tisch", "zh_to_en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("expected no confusion for unknown word")
+	}
+}
+
+func TestLookupConfusion_EnToZh_Found(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "书", "shū", []string{"Buch"})
+	zhID := seedWord(t, s, "五", "", []string{"five"})
+
+	confusedWithID, found, err := s.LookupConfusion(context.Background(), zhID, "书", "en_to_zh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found")
+	}
+	if confusedWithID == zhID {
+		t.Error("confused_with_id must differ from zh_word_id")
+	}
+}
+
+func TestLookupConfusion_SameWord_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+
+	_, found, err := s.LookupConfusion(context.Background(), zhID, "Schuh", "zh_to_en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("should not report confusion when answer matches the tested word")
+	}
+}
+
+func TestUpsertConfusion_IncrementsCount(t *testing.T) {
+	s := openTestDB(t)
+	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_en"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_en"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.GetConfusions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 confusion, got %d", len(items))
+	}
+	if items[0].Count != 2 {
+		t.Errorf("count: want 2, got %d", items[0].Count)
+	}
+}
+
+func TestGetConfusions_LastSeenUpdated(t *testing.T) {
+	s := openTestDB(t)
+	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	before := time.Now().UTC().Add(-time.Second)
+	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_en"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.GetConfusions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) == 0 {
+		t.Fatal("expected at least one confusion")
+	}
+	if items[0].LastSeen.Before(before) {
+		t.Errorf("last_seen should be recent, got %v", items[0].LastSeen)
+	}
+}

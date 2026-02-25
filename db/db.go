@@ -486,6 +486,149 @@ func (s *Store) GetStats(ctx context.Context) (dueToday, total int, err error) {
 	return
 }
 
+// LookupConfusion checks if the user's wrong answer matches a different known word.
+// For zh_to_en / zh_pinyin_to_en: looks for an EN word matching the answer, then
+// returns the zh word it belongs to (if different from zhWordID).
+// For en_to_zh: looks for a ZH word whose text matches the answer (if different from zhWordID).
+// Returns (confusedWithID, true, nil) if a confusion is found, (0, false, nil) if not.
+func (s *Store) LookupConfusion(ctx context.Context, zhWordID int64, answer, mode string) (int64, bool, error) {
+	normalized := sm2.NormalizeAnswer(answer)
+	if normalized == "" {
+		return 0, false, nil
+	}
+
+	var confusedWithID int64
+	var err error
+
+	switch mode {
+	case "zh_to_en", "zh_pinyin_to_en":
+		// Find the zh word linked to an EN word whose text matches the answer.
+		err = s.db.QueryRowContext(ctx, `
+			SELECT t.zh_word_id FROM words w
+			JOIN translations t ON t.en_word_id = w.id
+			WHERE w.language = 'en' AND LOWER(TRIM(w.text)) = ?
+			  AND t.zh_word_id != ?
+			LIMIT 1`, normalized, zhWordID).Scan(&confusedWithID)
+	case "en_to_zh":
+		// Find a ZH word whose text matches the answer.
+		err = s.db.QueryRowContext(ctx, `
+			SELECT id FROM words
+			WHERE language = 'zh' AND LOWER(TRIM(text)) = ?
+			  AND id != ?
+			LIMIT 1`, normalized, zhWordID).Scan(&confusedWithID)
+	default:
+		return 0, false, nil
+	}
+
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("lookup confusion: %w", err)
+	}
+	return confusedWithID, true, nil
+}
+
+// UpsertConfusion records or increments a confusion pair.
+func (s *Store) UpsertConfusion(ctx context.Context, zhWordID, confusedWithID int64, mode string) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
+		ON CONFLICT(zh_word_id, confused_with_id, mode)
+		DO UPDATE SET count = count + 1, last_seen = CURRENT_TIMESTAMP`,
+		zhWordID, confusedWithID, mode)
+	if err != nil {
+		return fmt.Errorf("upsert confusion: %w", err)
+	}
+	return nil
+}
+
+// GetConfusionDetail returns a single ConfusionDetail for use in the answer response.
+func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string) (*models.ConfusionDetail, error) {
+	var d models.ConfusionDetail
+	var lastSeen string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT cp.zh_word_id, wz.text, wz.pinyin,
+		       cp.confused_with_id, wc.text, wc.pinyin,
+		       cp.mode, cp.count, cp.last_seen
+		FROM confusion_pairs cp
+		JOIN words wz ON wz.id = cp.zh_word_id
+		JOIN words wc ON wc.id = cp.confused_with_id
+		WHERE cp.zh_word_id = ? AND cp.confused_with_id = ? AND cp.mode = ?`,
+		zhWordID, confusedWithID, mode).Scan(
+		&d.ZhWordID, &d.ZhText, &d.ZhPinyin,
+		&d.ConfusedWithID, &d.ConfusedWithText, &d.ConfusedWithPinyin,
+		&d.Mode, &d.Count, &lastSeen,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get confusion detail: %w", err)
+	}
+	d.LastSeen = parseDateTime(lastSeen)
+	var ferr error
+	d.ZhEnTexts, ferr = s.getEnTextsForZhWord(ctx, zhWordID)
+	if ferr != nil {
+		return nil, ferr
+	}
+	d.ConfusedWithEnTexts, ferr = s.getEnTextsForZhWord(ctx, confusedWithID)
+	if ferr != nil {
+		return nil, ferr
+	}
+	return &d, nil
+}
+
+// GetConfusions returns all confusion pairs ordered by last_seen DESC, with full word details.
+func (s *Store) GetConfusions(ctx context.Context) ([]models.ConfusionDetail, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT cp.zh_word_id, wz.text, wz.pinyin,
+		       cp.confused_with_id, wc.text, wc.pinyin,
+		       cp.mode, cp.count, cp.last_seen
+		FROM confusion_pairs cp
+		JOIN words wz ON wz.id = cp.zh_word_id
+		JOIN words wc ON wc.id = cp.confused_with_id
+		ORDER BY cp.last_seen DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("get confusions: %w", err)
+	}
+	defer rows.Close()
+
+	var items []models.ConfusionDetail
+	for rows.Next() {
+		var d models.ConfusionDetail
+		var lastSeen string
+		if err := rows.Scan(
+			&d.ZhWordID, &d.ZhText, &d.ZhPinyin,
+			&d.ConfusedWithID, &d.ConfusedWithText, &d.ConfusedWithPinyin,
+			&d.Mode, &d.Count, &lastSeen,
+		); err != nil {
+			return nil, fmt.Errorf("scan confusion: %w", err)
+		}
+		d.LastSeen = parseDateTime(lastSeen)
+		items = append(items, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close() // release before per-row queries
+
+	for i := range items {
+		items[i].ZhEnTexts, err = s.getEnTextsForZhWord(ctx, items[i].ZhWordID)
+		if err != nil {
+			return nil, err
+		}
+		items[i].ConfusedWithEnTexts, err = s.getEnTextsForZhWord(ctx, items[i].ConfusedWithID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if items == nil {
+		items = []models.ConfusionDetail{}
+	}
+	return items, nil
+}
+
 // parseDateTime parses SQLite datetime strings into time.Time.
 // SQLite stores datetimes as "2006-01-02 15:04:05" or RFC3339; handle both.
 func parseDateTime(s string) time.Time {

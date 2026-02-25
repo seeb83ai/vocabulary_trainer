@@ -30,11 +30,13 @@ func openTestDB(t *testing.T) *db.Store {
 func newRouter(s *db.Store) http.Handler {
 	wordsH := &handlers.WordsHandler{Store: s}
 	quizH := &handlers.QuizHandler{Store: s}
+	mismatchH := &handlers.MismatchesHandler{Store: s}
 
 	r := chi.NewRouter()
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/answer", quizH.Answer)
 	r.Get("/api/quiz/stats", quizH.Stats)
+	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
 		r.Post("/", wordsH.Create)
@@ -586,5 +588,60 @@ func TestWordsAddTranslation_Idempotent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("'hi' should appear exactly once, got %d", count)
+	}
+}
+
+// ── GET /api/mismatches ───────────────────────────────────────────────────────
+
+func TestMismatches_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/mismatches", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var items []map[string]any
+	decodeJSON(t, rec, &items)
+	if len(items) != 0 {
+		t.Errorf("expected empty list, got %d items", len(items))
+	}
+}
+
+func TestMismatches_RecordedOnWrongAnswer(t *testing.T) {
+	s := openTestDB(t)
+	xieID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	r := newRouter(s)
+
+	// Answer 鞋 with "Buch" (which belongs to 书)
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": xieID,
+		"mode":    "zh_to_en",
+		"answer":  "Buch",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["correct"] != false {
+		t.Error("expected incorrect answer")
+	}
+	if resp["confused_with"] == nil {
+		t.Error("expected confused_with to be populated")
+	}
+
+	// Mismatches list should now have one entry
+	rec2 := do(t, r, "GET", "/api/mismatches", nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("mismatches: want 200, got %d", rec2.Code)
+	}
+	var items []map[string]any
+	decodeJSON(t, rec2, &items)
+	if len(items) != 1 {
+		t.Fatalf("want 1 mismatch, got %d", len(items))
+	}
+	if items[0]["count"].(float64) != 1 {
+		t.Errorf("count: want 1, got %v", items[0]["count"])
 	}
 }

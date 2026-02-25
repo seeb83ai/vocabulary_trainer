@@ -154,7 +154,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, models.AnswerResponse{
+	resp := models.AnswerResponse{
 		Correct:        correct,
 		CorrectAnswers: correctTexts,
 		ZhText:         zhWord.ZhText,
@@ -164,7 +164,20 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		IntervalDays:   updated.IntervalDays,
 		TotalCorrect:   updated.TotalCorrect,
 		TotalAttempts:  updated.TotalAttempts,
-	})
+	}
+
+	if !correct {
+		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), req.WordID, req.Answer, req.Mode)
+		if err == nil && found {
+			_ = h.Store.UpsertConfusion(r.Context(), req.WordID, confusedWithID, req.Mode)
+			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode)
+			if err == nil {
+				resp.ConfusedWith = confusions
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // Stats returns due-today and total card counts.

@@ -82,12 +82,15 @@ func CheckAnswer(userAnswer string, accepted []string) bool {
 	return false
 }
 
-// normalize lowercases, trims whitespace, and strips all trailing punctuation and whitespace.
-func normalize(s string) string {
+// NormalizeAnswer lowercases, trims whitespace, and strips all trailing punctuation and whitespace.
+func NormalizeAnswer(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = reTrailingPunct.ReplaceAllString(s, "")
 	return s
 }
+
+// normalize is the package-internal alias used by expandVariants/CheckAnswer.
+func normalize(s string) string { return NormalizeAnswer(s) }
 
 // expandVariants returns all valid answer strings derived from a single
 // accepted answer by applying the optional-parens and slash-split rules.

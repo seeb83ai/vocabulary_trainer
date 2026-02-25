@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mismatches — Vocab Trainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
+      <div class="flex gap-4 items-center">
+        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium">Train</a>
+        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium">Vocabulary</a>
+        <a href="/mismatches" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5">Mismatches</a>
+        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition">Sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+
+    <div class="bg-white rounded-2xl shadow overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-800">Confusion Pairs</h2>
+        <p class="text-sm text-gray-500 mt-1">Words you confused with other known vocabulary.</p>
+      </div>
+
+      <!-- Empty state -->
+      <div id="empty-state" class="hidden text-center py-16 text-gray-400">
+        <div class="text-4xl mb-3">🎉</div>
+        <p class="font-medium">No confusions recorded yet.</p>
+      </div>
+
+      <!-- Table -->
+      <div id="table-wrap" class="hidden overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
+            <tr>
+              <th class="py-3 px-4 text-left">Word tested</th>
+              <th class="py-3 px-4 text-left">Confused with</th>
+              <th class="py-3 px-4 text-left">Mode</th>
+              <th class="py-3 px-4 text-left">Count</th>
+              <th class="py-3 px-4 text-left">Last seen</th>
+            </tr>
+          </thead>
+          <tbody id="mismatches-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="app.js"></script>
+  <script src="mismatches.js"></script>
+</body>
+</html>

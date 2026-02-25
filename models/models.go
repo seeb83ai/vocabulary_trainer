@@ -56,6 +56,7 @@ type AnswerResponse struct {
 	IntervalDays   int       `json:"interval_days"`
 	TotalCorrect   int       `json:"total_correct"`
 	TotalAttempts  int       `json:"total_attempts"`
+	ConfusedWith   *ConfusionDetail `json:"confused_with,omitempty"`
 }
 
 type CreateWordRequest struct {
@@ -82,6 +83,20 @@ type WordDetail struct {
 	TotalCorrect  int       `json:"total_correct"`
 	TotalAttempts int       `json:"total_attempts"`
 	DueDate       time.Time `json:"due_date"`
+}
+
+type ConfusionDetail struct {
+	ZhWordID            int64     `json:"zh_word_id"`
+	ZhText              string    `json:"zh_text"`
+	ZhPinyin            *string   `json:"zh_pinyin"`
+	ZhEnTexts           []string  `json:"zh_en_texts"`
+	ConfusedWithID      int64     `json:"confused_with_id"`
+	ConfusedWithText    string    `json:"confused_with_text"`
+	ConfusedWithPinyin  *string   `json:"confused_with_pinyin"`
+	ConfusedWithEnTexts []string  `json:"confused_with_en_texts"`
+	Mode                string    `json:"mode"`
+	Count               int       `json:"count"`
+	LastSeen            time.Time `json:"last_seen"`
 }
 
 type WordListResponse struct {

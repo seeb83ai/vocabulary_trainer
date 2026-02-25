@@ -63,6 +63,7 @@ func main() {
 
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
 	quizH := &handlers.QuizHandler{Store: store}
+	mismatchH := &handlers.MismatchesHandler{Store: store}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -94,6 +95,7 @@ func main() {
 		if audioH != nil {
 			r.Get("/audio/{id}", audioH.ServeAudio)
 		}
+		r.Get("/mismatches", mismatchH.List)
 	})
 
 	// Static frontend files
@@ -109,6 +111,9 @@ func main() {
 	})
 	r.Get("/vocab", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "vocab.html")
+	})
+	r.Get("/mismatches", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "mismatches.html")
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "login.html")

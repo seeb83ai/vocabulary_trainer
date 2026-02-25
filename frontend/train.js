@@ -106,12 +106,20 @@ async function submitAnswer(e) {
     if (!result.correct) {
       hide('result-play-btn');
       const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
+      const cw = result.confused_with;
+      const confusedHtml = cw ? `
+          <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
+            <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">Your answer belongs to</div>
+            <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+            <div class="text-gray-500 text-sm mt-0.5">${(cw.confused_with_en_texts || []).map(escHtml).join(' · ')}</div>
+          </div>` : '';
       breakdown.innerHTML = `
         <div class="mt-4 space-y-2 text-left">
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
             <div class="text-xs text-red-400 uppercase tracking-wide mb-1">Your answer</div>
             <div class="text-lg font-medium text-red-700">${escHtml(answer)}</div>
           </div>
+          ${confusedHtml}
           <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
             <div class="text-xs text-green-500 uppercase tracking-wide mb-1">Correct</div>
             <div class="flex items-center gap-2">
