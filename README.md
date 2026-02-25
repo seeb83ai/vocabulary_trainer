@@ -10,8 +10,10 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
+- **Confusion tracking** — if your wrong answer is a valid translation of a *different* known word, it is recorded as a confusion pair (works in all quiz modes); a yellow hint box shows immediately on the result screen, and the full history is visible on the `/mismatches` page
 - 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS, built into the binary), falls back silently to the browser's Web Speech API
-- Vocabulary management: add, edit, delete, search, paginate; SM-2 progress shown per word
+- Vocabulary management: add, edit, delete, search, paginate, sort by any column; SM-2 progress shown per word
+- Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
 - Bulk import from a structured text file (see `cmd/import`)
 - Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
 - SQLite database stored on the host filesystem
@@ -29,6 +31,8 @@ Training — answer
 Vocabulary management |
 ![Vocabulary management](images/chinese_vocabulary.png)
 
+Overview - Vocabulary Mismatches
+![Training answer](images/chinese_mismatches.png)
 
 ## Quick start
 
@@ -44,6 +48,7 @@ Then open [http://localhost:8080](http://localhost:8080).
 
 1. Go to **Vocabulary** (`/vocab`) and add some words.
 2. Return to **Train** (`/`) to start a quiz session.
+3. Check **Mismatches** (`/mismatches`) to review words you've confused with each other.
 
 The SQLite database is stored in `./data/vocab.db` on your host.
 
@@ -175,6 +180,7 @@ vocabulary_trainer/
 ├── handlers/
 │   ├── quiz.go              # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
 │   ├── words.go             # CRUD /api/words + POST /api/words/{id}/translations
+│   ├── mismatches.go        # GET /api/mismatches
 │   └── audio.go             # GET /api/audio/{id} — serve/generate cached MP3
 ├── models/models.go         # Shared structs and mode constants
 ├── sm2/sm2.go               # SM-2 algorithm, answer checking, variant expansion
@@ -186,9 +192,11 @@ vocabulary_trainer/
 └── frontend/
     ├── index.html           # Training page
     ├── vocab.html           # Vocabulary management page
+    ├── mismatches.html      # Confusion pairs page
     ├── app.js               # Shared fetch utilities and DOM helpers
     ├── train.js             # Training page logic
-    └── vocab.js             # Vocabulary management logic
+    ├── vocab.js             # Vocabulary management logic
+    └── mismatches.js        # Confusion pairs page logic
 ```
 
 ## API
@@ -198,14 +206,14 @@ vocabulary_trainer/
 | `GET` | `/api/quiz/next` | Get the next card to study |
 | `POST` | `/api/quiz/answer` | Submit an answer |
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts |
-| `GET` | `/api/words` | List words (`q`, `page`, `per_page` query params) |
+| `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order` query params) |
 | `POST` | `/api/words` | Create a vocabulary entry |
 | `GET` | `/api/words/{id}` | Get a single word with translations |
 | `PUT` | `/api/words/{id}` | Update a word |
 | `DELETE` | `/api/words/{id}` | Delete a word |
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
-| `GET` | `/api/mismatches` | List recent answer mismatches |
+| `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
 
 ## License
 
