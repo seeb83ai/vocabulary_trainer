@@ -17,11 +17,6 @@ data/
 # Env
 .env
 
-# Python TTS venv
-tts-venv/
-__pycache__/
-*.pyc
-
 # Node
 
 /node_modules/

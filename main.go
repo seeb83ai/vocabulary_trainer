@@ -35,23 +35,17 @@ func main() {
 	}
 	defer store.Close()
 
-	// TTS audio handler — enabled when TTS_SCRIPT env var points to generate.py.
-	// AUDIO_DIR defaults to a sibling of the DB file; VENV_PYTHON defaults to python3.
-	var audioH *handlers.AudioHandler
-	ttsScript := os.Getenv("TTS_SCRIPT")
-	if ttsScript != "" {
-		audioDir := os.Getenv("AUDIO_DIR")
-		if audioDir == "" {
-			audioDir = filepath.Join(filepath.Dir(dbPath), "audio")
-		}
-		audioH = &handlers.AudioHandler{
-			Store:      store,
-			AudioDir:   audioDir,
-			TTSScript:  ttsScript,
-			VenvPython: os.Getenv("VENV_PYTHON"),
-		}
-		log.Printf("TTS enabled: script=%s audio=%s", ttsScript, audioDir)
+	// TTS audio handler — always enabled.
+	// AUDIO_DIR defaults to a sibling of the DB file.
+	audioDir := os.Getenv("AUDIO_DIR")
+	if audioDir == "" {
+		audioDir = filepath.Join(filepath.Dir(dbPath), "audio")
 	}
+	audioH := &handlers.AudioHandler{
+		Store:    store,
+		AudioDir: audioDir,
+	}
+	log.Printf("TTS enabled: audio=%s", audioDir)
 
 	authH, err := handlers.NewAuthHandler(os.Getenv("AUTH_USER"), os.Getenv("AUTH_PASSWORD"))
 	if err != nil {
@@ -92,9 +86,7 @@ func main() {
 				r.Post("/translations", wordsH.AddTranslation)
 			})
 		})
-		if audioH != nil {
-			r.Get("/audio/{id}", audioH.ServeAudio)
-		}
+		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
 	})
 

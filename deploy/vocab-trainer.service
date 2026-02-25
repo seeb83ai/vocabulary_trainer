@@ -22,10 +22,6 @@ WorkingDirectory=/opt/vocab-trainer
 Environment=DB_PATH=/opt/vocab-trainer/data/vocab.db
 Environment=PORT=8080
 
-# TTS: remove these lines to disable audio generation
-# Requires: cd /opt/vocab-trainer && python3 -m venv tts-venv && tts-venv/bin/pip install -r requirements.txt
-Environment=TTS_SCRIPT=/opt/vocab-trainer/generate.py
-Environment=VENV_PYTHON=/opt/vocab-trainer/tts-venv/bin/python3
 Environment=AUDIO_DIR=/opt/vocab-trainer/data/audio
 
 # Optional overrides (AUTH_USER, AUTH_PASSWORD, PORT, etc.) — file may be absent

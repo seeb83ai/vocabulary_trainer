@@ -5,16 +5,14 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"vocabulary_trainer/db"
+	"vocabulary_trainer/tts"
 )
 
 type AudioHandler struct {
 	Store    *db.Store
 	AudioDir string // absolute path where MP3 files are stored, e.g. /data/audio
-	TTSScript string // absolute path to cmd/tts/generate.py
-	VenvPython string // absolute path to venv python3, e.g. /data/tts-venv/bin/python3
 }
 
 // ServeAudio handles GET /api/audio/{id}.
@@ -57,20 +55,18 @@ func (h *AudioHandler) regenerate(wordID int64, zhText string) error {
 	return h.generate(wordID, zhText)
 }
 
-// generate calls the edge-tts Python script to produce an MP3 file.
+// generate calls the Edge TTS service to produce an MP3 file.
 func (h *AudioHandler) generate(wordID int64, zhText string) error {
-	python := h.VenvPython
-	if python == "" {
-		python = "python3"
+	if err := os.MkdirAll(h.AudioDir, 0755); err != nil {
+		return err
 	}
-	cmd := exec.Command(python, h.TTSScript,
-		fmt.Sprintf("%d", wordID),
-		zhText,
-		h.AudioDir,
-	)
-	out, err := cmd.CombinedOutput()
+	data, err := tts.Synthesize(zhText)
 	if err != nil {
-		log.Printf("tts generate word %d: %v\n%s", wordID, err, out)
+		log.Printf("tts generate word %d: %v", wordID, err)
+		return err
+	}
+	mp3Path := filepath.Join(h.AudioDir, fmt.Sprintf("%d.mp3", wordID))
+	if err := os.WriteFile(mp3Path, data, 0644); err != nil {
 		return err
 	}
 	return nil
