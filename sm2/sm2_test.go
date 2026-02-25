@@ -96,6 +96,19 @@ func TestUpdate_DueDateInFuture(t *testing.T) {
 	}
 }
 
+func TestUpdate_CorrectDueDateJitter(t *testing.T) {
+	before := time.Now().UTC()
+	p := models.SM2Progress{Repetitions: 0, Easiness: 2.5, IntervalDays: 1}
+	got := Update(p, QualityCorrect)
+
+	// intervalDays=1 → base is 24h; jitter is [-2h, 0h) → due in [22h, 24h)
+	wantMin := before.Add(22 * time.Hour)
+	wantMax := time.Now().UTC().Add(24 * time.Hour)
+	if got.DueDate.Before(wantMin) || got.DueDate.After(wantMax) {
+		t.Errorf("due_date after correct answer (1-day interval) should be in [22h, 24h] from now, got %v", got.DueDate)
+	}
+}
+
 // ── CheckAnswer ───────────────────────────────────────────────────────────────
 
 func TestCheckAnswer_ExactMatch(t *testing.T) {
