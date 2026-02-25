@@ -576,3 +576,156 @@ func TestGetConfusions_LastSeenUpdated(t *testing.T) {
 		t.Errorf("last_seen should be recent, got %v", items[0].LastSeen)
 	}
 }
+
+func TestLookupConfusion_ZhPinyinToEn_Found(t *testing.T) {
+	s := openTestDB(t)
+	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	confusedWithID, found, err := s.LookupConfusion(context.Background(), zhID, "Buch", "zh_pinyin_to_en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("zh_pinyin_to_en should behave like zh_to_en")
+	}
+	if confusedWithID == zhID {
+		t.Error("confused_with_id must differ from zh_word_id")
+	}
+}
+
+func TestLookupConfusion_InvalidMode_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	_, found, err := s.LookupConfusion(context.Background(), zhID, "Buch", "invalid_mode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("invalid mode should never report a confusion")
+	}
+}
+
+func TestLookupConfusion_EmptyAnswer_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+
+	_, found, err := s.LookupConfusion(context.Background(), zhID, "", "zh_to_en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("empty answer should never match")
+	}
+}
+
+func TestGetConfusions_PopulatesEnTexts(t *testing.T) {
+	s := openTestDB(t)
+	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_en"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.GetConfusions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 item, got %d", len(items))
+	}
+	d := items[0]
+	if len(d.ZhEnTexts) == 0 || d.ZhEnTexts[0] != "Schuh" {
+		t.Errorf("ZhEnTexts: want [Schuh], got %v", d.ZhEnTexts)
+	}
+	if len(d.ConfusedWithEnTexts) == 0 || d.ConfusedWithEnTexts[0] != "Buch" {
+		t.Errorf("ConfusedWithEnTexts: want [Buch], got %v", d.ConfusedWithEnTexts)
+	}
+}
+
+func TestGetConfusionDetail_ReturnsRow(t *testing.T) {
+	s := openTestDB(t)
+	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_en"); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := s.GetConfusionDetail(context.Background(), idA, idB, "zh_to_en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d == nil {
+		t.Fatal("expected a ConfusionDetail, got nil")
+	}
+	if d.ZhText != "鞋" {
+		t.Errorf("ZhText: want 鞋, got %q", d.ZhText)
+	}
+	if d.ConfusedWithText != "书" {
+		t.Errorf("ConfusedWithText: want 书, got %q", d.ConfusedWithText)
+	}
+	if d.Count != 1 {
+		t.Errorf("Count: want 1, got %d", d.Count)
+	}
+}
+
+func TestGetConfusionDetail_MissingReturnsNil(t *testing.T) {
+	s := openTestDB(t)
+	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	d, err := s.GetConfusionDetail(context.Background(), idA, idB, "zh_to_en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d != nil {
+		t.Error("expected nil when no confusion row exists")
+	}
+}
+
+func TestUpsertConfusion_DifferentModesSeparateRows(t *testing.T) {
+	s := openTestDB(t)
+	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_en"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_pinyin_to_en"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.GetConfusions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Errorf("want 2 rows (one per mode), got %d", len(items))
+	}
+}
+
+func TestDeleteWord_CascadesToConfusionPairs(t *testing.T) {
+	s := openTestDB(t)
+	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_en"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteWord(context.Background(), idA); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.GetConfusions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Errorf("confusion_pairs should be cascade-deleted, got %d rows", len(items))
+	}
+}
