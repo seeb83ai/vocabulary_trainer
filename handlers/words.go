@@ -29,7 +29,9 @@ func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
 		perPage = 20
 	}
 
-	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage)
+	sortBy := r.URL.Query().Get("sort")
+	sortDir := r.URL.Query().Get("order")
+	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

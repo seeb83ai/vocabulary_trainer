@@ -41,8 +41,18 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// validSortExprs maps allowed sort keys to their SQL ORDER BY expressions.
+// Values may contain multiple comma-separated terms; all use the same direction.
+var validSortExprs = map[string]string{
+	"zh":          "w.text",
+	"pinyin":      "w.pinyin",
+	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id)",
+	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
+	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
+}
+
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int) ([]models.WordDetail, int, error) {
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string) ([]models.WordDetail, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -72,6 +82,19 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int) ([]mo
 		return nil, 0, fmt.Errorf("count words: %w", err)
 	}
 
+	orderExpr, ok := validSortExprs[sortBy]
+	if !ok {
+		orderExpr = "w.created_at"
+	}
+	if sortDir != "asc" {
+		sortDir = "desc"
+	}
+	// Build "term1 dir, term2 dir, ..." from a pipe-separated expression.
+	orderTerms := strings.Split(orderExpr, "|")
+	for i, t := range orderTerms {
+		orderTerms[i] = t + " " + sortDir
+	}
+	orderClause := strings.Join(orderTerms, ", ")
 	listQuery := `
 		SELECT w.id, w.text, w.pinyin, w.created_at,
 		       COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
@@ -88,7 +111,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int) ([]mo
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
 		       ))
-		ORDER BY w.created_at DESC
+		ORDER BY ` + orderClause + `
 		LIMIT ? OFFSET ?`
 	rows, err := s.db.QueryContext(ctx, listQuery, q, q, q, q, perPage, offset)
 	if err != nil {

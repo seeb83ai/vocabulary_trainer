@@ -112,7 +112,7 @@ func TestGetWords_ReturnsAll(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "", 1, 20)
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestGetWords_SearchByZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "你好", 1, 20)
+	words, total, err := s.GetWords(context.Background(), "你好", 1, 20, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestGetWords_SearchByEnText(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "thank", 1, 20)
+	words, total, err := s.GetWords(context.Background(), "thank", 1, 20, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestGetWords_Pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		seedWord(t, s, string(rune(0x4e00+i)), "", []string{"word"})
 	}
-	words, total, err := s.GetWords(context.Background(), "", 1, 3)
+	words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestGetWords_Pagination(t *testing.T) {
 		t.Errorf("page 1 per_page 3: want 3 results, got %d", len(words))
 	}
 
-	words2, _, err := s.GetWords(context.Background(), "", 2, 3)
+	words2, _, err := s.GetWords(context.Background(), "", 2, 3, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

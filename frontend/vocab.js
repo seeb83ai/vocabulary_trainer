@@ -3,6 +3,8 @@
 let currentPage = 1;
 const PER_PAGE = 20;
 let searchQuery = '';
+let sortBy = '';
+let sortDir = 'desc';
 let editingWordId = null;
 let searchTimer = null;
 
@@ -12,6 +14,10 @@ async function loadWords() {
     page: currentPage,
     per_page: PER_PAGE,
   });
+  if (sortBy) {
+    params.set('sort', sortBy);
+    params.set('order', sortDir);
+  }
   try {
     const data = await apiFetch(`/api/words?${params}`);
     renderTable(data.words);
@@ -21,12 +27,24 @@ async function loadWords() {
   }
 }
 
+function updateSortHeaders() {
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    const indicator = th.querySelector('.sort-indicator');
+    if (th.dataset.sort === sortBy) {
+      indicator.textContent = sortDir === 'asc' ? ' ▲' : ' ▼';
+    } else {
+      indicator.textContent = '';
+    }
+  });
+}
+
 function renderTable(words) {
+  updateSortHeaders();
   const tbody = $('words-tbody');
   tbody.innerHTML = '';
   if (!words || words.length === 0) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="4" class="text-center py-8 text-gray-500">No vocabulary entries found.</td>`;
+    tr.innerHTML = `<td colspan="6" class="text-center py-8 text-gray-500">No vocabulary entries found.</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -40,7 +58,8 @@ function renderTable(words) {
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4">${word.en_texts.map(escHtml).join(', ')}</td>
-      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderProgress(word)}</td>
+      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderRepetitions(word)}</td>
+      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderDue(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap">
         <button class="btn-edit text-blue-600 hover:text-blue-800 mr-3 font-medium" data-id="${word.id}">Edit</button>
         <button class="btn-delete text-red-600 hover:text-red-800 font-medium" data-id="${word.id}">Delete</button>
@@ -153,23 +172,14 @@ async function deleteWord(id) {
   }
 }
 
-function renderProgress(word) {
+function renderRepetitions(word) {
   if (word.total_attempts === 0) {
     return '<span class="text-gray-400">New</span>';
   }
-  const pct = word.total_attempts > 0
-    ? Math.round((word.total_correct / word.total_attempts) * 100)
-    : 0;
-  const due = new Date(word.due_date);
-  const now = new Date();
-  const diffDays = Math.round((due - now) / 86400000);
-  const dueStr = diffDays <= 0 ? '<span class="text-orange-500">Due</span>'
-    : `in ${diffDays}d`;
-
+  const pct = Math.round((word.total_correct / word.total_attempts) * 100);
   let barColor = 'bg-red-400';
   if (pct >= 80) barColor = 'bg-green-400';
   else if (pct >= 50) barColor = 'bg-yellow-400';
-
   return `
     <div class="flex flex-col gap-0.5 min-w-[90px]">
       <div class="flex items-center gap-1">
@@ -178,8 +188,18 @@ function renderProgress(word) {
         </div>
         <span class="text-gray-500">${pct}%</span>
       </div>
-      <div class="text-gray-400">${word.repetitions} reps · ${dueStr}</div>
+      <div class="text-gray-400">${word.repetitions} reps</div>
     </div>`;
+}
+
+function renderDue(word) {
+  if (word.total_attempts === 0) {
+    return '<span class="text-gray-400">—</span>';
+  }
+  const due = new Date(word.due_date);
+  const diffDays = Math.round((due - new Date()) / 86400000);
+  if (diffDays <= 0) return '<span class="text-orange-500">Due</span>';
+  return `<span class="text-gray-500">in ${diffDays}d</span>`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -192,6 +212,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('form-cancel-btn').addEventListener('click', () => {
     resetForm();
+  });
+
+  document.querySelectorAll('th[data-sort]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sort;
+      if (sortBy === col) {
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortBy = col;
+        sortDir = 'asc';
+      }
+      currentPage = 1;
+      loadWords();
+    });
   });
 
   $('search-input').addEventListener('input', () => {
