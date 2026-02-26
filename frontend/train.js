@@ -99,14 +99,27 @@ async function submitAnswer(e) {
       icon.className = 'text-3xl font-bold text-red-600 mb-4';
     }
 
-    setText('correct-answers', result.correct_answers.join(' / '));
-
-    // On wrong answers show what was typed vs the correct answer (play button inside breakdown)
+    // Build breakdown for both correct and wrong answers
     const breakdown = $('word-breakdown');
+    const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
+    const correctBox = `
+      <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">Correct</div>
+        <div class="flex items-center gap-2">
+          <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
+          <button class="btn-breakdown-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+        </div>
+        <div class="text-gray-600 text-sm mt-0.5">${result.en_texts.map(escHtml).join(' · ')}</div>
+      </div>`;
+
     if (!result.correct) {
-      hide('result-play-btn');
-      const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
+      const isEmpty = answer.trim() === '';
       const cw = result.confused_with;
+      const yourAnswerHtml = isEmpty ? '' : `
+          <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
+            <div class="text-xs text-red-400 uppercase tracking-wide mb-1">Your answer</div>
+            <div class="text-lg font-medium text-red-700">${escHtml(answer)}</div>
+          </div>`;
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
             <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">Your answer belongs to</div>
@@ -115,51 +128,42 @@ async function submitAnswer(e) {
           </div>` : '';
       breakdown.innerHTML = `
         <div class="mt-4 space-y-2 text-left">
-          <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
-            <div class="text-xs text-red-400 uppercase tracking-wide mb-1">Your answer</div>
-            <div class="text-lg font-medium text-red-700">${escHtml(answer)}</div>
-          </div>
+          ${yourAnswerHtml}
           ${confusedHtml}
-          <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
-            <div class="text-xs text-green-500 uppercase tracking-wide mb-1">Correct</div>
-            <div class="flex items-center gap-2">
-              <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
-              <button class="btn-breakdown-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
-            </div>
-            <div class="text-gray-600 text-sm mt-0.5">${result.en_texts.map(escHtml).join(' · ')}</div>
-          </div>
+          ${correctBox}
         </div>`;
       breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       show('word-breakdown');
 
-      // "Add as correct answer" button
-      const addBtn = $('add-translation-btn');
-      addBtn.textContent = `Add "${answer}" as correct answer`;
-      addBtn.disabled = false;
-      addBtn.className = 'mt-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
-      show('add-translation-btn');
+      if (!isEmpty) {
+        const addBtn = $('add-translation-btn');
+        addBtn.textContent = `Add "${answer}" as correct answer`;
+        addBtn.disabled = false;
+        addBtn.className = 'mt-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
+        show('add-translation-btn');
 
-      addBtn.onclick = async () => {
-        addBtn.disabled = true;
-        try {
-          await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
-            method: 'POST',
-            body: JSON.stringify({ en_text: answer }),
-          });
-          addBtn.textContent = '✓ Added';
-          addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
-        } catch (err) {
-          addBtn.disabled = false;
-          alert('Could not add translation: ' + err.message);
-        }
-      };
+        addBtn.onclick = async () => {
+          addBtn.disabled = true;
+          try {
+            await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
+              method: 'POST',
+              body: JSON.stringify({ en_text: answer }),
+            });
+            addBtn.textContent = '✓ Added';
+            addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
+          } catch (err) {
+            addBtn.disabled = false;
+            alert('Could not add translation: ' + err.message);
+          }
+        };
+      } else {
+        hide('add-translation-btn');
+      }
     } else {
-      breakdown.innerHTML = '';
-      hide('word-breakdown');
+      breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
+      breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
+      show('word-breakdown');
       hide('add-translation-btn');
-      const playBtn = $('result-play-btn');
-      playBtn.onclick = () => playAudio(currentCard.word_id, result.zh_text);
-      show('result-play-btn');
     }
 
     setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
