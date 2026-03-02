@@ -1,5 +1,6 @@
 # Build output
 vocab-trainer
+import-hsk 
 
 # Database
 data/

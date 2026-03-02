@@ -41,15 +41,17 @@ import-hsk:
 	go run ./cmd/import-hsk -db $(or $(DB),data/vocab.db) -levels $(or $(LEVELS),1,2,3,4,5,6)
 
 backup:
-	sqlite3 data/vocab.db ".backup data/vocab_backup.sq3"
+	sqlite3 data/vocab.db ".backup data/vocab_backup$(EXT).sq3"
 
 ## release: cross-compile for Raspberry Pi (arm64) and rsync to RSYNC_DEST
 release:
 	@test -n "$(RSYNC_DEST)" || (echo "RSYNC_DEST is not set. Copy .env.example to .env and fill it in." && exit 1)
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o vocab-trainer .
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o import-hsk ./cmd/import-hsk
 	rsync -avz --progress \
 	    Makefile \
 		vocab-trainer \
+		import-hsk \
 		.env.example \
 		deploy/vocab-trainer.service \
 		deploy/vocab-trainer-watcher.service \
@@ -71,4 +73,4 @@ test-js:
 ## clean: stop containers and remove build artifacts
 clean:
 	docker compose down --rmi local --volumes
-	rm -f vocab-trainer
+	rm -f vocab-trainer import-hsk
