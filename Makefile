@@ -35,6 +35,11 @@ import:
 	mkdir -p data
 	go run ./cmd/import -db $(or $(DB),data/vocab.db) -file $(or $(FILE),voc.txt)
 
+## import-hsk: fetch and import HSK vocabulary from mandarinbean.com (LEVELS=1,2,3,4,5,6 DB=data/vocab.db)
+import-hsk:
+	mkdir -p data
+	go run ./cmd/import-hsk -db $(or $(DB),data/vocab.db) -levels $(or $(LEVELS),1,2,3,4,5,6)
+
 ## release: cross-compile for Raspberry Pi (arm64) and rsync to RSYNC_DEST
 release:
 	@test -n "$(RSYNC_DEST)" || (echo "RSYNC_DEST is not set. Copy .env.example to .env and fill it in." && exit 1)

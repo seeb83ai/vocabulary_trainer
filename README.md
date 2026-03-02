@@ -15,6 +15,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - Vocabulary management: add, edit, delete, search, paginate, sort by any column; SM-2 progress shown per word
 - Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
 - Bulk import from a structured text file (see `cmd/import`)
+- HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `cmd/import-hsk`)
 - Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
 - SQLite database stored on the host filesystem
 - Runs in Docker or natively; static frontend is embedded in the Go binary — no Python or external tools required
@@ -74,6 +75,7 @@ When enabled, all pages and API endpoints require a valid session. Unauthenticat
 | `make dev` | Run locally without Docker (requires Go 1.24+) |
 | `make tidy` | Tidy Go module dependencies |
 | `make import` | Import vocabulary from a text file (see below) |
+| `make import-hsk` | Fetch and import HSK 1–6 vocabulary from mandarinbean.com (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
 | `make test` | Run all Go and JS tests |
 | `make clean` | Stop containers and remove build artifacts |
@@ -100,6 +102,35 @@ go run ./cmd/import -db data/vocab.db -file voc.txt -dry-run
 ```
 
 Duplicate detection prevents re-inserting entries where both the Chinese text/pinyin and the English translation already exist.
+
+## HSK vocabulary import
+
+Fetches vocabulary directly from [mandarinbean.com](https://mandarinbean.com) and inserts it into the database. Each word is tagged `hsk-1` through `hsk-6`. If a word already exists its tag is still applied; if the exact Chinese+English pair already exists the row is skipped.
+
+```bash
+# Import all HSK levels (1-6)
+make import-hsk
+
+# Import only HSK 1 and 2
+make import-hsk LEVELS=1,2
+
+# Custom DB path
+make import-hsk DB=/path/to/vocab.db
+
+# Preview without writing
+go run ./cmd/import-hsk -dry-run
+
+# Single level, dry-run
+go run ./cmd/import-hsk -levels 3 -dry-run
+```
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-levels` | `1,2,3,4,5,6` | Comma-separated HSK levels to import |
+| `-dry-run` | false | Parse and check duplicates without writing |
 
 ## Deploy to Raspberry Pi
 
@@ -185,7 +216,8 @@ vocabulary_trainer/
 ├── models/models.go         # Shared structs and mode constants
 ├── sm2/sm2.go               # SM-2 algorithm, answer checking, variant expansion
 ├── tts/tts.go               # Microsoft Edge TTS WebSocket client
-├── cmd/import/main.go       # Standalone vocabulary import tool
+├── cmd/import/main.go       # Standalone vocabulary import tool (text file)
+├── cmd/import-hsk/main.go   # HSK vocabulary import from mandarinbean.com
 ├── deploy/
 │   ├── nginx.conf           # Sample nginx reverse-proxy config
 │   └── vocab-trainer.service # systemd unit (auto-restart on binary change)
