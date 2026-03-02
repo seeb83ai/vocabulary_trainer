@@ -2,21 +2,28 @@
 //
 // Fetches https://mandarinbean.com/hsk-N-vocabulary-list/ for each requested level,
 // parses the vocabulary table, and inserts new zh/en word pairs. Duplicate pairs
-// (same zh text + same English translation) are skipped; the HSK tag is still
-// attached to already-existing words. Each zh word is tagged with "hsk-N".
+// (same zh text + same translation) are skipped; the HSK tag is still attached to
+// already-existing words. Each zh word is tagged with "hsk-N".
+//
+// Optionally translates the English source text via the DeepL API before inserting.
+// Set DEEPL_API_KEY in the environment and pass -lang <code> (e.g. -lang de).
+// If the key is absent, translation is silently skipped and the original English is used.
 //
 // Usage:
 //
-//	go run ./cmd/import-hsk [-db data/vocab.db] [-levels 1,2,3,4,5,6] [-dry-run]
+//	go run ./cmd/import-hsk [-db data/vocab.db] [-levels 1,2,3,4,5,6] [-lang en] [-dry-run]
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -34,6 +41,7 @@ type entry struct {
 func main() {
 	dbPath    := flag.String("db", "data/vocab.db", "path to SQLite database")
 	levelsStr := flag.String("levels", "1,2,3,4,5,6", "comma-separated HSK levels to import (1-6)")
+	lang      := flag.String("lang", "en", "DeepL target language code (e.g. de, fr, es); requires DEEPL_API_KEY env var")
 	dryRun    := flag.Bool("dry-run", false, "fetch and check duplicates but do not insert")
 	flag.Parse()
 
@@ -45,6 +53,14 @@ func main() {
 			log.Fatalf("invalid level %q: must be an integer 1-6", s)
 		}
 		levels = append(levels, n)
+	}
+
+	targetLang := strings.ToUpper(strings.TrimSpace(*lang))
+	apiKey     := os.Getenv("DEEPL_API_KEY")
+	translate  := targetLang != "EN" && apiKey != ""
+
+	if targetLang != "EN" && apiKey == "" {
+		fmt.Println("[WARN]  DEEPL_API_KEY not set — importing with original English translations")
 	}
 
 	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", *dbPath)
@@ -77,6 +93,17 @@ func main() {
 		fmt.Printf("  Parsed %d entries\n", len(entries))
 		if len(entries) == 0 {
 			fmt.Println("  [WARN]  No entries found — check that the page structure hasn't changed.")
+			continue
+		}
+
+		if translate {
+			fmt.Printf("  Translating to %s via DeepL…\n", targetLang)
+			entries, err = translateEntries(entries, targetLang, apiKey)
+			if err != nil {
+				fmt.Printf("  [ERROR] translation failed: %v\n", err)
+				totalFailed++
+				continue
+			}
 		}
 
 		ins, skip, fail := importEntries(db, entries, tag, *dryRun)
@@ -104,7 +131,7 @@ func importEntries(db *sql.DB, entries []entry, tag string, dryRun bool) (insert
 		if dup {
 			fmt.Printf("  [SKIP]  %s — %s\n", e.hanzi, e.translation)
 			skipped++
-			// Still attach the tag to the existing word, even though we skip the insert.
+			// Still attach the tag to the existing word even though we skip the insert.
 			if !dryRun && zhID != 0 {
 				if err := assignTag(db, zhID, tag); err != nil {
 					fmt.Printf("  [WARN]  tag %q for existing %q: %v\n", tag, e.hanzi, err)
@@ -132,6 +159,103 @@ func importEntries(db *sql.DB, entries []entry, tag string, dryRun bool) (insert
 		inserted++
 	}
 	return
+}
+
+// translateEntries replaces the translation field of every entry with the DeepL
+// result for the given target language. All texts for the level are sent in
+// batches of 50 to minimise round-trips. Returns a new slice; the originals are
+// unchanged. Fails fast if any batch returns an error.
+func translateEntries(entries []entry, targetLang, apiKey string) ([]entry, error) {
+	// Collect all source texts in order.
+	texts := make([]string, len(entries))
+	for i, e := range entries {
+		texts[i] = e.translation
+	}
+
+	// Translate in batches of 50 (DeepL's recommended batch size).
+	const batchSize = 50
+	translated := make([]string, 0, len(texts))
+	for i := 0; i < len(texts); i += batchSize {
+		end := i + batchSize
+		if end > len(texts) {
+			end = len(texts)
+		}
+		batch, err := deeplTranslate(texts[i:end], targetLang, apiKey)
+		if err != nil {
+			return nil, fmt.Errorf("batch %d-%d: %w", i, end-1, err)
+		}
+		translated = append(translated, batch...)
+	}
+
+	// Build result with translated texts.
+	result := make([]entry, len(entries))
+	for i, e := range entries {
+		result[i] = e
+		result[i].translation = translated[i]
+	}
+	return result, nil
+}
+
+// deeplTranslate calls the DeepL v2 API and returns one translated string per
+// input text, preserving order. Free-tier keys (ending in ":fx") are routed to
+// api-free.deepl.com; all others go to api.deepl.com.
+func deeplTranslate(texts []string, targetLang, apiKey string) ([]string, error) {
+	base := "https://api.deepl.com/v2/translate"
+	if strings.HasSuffix(apiKey, ":fx") {
+		base = "https://api-free.deepl.com/v2/translate"
+	}
+
+	reqBody, err := json.Marshal(struct {
+		Text       []string `json:"text"`
+		TargetLang string   `json:"target_lang"`
+		SourceLang string   `json:"source_lang"`
+	}{
+		Text:       texts,
+		TargetLang: targetLang,
+		SourceLang: "EN",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, base, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "DeepL-Auth-Key "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("DeepL returned HTTP %d: %s", resp.StatusCode, respBytes)
+	}
+
+	var result struct {
+		Translations []struct {
+			Text string `json:"text"`
+		} `json:"translations"`
+	}
+	if err := json.Unmarshal(respBytes, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+	if len(result.Translations) != len(texts) {
+		return nil, fmt.Errorf("DeepL returned %d translations for %d texts", len(result.Translations), len(texts))
+	}
+
+	out := make([]string, len(result.Translations))
+	for i, t := range result.Translations {
+		out[i] = t.Text
+	}
+	return out, nil
 }
 
 // fetchPage downloads the given URL and returns the response body as a string.
@@ -267,7 +391,7 @@ func normalizeSpace(s string) string {
 }
 
 // isDuplicate checks whether the zh word exists and whether the specific
-// zh+en translation pair is already stored. Returns (zhWordID, isDup, err).
+// zh+translation pair is already stored. Returns (zhWordID, isDup, err).
 // zhWordID is non-zero whenever the zh word exists (even if the pair is new).
 func isDuplicate(db *sql.DB, e entry) (zhID int64, dup bool, err error) {
 	err = db.QueryRow(
@@ -281,7 +405,7 @@ func isDuplicate(db *sql.DB, e entry) (zhID int64, dup bool, err error) {
 		return 0, false, err
 	}
 
-	// zh word exists — check if this exact EN translation is already linked.
+	// zh word exists — check if this exact translation is already linked.
 	var count int
 	err = db.QueryRow(`
 		SELECT COUNT(*)
@@ -326,22 +450,22 @@ func insert(db *sql.DB, e entry) (int64, error) {
 		return 0, fmt.Errorf("init zh sm2: %w", err)
 	}
 
-	// Upsert en word.
+	// Upsert translation word (stored as language='en' regardless of actual language).
 	if _, err := tx.Exec(
 		`INSERT OR IGNORE INTO words (text, language) VALUES (?, 'en')`, e.translation); err != nil {
-		return 0, fmt.Errorf("insert en: %w", err)
+		return 0, fmt.Errorf("insert translation: %w", err)
 	}
 	var enID int64
 	if err := tx.QueryRow(
 		`SELECT id FROM words WHERE text = ? AND language = 'en'`, e.translation).Scan(&enID); err != nil {
-		return 0, fmt.Errorf("get en id: %w", err)
+		return 0, fmt.Errorf("get translation id: %w", err)
 	}
 	if _, err := tx.Exec(
 		`INSERT OR IGNORE INTO sm2_progress (word_id) VALUES (?)`, enID); err != nil {
-		return 0, fmt.Errorf("init en sm2: %w", err)
+		return 0, fmt.Errorf("init translation sm2: %w", err)
 	}
 
-	// Link zh ↔ en.
+	// Link zh ↔ translation.
 	if _, err := tx.Exec(
 		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
 		enID, zhID); err != nil {
@@ -370,7 +494,6 @@ func assignTag(db *sql.DB, zhID int64, tagName string) error {
 }
 
 // applySchema creates all required tables if they do not yet exist.
-// Includes the tags/word_tags tables from the upcoming tags feature branch.
 func applySchema(db *sql.DB) error {
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS words (

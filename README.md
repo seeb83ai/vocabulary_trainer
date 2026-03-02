@@ -115,6 +115,9 @@ make import-hsk
 # Import only HSK 1 and 2
 make import-hsk LEVELS=1,2
 
+# Import with German translations (requires DEEPL_API_KEY)
+DEEPL_API_KEY=your-key go run ./cmd/import-hsk -lang de
+
 # Custom DB path
 make import-hsk DB=/path/to/vocab.db
 
@@ -131,7 +134,14 @@ Flags:
 |---|---|---|
 | `-db` | `data/vocab.db` | Path to SQLite database |
 | `-levels` | `1,2,3,4,5,6` | Comma-separated HSK levels to import |
+| `-lang` | `en` | DeepL target language code (e.g. `de`, `fr`, `es`); requires `DEEPL_API_KEY` env var |
 | `-dry-run` | false | Parse and check duplicates without writing |
+
+When `-lang` is set to anything other than `en`, each English translation from the source
+table is translated via the [DeepL API](https://www.deepl.com/en/products/api) before
+being stored. Translations are always stored as `language='en'` rows so the existing quiz
+logic works unchanged. If `DEEPL_API_KEY` is not set, the original English text is used
+and a warning is printed.
 
 ## Deploy to Raspberry Pi
 
