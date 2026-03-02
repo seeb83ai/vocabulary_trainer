@@ -1,4 +1,4 @@
-.PHONY: build run stop logs dev tidy clean import release test test-go test-js
+.PHONY: build run stop logs dev tidy clean import import-hsk backup release test test-go test-js
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -34,6 +34,11 @@ tidy:
 import:
 	mkdir -p data
 	go run ./cmd/import -db $(or $(DB),data/vocab.db) -file $(or $(FILE),voc.txt)
+
+## import-hsk: fetch and import HSK vocabulary from mandarinbean.com (LEVELS=1,2,3,4,5,6 DB=data/vocab.db)
+import-hsk:
+	mkdir -p data
+	go run ./cmd/import-hsk -db $(or $(DB),data/vocab.db) -levels $(or $(LEVELS),1,2,3,4,5,6)
 
 backup:
 	sqlite3 data/vocab.db ".backup data/vocab_backup.sq3"
