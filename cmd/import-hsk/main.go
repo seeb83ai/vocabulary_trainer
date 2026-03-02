@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -360,7 +361,8 @@ func extractCells(row string) []string {
 	return cells
 }
 
-// stripHTML removes all HTML tags and decodes common entities.
+// stripHTML removes all HTML tags and decodes HTML entities (including numeric
+// references such as &#8217;). Non-breaking spaces are normalised to regular spaces.
 func stripHTML(s string) string {
 	var b strings.Builder
 	inTag := false
@@ -375,14 +377,8 @@ func stripHTML(s string) string {
 			b.WriteByte(c)
 		}
 	}
-	r := b.String()
-	r = strings.ReplaceAll(r, "&nbsp;", " ")
-	r = strings.ReplaceAll(r, "\u00a0", " ") // Unicode non-breaking space
-	r = strings.ReplaceAll(r, "&amp;", "&")
-	r = strings.ReplaceAll(r, "&lt;", "<")
-	r = strings.ReplaceAll(r, "&gt;", ">")
-	r = strings.ReplaceAll(r, "&#038;", "&")
-	return r
+	r := html.UnescapeString(b.String())
+	return strings.ReplaceAll(r, "\u00a0", " ") // &nbsp; → regular space
 }
 
 // normalizeSpace collapses runs of whitespace into a single space and trims.
