@@ -3,7 +3,7 @@
 // Fetches https://mandarinbean.com/hsk-N-vocabulary-list/ for each requested level,
 // parses the vocabulary table, and inserts new zh/en word pairs. Duplicate pairs
 // (same zh text + same translation) are skipped; the HSK tag is still attached to
-// already-existing words. Each zh word is tagged with "hsk-N".
+// already-existing words. Each zh word is tagged with "hsk1", "hsk2", ....
 //
 // Optionally translates the English source text via the DeepL API before inserting.
 // Set DEEPL_API_KEY in the environment and pass -lang <code> (e.g. -lang de).
@@ -40,10 +40,10 @@ type entry struct {
 }
 
 func main() {
-	dbPath    := flag.String("db", "data/vocab.db", "path to SQLite database")
+	dbPath := flag.String("db", "data/vocab.db", "path to SQLite database")
 	levelsStr := flag.String("levels", "1,2,3,4,5,6", "comma-separated HSK levels to import (1-6)")
-	lang      := flag.String("lang", "en", "DeepL target language code (e.g. de, fr, es); requires DEEPL_API_KEY env var")
-	dryRun    := flag.Bool("dry-run", false, "fetch and check duplicates but do not insert")
+	lang := flag.String("lang", "en", "DeepL target language code (e.g. de, fr, es); requires DEEPL_API_KEY env var")
+	dryRun := flag.Bool("dry-run", false, "fetch and check duplicates but do not insert")
 	flag.Parse()
 
 	var levels []int
@@ -57,8 +57,8 @@ func main() {
 	}
 
 	targetLang := strings.ToUpper(strings.TrimSpace(*lang))
-	apiKey     := os.Getenv("DEEPL_API_KEY")
-	translate  := targetLang != "EN" && apiKey != ""
+	apiKey := os.Getenv("DEEPL_API_KEY")
+	translate := targetLang != "EN" && apiKey != ""
 
 	if targetLang != "EN" && apiKey == "" {
 		fmt.Println("[WARN]  DEEPL_API_KEY not set — importing with original English translations")
@@ -79,7 +79,7 @@ func main() {
 	var totalInserted, totalSkipped, totalFailed int
 
 	for _, level := range levels {
-		tag := fmt.Sprintf("hsk-%d", level)
+		tag := fmt.Sprintf("hsk%d", level)
 		url := fmt.Sprintf(urlPattern, level)
 		fmt.Printf("\n=== HSK %d  %s ===\n", level, url)
 
@@ -277,14 +277,14 @@ func fetchPage(url string) (string, error) {
 func parseTable(body string) []entry {
 	// The page contains exactly one <figure> element with the vocabulary table.
 	figStart := strings.Index(body, "<figure")
-	figEnd   := strings.Index(body, "</figure>")
+	figEnd := strings.Index(body, "</figure>")
 	if figStart == -1 || figEnd == -1 {
 		return nil
 	}
 	fig := body[figStart : figEnd+len("</figure>")]
 
 	tbStart := strings.Index(fig, "<tbody>")
-	tbEnd   := strings.Index(fig, "</tbody>")
+	tbEnd := strings.Index(fig, "</tbody>")
 	if tbStart == -1 || tbEnd == -1 {
 		return nil
 	}
@@ -306,8 +306,8 @@ func parseTable(body string) []entry {
 			continue // not a numeric entry
 		}
 
-		hanzi       := strings.TrimSpace(stripHTML(cells[1]))
-		pinyin      := normalizeSpace(stripHTML(cells[2]))
+		hanzi := strings.TrimSpace(stripHTML(cells[1]))
+		pinyin := normalizeSpace(stripHTML(cells[2]))
 		translation := strings.TrimSpace(stripHTML(cells[3]))
 		if hanzi == "" || translation == "" {
 			continue
