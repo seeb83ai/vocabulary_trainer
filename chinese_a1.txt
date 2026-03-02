@@ -24,7 +24,7 @@ nicht sein
 Schon ziemlich gut
 bú yào / 不要
 nicht möchten
-Schon ziemlich gut
+Mittel
 búkèqi / 不客气
 Gern geschehen.
 Schon ziemlich gut
@@ -72,10 +72,13 @@ wie viele / wie viel (im Sinne von „was kostet“)
 Schon ziemlich gut
 dà / 大
 groß
-Mittel
+Schon ziemlich gut
 dìdi / 弟弟
 jüngerer Bruder
 Schon ziemlich gut
+dù / 度
+Grad (Celsius)
+Schwach
 dōngxi / 东西
 Ding / Sachen
 Schon ziemlich gut
@@ -154,6 +157,9 @@ Schon ziemlich gut
 jiǔ / 酒
 alkoholisches Getränk
 Schon ziemlich gut
+Jīntiān duóshǎo dù? / 今天多少度？
+Welche Temperatur haben wir heute?
+Schwach
 jǐ / 几
 Fragewort für „wie viele“ (bei kleinen Mengen)
 Schon ziemlich gut
@@ -190,6 +196,9 @@ Schon ziemlich gut
 liǎng / 两
 zwei (wird vor einem Zählwort verwendet)
 Schon ziemlich gut
+lěng / 冷
+kalt
+Schwach
 lǚyóu / 旅游
 reisen
 Schon ziemlich gut
@@ -279,13 +288,16 @@ Schokolade
 Schon ziemlich gut
 qíngtiān / 晴天
 sonniger Tag
-Schwach
+Schon ziemlich gut
 qù / 去
 (tun) werden
 Schon ziemlich gut
 qī / 七
 sieben
 Schon ziemlich gut
+rè / 热
+heiß
+Schwach
 ròu / 肉
 Fleisch
 Schon ziemlich gut
@@ -324,9 +336,12 @@ Buchhandlung
 Schon ziemlich gut
 sì / 四
 vier
-Schon ziemlich gut
+Mittel
 sān diǎn / 三点
 3 Uhr
+Schon ziemlich gut
+tiānqì / 天气
+Wetter
 Schon ziemlich gut
 Tā bù xǐhuan wǒ! / 她不喜欢我！
 Sie mag mich nicht.
@@ -369,13 +384,13 @@ nachmittags
 Schon ziemlich gut
 xiàxuě / 下雪
 schneien
-Schwach
+Schon ziemlich gut
 Xiàxuě le! / 下雪了！
 Es schneit!
-Schwach
+Schon ziemlich gut
 xiàyǔ / 下雨
 regnen
-Schwach
+Schon ziemlich gut
 xièxie / 谢谢
 danke
 Schon ziemlich gut
@@ -414,7 +429,7 @@ ein bisschen, ein wenig
 Schon ziemlich gut
 yìsi / 意思
 Bedeutung
-Schon ziemlich gut
+Mittel
 yìxiē / 一些
 ein paar, einige
 Schon ziemlich gut
@@ -435,7 +450,7 @@ Englisch
 Schon ziemlich gut
 yīntiān / 阴天
 bewölkter Tag
-Schwach
+Schon ziemlich gut
 yīyuè / 一月
 Januar
 Schon ziemlich gut

@@ -112,7 +112,7 @@ func TestGetWords_ReturnsAll(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "")
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestGetWords_SearchByZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "你好", 1, 20, "", "")
+	words, total, err := s.GetWords(context.Background(), "你好", 1, 20, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestGetWords_SearchByEnText(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "thank", 1, 20, "", "")
+	words, total, err := s.GetWords(context.Background(), "thank", 1, 20, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestGetWords_Pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		seedWord(t, s, string(rune(0x4e00+i)), "", []string{"word"})
 	}
-	words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "")
+	words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestGetWords_Pagination(t *testing.T) {
 		t.Errorf("page 1 per_page 3: want 3 results, got %d", len(words))
 	}
 
-	words2, _, err := s.GetWords(context.Background(), "", 2, 3, "", "")
+	words2, _, err := s.GetWords(context.Background(), "", 2, 3, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestAddTranslation_NotFound(t *testing.T) {
 
 func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 	s := openTestDB(t)
-	w, p, err := s.GetNextCard(context.Background())
+	w, p, err := s.GetNextCard(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	w, p, err := s.GetNextCard(context.Background())
+	w, p, err := s.GetNextCard(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, past, id2)
 	_ = id1
 
-	w, _, err := s.GetNextCard(ctx)
+	w, _, err := s.GetNextCard(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestUpdateSM2Progress_Persists(t *testing.T) {
 
 func TestGetStats_Empty(t *testing.T) {
 	s := openTestDB(t)
-	due, total, err := s.GetStats(context.Background())
+	due, total, err := s.GetStats(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +382,7 @@ func TestGetStats_Empty(t *testing.T) {
 func TestGetStats_CountsOnlyZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello", "hi"})
-	_, total, err := s.GetStats(context.Background())
+	_, total, err := s.GetStats(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,7 +402,7 @@ func TestGetStats_DueTodayCount(t *testing.T) {
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, future, id1)
 
-	due, _, err := s.GetStats(ctx)
+	due, _, err := s.GetStats(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,6 +438,165 @@ func TestGetTranslationsForWord_EmptyWhenNone(t *testing.T) {
 	}
 	if len(words) != 0 {
 		t.Errorf("expected 0 translations, got %d", len(words))
+	}
+}
+
+// ── Tags ─────────────────────────────────────────────────────────────────────
+
+func seedWordWithTags(t *testing.T, s *Store, zhText, pinyin string, enTexts, tags []string) int64 {
+	t.Helper()
+	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  zhText,
+		Pinyin:  pinyin,
+		EnTexts: enTexts,
+		Tags:    tags,
+	})
+	if err != nil {
+		t.Fatalf("seedWordWithTags %q: %v", zhText, err)
+	}
+	return id
+}
+
+func TestCreateWord_WithTags(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"greetings", "HSK1"})
+	wd, err := s.GetWordByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wd.Tags) != 2 {
+		t.Fatalf("expected 2 tags, got %d: %v", len(wd.Tags), wd.Tags)
+	}
+	if wd.Tags[0] != "HSK1" || wd.Tags[1] != "greetings" {
+		t.Errorf("tags should be sorted alphabetically, got %v", wd.Tags)
+	}
+}
+
+func TestUpdateWord_ReplacesTags(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"old-tag"})
+	err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		Tags:    []string{"new-tag"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := s.GetWordByID(context.Background(), id)
+	if len(wd.Tags) != 1 || wd.Tags[0] != "new-tag" {
+		t.Errorf("expected [new-tag], got %v", wd.Tags)
+	}
+	tags, _ := s.GetAllTags(context.Background())
+	for _, tg := range tags {
+		if tg == "old-tag" {
+			t.Error("orphan tag 'old-tag' should have been cleaned up")
+		}
+	}
+}
+
+func TestGetWords_FilterByTag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"greetings"})
+	seedWordWithTags(t, s, "吃饭", "chī fàn", []string{"eat"}, []string{"food"})
+	seedWordWithTags(t, s, "谢谢", "xiè xiè", []string{"thanks"}, []string{"greetings"})
+
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Errorf("tag filter: want 2, got %d", total)
+	}
+	if len(words) != 2 {
+		t.Errorf("tag filter: want 2 words, got %d", len(words))
+	}
+}
+
+func TestGetWords_FilterByMultipleTags_OR(t *testing.T) {
+	s := openTestDB(t)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
+	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
+	seedWordWithTags(t, s, "书", "", []string{"book"}, []string{"school"})
+
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings", "food"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Errorf("multi-tag OR filter: want 2, got %d", total)
+	}
+	if len(words) != 2 {
+		t.Errorf("multi-tag OR filter: want 2 words, got %d", len(words))
+	}
+}
+
+func TestGetNextCard_FilterByTag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
+	id2 := seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
+
+	w, _, err := s.GetNextCard(context.Background(), []string{"food"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a card")
+	}
+	if w.ID != id2 {
+		t.Errorf("expected food-tagged word (id=%d), got id=%d", id2, w.ID)
+	}
+}
+
+func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
+	s := openTestDB(t)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
+
+	w, _, err := s.GetNextCard(context.Background(), []string{"nonexistent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil {
+		t.Error("expected nil when no words match tag filter")
+	}
+}
+
+func TestGetStats_FilterByTag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
+	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
+
+	_, total, err := s.GetStats(context.Background(), []string{"food"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("tag-filtered total: want 1, got %d", total)
+	}
+}
+
+func TestGetAllTags(t *testing.T) {
+	s := openTestDB(t)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"B-tag", "A-tag"})
+	tags, err := s.GetAllTags(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 2 || tags[0] != "A-tag" || tags[1] != "B-tag" {
+		t.Errorf("expected [A-tag, B-tag], got %v", tags)
+	}
+}
+
+func TestDeleteWord_CleansOrphanTags(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"unique-tag"})
+	if err := s.DeleteWord(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	tags, _ := s.GetAllTags(context.Background())
+	if len(tags) != 0 {
+		t.Errorf("expected no tags after deleting only word, got %v", tags)
 	}
 }
 
