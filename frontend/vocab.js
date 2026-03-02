@@ -7,6 +7,9 @@ let sortBy = '';
 let sortDir = 'desc';
 let editingWordId = null;
 let searchTimer = null;
+let allTags = [];
+let formTags = [];
+let selectedFilterTags = [];
 
 async function loadWords() {
   const params = new URLSearchParams({
@@ -17,6 +20,9 @@ async function loadWords() {
   if (sortBy) {
     params.set('sort', sortBy);
     params.set('order', sortDir);
+  }
+  if (selectedFilterTags.length) {
+    params.set('tags', selectedFilterTags.join(','));
   }
   try {
     const data = await apiFetch(`/api/words?${params}`);
@@ -57,7 +63,10 @@ function renderTable(words) {
         <button class="btn-play text-base text-gray-400 hover:text-blue-500 transition leading-none align-middle" data-id="${word.id}" data-zh="${escHtml(word.zh_text)}" title="Read aloud">🔊</button>
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
-      <td class="py-3 px-4">${word.en_texts.map(escHtml).join(', ')}</td>
+      <td class="py-3 px-4">
+        ${word.en_texts.map(escHtml).join(', ')}
+        ${(word.tags || []).map(t => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1">${escHtml(t)}</span>`).join('')}
+      </td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderRepetitions(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderDue(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap">
@@ -98,6 +107,9 @@ function openEditForm(word) {
     addEnInput(t);
   }
 
+  formTags = [...(word.tags || [])];
+  renderFormTags();
+
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
   $('form-zh').focus();
 }
@@ -110,6 +122,9 @@ function resetForm() {
   hide('form-cancel-btn');
   $('en-inputs-container').innerHTML = '';
   addEnInput('');
+  formTags = [];
+  renderFormTags();
+  $('form-tag-input').value = '';
 }
 
 function addEnInput(value = '') {
@@ -134,6 +149,7 @@ function buildFormPayload() {
     en_texts: Array.from(document.querySelectorAll('.en-input'))
       .map(i => i.value.trim())
       .filter(Boolean),
+    tags: [...formTags],
   };
 }
 
@@ -156,6 +172,7 @@ async function handleFormSubmit(e) {
       });
     }
     resetForm();
+    loadTags();
     loadWords();
   } catch (e) {
     alert('Error: ' + e.message);
@@ -166,6 +183,7 @@ async function deleteWord(id) {
   if (!confirm('Delete this word and all its translations? This cannot be undone.')) return;
   try {
     await apiFetch(`/api/words/${id}`, { method: 'DELETE' });
+    loadTags();
     loadWords();
   } catch (e) {
     alert('Failed to delete: ' + e.message);
@@ -202,11 +220,117 @@ function renderDue(word) {
   return `<span class="text-gray-500">in ${diffDays}d</span>`;
 }
 
+async function loadTags() {
+  try {
+    allTags = await apiFetch('/api/tags');
+  } catch (_) {
+    allTags = [];
+  }
+  renderFilterTags();
+}
+
+function renderFormTags() {
+  const container = $('form-tags');
+  container.innerHTML = '';
+  for (const tag of formTags) {
+    const pill = document.createElement('span');
+    pill.className = 'inline-flex items-center bg-gray-200 text-gray-700 text-sm px-2 py-0.5 rounded-full';
+    pill.innerHTML = `${escHtml(tag)} <button type="button" class="ml-1 text-gray-400 hover:text-red-500 leading-none">&times;</button>`;
+    pill.querySelector('button').addEventListener('click', () => {
+      formTags = formTags.filter(t => t !== tag);
+      renderFormTags();
+    });
+    container.appendChild(pill);
+  }
+}
+
+function showTagAutocomplete(query) {
+  const dropdown = $('tag-autocomplete');
+  const q = query.toLowerCase();
+  const matches = allTags.filter(t => t.toLowerCase().includes(q) && !formTags.includes(t));
+  if (q && !allTags.includes(query) && !formTags.includes(query)) {
+    matches.unshift(query);
+  }
+  if (matches.length === 0) {
+    dropdown.classList.add('hidden');
+    return;
+  }
+  dropdown.innerHTML = '';
+  for (const m of matches.slice(0, 10)) {
+    const item = document.createElement('div');
+    item.className = 'px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer';
+    item.textContent = m === query && !allTags.includes(query) ? `Create "${m}"` : m;
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      addFormTag(m);
+    });
+    dropdown.appendChild(item);
+  }
+  dropdown.classList.remove('hidden');
+}
+
+function addFormTag(tag) {
+  tag = tag.trim();
+  if (!tag || formTags.includes(tag)) return;
+  formTags.push(tag);
+  renderFormTags();
+  $('form-tag-input').value = '';
+  $('tag-autocomplete').classList.add('hidden');
+}
+
+function renderFilterTags() {
+  const bar = $('filter-tags-bar');
+  const pills = bar.querySelectorAll('.filter-tag-pill');
+  pills.forEach(p => p.remove());
+  if (allTags.length === 0) {
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+  for (const tag of allTags) {
+    const pill = document.createElement('button');
+    const active = selectedFilterTags.includes(tag);
+    pill.className = `filter-tag-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`;
+    pill.textContent = tag;
+    pill.addEventListener('click', () => {
+      if (selectedFilterTags.includes(tag)) {
+        selectedFilterTags = selectedFilterTags.filter(t => t !== tag);
+      } else {
+        selectedFilterTags.push(tag);
+      }
+      currentPage = 1;
+      renderFilterTags();
+      loadWords();
+    });
+    bar.appendChild(pill);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
+  loadTags();
   loadWords();
 
   $('word-form').addEventListener('submit', handleFormSubmit);
+
+  $('form-tag-input').addEventListener('input', () => {
+    const v = $('form-tag-input').value.trim();
+    if (v) {
+      showTagAutocomplete(v);
+    } else {
+      $('tag-autocomplete').classList.add('hidden');
+    }
+  });
+  $('form-tag-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const v = $('form-tag-input').value.trim();
+      if (v) addFormTag(v);
+    }
+  });
+  $('form-tag-input').addEventListener('blur', () => {
+    setTimeout(() => $('tag-autocomplete').classList.add('hidden'), 150);
+  });
 
   $('add-en-btn').addEventListener('click', () => addEnInput(''));
 

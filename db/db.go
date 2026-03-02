@@ -52,7 +52,7 @@ var validSortExprs = map[string]string{
 }
 
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string) ([]models.WordDetail, int, error) {
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string) ([]models.WordDetail, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -66,6 +66,21 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 
 	q = strings.TrimSpace(q)
 
+	// Build optional tag filter clause
+	tagFilter := ""
+	var tagArgs []any
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			tagArgs = append(tagArgs, t)
+		}
+		tagFilter = ` AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
+
 	// Count total
 	var total int
 	countQuery := `
@@ -77,8 +92,10 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))`
-	if err := s.db.QueryRowContext(ctx, countQuery, q, q, q, q).Scan(&total); err != nil {
+		       ))` + tagFilter
+	countArgs := []any{q, q, q, q}
+	countArgs = append(countArgs, tagArgs...)
+	if err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count words: %w", err)
 	}
 
@@ -110,10 +127,13 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))
+		       ))` + tagFilter + `
 		ORDER BY ` + orderClause + `
 		LIMIT ? OFFSET ?`
-	rows, err := s.db.QueryContext(ctx, listQuery, q, q, q, q, perPage, offset)
+	listArgs := []any{q, q, q, q}
+	listArgs = append(listArgs, tagArgs...)
+	listArgs = append(listArgs, perPage, offset)
+	rows, err := s.db.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list words: %w", err)
 	}
@@ -148,6 +168,11 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 			return nil, 0, err
 		}
 		words[i].EnTexts = enTexts
+		wordTags, err := s.getTagsForWord(ctx, words[i].ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		words[i].Tags = wordTags
 	}
 	if words == nil {
 		words = []models.WordDetail{}
@@ -208,6 +233,10 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 		return nil, err
 	}
 	wd.EnTexts = enTexts
+	wd.Tags, err = s.getTagsForWord(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	return &wd, nil
 }
 
@@ -245,6 +274,10 @@ func (s *Store) CreateWord(ctx context.Context, req models.CreateWordRequest) (i
 			enID, zhID); err != nil {
 			return 0, fmt.Errorf("link translation: %w", err)
 		}
+	}
+
+	if err := setWordTags(ctx, tx, zhID, req.Tags); err != nil {
+		return 0, err
 	}
 
 	return zhID, tx.Commit()
@@ -298,7 +331,14 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 		}
 	}
 
-	return tx.Commit()
+	if err := setWordTags(ctx, tx, id, req.Tags); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.cleanOrphanTags(ctx)
 }
 
 // AddTranslation appends a single EN text as a new translation for the given zh word ID.
@@ -345,12 +385,27 @@ func (s *Store) DeleteWord(ctx context.Context, id int64) error {
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	return nil
+	return s.cleanOrphanTags(ctx)
 }
 
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
-func (s *Store) GetNextCard(ctx context.Context) (*models.Word, *models.SM2Progress, error) {
+func (s *Store) GetNextCard(ctx context.Context, tags []string) (*models.Word, *models.SM2Progress, error) {
+	// Build optional tag filter
+	tagFilter := ""
+	var tagArgs []any
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			tagArgs = append(tagArgs, t)
+		}
+		tagFilter = ` AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
+
 	// Only quiz on zh words — they are the canonical unit; en words are just
 	// answer targets and should never appear as quiz prompts on their own.
 	query := `
@@ -359,12 +414,13 @@ func (s *Store) GetNextCard(ctx context.Context) (*models.Word, *models.SM2Progr
 		       p.total_correct, p.total_attempts
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
-		WHERE w.language = 'zh' %s
+		WHERE w.language = 'zh'` + tagFilter + ` %s
 		ORDER BY p.due_date ASC
 		LIMIT 1`
 
 	tryQuery := func(extra string) (*models.Word, *models.SM2Progress, error) {
-		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, extra))
+		args := append([]any{}, tagArgs...)
+		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, extra), args...)
 		var w models.Word
 		var p models.SM2Progress
 		var createdAt, dueDate string
@@ -473,16 +529,32 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 }
 
 // GetStats returns due-today count and total word count (zh words only).
-func (s *Store) GetStats(ctx context.Context) (dueToday, total int, err error) {
+func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total int, err error) {
+	tagFilter := ""
+	var tagArgs []any
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			tagArgs = append(tagArgs, t)
+		}
+		tagFilter = ` AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
+
+	totalArgs := append([]any{}, tagArgs...)
 	err = s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM words WHERE language = 'zh'`).Scan(&total)
+		`SELECT COUNT(*) FROM words w WHERE w.language = 'zh'`+tagFilter, totalArgs...).Scan(&total)
 	if err != nil {
 		return
 	}
+	dueArgs := append([]any{}, tagArgs...)
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.due_date <= CURRENT_TIMESTAMP`).Scan(&dueToday)
+		 WHERE w.language = 'zh' AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter, dueArgs...).Scan(&dueToday)
 	return
 }
 
@@ -668,4 +740,93 @@ func initSM2(ctx context.Context, tx *sql.Tx, wordID int64) error {
 		return fmt.Errorf("init sm2: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) getTagsForWord(ctx context.Context, wordID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT tg.name FROM tags tg
+		 JOIN word_tags wt ON wt.tag_id = tg.id
+		 WHERE wt.word_id = ?
+		 ORDER BY tg.name`, wordID)
+	if err != nil {
+		return nil, fmt.Errorf("get tags: %w", err)
+	}
+	defer rows.Close()
+	var tags []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		tags = append(tags, t)
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	return tags, rows.Err()
+}
+
+func getOrCreateTag(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO tags (name) VALUES (?)`, name); err != nil {
+		return 0, fmt.Errorf("upsert tag: %w", err)
+	}
+	var id int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM tags WHERE name = ?`, name).Scan(&id); err != nil {
+		return 0, fmt.Errorf("get tag id: %w", err)
+	}
+	return id, nil
+}
+
+func setWordTags(ctx context.Context, tx *sql.Tx, wordID int64, tags []string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM word_tags WHERE word_id = ?`, wordID); err != nil {
+		return fmt.Errorf("delete word tags: %w", err)
+	}
+	for _, name := range tags {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		tagID, err := getOrCreateTag(ctx, tx, name)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`,
+			wordID, tagID); err != nil {
+			return fmt.Errorf("link tag: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) cleanOrphanTags(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM word_tags)`)
+	if err != nil {
+		return fmt.Errorf("clean orphan tags: %w", err)
+	}
+	return nil
+}
+
+// GetAllTags returns all tag names ordered alphabetically.
+func (s *Store) GetAllTags(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name FROM tags ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("get all tags: %w", err)
+	}
+	defer rows.Close()
+	var tags []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		tags = append(tags, t)
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	return tags, rows.Err()
 }

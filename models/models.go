@@ -63,12 +63,14 @@ type CreateWordRequest struct {
 	ZhText  string   `json:"zh_text"`
 	Pinyin  string   `json:"pinyin"`
 	EnTexts []string `json:"en_texts"`
+	Tags    []string `json:"tags"`
 }
 
 type UpdateWordRequest struct {
 	ZhText  string   `json:"zh_text"`
 	Pinyin  string   `json:"pinyin"`
 	EnTexts []string `json:"en_texts"`
+	Tags    []string `json:"tags"`
 }
 
 type WordDetail struct {
@@ -83,6 +85,7 @@ type WordDetail struct {
 	TotalCorrect  int       `json:"total_correct"`
 	TotalAttempts int       `json:"total_attempts"`
 	DueDate       time.Time `json:"due_date"`
+	Tags          []string  `json:"tags"`
 }
 
 type ConfusionDetail struct {

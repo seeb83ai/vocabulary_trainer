@@ -3,6 +3,7 @@
 let currentCard = null;
 let isSubmitted = false;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
+let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 
 function applyModeButtons() {
   document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -15,7 +16,8 @@ function applyModeButtons() {
 
 async function loadStats() {
   try {
-    const stats = await apiFetch('/api/quiz/stats');
+    const statsUrl = selectedTags.length ? `/api/quiz/stats?tags=${selectedTags.join(',')}` : '/api/quiz/stats';
+    const stats = await apiFetch(statsUrl);
     setText('stats-due', stats.due_today);
     setText('stats-total', stats.total);
   } catch (_) {}
@@ -31,7 +33,11 @@ async function loadNextCard() {
   $('answer-input').value = '';
 
   try {
-    const url = selectedMode === 'random' ? '/api/quiz/next' : `/api/quiz/next?mode=${selectedMode}`;
+    const params = new URLSearchParams();
+    if (selectedMode !== 'random') params.set('mode', selectedMode);
+    if (selectedTags.length) params.set('tags', selectedTags.join(','));
+    const qs = params.toString();
+    const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
   } catch (e) {
     if (e.message === 'no words available') {
@@ -178,8 +184,44 @@ async function submitAnswer(e) {
   }
 }
 
+async function loadTrainTags() {
+  let allTags = [];
+  try {
+    allTags = await apiFetch('/api/tags');
+  } catch (_) {}
+  const bar = $('tag-filter-bar');
+  const container = bar.querySelector('.flex');
+  container.querySelectorAll('.tag-pill').forEach(p => p.remove());
+  if (allTags.length === 0) {
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+  // Remove stale tags from selection
+  selectedTags = selectedTags.filter(t => allTags.includes(t));
+  localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+  for (const tag of allTags) {
+    const pill = document.createElement('button');
+    const active = selectedTags.includes(tag);
+    pill.className = `tag-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    pill.textContent = tag;
+    pill.addEventListener('click', () => {
+      if (selectedTags.includes(tag)) {
+        selectedTags = selectedTags.filter(t => t !== tag);
+      } else {
+        selectedTags.push(tag);
+      }
+      localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+      loadTrainTags();
+      loadNextCard();
+    });
+    container.appendChild(pill);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   applyModeButtons();
+  loadTrainTags();
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       selectedMode = btn.dataset.mode;

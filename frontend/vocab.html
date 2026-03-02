@@ -49,6 +49,17 @@
           </button>
         </div>
 
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+          <div id="form-tags" class="flex flex-wrap gap-1 mb-2"></div>
+          <div class="relative">
+            <input id="form-tag-input" type="text" placeholder="Add tag…"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autocomplete="off">
+            <div id="tag-autocomplete" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto"></div>
+          </div>
+        </div>
+
         <div class="flex gap-3 pt-2">
           <button type="submit"
             class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition">
@@ -68,6 +79,9 @@
         <h2 class="text-lg font-semibold text-gray-800 flex-1">Vocabulary List</h2>
         <input id="search-input" type="search" placeholder="Search…"
           class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-52">
+      </div>
+      <div id="filter-tags-bar" class="hidden px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
+        <span class="text-xs text-gray-500 font-medium mr-1">Filter:</span>
       </div>
 
       <div class="overflow-x-auto">

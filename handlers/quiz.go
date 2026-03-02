@@ -17,7 +17,11 @@ type QuizHandler struct {
 
 // Next returns the next card to study.
 func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
-	word, progress, err := h.Store.GetNextCard(r.Context())
+	var tags []string
+	if t := r.URL.Query().Get("tags"); t != "" {
+		tags = strings.Split(t, ",")
+	}
+	word, progress, err := h.Store.GetNextCard(r.Context(), tags)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -182,7 +186,11 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 // Stats returns due-today and total card counts.
 func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
-	due, total, err := h.Store.GetStats(r.Context())
+	var tags []string
+	if t := r.URL.Query().Get("tags"); t != "" {
+		tags = strings.Split(t, ",")
+	}
+	due, total, err := h.Store.GetStats(r.Context(), tags)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

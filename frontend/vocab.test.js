@@ -150,12 +150,13 @@ describe('pagination logic', () => {
 // ── buildFormPayload (DOM-based) ───────────────────────────────────────────────
 // Simulate the DOM structure that vocab.html provides.
 
-function buildFormPayload(zhValue, pinyinValue, enValues) {
+function buildFormPayload(zhValue, pinyinValue, enValues, tags = []) {
   // Mirrors the vocab.js buildFormPayload logic
   return {
     zh_text: zhValue.trim(),
     pinyin: pinyinValue.trim(),
     en_texts: enValues.map(v => v.trim()).filter(Boolean),
+    tags: [...tags],
   };
 }
 
@@ -183,5 +184,15 @@ describe('buildFormPayload', () => {
   it('returns empty pinyin when not provided', () => {
     const p = buildFormPayload('你好', '', ['hello']);
     expect(p.pinyin).toBe('');
+  });
+
+  it('includes tags array', () => {
+    const p = buildFormPayload('你好', '', ['hello'], ['HSK1', 'greetings']);
+    expect(p.tags).toEqual(['HSK1', 'greetings']);
+  });
+
+  it('defaults to empty tags', () => {
+    const p = buildFormPayload('你好', '', ['hello']);
+    expect(p.tags).toEqual([]);
   });
 });

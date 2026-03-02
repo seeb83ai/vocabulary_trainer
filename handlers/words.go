@@ -31,7 +31,11 @@ func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	sortBy := r.URL.Query().Get("sort")
 	sortDir := r.URL.Query().Get("order")
-	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir)
+	var tags []string
+	if t := r.URL.Query().Get("tags"); t != "" {
+		tags = strings.Split(t, ",")
+	}
+	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -189,6 +193,15 @@ func (h *WordsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *WordsHandler) ListTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := h.Store.GetAllTags(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, tags)
 }
 
 // Shared helpers

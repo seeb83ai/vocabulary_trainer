@@ -12,6 +12,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
 - **Confusion tracking** — if your wrong answer is a valid translation of a *different* known word, it is recorded as a confusion pair (works in all quiz modes); a yellow hint box shows immediately on the result screen, and the full history is visible on the `/mismatches` page
 - 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS, built into the binary), falls back silently to the browser's Web Speech API
+- **Tags** — assign tags to vocabulary words (e.g. "HSK1", "food", "travel"); filter by tag on both the vocabulary list and training page (OR logic when multiple tags selected); tags are created on-the-fly via an autocomplete input and cleaned up automatically when no longer used
 - Vocabulary management: add, edit, delete, search, paginate, sort by any column; SM-2 progress shown per word
 - Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
 - Bulk import from a structured text file (see `cmd/import`)
@@ -203,16 +204,17 @@ vocabulary_trainer/
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/quiz/next` | Get the next card to study |
+| `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params) |
 | `POST` | `/api/quiz/answer` | Submit an answer |
-| `GET` | `/api/quiz/stats` | Get due-today and total card counts |
-| `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order` query params) |
+| `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
+| `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |
 | `POST` | `/api/words` | Create a vocabulary entry |
 | `GET` | `/api/words/{id}` | Get a single word with translations |
 | `PUT` | `/api/words/{id}` | Update a word |
 | `DELETE` | `/api/words/{id}` | Delete a word |
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
+| `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
 
 ## License

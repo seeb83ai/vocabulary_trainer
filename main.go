@@ -86,6 +86,7 @@ func main() {
 				r.Post("/translations", wordsH.AddTranslation)
 			})
 		})
+		r.Get("/tags", wordsH.ListTags)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
 	})

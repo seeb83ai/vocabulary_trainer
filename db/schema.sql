@@ -40,3 +40,16 @@ CREATE TABLE IF NOT EXISTS confusion_pairs (
   last_seen        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (zh_word_id, confused_with_id, mode)
 );
+
+-- Tags for categorising vocabulary words (e.g. "food", "travel", "HSK1")
+CREATE TABLE IF NOT EXISTS tags (
+  id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE
+);
+
+-- Many-to-many link between zh words and tags
+CREATE TABLE IF NOT EXISTS word_tags (
+  word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+  tag_id  INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (word_id, tag_id)
+);
