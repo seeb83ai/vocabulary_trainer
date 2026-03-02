@@ -13,6 +13,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - **Confusion tracking** — if your wrong answer is a valid translation of a *different* known word, it is recorded as a confusion pair (works in all quiz modes); a yellow hint box shows immediately on the result screen, and the full history is visible on the `/mismatches` page
 - 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS, built into the binary), falls back silently to the browser's Web Speech API
 - **Tags** — assign tags to vocabulary words (e.g. "HSK1", "food", "travel"); filter by tag on both the vocabulary list and training page (OR logic when multiple tags selected); tags are created on-the-fly via an autocomplete input and cleaned up automatically when no longer used
+- **Auto-translate** — when a DeepL API key is configured, an auto-translate button appears in the Add/Edit Word form; enter Chinese to get the translation + pinyin filled in automatically, or enter the translation to get Chinese + pinyin back (pinyin generated locally via [go-pinyin](https://github.com/mozillazg/go-pinyin))
 - Vocabulary management: add, edit, delete, search, paginate, sort by any column; SM-2 progress shown per word
 - Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
 - Bulk import from a structured text file (see `cmd/import`)
@@ -64,6 +65,23 @@ AUTH_PASSWORD=yourpassword
 ```
 
 When enabled, all pages and API endpoints require a valid session. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours. The session secret is generated randomly at startup, so all sessions are invalidated when the server restarts.
+
+## Auto-translate (DeepL)
+
+Set `DEEPL_API_KEY` in your `.env` to enable the auto-translate button on the vocabulary page:
+
+```bash
+DEEPL_API_KEY=your-deepl-api-key
+DEEPL_TARGET_LANGUAGE=de   # any DeepL language code; default: en
+```
+
+When enabled, an **Auto-translate** button appears in the Add/Edit Word form. It auto-detects direction based on which fields are filled:
+
+- **Chinese filled, translation empty** → translates Chinese to the target language and generates pinyin
+- **Translation filled, Chinese empty** → translates to Chinese and generates pinyin
+- **Both filled** → generates pinyin only
+
+Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin is generated server-side using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser — all DeepL calls are proxied through the backend.
 
 ## Makefile targets
 
@@ -223,6 +241,7 @@ vocabulary_trainer/
 │   ├── quiz.go              # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
 │   ├── words.go             # CRUD /api/words + POST /api/words/{id}/translations
 │   ├── mismatches.go        # GET /api/mismatches
+│   ├── translate.go         # POST /api/translate, GET /api/config — DeepL proxy + pinyin
 │   └── audio.go             # GET /api/audio/{id} — serve/generate cached MP3
 ├── models/models.go         # Shared structs and mode constants
 ├── sm2/sm2.go               # SM-2 algorithm, answer checking, variant expansion
@@ -257,6 +276,8 @@ vocabulary_trainer/
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
+| `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
+| `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
 
 ## License

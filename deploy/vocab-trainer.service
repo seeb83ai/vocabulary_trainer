@@ -24,6 +24,9 @@ Environment=PORT=8080
 
 Environment=AUDIO_DIR=/opt/vocab-trainer/data/audio
 
+Environment=DEEPL_API_KEY=
+Environment=DEEPL_TARGET_LANGUAGE=en
+
 # Optional overrides (AUTH_USER, AUTH_PASSWORD, PORT, etc.) — file may be absent
 EnvironmentFile=-/opt/vocab-trainer/.env
 

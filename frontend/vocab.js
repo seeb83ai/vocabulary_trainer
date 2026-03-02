@@ -306,10 +306,60 @@ function renderFilterTags() {
   }
 }
 
+async function initTranslateButton() {
+  try {
+    const cfg = await apiFetch('/api/config');
+    if (cfg && cfg.deepl_enabled) {
+      show('translate-btn');
+    }
+  } catch (_) {}
+}
+
+async function handleTranslate() {
+  const btn = $('translate-btn');
+  const zh = $('form-zh').value.trim();
+  const enInputs = document.querySelectorAll('.en-input');
+  const en = enInputs.length > 0 ? enInputs[0].value.trim() : '';
+
+  if (!zh && !en) {
+    alert('Enter Chinese or English text first.');
+    return;
+  }
+
+  const origText = btn.textContent;
+  btn.textContent = 'Translating…';
+  btn.disabled = true;
+
+  try {
+    const result = await apiFetch('/api/translate', {
+      method: 'POST',
+      body: JSON.stringify({ zh_text: zh, en_text: en }),
+    });
+
+    if (result.zh_text && !zh) {
+      $('form-zh').value = result.zh_text;
+    }
+    if (result.pinyin && !$('form-pinyin').value.trim()) {
+      $('form-pinyin').value = result.pinyin;
+    }
+    if (result.en_text && !en) {
+      if (enInputs.length > 0) {
+        enInputs[0].value = result.en_text;
+      }
+    }
+  } catch (e) {
+    alert('Translation failed: ' + e.message);
+  } finally {
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
   loadTags();
   loadWords();
+  initTranslateButton();
 
   $('word-form').addEventListener('submit', handleFormSubmit);
 
@@ -333,6 +383,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('add-en-btn').addEventListener('click', () => addEnInput(''));
+  $('translate-btn').addEventListener('click', handleTranslate);
 
   $('form-cancel-btn').addEventListener('click', () => {
     resetForm();

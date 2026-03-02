@@ -13,6 +13,8 @@ run:
 	mkdir -p data
 	docker compose up -d
 
+start: run
+
 ## stop: stop the running container
 stop:
 	docker compose down

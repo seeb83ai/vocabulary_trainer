@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
 
@@ -55,6 +56,19 @@ func main() {
 		log.Printf("Auth enabled: user=%s", os.Getenv("AUTH_USER"))
 	}
 
+	var translateH *handlers.TranslateHandler
+	if key := os.Getenv("DEEPL_API_KEY"); key != "" {
+		lang := os.Getenv("DEEPL_TARGET_LANGUAGE")
+		if lang == "" {
+			lang = "EN"
+		}
+		translateH = &handlers.TranslateHandler{
+			APIKey:     key,
+			TargetLang: strings.ToUpper(lang),
+		}
+		log.Printf("DeepL translation enabled: target=%s", strings.ToUpper(lang))
+	}
+
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
 	quizH := &handlers.QuizHandler{Store: store}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
@@ -89,6 +103,10 @@ func main() {
 		r.Get("/tags", wordsH.ListTags)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
+		r.Get("/config", handlers.Config(translateH != nil))
+		if translateH != nil {
+			r.Post("/translate", translateH.Translate)
+		}
 	})
 
 	// Static frontend files
