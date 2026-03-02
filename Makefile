@@ -35,11 +35,15 @@ import:
 	mkdir -p data
 	go run ./cmd/import -db $(or $(DB),data/vocab.db) -file $(or $(FILE),voc.txt)
 
+backup:
+	sqlite3 data/vocab.db ".backup data/vocab_backup.sq3"
+
 ## release: cross-compile for Raspberry Pi (arm64) and rsync to RSYNC_DEST
 release:
 	@test -n "$(RSYNC_DEST)" || (echo "RSYNC_DEST is not set. Copy .env.example to .env and fill it in." && exit 1)
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o vocab-trainer .
 	rsync -avz --progress \
+	    Makefile \
 		vocab-trainer \
 		.env.example \
 		deploy/vocab-trainer.service \
