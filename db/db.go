@@ -87,24 +87,6 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
 	}
 
-	// Count total
-	var total int
-	countQuery := `
-		SELECT COUNT(DISTINCT w.id) FROM words w
-		WHERE w.language = 'zh'
-		  AND (? = '' OR w.text LIKE '%' || ? || '%'
-		       OR w.pinyin LIKE '%' || ? || '%'
-		       OR EXISTS (
-		           SELECT 1 FROM words ew
-		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
-		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))` + tagFilter
-	countArgs := []any{q, q, q, q}
-	countArgs = append(countArgs, tagArgs...)
-	if err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
-		return nil, 0, fmt.Errorf("count words: %w", err)
-	}
-
 	orderExpr, ok := validSortExprs[sortBy]
 	if !ok {
 		orderExpr = "w.created_at"
@@ -118,12 +100,16 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		orderTerms[i] = t + " " + sortDir
 	}
 	orderClause := strings.Join(orderTerms, ", ")
+
+	// Single query: COUNT(*) OVER() returns the total alongside each row,
+	// eliminating the separate count query.
 	listQuery := `
 		SELECT w.id, w.text, w.pinyin, w.created_at,
 		       COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
 		       COALESCE(p.interval_days, 1),
 		       COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
-		       COALESCE(p.due_date, CURRENT_TIMESTAMP)
+		       COALESCE(p.due_date, CURRENT_TIMESTAMP),
+		       COUNT(*) OVER() AS total
 		FROM words w
 		LEFT JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh'
@@ -145,9 +131,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	}
 	defer rows.Close()
 
-	// Collect rows first, then close before issuing per-word queries.
-	// Required because db.SetMaxOpenConns(1) — nested queries on the same
-	// connection while rows is open causes a deadlock.
+	var total int
 	var words []models.WordDetail
 	for rows.Next() {
 		var wd models.WordDetail
@@ -156,6 +140,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
 			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate,
+			&total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
 		}
@@ -166,24 +151,100 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
-	rows.Close() // release connection before issuing per-word queries
+	rows.Close()
 
-	for i := range words {
-		enTexts, err := s.getEnTextsForZhWord(ctx, words[i].ID)
-		if err != nil {
+	// Batch-load English texts and tags for all page results in two queries
+	// instead of 2×N per-word queries.
+	if len(words) > 0 {
+		ids := make([]int64, len(words))
+		idIndex := make(map[int64]int, len(words))
+		for i, w := range words {
+			ids[i] = w.ID
+			idIndex[w.ID] = i
+		}
+		if err := s.batchLoadEnTexts(ctx, words, ids, idIndex); err != nil {
 			return nil, 0, err
 		}
-		words[i].EnTexts = enTexts
-		wordTags, err := s.getTagsForWord(ctx, words[i].ID)
-		if err != nil {
+		if err := s.batchLoadTags(ctx, words, ids, idIndex); err != nil {
 			return nil, 0, err
 		}
-		words[i].Tags = wordTags
 	}
 	if words == nil {
 		words = []models.WordDetail{}
 	}
 	return words, total, nil
+}
+
+func (s *Store) batchLoadEnTexts(ctx context.Context, words []models.WordDetail, ids []int64, idIndex map[int64]int) error {
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT t.zh_word_id, w.text FROM words w
+		 JOIN translations t ON t.en_word_id = w.id
+		 WHERE t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
+		 ORDER BY w.text`, args...)
+	if err != nil {
+		return fmt.Errorf("batch en texts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var zhID int64
+		var text string
+		if err := rows.Scan(&zhID, &text); err != nil {
+			return err
+		}
+		idx := idIndex[zhID]
+		words[idx].EnTexts = append(words[idx].EnTexts, text)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range words {
+		if words[i].EnTexts == nil {
+			words[i].EnTexts = []string{}
+		}
+	}
+	return nil
+}
+
+func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, ids []int64, idIndex map[int64]int) error {
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT wt.word_id, tg.name FROM tags tg
+		 JOIN word_tags wt ON wt.tag_id = tg.id
+		 WHERE wt.word_id IN (`+strings.Join(placeholders, ",")+`)
+		 ORDER BY tg.name`, args...)
+	if err != nil {
+		return fmt.Errorf("batch tags: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var wordID int64
+		var tag string
+		if err := rows.Scan(&wordID, &tag); err != nil {
+			return err
+		}
+		idx := idIndex[wordID]
+		words[idx].Tags = append(words[idx].Tags, tag)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range words {
+		if words[i].Tags == nil {
+			words[i].Tags = []string{}
+		}
+	}
+	return nil
 }
 
 func (s *Store) getEnTextsForZhWord(ctx context.Context, zhID int64) ([]string, error) {
