@@ -34,6 +34,12 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schemaSQL); err != nil {
 		return nil, fmt.Errorf("run schema: %w", err)
 	}
+	// Additive migration: add first_seen_date to existing databases that pre-date the column.
+	if _, err := db.Exec(`ALTER TABLE sm2_progress ADD COLUMN first_seen_date TEXT DEFAULT NULL`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return nil, fmt.Errorf("add first_seen_date column: %w", err)
+		}
+	}
 	return &Store{db: db}, nil
 }
 
@@ -390,7 +396,9 @@ func (s *Store) DeleteWord(ctx context.Context, id int64) error {
 
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
-func (s *Store) GetNextCard(ctx context.Context, tags []string) (*models.Word, *models.SM2Progress, error) {
+// maxNew caps how many new words (first_seen_date IS NULL) can be introduced today; once
+// the count for today reaches maxNew, only already-seen cards are returned.
+func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int) (*models.Word, *models.SM2Progress, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -406,6 +414,21 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string) (*models.Word, *
 			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
 	}
 
+	// Count new words already introduced today (global, not per-tag).
+	var newToday int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE w.language = 'zh' AND p.first_seen_date = date('now')`).Scan(&newToday); err != nil {
+		return nil, nil, fmt.Errorf("count new today: %w", err)
+	}
+
+	// When the daily cap is reached, skip words that have never been presented.
+	newWordFilter := ""
+	if newToday >= maxNew {
+		newWordFilter = " AND p.first_seen_date IS NOT NULL"
+	}
+
 	// Only quiz on zh words — they are the canonical unit; en words are just
 	// answer targets and should never appear as quiz prompts on their own.
 	query := `
@@ -414,7 +437,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string) (*models.Word, *
 		       p.total_correct, p.total_attempts
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
-		WHERE w.language = 'zh'` + tagFilter + ` %s
+		WHERE w.language = 'zh'` + tagFilter + newWordFilter + ` %s
 		ORDER BY p.due_date ASC
 		LIMIT 1`
 
@@ -441,18 +464,31 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string) (*models.Word, *
 		return &w, &p, nil
 	}
 
+	// stamp sets first_seen_date the first time a card is presented.
+	stamp := func(w *models.Word) {
+		if w != nil {
+			_, _ = s.db.ExecContext(ctx,
+				`UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ? AND first_seen_date IS NULL`,
+				w.ID)
+		}
+	}
+
 	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP")
 	if err != nil || w != nil {
+		stamp(w)
 		return w, p, err
 	}
 	// No overdue cards — prefer cards outside the wrong-retry window so a
 	// recently failed card is not immediately repeated.
 	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds')", int(sm2.WrongRetryDelay.Seconds())))
 	if err != nil || w != nil {
+		stamp(w)
 		return w, p, err
 	}
 	// All remaining cards are within the retry window; return the soonest one.
-	return tryQuery("")
+	w, p, err = tryQuery("")
+	stamp(w)
+	return w, p, err
 }
 
 // GetTranslationsForWord returns all words in targetLang linked to wordID.
@@ -528,8 +564,9 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 	return nil
 }
 
-// GetStats returns due-today count and total word count (zh words only).
-func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total int, err error) {
+// GetStats returns due-today count, total word count (zh words only), and the number of
+// new words introduced today (globally, not filtered by tag).
+func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, newToday int, err error) {
 	tagFilter := ""
 	var tagArgs []any
 	if len(tags) > 0 {
@@ -555,6 +592,13 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total in
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter, dueArgs...).Scan(&dueToday)
+	if err != nil {
+		return
+	}
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE w.language = 'zh' AND p.first_seen_date = date('now')`).Scan(&newToday)
 	return
 }
 

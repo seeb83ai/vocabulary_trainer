@@ -282,7 +282,7 @@ func TestAddTranslation_NotFound(t *testing.T) {
 
 func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 	s := openTestDB(t)
-	w, p, err := s.GetNextCard(context.Background(), nil)
+	w, p, err := s.GetNextCard(context.Background(), nil, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	w, p, err := s.GetNextCard(context.Background(), nil)
+	w, p, err := s.GetNextCard(context.Background(), nil, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,12 +320,46 @@ func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, past, id2)
 	_ = id1
 
-	w, _, err := s.GetNextCard(ctx, nil)
+	w, _, err := s.GetNextCard(ctx, nil, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w.ID != id2 {
 		t.Errorf("expected most-overdue word (id=%d), got id=%d", id2, w.ID)
+	}
+}
+
+func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed 3 words; none have been seen yet (first_seen_date IS NULL).
+	id1 := seedWord(t, s, "一", "", []string{"one"})
+	seedWord(t, s, "二", "", []string{"two"})
+	seedWord(t, s, "三", "", []string{"three"})
+
+	// Simulate having already introduced 1 word today by stamping its first_seen_date.
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
+
+	// With maxNew=1 the daily cap is reached; only id1 (already introduced) should be returned.
+	w, _, err := s.GetNextCard(ctx, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a card even when new-word cap is reached")
+	}
+	if w.ID != id1 {
+		t.Errorf("expected already-seen word (id=%d) when cap is reached, got id=%d", id1, w.ID)
+	}
+
+	// With maxNew=5 new words are still allowed; any of the three words may be returned.
+	w2, _, err := s.GetNextCard(ctx, nil, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w2 == nil {
+		t.Fatal("expected a card when cap is not yet reached")
 	}
 }
 
@@ -370,7 +404,7 @@ func TestUpdateSM2Progress_Persists(t *testing.T) {
 
 func TestGetStats_Empty(t *testing.T) {
 	s := openTestDB(t)
-	due, total, err := s.GetStats(context.Background(), nil)
+	due, total, _, err := s.GetStats(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +416,7 @@ func TestGetStats_Empty(t *testing.T) {
 func TestGetStats_CountsOnlyZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello", "hi"})
-	_, total, err := s.GetStats(context.Background(), nil)
+	_, total, _, err := s.GetStats(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,12 +436,30 @@ func TestGetStats_DueTodayCount(t *testing.T) {
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, future, id1)
 
-	due, _, err := s.GetStats(ctx, nil)
+	due, _, _, err := s.GetStats(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if due != 1 {
 		t.Errorf("due_today: want 1, got %d", due)
+	}
+}
+
+func TestGetStats_NewTodayCount(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id1 := seedWord(t, s, "一", "", []string{"one"})
+	seedWord(t, s, "二", "", []string{"two"})
+
+	// Stamp one word as introduced today.
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
+
+	_, _, newToday, err := s.GetStats(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newToday != 1 {
+		t.Errorf("new_today: want 1, got %d", newToday)
 	}
 }
 
@@ -537,7 +589,7 @@ func TestGetNextCard_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	id2 := seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 
-	w, _, err := s.GetNextCard(context.Background(), []string{"food"})
+	w, _, err := s.GetNextCard(context.Background(), []string{"food"}, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +605,7 @@ func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 
-	w, _, err := s.GetNextCard(context.Background(), []string{"nonexistent"})
+	w, _, err := s.GetNextCard(context.Background(), []string{"nonexistent"}, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +619,7 @@ func TestGetStats_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 
-	_, total, err := s.GetStats(context.Background(), []string{"food"})
+	_, total, _, err := s.GetStats(context.Background(), []string{"food"})
 	if err != nil {
 		t.Fatal(err)
 	}

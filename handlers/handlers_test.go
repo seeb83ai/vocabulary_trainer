@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
 	"vocabulary_trainer/models"
@@ -29,7 +30,7 @@ func openTestDB(t *testing.T) *db.Store {
 
 func newRouter(s *db.Store) http.Handler {
 	wordsH := &handlers.WordsHandler{Store: s}
-	quizH := &handlers.QuizHandler{Store: s}
+	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
 	mismatchH := &handlers.MismatchesHandler{Store: s}
 
 	r := chi.NewRouter()
@@ -172,6 +173,59 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	validModes := map[string]bool{models.ModeEnToZh: true, models.ModeZhToEn: true, models.ModeZhPinyinToEn: true}
 	if !validModes[card.Mode] {
 		t.Errorf("invalid mode param: got unexpected mode %s", card.Mode)
+	}
+}
+
+func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed two words.
+	id1 := seedWord(t, s, "一", "", []string{"one"})
+	id2 := seedWord(t, s, "二", "", []string{"two"})
+
+	// Push id2 into the future so id1 is always the most-due word.
+	p2, err := s.GetSM2Progress(ctx, id2)
+	if err != nil || p2 == nil {
+		t.Fatalf("GetSM2Progress id2: %v / %v", err, p2)
+	}
+	p2.DueDate = time.Now().UTC().Add(48 * time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p2); err != nil {
+		t.Fatalf("UpdateSM2Progress id2: %v", err)
+	}
+
+	// Call GetNextCard once (high limit) to stamp id1 as today's introduced word.
+	w, _, err := s.GetNextCard(ctx, nil, 100)
+	if err != nil || w == nil || w.ID != id1 {
+		t.Fatalf("setup: expected id1=%d to be stamped, got w=%v err=%v", id1, w, err)
+	}
+
+	// Build a router with maxNew=1 (cap is now reached).
+	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 1}
+	r := chi.NewRouter()
+	r.Get("/api/quiz/next", quizH.Next)
+	r.Get("/api/quiz/stats", quizH.Stats)
+
+	// Only id1 (already introduced) should be returned — id2 is new and the cap is reached.
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.WordID != id1 {
+		t.Errorf("expected already-seen word id=%d when daily cap is reached, got id=%d", id1, card.WordID)
+	}
+
+	// Stats should reflect new_today=1 and max_new_per_day=1.
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	var stats map[string]int
+	decodeJSON(t, rec, &stats)
+	if stats["new_today"] != 1 {
+		t.Errorf("new_today: want 1, got %d", stats["new_today"])
+	}
+	if stats["max_new_per_day"] != 1 {
+		t.Errorf("max_new_per_day: want 1, got %d", stats["max_new_per_day"])
 	}
 }
 

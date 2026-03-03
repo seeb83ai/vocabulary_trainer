@@ -20,6 +20,7 @@ async function loadStats() {
     const stats = await apiFetch(statsUrl);
     setText('stats-due', stats.due_today);
     setText('stats-total', stats.total);
+    setText('stats-new', `${stats.new_today} / ${stats.max_new_per_day}`);
   } catch (_) {}
 }
 

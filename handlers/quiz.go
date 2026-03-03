@@ -12,7 +12,8 @@ import (
 )
 
 type QuizHandler struct {
-	Store *db.Store
+	Store        *db.Store
+	MaxNewPerDay int
 }
 
 // Next returns the next card to study.
@@ -21,7 +22,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	if t := r.URL.Query().Get("tags"); t != "" {
 		tags = strings.Split(t, ",")
 	}
-	word, progress, err := h.Store.GetNextCard(r.Context(), tags)
+	word, progress, err := h.Store.GetNextCard(r.Context(), tags, h.MaxNewPerDay)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -190,10 +191,15 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	if t := r.URL.Query().Get("tags"); t != "" {
 		tags = strings.Split(t, ",")
 	}
-	due, total, err := h.Store.GetStats(r.Context(), tags)
+	due, total, newToday, err := h.Store.GetStats(r.Context(), tags)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"due_today": due, "total": total})
+	writeJSON(w, http.StatusOK, map[string]int{
+		"due_today":       due,
+		"total":           total,
+		"new_today":       newToday,
+		"max_new_per_day": h.MaxNewPerDay,
+	})
 }

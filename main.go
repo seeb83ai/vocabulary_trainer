@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
@@ -69,8 +70,16 @@ func main() {
 		log.Printf("DeepL translation enabled: target=%s", strings.ToUpper(lang))
 	}
 
+	maxNewWords := 5
+	if v := os.Getenv("MAX_NEW_WORDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			maxNewWords = n
+		}
+	}
+	log.Printf("Daily new-word cap: %d (set MAX_NEW_WORDS to change)", maxNewWords)
+
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
-	quizH := &handlers.QuizHandler{Store: store}
+	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 
 	r := chi.NewRouter()
