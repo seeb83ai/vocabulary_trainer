@@ -39,6 +39,15 @@ func Open(path string) (*Store, error) {
 		if !strings.Contains(err.Error(), "duplicate column name") {
 			return nil, fmt.Errorf("add first_seen_date column: %w", err)
 		}
+	} else {
+		// Column was just added — backfill: mark already-tested words as seen yesterday
+		// so they are not treated as "new" by the daily new-word cap.
+		if _, err := db.Exec(`UPDATE sm2_progress SET first_seen_date = DATE('now', '-1 day') WHERE total_attempts > 0`); err != nil {
+			return nil, fmt.Errorf("backfill first_seen_date: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_sm2_first_seen ON sm2_progress(first_seen_date)`); err != nil {
+		return nil, fmt.Errorf("create first_seen index: %w", err)
 	}
 	return &Store{db: db}, nil
 }

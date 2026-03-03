@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS sm2_progress (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sm2_due ON sm2_progress(due_date);
-CREATE INDEX IF NOT EXISTS idx_sm2_first_seen ON sm2_progress(first_seen_date);
 CREATE INDEX IF NOT EXISTS idx_words_text_lang ON words(text, language);
 CREATE INDEX IF NOT EXISTS idx_translations_zh ON translations(zh_word_id);
 
