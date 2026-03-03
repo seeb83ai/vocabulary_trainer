@@ -8,6 +8,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - N:N word relationships — the same English or Chinese word can be shared across entries
 - Three quiz modes chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
+- **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
 - **Confusion tracking** — if your wrong answer is a valid translation of a *different* known word, it is recorded as a confusion pair (works in all quiz modes); a yellow hint box shows immediately on the result screen, and the full history is visible on the `/mismatches` page
@@ -65,6 +66,18 @@ AUTH_PASSWORD=yourpassword
 ```
 
 When enabled, all pages and API endpoints require a valid session. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours. The session secret is generated randomly at startup, so all sessions are invalidated when the server restarts.
+
+## Daily new-word cap
+
+To avoid being overwhelmed when you have a large vocabulary list, the trainer limits how many brand-new words are introduced each day:
+
+```bash
+MAX_NEW_WORDS=5   # default; set to 0 to disable new words entirely
+```
+
+A *new word* is one that has never appeared as a quiz card before (tracked by a `first_seen_date` column in the database). Once the daily cap is reached, only cards you have already seen at least once will be served — reviews and retry cards are always available regardless of the cap. The counter resets at midnight (server-local date).
+
+The training page stats bar shows **New today: X / Y** so you can see how many new words you have left for the day.
 
 ## Auto-translate (DeepL)
 
