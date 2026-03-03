@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS sm2_progress (
 
 CREATE INDEX IF NOT EXISTS idx_sm2_due ON sm2_progress(due_date);
 CREATE INDEX IF NOT EXISTS idx_words_text_lang ON words(text, language);
+CREATE INDEX IF NOT EXISTS idx_translations_zh ON translations(zh_word_id);
 
 -- Tracks wrong answers that matched a different known vocabulary word.
 -- zh_word_id: the word being quizzed (always a zh word)
@@ -53,3 +54,5 @@ CREATE TABLE IF NOT EXISTS word_tags (
   tag_id  INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
   PRIMARY KEY (word_id, tag_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_word_tags_word ON word_tags(word_id);
