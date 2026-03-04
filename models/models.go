@@ -108,3 +108,25 @@ type WordListResponse struct {
 	Page    int          `json:"page"`
 	PerPage int          `json:"per_page"`
 }
+
+type DailyStat struct {
+	Date          string
+	Attempts      int
+	Mistakes      int
+	WordsKnown    int
+	NewWords      int
+	CorrectStreak int
+}
+
+type DailyStatsResponse struct {
+	Days []DailyStatEntry `json:"days"`
+}
+
+type DailyStatEntry struct {
+	Date          string `json:"date"`
+	Attempts      int    `json:"attempts"`
+	Mistakes      int    `json:"mistakes"`
+	WordsKnown    int    `json:"words_known"`
+	NewWords      int    `json:"new_words"`
+	CorrectStreak int    `json:"correct_streak"`
+}
