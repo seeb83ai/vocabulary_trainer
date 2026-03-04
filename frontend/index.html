@@ -10,7 +10,7 @@
 
   <!-- Navigation -->
   <nav class="bg-white shadow-sm border-b border-gray-200">
-    <div class="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="max-w-2xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
       <div class="flex gap-4 items-center">
         <a href="/" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5">Train</a>
@@ -24,9 +24,9 @@
   <!-- Stats bar -->
   <div class="bg-blue-50 border-b border-blue-100">
     <div class="max-w-2xl mx-auto px-4 py-2 flex gap-6 text-sm text-blue-700">
-      <span>Due today: <strong id="stats-due">—</strong></span>
-      <span>Total words: <strong id="stats-total">—</strong></span>
-      <span>New today: <strong id="stats-new">—</strong></span>
+      <span class="flex flex-col sm:flex-row sm:gap-1"><span>Due today:</span> <strong id="stats-due">—</strong></span>
+      <span class="flex flex-col sm:flex-row sm:gap-1"><span>Total words:</span> <strong id="stats-total">—</strong></span>
+      <span class="flex flex-col sm:flex-row sm:gap-1"><span>New today:</span> <strong id="stats-new">—</strong></span>
     </div>
   </div>
 
