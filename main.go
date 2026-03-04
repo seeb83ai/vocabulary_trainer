@@ -107,6 +107,7 @@ func main() {
 				r.Put("/", wordsH.Update)
 				r.Delete("/", wordsH.Delete)
 				r.Post("/translations", wordsH.AddTranslation)
+				r.Post("/review", wordsH.MarkReview)
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)

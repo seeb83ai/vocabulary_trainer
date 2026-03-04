@@ -95,6 +95,17 @@ CREATE INDEX IF NOT EXISTS idx_word_tags_word ON word_tags(word_id);
 			return nil
 		},
 	},
+	{
+		version: 2,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`ALTER TABLE words ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0`); err != nil {
+				if !strings.Contains(err.Error(), "duplicate column name") {
+					return fmt.Errorf("add needs_review column: %w", err)
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // Migrate runs all pending migrations on the given database.

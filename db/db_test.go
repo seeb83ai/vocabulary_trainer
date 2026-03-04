@@ -940,3 +940,76 @@ func TestDeleteWord_CascadesToConfusionPairs(t *testing.T) {
 		t.Errorf("confusion_pairs should be cascade-deleted, got %d rows", len(items))
 	}
 }
+
+// ── MarkWordForReview ─────────────────────────────────────────────────────────
+
+func TestMarkWordForReview_SetsFlag(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	if err := s.MarkWordForReview(context.Background(), id); err != nil {
+		t.Fatalf("MarkWordForReview: %v", err)
+	}
+
+	wd, err := s.GetWordByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wd.NeedsReview {
+		t.Error("expected NeedsReview = true after marking")
+	}
+}
+
+func TestMarkWordForReview_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	err := s.MarkWordForReview(context.Background(), 9999)
+	if err == nil {
+		t.Error("expected error for missing word, got nil")
+	}
+}
+
+func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	if err := s.MarkWordForReview(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+	}); err != nil {
+		t.Fatalf("UpdateWord: %v", err)
+	}
+
+	wd, err := s.GetWordByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wd.NeedsReview {
+		t.Error("expected NeedsReview = false after update")
+	}
+}
+
+func TestGetWords_ReviewOnlyFilter(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+
+	if err := s.MarkWordForReview(context.Background(), id1); err != nil {
+		t.Fatal(err)
+	}
+
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "desc", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("expected 1 review word, got %d", total)
+	}
+	if len(words) != 1 || words[0].ID != id1 {
+		t.Errorf("expected word id %d in review filter result", id1)
+	}
+}
