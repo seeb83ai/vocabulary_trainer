@@ -105,7 +105,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		       COALESCE(p.interval_days, 1),
 		       COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
 		       COALESCE(p.due_date, CURRENT_TIMESTAMP),
-		       w.needs_review,
+		       COALESCE(w.needs_review, 0),
 		       COUNT(*) OVER() AS total
 		FROM words w
 		LEFT JOIN sm2_progress p ON p.word_id = w.id
@@ -282,7 +282,7 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 		        COALESCE(p.interval_days, 1),
 		        COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
 		        COALESCE(p.due_date, CURRENT_TIMESTAMP),
-		        w.needs_review
+		        COALESCE(w.needs_review, 0)
 		 FROM words w
 		 LEFT JOIN sm2_progress p ON p.word_id = w.id
 		 WHERE w.id = ? AND w.language = 'zh'`, id).
