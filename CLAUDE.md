@@ -56,10 +56,14 @@ Update `README.md` whenever:
 
 ## Schema changes
 
-The schema is applied via `CREATE TABLE IF NOT EXISTS` on every startup (`db/schema.sql`).
-**Only additive changes are allowed** — new columns (with DEFAULT) or new tables.
-Never rename or drop columns/tables. Document any addition with a comment in `schema.sql`.
-Do not introduce a migration framework without explicit instruction.
+The schema is managed by a version-based migration system in `db/migrate.go`.
+A `schema_version` table tracks the current version. Each migration has a version number,
+optional SQL, and an optional Go function. Migrations run in order on startup.
+
+To add a schema change, append a new `migration` entry to the `migrations` slice in
+`db/migrate.go` with the next version number. Use `CREATE ... IF NOT EXISTS` and
+`ALTER TABLE ... ADD COLUMN` with duplicate-column guards for idempotency.
+Never rename or drop columns/tables.
 
 ## Off-limits — do not change without explicit instruction
 
@@ -74,7 +78,7 @@ Do not introduce a migration framework without explicit instruction.
   Rules applied in order: lowercase + trim whitespace → strip trailing sentence punctuation (`。.！!？?`) →
   strip optional parenthesised segments → split on `/` for alternatives.
 - Static frontend files are embedded in the binary via `//go:embed frontend`. No separate build step.
-- The import tool (`cmd/import`) is standalone — it includes its own `applySchema` call and can run
+- The import tools (`cmd/import`, `cmd/import-hsk`) call `db.Migrate()` for schema setup and can run
   independently of the main server.
 
 ## File map
@@ -82,7 +86,7 @@ Do not introduce a migration framework without explicit instruction.
 | Path | Purpose |
 |---|---|
 | `main.go` | Router setup, embed directive, `DB_PATH` env var |
-| `db/schema.sql` | SQLite schema (auto-applied on startup, additive only) |
+| `db/migrate.go` | Version-based schema migrations (`Migrate()`, `migrations` slice) |
 | `db/db.go` | All SQL — Store methods, `parseDateTime`, `upsertWord`, `initSM2` |
 | `handlers/words.go` | CRUD + `AddTranslation` handler, shared `writeJSON`/`writeError`/`parseID` |
 | `handlers/quiz.go` | `Next`, `Answer`, `Stats` handlers |

@@ -27,6 +27,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	vocabdb "vocabulary_trainer/db"
 
 	_ "modernc.org/sqlite"
 )
@@ -72,8 +73,8 @@ func main() {
 	defer db.Close()
 	db.SetMaxOpenConns(1)
 
-	if err := applySchema(db); err != nil {
-		log.Fatalf("schema: %v", err)
+	if err := vocabdb.Migrate(db); err != nil {
+		log.Fatalf("migrate: %v", err)
 	}
 
 	var totalInserted, totalSkipped, totalFailed int
@@ -489,42 +490,3 @@ func assignTag(db *sql.DB, zhID int64, tagName string) error {
 	return nil
 }
 
-// applySchema creates all required tables if they do not yet exist.
-func applySchema(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS words (
-			id         INTEGER PRIMARY KEY AUTOINCREMENT,
-			text       TEXT    NOT NULL,
-			language   TEXT    NOT NULL CHECK(language IN ('en', 'zh')),
-			pinyin     TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(text, language)
-		);
-		CREATE TABLE IF NOT EXISTS translations (
-			en_word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
-			zh_word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
-			PRIMARY KEY (en_word_id, zh_word_id)
-		);
-		CREATE TABLE IF NOT EXISTS sm2_progress (
-			word_id        INTEGER PRIMARY KEY REFERENCES words(id) ON DELETE CASCADE,
-			repetitions    INTEGER NOT NULL DEFAULT 0,
-			easiness       REAL    NOT NULL DEFAULT 2.5,
-			interval_days  INTEGER NOT NULL DEFAULT 1,
-			due_date       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			total_correct  INTEGER NOT NULL DEFAULT 0,
-			total_attempts INTEGER NOT NULL DEFAULT 0
-		);
-		CREATE INDEX IF NOT EXISTS idx_sm2_due        ON sm2_progress(due_date);
-		CREATE INDEX IF NOT EXISTS idx_words_text_lang ON words(text, language);
-		CREATE TABLE IF NOT EXISTS tags (
-			id   INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL UNIQUE
-		);
-		CREATE TABLE IF NOT EXISTS word_tags (
-			word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
-			tag_id  INTEGER NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
-			PRIMARY KEY (word_id, tag_id)
-		);
-	`)
-	return err
-}

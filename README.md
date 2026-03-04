@@ -248,7 +248,7 @@ The server listens on `:8080` and stores the database at `data/vocab.db`.
 vocabulary_trainer/
 ├── main.go                  # Server entry point, router, embedded static files
 ├── db/
-│   ├── schema.sql           # SQLite schema (auto-applied on startup)
+│   ├── migrate.go           # Version-based schema migrations
 │   └── db.go                # Data access layer (Store)
 ├── handlers/
 │   ├── quiz.go              # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
