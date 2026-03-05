@@ -126,6 +126,25 @@ func expandVariants(a string) []string {
 	return out
 }
 
+// SelectProgressiveMode picks a quiz mode based on the word's total correct count.
+// This implements the progressive training ladder:
+//   - 0 correct → en_to_zh (easiest)
+//   - 1-2 correct → zh_pinyin_to_en
+//   - 3-4 correct → zh_to_en
+//   - 5+ correct → random
+func SelectProgressiveMode(totalCorrect int) string {
+	switch {
+	case totalCorrect < 1:
+		return models.ModeEnToZh
+	case totalCorrect < 3:
+		return models.ModeZhPinyinToEn
+	case totalCorrect < 5:
+		return models.ModeZhToEn
+	default:
+		return SelectMode()
+	}
+}
+
 // SelectMode randomly picks one of the three quiz modes with equal probability.
 func SelectMode() string {
 	modes := []string{

@@ -31,6 +31,7 @@ async function loadNextCard() {
   hide('error-state');
   hide('add-translation-btn');
   hide('result-play-btn');
+  hide('new-word-area');
   $('answer-input').value = '';
 
   try {
@@ -49,6 +50,19 @@ async function loadNextCard() {
       show('error-state');
       setText('error-msg', e.message);
     }
+    return;
+  }
+
+  // New word introduction (progressive mode)
+  if (currentCard.mode === 'new_word') {
+    hide('card-area');
+    show('new-word-area');
+    setText('new-word-zh', currentCard.prompt);
+    setText('new-word-pinyin', currentCard.pinyin || '');
+    setText('new-word-en', (currentCard.en_texts || []).join(' · '));
+    $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+    if (!currentCard.pinyin) hide('new-word-pinyin');
+    await loadStats();
     return;
   }
 
@@ -233,5 +247,34 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('answer-form').addEventListener('submit', submitAnswer);
   $('next-btn').addEventListener('click', loadNextCard);
+
+  // Progressive mode: new word buttons
+  $('new-word-skip-btn').addEventListener('click', async () => {
+    if (!currentCard) return;
+    try {
+      await apiFetch('/api/quiz/skip', {
+        method: 'POST',
+        body: JSON.stringify({ word_id: currentCard.word_id }),
+      });
+    } catch (err) {
+      alert('Error: ' + err.message);
+      return;
+    }
+    loadNextCard();
+  });
+  $('new-word-got-it-btn').addEventListener('click', async () => {
+    if (!currentCard) return;
+    try {
+      await apiFetch('/api/quiz/acknowledge', {
+        method: 'POST',
+        body: JSON.stringify({ word_id: currentCard.word_id }),
+      });
+    } catch (err) {
+      alert('Error: ' + err.message);
+      return;
+    }
+    loadNextCard();
+  });
+
   loadNextCard();
 });

@@ -34,6 +34,7 @@
   <!-- Mode selector -->
   <div class="bg-white border-b border-gray-200">
     <div class="max-w-2xl mx-auto px-4 py-2 flex gap-2 flex-wrap">
+      <button data-mode="progressive"    class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">Progressive</button>
       <button data-mode="random"         class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">Random</button>
       <button data-mode="en_to_zh"       class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">EN → ZH</button>
       <button data-mode="zh_to_en"       class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">ZH → EN</button>
@@ -96,6 +97,27 @@
               Submit
             </button>
           </form>
+        </div>
+      </div>
+
+      <!-- New word introduction area (progressive mode) -->
+      <div id="new-word-area" class="hidden">
+        <div class="bg-white rounded-2xl shadow p-8 text-center">
+          <div class="text-sm font-medium text-emerald-600 uppercase tracking-wider mb-6">New Word</div>
+          <div class="flex items-center justify-center gap-3 mb-3">
+            <div id="new-word-zh" class="text-4xl font-bold text-gray-800"></div>
+            <button id="new-word-play-btn" type="button" class="text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+          </div>
+          <div id="new-word-pinyin" class="text-xl text-gray-500 mb-4"></div>
+          <div id="new-word-en" class="text-lg text-gray-700 mb-8"></div>
+          <div class="flex gap-3">
+            <button id="new-word-skip-btn" class="flex-1 border border-gray-300 hover:border-gray-400 text-gray-600 font-semibold py-3 rounded-xl text-lg transition">
+              Skip (7 days)
+            </button>
+            <button id="new-word-got-it-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition">
+              Got it
+            </button>
+          </div>
         </div>
       </div>
 

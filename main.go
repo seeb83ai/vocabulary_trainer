@@ -98,6 +98,8 @@ func main() {
 		}
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
+		r.Post("/quiz/skip", quizH.Skip)
+		r.Post("/quiz/acknowledge", quizH.Acknowledge)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Route("/words", func(r chi.Router) {

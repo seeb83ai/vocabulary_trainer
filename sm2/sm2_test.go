@@ -281,6 +281,52 @@ func TestSelectMode_AllModesReachable(t *testing.T) {
 	}
 }
 
+// ── SelectProgressiveMode ─────────────────────────────────────────────────────
+
+func TestSelectProgressiveMode_ZeroCorrect(t *testing.T) {
+	if m := SelectProgressiveMode(0); m != models.ModeEnToZh {
+		t.Errorf("0 correct: want en_to_zh, got %s", m)
+	}
+}
+
+func TestSelectProgressiveMode_OneCorrect(t *testing.T) {
+	if m := SelectProgressiveMode(1); m != models.ModeZhPinyinToEn {
+		t.Errorf("1 correct: want zh_pinyin_to_en, got %s", m)
+	}
+}
+
+func TestSelectProgressiveMode_TwoCorrect(t *testing.T) {
+	if m := SelectProgressiveMode(2); m != models.ModeZhPinyinToEn {
+		t.Errorf("2 correct: want zh_pinyin_to_en, got %s", m)
+	}
+}
+
+func TestSelectProgressiveMode_ThreeCorrect(t *testing.T) {
+	if m := SelectProgressiveMode(3); m != models.ModeZhToEn {
+		t.Errorf("3 correct: want zh_to_en, got %s", m)
+	}
+}
+
+func TestSelectProgressiveMode_FourCorrect(t *testing.T) {
+	if m := SelectProgressiveMode(4); m != models.ModeZhToEn {
+		t.Errorf("4 correct: want zh_to_en, got %s", m)
+	}
+}
+
+func TestSelectProgressiveMode_FiveCorrect(t *testing.T) {
+	validModes := map[string]bool{
+		models.ModeEnToZh:       true,
+		models.ModeZhToEn:       true,
+		models.ModeZhPinyinToEn: true,
+	}
+	for i := 0; i < 50; i++ {
+		m := SelectProgressiveMode(5)
+		if !validModes[m] {
+			t.Errorf("5 correct: got invalid mode %s", m)
+		}
+	}
+}
+
 // ── expandVariants (internal, tested via CheckAnswer above, but worth direct tests) ──
 
 func TestExpandVariants_NoDuplicates(t *testing.T) {

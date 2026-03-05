@@ -7,6 +7,8 @@ const (
 	ModeEnToZh       = "en_to_zh"
 	ModeZhToEn       = "zh_to_en"
 	ModeZhPinyinToEn = "zh_pinyin_to_en"
+	ModeProgressive  = "progressive"
+	ModeNewWord      = "new_word"
 )
 
 // DB-layer structs
@@ -36,6 +38,7 @@ type QuizCard struct {
 	Mode         string    `json:"mode"`
 	Prompt       string    `json:"prompt"`
 	Pinyin       *string   `json:"pinyin"`
+	EnTexts      []string  `json:"en_texts,omitempty"`
 	DueDate      time.Time `json:"due_date"`
 	IntervalDays int       `json:"interval_days"`
 }
