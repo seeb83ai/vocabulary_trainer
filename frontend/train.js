@@ -73,6 +73,14 @@ async function loadNextCard() {
     hide('pinyin-hint');
   }
 
+  if (currentCard.mode === 'en_to_zh' && currentCard.en_texts && currentCard.en_texts.length > 1) {
+    const others = currentCard.en_texts.filter(t => t !== currentCard.prompt);
+    $('translations-hint').innerHTML = 'Also: ' + others.map(escHtml).join(' · ');
+    show('translations-hint');
+  } else {
+    hide('translations-hint');
+  }
+
   $('answer-input').focus();
   await loadStats();
 }
