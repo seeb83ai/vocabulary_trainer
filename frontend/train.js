@@ -12,6 +12,17 @@ function applyModeButtons() {
       ? 'mode-btn px-3 py-1 rounded-full text-sm font-medium transition bg-blue-600 text-white'
       : 'mode-btn px-3 py-1 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
   });
+  // Mobile: update the single visible label from the active desktop button's text
+  const activeBtn = document.querySelector(`.mode-btn[data-mode="${selectedMode}"]`);
+  const mobileLabel = document.getElementById('mode-mobile-label');
+  if (mobileLabel && activeBtn) mobileLabel.textContent = activeBtn.textContent;
+  // Overlay: apply same active/inactive styling
+  document.querySelectorAll('.overlay-mode-btn').forEach(btn => {
+    const active = btn.dataset.mode === selectedMode;
+    btn.className = active
+      ? 'overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition bg-blue-600 text-white'
+      : 'overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
+  });
 }
 
 async function loadStats() {
@@ -191,16 +202,19 @@ async function loadTrainTags() {
     allTags = await apiFetch('/api/tags');
   } catch (_) {}
   const bar = $('tag-filter-bar');
-  const container = bar.querySelector('.flex');
-  container.querySelectorAll('.tag-pill').forEach(p => p.remove());
+  const desktopContainer = $('tag-chips-desktop');
+  desktopContainer.querySelectorAll('.tag-pill').forEach(p => p.remove());
   if (allTags.length === 0) {
     bar.classList.add('hidden');
+    $('overlay-tags-section').classList.add('hidden');
     return;
   }
   bar.classList.remove('hidden');
   // Remove stale tags from selection
   selectedTags = selectedTags.filter(t => allTags.includes(t));
   localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+
+  // Desktop: render all tag chips
   for (const tag of allTags) {
     const pill = document.createElement('button');
     const active = selectedTags.includes(tag);
@@ -216,8 +230,47 @@ async function loadTrainTags() {
       loadTrainTags();
       loadNextCard();
     });
-    container.appendChild(pill);
+    desktopContainer.appendChild(pill);
   }
+
+  // Mobile summary: show selected tags, or "All" if none selected
+  const mobileSummary = $('tag-mobile-summary');
+  mobileSummary.innerHTML = '';
+  if (selectedTags.length === 0) {
+    const all = document.createElement('span');
+    all.className = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 shrink-0';
+    all.textContent = 'All';
+    mobileSummary.appendChild(all);
+  } else {
+    for (const tag of selectedTags) {
+      const chip = document.createElement('span');
+      chip.className = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-600 text-white shrink-0';
+      chip.textContent = tag;
+      mobileSummary.appendChild(chip);
+    }
+  }
+
+  // Overlay: render all tag chips with toggle behaviour
+  const overlayTagChips = $('overlay-tag-chips');
+  overlayTagChips.innerHTML = '';
+  for (const tag of allTags) {
+    const pill = document.createElement('button');
+    const active = selectedTags.includes(tag);
+    pill.className = `overlay-tag-btn px-3 py-1.5 rounded-full text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    pill.textContent = tag;
+    pill.addEventListener('click', () => {
+      if (selectedTags.includes(tag)) {
+        selectedTags = selectedTags.filter(t => t !== tag);
+      } else {
+        selectedTags.push(tag);
+      }
+      localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+      loadTrainTags();
+      loadNextCard();
+    });
+    overlayTagChips.appendChild(pill);
+  }
+  $('overlay-tags-section').classList.remove('hidden');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -233,5 +286,29 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('answer-form').addEventListener('submit', submitAnswer);
   $('next-btn').addEventListener('click', loadNextCard);
+
+  // Mobile filter overlay
+  function openFilterOverlay() {
+    $('filter-overlay').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeFilterOverlay() {
+    $('filter-overlay').classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+  $('open-filter-overlay').addEventListener('click', openFilterOverlay);
+  $('open-filter-overlay-tags').addEventListener('click', openFilterOverlay);
+  $('filter-overlay-close').addEventListener('click', closeFilterOverlay);
+  $('filter-overlay-backdrop').addEventListener('click', closeFilterOverlay);
+  document.querySelectorAll('.overlay-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedMode = btn.dataset.mode;
+      localStorage.setItem('quizMode', selectedMode);
+      applyModeButtons();
+      closeFilterOverlay();
+      loadNextCard();
+    });
+  });
+
   loadNextCard();
 });
