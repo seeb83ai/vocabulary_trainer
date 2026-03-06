@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stats — Vocab Trainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
+      <div class="flex gap-4 items-center">
+        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium">Train</a>
+        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium">Vocabulary</a>
+        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium">Mismatches</a>
+        <a href="/stats" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5">Stats</a>
+        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition">Sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-8">
+
+    <!-- Chart -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-4">Training History</h2>
+      <div id="chart-empty" class="hidden text-center text-gray-400 py-12">No training data yet. Start a quiz to see your progress!</div>
+      <canvas id="stats-chart" height="100"></canvas>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-4">Last 14 Days</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead class="text-gray-500 border-b">
+            <tr>
+              <th class="py-2 pr-4">Date</th>
+              <th class="py-2 pr-4 text-right">Attempts</th>
+              <th class="py-2 pr-4 text-right">Mistakes</th>
+              <th class="py-2 pr-4 text-right">Accuracy</th>
+              <th class="py-2 pr-4 text-right">Words Known</th>
+              <th class="py-2 pr-4 text-right">New Words</th>
+              <th class="py-2 text-right">Best Streak</th>
+            </tr>
+          </thead>
+          <tbody id="stats-table-body">
+            <tr><td colspan="7" class="py-8 text-center text-gray-400">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="app.js"></script>
+  <script src="stats.js"></script>
+</body>
+</html>

@@ -1013,3 +1013,110 @@ func TestGetWords_ReviewOnlyFilter(t *testing.T) {
 		t.Errorf("expected word id %d in review filter result", id1)
 	}
 }
+
+// ── DailyStats ────────────────────────────────────────────────────────────────
+
+func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "猫", "māo", []string{"cat"})
+
+	// Mark the word as seen so words_known > 0
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_date = date('now')`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RecordDailyStat(ctx, true); err != nil {
+		t.Fatalf("RecordDailyStat(correct): %v", err)
+	}
+	if err := s.RecordDailyStat(ctx, true); err != nil {
+		t.Fatalf("RecordDailyStat(correct): %v", err)
+	}
+	if err := s.RecordDailyStat(ctx, false); err != nil {
+		t.Fatalf("RecordDailyStat(wrong): %v", err)
+	}
+
+	stats, err := s.GetDailyStatsHistory(ctx)
+	if err != nil {
+		t.Fatalf("GetDailyStatsHistory: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(stats))
+	}
+	d := stats[0]
+	if d.Attempts != 3 {
+		t.Errorf("attempts: got %d, want 3", d.Attempts)
+	}
+	if d.Mistakes != 1 {
+		t.Errorf("mistakes: got %d, want 1", d.Mistakes)
+	}
+	if d.WordsKnown != 1 {
+		t.Errorf("words_known: got %d, want 1", d.WordsKnown)
+	}
+	if d.NewWords != 1 {
+		t.Errorf("new_words: got %d, want 1", d.NewWords)
+	}
+	if d.CorrectStreak != 2 {
+		t.Errorf("correct_streak: got %d, want 2", d.CorrectStreak)
+	}
+}
+
+func TestRecordDailyStat_StreakResets(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// wrong, correct, correct, wrong, correct
+	for _, correct := range []bool{false, true, true, false, true} {
+		if err := s.RecordDailyStat(ctx, correct); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	stats, err := s.GetDailyStatsHistory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats[0].CorrectStreak != 2 {
+		t.Errorf("correct_streak: got %d, want 2 (max streak of the day)", stats[0].CorrectStreak)
+	}
+}
+
+func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Insert rows for multiple dates manually
+	for _, d := range []string{"2026-02-10", "2026-02-12", "2026-02-11"} {
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO daily_stats (date, attempts, mistakes, words_known, new_words, correct_streak, current_streak)
+			 VALUES (?, 10, 2, 5, 1, 3, 0)`, d); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	stats, err := s.GetDailyStatsHistory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(stats))
+	}
+	if stats[0].Date != "2026-02-10" || stats[1].Date != "2026-02-11" || stats[2].Date != "2026-02-12" {
+		t.Errorf("wrong order: %s, %s, %s", stats[0].Date, stats[1].Date, stats[2].Date)
+	}
+}
+
+func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
+	s := openTestDB(t)
+	stats, err := s.GetDailyStatsHistory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats == nil {
+		t.Error("expected non-nil empty slice")
+	}
+	if len(stats) != 0 {
+		t.Errorf("expected 0 rows, got %d", len(stats))
+	}
+}

@@ -99,6 +99,7 @@ func main() {
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
 		r.Get("/quiz/stats", quizH.Stats)
+		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Route("/words", func(r chi.Router) {
 			r.Get("/", wordsH.List)
 			r.Post("/", wordsH.Create)
@@ -135,6 +136,9 @@ func main() {
 	})
 	r.Get("/mismatches", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "mismatches.html")
+	})
+	r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "stats.html")
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "login.html")

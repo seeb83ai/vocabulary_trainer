@@ -159,6 +159,8 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_ = h.Store.RecordDailyStat(r.Context(), correct)
+
 	resp := models.AnswerResponse{
 		Correct:        correct,
 		CorrectAnswers: correctTexts,
@@ -182,6 +184,27 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// DailyStats returns the full daily stats history.
+func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.Store.GetDailyStatsHistory(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp := models.DailyStatsResponse{Days: make([]models.DailyStatEntry, len(stats))}
+	for i, s := range stats {
+		resp.Days[i] = models.DailyStatEntry{
+			Date:          s.Date,
+			Attempts:      s.Attempts,
+			Mistakes:      s.Mistakes,
+			WordsKnown:    s.WordsKnown,
+			NewWords:      s.NewWords,
+			CorrectStreak: s.CorrectStreak,
+		}
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 

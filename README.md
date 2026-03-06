@@ -11,6 +11,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
+- **Training stats** — daily progress tracking: attempts, mistakes, accuracy, words known, new words learned, and best correct streak; view a Chart.js bar/line chart of the full history and a detailed table of the last 14 days on the `/stats` page
 - **Confusion tracking** — if your wrong answer is a valid translation of a *different* known word, it is recorded as a confusion pair (works in all quiz modes); a yellow hint box shows immediately on the result screen, and the full history is visible on the `/mismatches` page
 - 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS, built into the binary), falls back silently to the browser's Web Speech API
 - **Tags** — assign tags to vocabulary words (e.g. "HSK1", "food", "travel"); filter by tag on both the vocabulary list and training page (OR logic when multiple tags selected); tags are created on-the-fly via an autocomplete input and cleaned up automatically when no longer used
@@ -268,10 +269,12 @@ vocabulary_trainer/
     ├── index.html           # Training page
     ├── vocab.html           # Vocabulary management page
     ├── mismatches.html      # Confusion pairs page
+    ├── stats.html           # Training stats page
     ├── app.js               # Shared fetch utilities and DOM helpers
     ├── train.js             # Training page logic
     ├── vocab.js             # Vocabulary management logic
-    └── mismatches.js        # Confusion pairs page logic
+    ├── mismatches.js        # Confusion pairs page logic
+    └── stats.js             # Training stats page logic
 ```
 
 ## API
@@ -281,6 +284,7 @@ vocabulary_trainer/
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params) |
 | `POST` | `/api/quiz/answer` | Submit an answer |
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
+| `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |
 | `POST` | `/api/words` | Create a vocabulary entry |
 | `GET` | `/api/words/{id}` | Get a single word with translations |

@@ -9,7 +9,7 @@ import (
 // migration describes a single schema migration step.
 type migration struct {
 	version int
-	sql     string            // executed first (may be empty)
+	sql     string              // executed first (may be empty)
 	fn      func(*sql.DB) error // executed after sql (may be nil)
 }
 
@@ -97,6 +97,20 @@ CREATE INDEX IF NOT EXISTS idx_word_tags_word ON word_tags(word_id);
 	},
 	{
 		version: 2,
+		sql: `
+CREATE TABLE IF NOT EXISTS daily_stats (
+  date            TEXT PRIMARY KEY,
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  mistakes        INTEGER NOT NULL DEFAULT 0,
+  words_known     INTEGER NOT NULL DEFAULT 0,
+  new_words       INTEGER NOT NULL DEFAULT 0,
+  correct_streak  INTEGER NOT NULL DEFAULT 0,
+  current_streak  INTEGER NOT NULL DEFAULT 0
+);
+`,
+	},
+	{
+		version: 3,
 		fn: func(db *sql.DB) error {
 			var count int
 			if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('words') WHERE name = 'needs_review'`).Scan(&count); err != nil {

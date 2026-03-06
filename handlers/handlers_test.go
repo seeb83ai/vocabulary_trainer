@@ -37,6 +37,7 @@ func newRouter(s *db.Store) http.Handler {
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/answer", quizH.Answer)
 	r.Get("/api/quiz/stats", quizH.Stats)
+	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
@@ -894,5 +895,52 @@ func TestWordList_ReviewFilter(t *testing.T) {
 	}
 	if len(resp.Words) != 1 || resp.Words[0].ID != id1 {
 		t.Errorf("review filter: expected word %d, got %v", id1, resp.Words)
+	}
+}
+
+// ── GET /api/quiz/daily-stats ────────────────────────────────────────────────
+
+func TestDailyStats_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/quiz/daily-stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DailyStatsResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Days) != 0 {
+		t.Errorf("expected empty days, got %d", len(resp.Days))
+	}
+}
+
+func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "猫", "māo", []string{"cat"})
+	r := newRouter(s)
+
+	// Submit an answer to trigger daily stat recording
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": 1,
+		"mode":    "zh_to_en",
+		"answer":  "cat",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/daily-stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DailyStatsResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Days) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(resp.Days))
+	}
+	if resp.Days[0].Attempts != 1 {
+		t.Errorf("attempts: want 1, got %d", resp.Days[0].Attempts)
+	}
+	if resp.Days[0].Mistakes != 0 {
+		t.Errorf("mistakes: want 0, got %d", resp.Days[0].Mistakes)
 	}
 }
