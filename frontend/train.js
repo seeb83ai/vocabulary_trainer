@@ -43,6 +43,11 @@ async function loadNextCard() {
   hide('add-translation-btn');
   hide('result-play-btn');
   $('answer-input').value = '';
+  const reviewBtn = $('needs-review-btn');
+  reviewBtn.textContent = 'Flag for Review';
+  reviewBtn.disabled = false;
+  reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
+  reviewBtn.onclick = null;
 
   try {
     const params = new URLSearchParams();
@@ -82,6 +87,14 @@ async function loadNextCard() {
     show('pinyin-hint');
   } else {
     hide('pinyin-hint');
+  }
+
+  if (currentCard.mode === 'en_to_zh' && currentCard.en_texts && currentCard.en_texts.length > 1) {
+    const others = currentCard.en_texts.filter(t => t !== currentCard.prompt);
+    $('translations-hint').innerHTML = others.map(escHtml).join(' · ');
+    show('translations-hint');
+  } else {
+    hide('translations-hint');
   }
 
   $('answer-input').focus();
@@ -187,6 +200,22 @@ async function submitAnswer(e) {
     setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
     setText('attempt-stats',
       `Correct: ${result.total_correct} / ${result.total_attempts}`);
+
+    const reviewBtn = $('needs-review-btn');
+    reviewBtn.textContent = 'Flag for Review';
+    reviewBtn.disabled = false;
+    reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
+    reviewBtn.onclick = async () => {
+      reviewBtn.disabled = true;
+      try {
+        await apiFetch(`/api/words/${currentCard.word_id}/review`, { method: 'POST' });
+        reviewBtn.textContent = '✓ Flagged';
+        reviewBtn.className = 'w-full mb-3 border border-orange-200 text-orange-400 font-medium py-2 rounded-xl text-sm';
+      } catch (err) {
+        reviewBtn.disabled = false;
+        alert('Could not flag word: ' + err.message);
+      }
+    };
 
     $('next-btn').focus();
     await loadStats();

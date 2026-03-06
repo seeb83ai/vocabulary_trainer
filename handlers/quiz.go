@@ -69,6 +69,9 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			card.Prompt = word.Text
 		} else {
 			card.Prompt = enWords[0].Text
+			for _, ew := range enWords {
+				card.EnTexts = append(card.EnTexts, ew.Text)
+			}
 		}
 	case models.ModeZhToEn:
 		card.Prompt = word.Text

@@ -36,6 +36,7 @@ type QuizCard struct {
 	Mode         string    `json:"mode"`
 	Prompt       string    `json:"prompt"`
 	Pinyin       *string   `json:"pinyin"`
+	EnTexts      []string  `json:"en_texts,omitempty"`
 	DueDate      time.Time `json:"due_date"`
 	IntervalDays int       `json:"interval_days"`
 }
@@ -86,6 +87,7 @@ type WordDetail struct {
 	TotalAttempts int       `json:"total_attempts"`
 	DueDate       time.Time `json:"due_date"`
 	Tags          []string  `json:"tags"`
+	NeedsReview   bool      `json:"needs_review"`
 }
 
 type ConfusionDetail struct {

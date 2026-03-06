@@ -10,6 +10,7 @@ let searchTimer = null;
 let allTags = [];
 let formTags = [];
 let selectedFilterTags = [];
+let reviewFilterActive = false;
 
 async function loadWords() {
   const params = new URLSearchParams({
@@ -23,6 +24,9 @@ async function loadWords() {
   }
   if (selectedFilterTags.length) {
     params.set('tags', selectedFilterTags.join(','));
+  }
+  if (reviewFilterActive) {
+    params.set('review', '1');
   }
   try {
     const data = await apiFetch(`/api/words?${params}`);
@@ -61,6 +65,7 @@ function renderTable(words) {
       <td class="py-3 px-4 text-lg font-medium">
         <span class="mr-1">${escHtml(word.zh_text)}</span>
         <button class="btn-play text-base text-gray-400 hover:text-blue-500 transition leading-none align-middle" data-id="${word.id}" data-zh="${escHtml(word.zh_text)}" title="Read aloud">🔊</button>
+        ${word.needs_review ? '<span class="inline-block bg-orange-100 text-orange-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">review</span>' : ''}
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4">
@@ -101,6 +106,19 @@ function openEditForm(word) {
   $('form-pinyin').value = word.pinyin || '';
   show('form-cancel-btn');
 
+  let notice = $('review-notice');
+  if (word.needs_review) {
+    if (!notice) {
+      notice = document.createElement('p');
+      notice.id = 'review-notice';
+      notice.className = 'text-sm text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2';
+      notice.textContent = 'This word is flagged for review — the flag will be cleared when you save.';
+      $('word-form').prepend(notice);
+    }
+  } else if (notice) {
+    notice.remove();
+  }
+
   const container = $('en-inputs-container');
   container.innerHTML = '';
   for (const t of (word.en_texts.length ? word.en_texts : [''])) {
@@ -125,6 +143,8 @@ function resetForm() {
   formTags = [];
   renderFormTags();
   $('form-tag-input').value = '';
+  const notice = $('review-notice');
+  if (notice) notice.remove();
 }
 
 function addEnInput(value = '') {
@@ -355,11 +375,27 @@ async function handleTranslate() {
   }
 }
 
+function updateReviewFilterBtn() {
+  const btn = $('review-filter-btn');
+  if (reviewFilterActive) {
+    btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-orange-400 bg-orange-50 text-orange-600';
+  } else {
+    btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
   loadTags();
   loadWords();
   initTranslateButton();
+
+  $('review-filter-btn').addEventListener('click', () => {
+    reviewFilterActive = !reviewFilterActive;
+    updateReviewFilterBtn();
+    currentPage = 1;
+    loadWords();
+  });
 
   $('word-form').addEventListener('submit', handleFormSubmit);
 
