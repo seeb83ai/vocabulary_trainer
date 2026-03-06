@@ -35,7 +35,8 @@ func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if t := r.URL.Query().Get("tags"); t != "" {
 		tags = strings.Split(t, ",")
 	}
-	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags)
+	reviewOnly := r.URL.Query().Get("review") == "1"
+	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags, reviewOnly)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -168,6 +169,23 @@ func (h *WordsHandler) AddTranslation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Store.AddTranslation(r.Context(), id, body.EnText); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "word not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *WordsHandler) MarkReview(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.Store.MarkWordForReview(r.Context(), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return

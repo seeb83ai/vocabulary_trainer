@@ -49,6 +49,7 @@ func newRouter(s *db.Store) http.Handler {
 			r.Put("/", wordsH.Update)
 			r.Delete("/", wordsH.Delete)
 			r.Post("/translations", wordsH.AddTranslation)
+			r.Post("/review", wordsH.MarkReview)
 		})
 	})
 	return r
@@ -1004,6 +1005,80 @@ func TestQuizAcknowledge_NotFound(t *testing.T) {
 	rec := do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": 9999})
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
+// ── POST /api/words/{id}/review ───────────────────────────────────────────────
+
+func TestMarkReview_SetsFlag(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", fmt.Sprintf("/api/words/%d/review", id), nil)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Confirm via GET /api/words/{id}
+	rec2 := do(t, r, "GET", fmt.Sprintf("/api/words/%d", id), nil)
+	var wd models.WordDetail
+	decodeJSON(t, rec2, &wd)
+	if !wd.NeedsReview {
+		t.Error("expected needs_review = true after POST /review")
+	}
+}
+
+func TestMarkReview_NotFound(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/words/9999/review", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestMarkReview_ClearedOnUpdate(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	do(t, r, "POST", fmt.Sprintf("/api/words/%d/review", id), nil)
+
+	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	var wd models.WordDetail
+	decodeJSON(t, rec, &wd)
+	if wd.NeedsReview {
+		t.Error("expected needs_review = false after PUT update")
+	}
+}
+
+func TestWordList_ReviewFilter(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	r := newRouter(s)
+
+	do(t, r, "POST", fmt.Sprintf("/api/words/%d/review", id1), nil)
+
+	rec := do(t, r, "GET", "/api/words/?review=1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.WordListResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 1 {
+		t.Errorf("review filter: want total=1, got %d", resp.Total)
+	}
+	if len(resp.Words) != 1 || resp.Words[0].ID != id1 {
+		t.Errorf("review filter: expected word %d, got %v", id1, resp.Words)
 	}
 }
 

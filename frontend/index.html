@@ -33,19 +33,32 @@
 
   <!-- Mode selector -->
   <div class="bg-white border-b border-gray-200">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-2 flex-wrap">
-      <button data-mode="progressive"    class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">Progressive</button>
-      <button data-mode="random"         class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">Random</button>
-      <button data-mode="en_to_zh"       class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">EN → ZH</button>
-      <button data-mode="zh_to_en"       class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">ZH → EN</button>
+    <!-- Desktop: all chips -->
+    <div class="hidden sm:flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap">
+      <button data-mode="progressive"     class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">Progressive</button>
+      <button data-mode="random"          class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">Random</button>
+      <button data-mode="en_to_zh"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">EN → ZH</button>
+      <button data-mode="zh_to_en"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">ZH → EN</button>
       <button data-mode="zh_pinyin_to_en" class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">ZH + Pinyin → EN</button>
+    </div>
+    <!-- Mobile: selected chip + edit trigger -->
+    <div class="flex sm:hidden max-w-2xl mx-auto px-4 py-2 items-center gap-2">
+      <span id="mode-mobile-label" class="px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white"></span>
+      <button id="open-filter-overlay" class="ml-auto text-xs text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition">&#9660;&nbsp;Edit</button>
     </div>
   </div>
 
   <!-- Tag filter -->
   <div id="tag-filter-bar" class="hidden bg-white border-b border-gray-200">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-2 flex-wrap items-center">
+    <!-- Desktop: all tag chips -->
+    <div id="tag-chips-desktop" class="hidden sm:flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
       <span class="text-xs text-gray-500 font-medium mr-1">Tags:</span>
+    </div>
+    <!-- Mobile: selected tags summary + edit trigger -->
+    <div class="flex sm:hidden max-w-2xl mx-auto px-4 py-2 items-center gap-2">
+      <span class="text-xs text-gray-500 font-medium shrink-0">Tags:</span>
+      <div id="tag-mobile-summary" class="flex gap-1.5 flex-nowrap overflow-x-auto flex-1 min-w-0 py-0.5"></div>
+      <button id="open-filter-overlay-tags" class="shrink-0 text-xs text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition">&#9660;&nbsp;Edit</button>
     </div>
   </div>
 
@@ -79,6 +92,7 @@
             <button id="play-btn" type="button" class="hidden text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
           </div>
           <div id="pinyin-hint" class="hidden text-xl text-gray-500 mb-6"></div>
+          <div id="translations-hint" class="hidden text-2x1 text-gray-400 mb-4"></div>
 
           <form id="answer-form" class="mt-6">
             <input
@@ -135,6 +149,12 @@
           </div>
 
           <button
+            id="needs-review-btn"
+            class="w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition"
+          >
+            Flag for Review
+          </button>
+          <button
             id="next-btn"
             class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
           >
@@ -145,6 +165,30 @@
 
     </div>
   </main>
+
+  <!-- Mobile filter overlay (bottom sheet) -->
+  <div id="filter-overlay" class="hidden fixed inset-0 z-50 sm:hidden" role="dialog" aria-modal="true">
+    <div id="filter-overlay-backdrop" class="absolute inset-0 bg-black/50"></div>
+    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-xl max-h-[80vh] overflow-y-auto">
+      <div class="p-5">
+        <div class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Quiz Mode</div>
+          <div class="flex flex-wrap gap-2">
+            <button data-mode="progressive"     class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition">Progressive</button>
+            <button data-mode="random"          class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition">Random</button>
+            <button data-mode="en_to_zh"        class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition">EN → ZH</button>
+            <button data-mode="zh_to_en"        class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition">ZH → EN</button>
+            <button data-mode="zh_pinyin_to_en" class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition">ZH + Pinyin → EN</button>
+          </div>
+        </div>
+        <div id="overlay-tags-section" class="hidden">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tags</div>
+          <div id="overlay-tag-chips" class="flex flex-wrap gap-2"></div>
+        </div>
+        <button id="filter-overlay-close" class="mt-5 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2.5 rounded-xl text-sm transition">Done</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
   <script src="train.js"></script>
