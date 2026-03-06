@@ -6,7 +6,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations
 - N:N word relationships — the same English or Chinese word can be shared across entries
-- Three quiz modes chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English
+- **Four quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English, and **Progressive** (auto-selects direction based on learning progress)
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
 - **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
@@ -79,6 +79,22 @@ MAX_NEW_WORDS=5   # default; set to 0 to disable new words entirely
 A *new word* is one that has never appeared as a quiz card before (tracked by a `first_seen_date` column in the database). Once the daily cap is reached, only cards you have already seen at least once will be served — reviews and retry cards are always available regardless of the cap. The counter resets at midnight (server-local date).
 
 The training page stats bar shows **New today: X / Y** so you can see how many new words you have left for the day.
+
+## Progressive mode
+
+The **Progressive** quiz mode introduces new words gently and gradually increases difficulty based on your learning progress:
+
+| Progress | What happens |
+|---|---|
+| Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all English translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. |
+| Introduced but never correct (`total_correct = 0`) | **EN → ZH** — easiest direction: see English, type Chinese |
+| 1–2 correct answers | **ZH + Pinyin → EN** — see Chinese with pinyin hint, type English |
+| 3–4 correct answers | **ZH → EN** — see Chinese only, type English |
+| 5+ correct answers | **Random** — any of the three quiz directions |
+
+**Skip vs Got it:**
+- **Got it** marks the word as introduced and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.
+- **Skip** defers the word by 7 days. Does *not* count as seen — the word remains "new" and will be shown as an introduction again when it comes due.
 
 ## Auto-translate (DeepL)
 
@@ -283,6 +299,8 @@ vocabulary_trainer/
 |---|---|---|
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params) |
 | `POST` | `/api/quiz/answer` | Submit an answer |
+| `POST` | `/api/quiz/skip` | Skip a new word (defer due date by 7 days) |
+| `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |

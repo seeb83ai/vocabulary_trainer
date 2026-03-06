@@ -32,10 +32,38 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	requestedMode := r.URL.Query().Get("mode")
+
+	// Progressive mode: new words (total_attempts==0) are shown as introductions
+	if requestedMode == models.ModeProgressive && progress.TotalAttempts == 0 {
+		enWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, "en")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		enTexts := make([]string, len(enWords))
+		for i, ew := range enWords {
+			enTexts[i] = ew.Text
+		}
+		card := models.QuizCard{
+			WordID:       word.ID,
+			Mode:         models.ModeNewWord,
+			Prompt:       word.Text,
+			Pinyin:       word.Pinyin,
+			EnTexts:      enTexts,
+			DueDate:      progress.DueDate,
+			IntervalDays: progress.IntervalDays,
+		}
+		writeJSON(w, http.StatusOK, card)
+		return
+	}
+
 	var mode string
-	switch r.URL.Query().Get("mode") {
+	switch requestedMode {
 	case models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn:
-		mode = r.URL.Query().Get("mode")
+		mode = requestedMode
+	case models.ModeProgressive:
+		mode = sm2.SelectProgressiveMode(progress.TotalCorrect)
 	default:
 		mode = sm2.SelectMode()
 	}
@@ -44,13 +72,6 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	if mode == models.ModeZhPinyinToEn && (word.Pinyin == nil || *word.Pinyin == "") {
 		mode = models.ModeZhToEn
 	}
-
-	// For en_to_zh we need an EN word — but GetNextCard may return a zh word.
-	// Strategy: GetNextCard returns the zh word always (it's the canonical unit).
-	// If mode is en_to_zh, we pick one of the linked EN words as the prompt.
-	// The word_id we return is always the zh word ID regardless of mode,
-	// because SM-2 progress is tracked on the zh word.
-	// For the answer, the handler checks zh translations when mode is en_to_zh.
 
 	card := models.QuizCard{
 		WordID:       word.ID,
@@ -61,10 +82,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	switch mode {
 	case models.ModeEnToZh:
-		// Prompt is one of the English words; pick the first linked EN word
 		enWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, "en")
 		if err != nil || len(enWords) == 0 {
-			// No EN translations — fall back to zh_to_en
 			card.Mode = models.ModeZhToEn
 			card.Prompt = word.Text
 		} else {
@@ -209,6 +228,54 @@ func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// Skip moves a word's due date forward by 7 days without marking it as seen.
+func (h *QuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		WordID int64 `json:"word_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.WordID <= 0 {
+		writeError(w, http.StatusBadRequest, "word_id is required")
+		return
+	}
+	if err := h.Store.SkipWord(r.Context(), req.WordID, 7); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "word not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Acknowledge marks a new word as "introduced" so it becomes available for quizzing.
+func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		WordID int64 `json:"word_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.WordID <= 0 {
+		writeError(w, http.StatusBadRequest, "word_id is required")
+		return
+	}
+	if err := h.Store.AcknowledgeWord(r.Context(), req.WordID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "word not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Stats returns due-today and total card counts.

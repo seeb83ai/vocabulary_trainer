@@ -642,6 +642,41 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 	return nil
 }
 
+// SkipWord moves a word's due date forward by the given number of days without
+// touching first_seen_date or attempt counters.
+func (s *Store) SkipWord(ctx context.Context, wordID int64, days int) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = datetime('now', ?) WHERE word_id = ?`,
+		fmt.Sprintf("+%d days", days), wordID)
+	if err != nil {
+		return fmt.Errorf("skip word: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// AcknowledgeWord marks a new word as "introduced" by setting total_attempts=1,
+// first_seen_date=today, and due_date=now so it becomes immediately available for quizzing.
+func (s *Store) AcknowledgeWord(ctx context.Context, wordID int64) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress
+		 SET total_attempts = CASE WHEN total_attempts = 0 THEN 1 ELSE total_attempts END,
+		     first_seen_date = COALESCE(first_seen_date, date('now')),
+		     due_date = CURRENT_TIMESTAMP
+		 WHERE word_id = ?`, wordID)
+	if err != nil {
+		return fmt.Errorf("acknowledge word: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // GetStats returns due-today count, total word count (zh words only), and the number of
 // new words introduced today (globally, not filtered by tag).
 func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, newToday int, err error) {

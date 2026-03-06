@@ -7,6 +7,8 @@ const (
 	ModeEnToZh       = "en_to_zh"
 	ModeZhToEn       = "zh_to_en"
 	ModeZhPinyinToEn = "zh_pinyin_to_en"
+	ModeProgressive  = "progressive"
+	ModeNewWord      = "new_word"
 )
 
 // DB-layer structs

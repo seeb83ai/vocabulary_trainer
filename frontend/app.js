@@ -4,6 +4,7 @@ const MODE_LABELS = {
   'en_to_zh': 'English → Chinese',
   'zh_to_en': 'Chinese → English',
   'zh_pinyin_to_en': 'Chinese + Pinyin → English',
+  'new_word': 'New Word',
 };
 
 async function apiFetch(path, options = {}) {

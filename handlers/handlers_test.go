@@ -36,6 +36,8 @@ func newRouter(s *db.Store) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/answer", quizH.Answer)
+	r.Post("/api/quiz/skip", quizH.Skip)
+	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/mismatches", mismatchH.List)
@@ -821,6 +823,188 @@ func TestMismatches_CountIncrementsOnRepeat(t *testing.T) {
 	}
 	if items[0]["count"].(float64) != 3 {
 		t.Errorf("count: want 3, got %v", items[0]["count"])
+	}
+}
+
+// ── Progressive mode ─────────────────────────────────────────────────────────
+
+func TestQuizNext_ProgressiveNewWord(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello", "hi"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeNewWord {
+		t.Errorf("first progressive card should be new_word, got %s", card.Mode)
+	}
+	if card.Prompt != "你好" {
+		t.Errorf("prompt should be zh text, got %q", card.Prompt)
+	}
+	if len(card.EnTexts) != 2 {
+		t.Errorf("en_texts should have 2 entries, got %d", len(card.EnTexts))
+	}
+}
+
+func TestQuizNext_ProgressiveAfterAcknowledge(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	// Acknowledge the word
+	rec := do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("acknowledge: want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Next progressive card should be en_to_zh (total_correct=0)
+	rec = do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeEnToZh {
+		t.Errorf("after acknowledge (0 correct): want en_to_zh, got %s", card.Mode)
+	}
+}
+
+func TestQuizNext_ProgressiveThresholds(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	ctx := context.Background()
+
+	// Acknowledge first
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
+
+	// Helper to set total_correct directly
+	setCorrect := func(n int) {
+		p, _ := s.GetSM2Progress(ctx, id)
+		p.TotalCorrect = n
+		p.DueDate = time.Now().UTC().Add(-time.Hour) // ensure due
+		s.UpdateSM2Progress(ctx, *p)
+	}
+
+	tests := []struct {
+		correct  int
+		wantMode string
+	}{
+		{0, models.ModeEnToZh},
+		{1, models.ModeZhPinyinToEn},
+		{2, models.ModeZhPinyinToEn},
+		{3, models.ModeZhToEn},
+		{4, models.ModeZhToEn},
+	}
+	for _, tt := range tests {
+		setCorrect(tt.correct)
+		rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.Mode != tt.wantMode {
+			t.Errorf("correct=%d: want mode %s, got %s", tt.correct, tt.wantMode, card.Mode)
+		}
+	}
+
+	// 5+ correct: should return one of the 3 valid modes
+	setCorrect(5)
+	validModes := map[string]bool{
+		models.ModeEnToZh:       true,
+		models.ModeZhToEn:       true,
+		models.ModeZhPinyinToEn: true,
+	}
+	for i := 0; i < 30; i++ {
+		p, _ := s.GetSM2Progress(ctx, id)
+		p.DueDate = time.Now().UTC().Add(-time.Hour)
+		s.UpdateSM2Progress(ctx, *p)
+		rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if !validModes[card.Mode] {
+			t.Errorf("correct=5: got invalid mode %s", card.Mode)
+		}
+	}
+}
+
+// ── POST /api/quiz/skip ──────────────────────────────────────────────────────
+
+func TestQuizSkip_Valid(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	ctx := context.Background()
+
+	beforeP, _ := s.GetSM2Progress(ctx, id)
+
+	rec := do(t, r, "POST", "/api/quiz/skip", map[string]int64{"word_id": id})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	afterP, _ := s.GetSM2Progress(ctx, id)
+	if afterP.TotalAttempts != beforeP.TotalAttempts {
+		t.Error("skip should not change total_attempts")
+	}
+	if !afterP.DueDate.After(beforeP.DueDate) {
+		t.Error("skip should move due_date forward")
+	}
+}
+
+func TestQuizSkip_NotFound(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/quiz/skip", map[string]int64{"word_id": 9999})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
+// ── POST /api/quiz/acknowledge ───────────────────────────────────────────────
+
+func TestQuizAcknowledge_Valid(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	ctx := context.Background()
+
+	rec := do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	p, _ := s.GetSM2Progress(ctx, id)
+	if p.TotalAttempts != 1 {
+		t.Errorf("total_attempts: want 1, got %d", p.TotalAttempts)
+	}
+	if p.TotalCorrect != 0 {
+		t.Errorf("total_correct: want 0, got %d", p.TotalCorrect)
+	}
+}
+
+func TestQuizAcknowledge_Idempotent(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	ctx := context.Background()
+
+	// Acknowledge twice — should not increment total_attempts beyond 1
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
+
+	p, _ := s.GetSM2Progress(ctx, id)
+	if p.TotalAttempts != 1 {
+		t.Errorf("total_attempts after double acknowledge: want 1, got %d", p.TotalAttempts)
+	}
+}
+
+func TestQuizAcknowledge_NotFound(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": 9999})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
 	}
 }
 
