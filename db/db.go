@@ -48,7 +48,8 @@ var validSortExprs = map[string]string{
 }
 
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string) ([]models.WordDetail, int, error) {
+// If reviewOnly is true, only words with needs_review = 1 are returned.
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool) ([]models.WordDetail, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -77,6 +78,11 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
 	}
 
+	reviewFilter := ""
+	if reviewOnly {
+		reviewFilter = " AND w.needs_review = 1"
+	}
+
 	orderExpr, ok := validSortExprs[sortBy]
 	if !ok {
 		orderExpr = "w.created_at"
@@ -99,6 +105,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		       COALESCE(p.interval_days, 1),
 		       COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
 		       COALESCE(p.due_date, CURRENT_TIMESTAMP),
+		       COALESCE(w.needs_review, 0),
 		       COUNT(*) OVER() AS total
 		FROM words w
 		LEFT JOIN sm2_progress p ON p.word_id = w.id
@@ -109,7 +116,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))` + tagFilter + `
+		       ))` + tagFilter + reviewFilter + `
 		ORDER BY ` + orderClause + `
 		LIMIT ? OFFSET ?`
 	listArgs := []any{q, q, q, q}
@@ -126,14 +133,17 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	for rows.Next() {
 		var wd models.WordDetail
 		var createdAt, dueDate string
+		var needsReview int
 		if err := rows.Scan(
 			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
 			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate,
+			&needsReview,
 			&total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
 		}
+		wd.NeedsReview = needsReview == 1
 		wd.CreatedAt = parseDateTime(createdAt)
 		wd.DueDate = parseDateTime(dueDate)
 		words = append(words, wd)
@@ -265,20 +275,23 @@ func (s *Store) getEnTextsForZhWord(ctx context.Context, zhID int64) ([]string, 
 func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, error) {
 	var wd models.WordDetail
 	var createdAt, dueDate string
+	var needsReview int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT w.id, w.text, w.pinyin, w.created_at,
 		        COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
 		        COALESCE(p.interval_days, 1),
 		        COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
-		        COALESCE(p.due_date, CURRENT_TIMESTAMP)
+		        COALESCE(p.due_date, CURRENT_TIMESTAMP),
+		        COALESCE(w.needs_review, 0)
 		 FROM words w
 		 LEFT JOIN sm2_progress p ON p.word_id = w.id
 		 WHERE w.id = ? AND w.language = 'zh'`, id).
 		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
-			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate)
+			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate, &needsReview)
 	wd.CreatedAt = parseDateTime(createdAt)
 	wd.DueDate = parseDateTime(dueDate)
+	wd.NeedsReview = needsReview == 1
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -354,7 +367,7 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 	}
 
 	res, err := tx.ExecContext(ctx,
-		`UPDATE words SET text = ?, pinyin = ? WHERE id = ? AND language = 'zh'`,
+		`UPDATE words SET text = ?, pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
 		strings.TrimSpace(req.ZhText), pinyin, id)
 	if err != nil {
 		return fmt.Errorf("update word: %w", err)
@@ -443,6 +456,20 @@ func (s *Store) DeleteWord(ctx context.Context, id int64) error {
 		return sql.ErrNoRows
 	}
 	return s.cleanOrphanTags(ctx)
+}
+
+// MarkWordForReview sets needs_review = 1 for the given zh word ID.
+func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE words SET needs_review = 1 WHERE id = ? AND language = 'zh'`, id)
+	if err != nil {
+		return fmt.Errorf("mark for review: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.

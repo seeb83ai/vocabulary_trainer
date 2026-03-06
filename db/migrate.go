@@ -9,7 +9,7 @@ import (
 // migration describes a single schema migration step.
 type migration struct {
 	version int
-	sql     string            // executed first (may be empty)
+	sql     string              // executed first (may be empty)
 	fn      func(*sql.DB) error // executed after sql (may be nil)
 }
 
@@ -108,6 +108,22 @@ CREATE TABLE IF NOT EXISTS daily_stats (
   current_streak  INTEGER NOT NULL DEFAULT 0
 );
 `,
+	},
+	{
+		version: 3,
+		fn: func(db *sql.DB) error {
+			var count int
+			if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('words') WHERE name = 'needs_review'`).Scan(&count); err != nil {
+				return fmt.Errorf("check needs_review column: %w", err)
+			}
+			if count > 0 {
+				return nil // column already exists
+			}
+			if _, err := db.Exec(`ALTER TABLE words ADD COLUMN needs_review INTEGER DEFAULT 0`); err != nil {
+				return fmt.Errorf("add needs_review column: %w", err)
+			}
+			return nil
+		},
 	},
 }
 

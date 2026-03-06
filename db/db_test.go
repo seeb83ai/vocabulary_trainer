@@ -112,7 +112,7 @@ func TestGetWords_ReturnsAll(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil)
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestGetWords_SearchByZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "你好", 1, 20, "", "", nil)
+	words, total, err := s.GetWords(context.Background(), "你好", 1, 20, "", "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestGetWords_SearchByEnText(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "thank", 1, 20, "", "", nil)
+	words, total, err := s.GetWords(context.Background(), "thank", 1, 20, "", "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestGetWords_Pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		seedWord(t, s, string(rune(0x4e00+i)), "", []string{"word"})
 	}
-	words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "", nil)
+	words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestGetWords_Pagination(t *testing.T) {
 		t.Errorf("page 1 per_page 3: want 3 results, got %d", len(words))
 	}
 
-	words2, _, err := s.GetWords(context.Background(), "", 2, 3, "", "", nil)
+	words2, _, err := s.GetWords(context.Background(), "", 2, 3, "", "", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +554,7 @@ func TestGetWords_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "吃饭", "chī fàn", []string{"eat"}, []string{"food"})
 	seedWordWithTags(t, s, "谢谢", "xiè xiè", []string{"thanks"}, []string{"greetings"})
 
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings"})
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,7 +572,7 @@ func TestGetWords_FilterByMultipleTags_OR(t *testing.T) {
 	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 	seedWordWithTags(t, s, "书", "", []string{"book"}, []string{"school"})
 
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings", "food"})
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings", "food"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -938,6 +938,79 @@ func TestDeleteWord_CascadesToConfusionPairs(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Errorf("confusion_pairs should be cascade-deleted, got %d rows", len(items))
+	}
+}
+
+// ── MarkWordForReview ─────────────────────────────────────────────────────────
+
+func TestMarkWordForReview_SetsFlag(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	if err := s.MarkWordForReview(context.Background(), id); err != nil {
+		t.Fatalf("MarkWordForReview: %v", err)
+	}
+
+	wd, err := s.GetWordByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wd.NeedsReview {
+		t.Error("expected NeedsReview = true after marking")
+	}
+}
+
+func TestMarkWordForReview_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	err := s.MarkWordForReview(context.Background(), 9999)
+	if err == nil {
+		t.Error("expected error for missing word, got nil")
+	}
+}
+
+func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	if err := s.MarkWordForReview(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+	}); err != nil {
+		t.Fatalf("UpdateWord: %v", err)
+	}
+
+	wd, err := s.GetWordByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wd.NeedsReview {
+		t.Error("expected NeedsReview = false after update")
+	}
+}
+
+func TestGetWords_ReviewOnlyFilter(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+
+	if err := s.MarkWordForReview(context.Background(), id1); err != nil {
+		t.Fatal(err)
+	}
+
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "desc", nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Errorf("expected 1 review word, got %d", total)
+	}
+	if len(words) != 1 || words[0].ID != id1 {
+		t.Errorf("expected word id %d in review filter result", id1)
 	}
 }
 
