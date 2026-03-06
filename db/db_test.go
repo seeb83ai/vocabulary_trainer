@@ -431,8 +431,11 @@ func TestGetStats_DueTodayCount(t *testing.T) {
 	id1 := seedWord(t, s, "一", "", []string{"one"})
 	seedWord(t, s, "二", "", []string{"two"})
 
-	// Move one word into the future so it's NOT due
+	// Mark both words as seen so they count as due
 	ctx := context.Background()
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now')`)
+
+	// Move one word into the future so it's NOT due
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, future, id1)
 

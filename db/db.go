@@ -704,7 +704,7 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter, dueArgs...).Scan(&dueToday)
+		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
 	}
