@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     data = await apiFetch('/api/quiz/daily-stats');
   } catch (e) {
     $('stats-table-body').innerHTML =
-      '<tr><td colspan="7" class="py-8 text-center text-red-500">Failed to load stats.</td></tr>';
+      '<tr><td colspan="8" class="py-8 text-center text-red-500">Failed to load stats.</td></tr>';
     return;
   }
 
@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('stats-chart').style.display = 'none';
     show('chart-empty');
     $('stats-table-body').innerHTML =
-      '<tr><td colspan="7" class="py-8 text-center text-gray-400">No training data yet.</td></tr>';
+      '<tr><td colspan="8" class="py-8 text-center text-gray-400">No training data yet.</td></tr>';
     return;
   }
 
@@ -43,6 +43,17 @@ function renderChart(days) {
           stack: 'answers',
         },
         {
+          label: 'Words Seen',
+          data: days.map(d => d.words_seen),
+          type: 'line',
+          borderColor: 'rgba(168, 85, 247, 0.9)',
+          backgroundColor: 'rgba(168, 85, 247, 0.1)',
+          fill: false,
+          yAxisID: 'y1',
+          tension: 0.3,
+          pointRadius: 2,
+        },
+        {
           label: 'Words Known',
           data: days.map(d => d.words_known),
           type: 'line',
@@ -64,7 +75,7 @@ function renderChart(days) {
         y1: {
           beginAtZero: true,
           position: 'right',
-          title: { display: true, text: 'Words Known' },
+          title: { display: true, text: 'Words' },
           grid: { drawOnChartArea: false },
         },
       },
@@ -75,7 +86,7 @@ function renderChart(days) {
               const idx = items[0].dataIndex;
               const d = days[idx];
               const acc = d.attempts > 0 ? Math.round(((d.attempts - d.mistakes) / d.attempts) * 100) : 0;
-              return `Accuracy: ${acc}%\nNew words: ${d.new_words}\nBest streak: ${d.correct_streak}`;
+              return `Accuracy: ${acc}%\nNew words: ${d.new_words}\nWords seen: ${d.words_seen}\nBest streak: ${d.correct_streak}`;
             },
           },
         },
@@ -89,7 +100,7 @@ function renderTable(days) {
   const recent = days.slice(-14).reverse();
   const tbody = $('stats-table-body');
   if (recent.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="py-8 text-center text-gray-400">No data in the last 14 days.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-gray-400">No data in the last 14 days.</td></tr>';
     return;
   }
   tbody.innerHTML = recent.map(d => {
@@ -101,6 +112,7 @@ function renderTable(days) {
       <td class="py-2 pr-4 text-right">${d.attempts}</td>
       <td class="py-2 pr-4 text-right">${d.mistakes}</td>
       <td class="py-2 pr-4 text-right ${accColor} font-medium">${acc}%</td>
+      <td class="py-2 pr-4 text-right">${d.words_seen}</td>
       <td class="py-2 pr-4 text-right">${d.words_known}</td>
       <td class="py-2 pr-4 text-right">${d.new_words}</td>
       <td class="py-2 text-right">${d.correct_streak}</td>

@@ -1127,4 +1127,7 @@ func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
 	if resp.Days[0].Mistakes != 0 {
 		t.Errorf("mistakes: want 0, got %d", resp.Days[0].Mistakes)
 	}
+	if resp.Days[0].WordsSeen != 0 {
+		t.Errorf("words_seen: want 0, got %d", resp.Days[0].WordsSeen)
+	}
 }

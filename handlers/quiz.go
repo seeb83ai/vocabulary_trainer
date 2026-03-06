@@ -224,6 +224,7 @@ func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
 			Mistakes:      s.Mistakes,
 			WordsKnown:    s.WordsKnown,
 			NewWords:      s.NewWords,
+			WordsSeen:     s.WordsSeen,
 			CorrectStreak: s.CorrectStreak,
 		}
 	}

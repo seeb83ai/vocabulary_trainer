@@ -119,6 +119,7 @@ type DailyStat struct {
 	Mistakes      int
 	WordsKnown    int
 	NewWords      int
+	WordsSeen     int
 	CorrectStreak int
 }
 
@@ -132,5 +133,6 @@ type DailyStatEntry struct {
 	Mistakes      int    `json:"mistakes"`
 	WordsKnown    int    `json:"words_known"`
 	NewWords      int    `json:"new_words"`
+	WordsSeen     int    `json:"words_seen"`
 	CorrectStreak int    `json:"correct_streak"`
 }

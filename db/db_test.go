@@ -1021,9 +1021,9 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 	ctx := context.Background()
 	seedWord(t, s, "猫", "māo", []string{"cat"})
 
-	// Mark the word as seen so words_known > 0
+	// Mark the word as seen and with enough correct answers to be "known"
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now')`); err != nil {
+		`UPDATE sm2_progress SET first_seen_date = date('now'), total_correct = 5`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1056,6 +1056,9 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 	}
 	if d.NewWords != 1 {
 		t.Errorf("new_words: got %d, want 1", d.NewWords)
+	}
+	if d.WordsSeen != 1 {
+		t.Errorf("words_seen: got %d, want 1", d.WordsSeen)
 	}
 	if d.CorrectStreak != 2 {
 		t.Errorf("correct_streak: got %d, want 2", d.CorrectStreak)

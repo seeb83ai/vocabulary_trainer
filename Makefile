@@ -1,4 +1,4 @@
-.PHONY: build run stop logs dev tidy clean import import-hsk backup release test test-go test-js
+.PHONY: build run start stop restart logs dev tidy clean import import-hsk backup release test test-go test-js
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -18,6 +18,8 @@ start: run
 ## stop: stop the running container
 stop:
 	docker compose down
+
+restart: stop build start
 
 ## logs: tail container logs
 logs:
