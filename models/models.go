@@ -87,6 +87,7 @@ type WordDetail struct {
 	TotalAttempts int       `json:"total_attempts"`
 	DueDate       time.Time `json:"due_date"`
 	Tags          []string  `json:"tags"`
+	NeedsReview   bool      `json:"needs_review"`
 }
 
 type ConfusionDetail struct {
