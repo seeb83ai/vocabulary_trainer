@@ -279,6 +279,16 @@ func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// WordStats returns aggregate per-word statistics for all seen words.
+func (h *QuizHandler) WordStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.Store.GetWordStats(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
 // Stats returns due-today and total card counts.
 func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	var tags []string

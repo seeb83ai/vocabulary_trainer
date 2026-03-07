@@ -56,6 +56,93 @@
       </div>
     </div>
 
+    <!-- Word Statistics -->
+    <div id="word-stats-section" class="hidden space-y-8">
+
+      <!-- Info box -->
+      <div class="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-900 space-y-2">
+        <h3 class="font-semibold text-blue-800 text-base">Understanding the Metrics</h3>
+        <ul class="list-disc list-inside space-y-1">
+          <li><strong>Ease Factor</strong> — An SM-2 value (1.3–2.5+) reflecting how easy a word is for you. Starts at 2.5; drops with wrong answers, rises with correct ones. Higher = easier = longer review intervals.</li>
+          <li><strong>Milestones</strong> — How many words you've answered correctly at least 1, 3, 5, or 10 times. Shows your depth of practice.</li>
+          <li><strong>Accuracy Buckets</strong> — Words grouped by your correct-answer rate. Aim to move words from red/yellow into the green zone.</li>
+          <li><strong>Avg / Median / P95</strong> — Average is the mean across all seen words. Median is the middle value (less affected by outliers). P95 is the 95th percentile — the value that 95% of your words fall at or below.</li>
+          <li><strong>Hardest Words</strong> — Words with the lowest accuracy (min 3 attempts). These need the most attention.</li>
+          <li><strong>Most Practiced</strong> — Words you've attempted the most. High practice + low accuracy = stubborn words.</li>
+        </ul>
+      </div>
+
+      <!-- Milestone + Accuracy row -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl shadow p-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Correctness Milestones</h2>
+          <div id="milestones-chart-container"><canvas id="milestones-chart" height="200"></canvas></div>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Accuracy Distribution</h2>
+          <div id="accuracy-chart-container"><canvas id="accuracy-chart" height="200"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Aggregate stats -->
+      <div class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Aggregate Statistics <span id="word-stats-total" class="text-sm font-normal text-gray-500"></span></h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left">
+            <thead class="text-gray-500 border-b">
+              <tr>
+                <th class="py-2 pr-4">Metric</th>
+                <th class="py-2 pr-4 text-right">Average</th>
+                <th class="py-2 pr-4 text-right">Median</th>
+                <th class="py-2 text-right">P95</th>
+              </tr>
+            </thead>
+            <tbody id="aggregates-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Hardest + Most practiced -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl shadow p-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Hardest Words</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="text-gray-500 border-b">
+                <tr>
+                  <th class="py-2 pr-4">Word</th>
+                  <th class="py-2 pr-4">Translation</th>
+                  <th class="py-2 pr-4 text-right">Accuracy</th>
+                  <th class="py-2 text-right">Attempts</th>
+                </tr>
+              </thead>
+              <tbody id="hardest-body">
+                <tr><td colspan="4" class="py-4 text-center text-gray-400">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4">Most Practiced</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+              <thead class="text-gray-500 border-b">
+                <tr>
+                  <th class="py-2 pr-4">Word</th>
+                  <th class="py-2 pr-4">Translation</th>
+                  <th class="py-2 pr-4 text-right">Attempts</th>
+                  <th class="py-2 text-right">Accuracy</th>
+                </tr>
+              </thead>
+              <tbody id="most-practiced-body">
+                <tr><td colspan="4" class="py-4 text-center text-gray-400">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <script src="app.js"></script>

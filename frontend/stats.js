@@ -15,11 +15,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     show('chart-empty');
     $('stats-table-body').innerHTML =
       '<tr><td colspan="8" class="py-8 text-center text-gray-400">No training data yet.</td></tr>';
-    return;
+  } else {
+    renderChart(days);
+    renderTable(days);
   }
 
-  renderChart(days);
-  renderTable(days);
+  // Load word-level statistics
+  try {
+    const ws = await apiFetch('/api/quiz/word-stats');
+    if (ws && ws.total_seen > 0) {
+      renderWordStats(ws);
+      show('word-stats-section');
+    }
+  } catch (_) {}
 });
 
 function renderChart(days) {
@@ -116,6 +124,111 @@ function renderTable(days) {
       <td class="py-2 pr-4 text-right">${d.words_known}</td>
       <td class="py-2 pr-4 text-right">${d.new_words}</td>
       <td class="py-2 text-right">${d.correct_streak}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderWordStats(ws) {
+  // Milestones bar chart
+  const mCtx = $('milestones-chart').getContext('2d');
+  const mLabels = ['1+', '3+', '5+', '10+'];
+  const mData = mLabels.map(k => ws.milestones[k] || 0);
+  new Chart(mCtx, {
+    type: 'bar',
+    data: {
+      labels: mLabels.map(l => l + ' correct'),
+      datasets: [{
+        data: mData,
+        backgroundColor: ['rgba(59,130,246,0.7)', 'rgba(34,197,94,0.7)', 'rgba(168,85,247,0.7)', 'rgba(245,158,11,0.7)'],
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+    },
+  });
+
+  // Accuracy distribution doughnut
+  const aCtx = $('accuracy-chart').getContext('2d');
+  const bucketLabels = ['0–49%', '50–79%', '80–99%', '100%'];
+  const bucketKeys = ['0-49', '50-79', '80-99', '100'];
+  const aData = bucketKeys.map(k => ws.accuracy_buckets[k] || 0);
+  new Chart(aCtx, {
+    type: 'doughnut',
+    data: {
+      labels: bucketLabels,
+      datasets: [{
+        data: aData,
+        backgroundColor: ['rgba(239,68,68,0.7)', 'rgba(245,158,11,0.7)', 'rgba(59,130,246,0.7)', 'rgba(34,197,94,0.7)'],
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label(ctx) {
+              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              const pct = total > 0 ? Math.round(ctx.raw / total * 100) : 0;
+              return `${ctx.label}: ${ctx.raw} words (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // Aggregates table
+  $('word-stats-total').textContent = `(${ws.total_seen} words seen)`;
+  const agg = ws.aggregates;
+  const rows = [
+    { label: 'Correct answers', d: agg.correct, unit: '' },
+    { label: 'Total attempts', d: agg.attempts, unit: '' },
+    { label: 'Accuracy', d: agg.accuracy, unit: '%' },
+    { label: 'Ease factor', d: agg.easiness, unit: '' },
+  ];
+  $('aggregates-body').innerHTML = rows.map(r =>
+    `<tr class="border-b border-gray-100">
+      <td class="py-2 pr-4 font-medium">${escHtml(r.label)}</td>
+      <td class="py-2 pr-4 text-right">${r.d.avg}${r.unit}</td>
+      <td class="py-2 pr-4 text-right">${r.d.median}${r.unit}</td>
+      <td class="py-2 text-right">${r.d.p95}${r.unit}</td>
+    </tr>`
+  ).join('');
+
+  // Hardest words
+  renderWordTable('hardest-body', ws.hardest, ['accuracy', 'attempts']);
+  // Most practiced
+  renderWordTable('most-practiced-body', ws.most_practiced, ['attempts', 'accuracy']);
+}
+
+function renderWordTable(tbodyId, words, cols) {
+  const tbody = $(tbodyId);
+  if (!words || words.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-gray-400">Not enough data yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = words.map(w => {
+    const acc = Math.round(w.accuracy);
+    const accColor = acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
+    const zhLabel = escHtml(w.zh_text) + (w.pinyin ? ` <span class="text-gray-400">${escHtml(w.pinyin)}</span>` : '');
+    const enLabel = (w.en_texts || []).map(t => escHtml(t)).join(', ');
+
+    if (cols[0] === 'accuracy') {
+      return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+        <td class="py-2 pr-4">${zhLabel}</td>
+        <td class="py-2 pr-4 text-gray-600">${enLabel}</td>
+        <td class="py-2 pr-4 text-right ${accColor} font-medium">${acc}%</td>
+        <td class="py-2 text-right">${w.total_attempts}</td>
+      </tr>`;
+    }
+    return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+      <td class="py-2 pr-4">${zhLabel}</td>
+      <td class="py-2 pr-4 text-gray-600">${enLabel}</td>
+      <td class="py-2 pr-4 text-right">${w.total_attempts}</td>
+      <td class="py-2 text-right ${accColor} font-medium">${acc}%</td>
     </tr>`;
   }).join('');
 }

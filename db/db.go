@@ -1060,3 +1060,242 @@ func (s *Store) GetDailyStatsHistory(ctx context.Context) ([]models.DailyStat, e
 	}
 	return stats, rows.Err()
 }
+
+// GetWordStats returns aggregate statistics for all words seen at least once.
+func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, error) {
+	// Fetch per-word stats for all seen zh words in a single query.
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT w.id, w.text, w.pinyin,
+		       p.total_correct, p.total_attempts, p.easiness
+		FROM sm2_progress p
+		JOIN words w ON w.id = p.word_id
+		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
+		ORDER BY p.total_attempts DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("get word stats: %w", err)
+	}
+	defer rows.Close()
+
+	type row struct {
+		id       int64
+		text     string
+		pinyin   *string
+		correct  int
+		attempts int
+		easiness float64
+		accuracy float64
+	}
+	var all []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.text, &r.pinyin, &r.correct, &r.attempts, &r.easiness); err != nil {
+			return nil, fmt.Errorf("scan word stat: %w", err)
+		}
+		if r.attempts > 0 {
+			r.accuracy = float64(r.correct) / float64(r.attempts) * 100
+		}
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	resp := &models.WordStatsResponse{
+		TotalSeen:  len(all),
+		Milestones: map[string]int{"1+": 0, "3+": 0, "5+": 0, "10+": 0},
+		AccBuckets: map[string]int{"0-49": 0, "50-79": 0, "80-99": 0, "100": 0},
+		Hardest:    []models.WordStatDetail{},
+		MostPract:  []models.WordStatDetail{},
+	}
+
+	if len(all) == 0 {
+		return resp, nil
+	}
+
+	corrects := make([]float64, len(all))
+	attempts := make([]float64, len(all))
+	accuracies := make([]float64, 0, len(all))
+	easinesses := make([]float64, len(all))
+
+	for i, r := range all {
+		corrects[i] = float64(r.correct)
+		attempts[i] = float64(r.attempts)
+		easinesses[i] = r.easiness
+
+		if r.attempts > 0 {
+			accuracies = append(accuracies, r.accuracy)
+		}
+
+		if r.correct >= 1 {
+			resp.Milestones["1+"]++
+		}
+		if r.correct >= 3 {
+			resp.Milestones["3+"]++
+		}
+		if r.correct >= 5 {
+			resp.Milestones["5+"]++
+		}
+		if r.correct >= 10 {
+			resp.Milestones["10+"]++
+		}
+
+		if r.attempts > 0 {
+			switch {
+			case r.accuracy >= 100:
+				resp.AccBuckets["100"]++
+			case r.accuracy >= 80:
+				resp.AccBuckets["80-99"]++
+			case r.accuracy >= 50:
+				resp.AccBuckets["50-79"]++
+			default:
+				resp.AccBuckets["0-49"]++
+			}
+		}
+	}
+
+	resp.Aggregates.Correct = calcDistStats(corrects)
+	resp.Aggregates.Attempts = calcDistStats(attempts)
+	if len(accuracies) > 0 {
+		resp.Aggregates.Accuracy = calcDistStats(accuracies)
+	}
+	resp.Aggregates.Easiness = calcDistStats(easinesses)
+
+	// Hardest words: lowest accuracy, min 3 attempts, up to 5
+	type scored struct {
+		idx int
+		acc float64
+	}
+	var candidates []scored
+	for i, r := range all {
+		if r.attempts >= 3 {
+			candidates = append(candidates, scored{i, r.accuracy})
+		}
+	}
+	// Sort by accuracy ascending
+	for i := 0; i < len(candidates); i++ {
+		for j := i + 1; j < len(candidates); j++ {
+			if candidates[j].acc < candidates[i].acc {
+				candidates[i], candidates[j] = candidates[j], candidates[i]
+			}
+		}
+	}
+	limit := 5
+	if limit > len(candidates) {
+		limit = len(candidates)
+	}
+
+	// Collect IDs for batch en-text loading
+	detailIDs := make([]int64, 0, limit*2)
+	for k := 0; k < limit; k++ {
+		r := all[candidates[k].idx]
+		resp.Hardest = append(resp.Hardest, models.WordStatDetail{
+			WordID: r.id, ZhText: r.text, Pinyin: r.pinyin,
+			Correct: r.correct, Attempts: r.attempts,
+			Accuracy: r.accuracy, Easiness: r.easiness,
+		})
+		detailIDs = append(detailIDs, r.id)
+	}
+
+	// Most practiced: already sorted by total_attempts DESC from query
+	mpLimit := 5
+	if mpLimit > len(all) {
+		mpLimit = len(all)
+	}
+	for k := 0; k < mpLimit; k++ {
+		r := all[k]
+		resp.MostPract = append(resp.MostPract, models.WordStatDetail{
+			WordID: r.id, ZhText: r.text, Pinyin: r.pinyin,
+			Correct: r.correct, Attempts: r.attempts,
+			Accuracy: r.accuracy, Easiness: r.easiness,
+		})
+		detailIDs = append(detailIDs, r.id)
+	}
+
+	// Batch-load en texts for all detail words
+	if len(detailIDs) > 0 {
+		placeholders := make([]string, len(detailIDs))
+		args := make([]any, len(detailIDs))
+		for i, id := range detailIDs {
+			placeholders[i] = "?"
+			args[i] = id
+		}
+		enRows, err := s.db.QueryContext(ctx,
+			`SELECT t.zh_word_id, ew.text FROM words ew
+			 JOIN translations t ON t.en_word_id = ew.id
+			 WHERE t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
+			 ORDER BY ew.text`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("batch en texts for word stats: %w", err)
+		}
+		defer enRows.Close()
+		enMap := map[int64][]string{}
+		for enRows.Next() {
+			var zhID int64
+			var text string
+			if err := enRows.Scan(&zhID, &text); err != nil {
+				return nil, err
+			}
+			enMap[zhID] = append(enMap[zhID], text)
+		}
+		if err := enRows.Err(); err != nil {
+			return nil, err
+		}
+		for i := range resp.Hardest {
+			resp.Hardest[i].EnTexts = enMap[resp.Hardest[i].WordID]
+			if resp.Hardest[i].EnTexts == nil {
+				resp.Hardest[i].EnTexts = []string{}
+			}
+		}
+		for i := range resp.MostPract {
+			resp.MostPract[i].EnTexts = enMap[resp.MostPract[i].WordID]
+			if resp.MostPract[i].EnTexts == nil {
+				resp.MostPract[i].EnTexts = []string{}
+			}
+		}
+	}
+
+	return resp, nil
+}
+
+func calcDistStats(vals []float64) models.DistStats {
+	if len(vals) == 0 {
+		return models.DistStats{}
+	}
+	// Copy and sort for percentile calculations
+	sorted := make([]float64, len(vals))
+	copy(sorted, vals)
+	for i := 0; i < len(sorted); i++ {
+		for j := i + 1; j < len(sorted); j++ {
+			if sorted[j] < sorted[i] {
+				sorted[i], sorted[j] = sorted[j], sorted[i]
+			}
+		}
+	}
+	var sum float64
+	for _, v := range sorted {
+		sum += v
+	}
+	n := len(sorted)
+	avg := sum / float64(n)
+
+	var median float64
+	if n%2 == 0 {
+		median = (sorted[n/2-1] + sorted[n/2]) / 2
+	} else {
+		median = sorted[n/2]
+	}
+
+	p95Idx := int(float64(n-1) * 0.95)
+	p95 := sorted[p95Idx]
+
+	// Round to 1 decimal
+	round := func(v float64) float64 {
+		return float64(int(v*10+0.5)) / 10
+	}
+	return models.DistStats{
+		Avg:        round(avg),
+		Median:     round(median),
+		Percentile: round(p95),
+	}
+}
