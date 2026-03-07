@@ -102,6 +102,7 @@ func main() {
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
+		r.Get("/quiz/word-stats", quizH.WordStats)
 		r.Route("/words", func(r chi.Router) {
 			r.Get("/", wordsH.List)
 			r.Post("/", wordsH.Create)

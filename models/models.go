@@ -127,6 +127,39 @@ type DailyStatsResponse struct {
 	Days []DailyStatEntry `json:"days"`
 }
 
+type WordStatsResponse struct {
+	TotalSeen  int              `json:"total_seen"`
+	Milestones map[string]int   `json:"milestones"`
+	AccBuckets map[string]int   `json:"accuracy_buckets"`
+	Aggregates WordAggregates   `json:"aggregates"`
+	Hardest    []WordStatDetail `json:"hardest"`
+	MostPract  []WordStatDetail `json:"most_practiced"`
+}
+
+type WordAggregates struct {
+	Correct  DistStats `json:"correct"`
+	Attempts DistStats `json:"attempts"`
+	Accuracy DistStats `json:"accuracy"`
+	Easiness DistStats `json:"easiness"`
+}
+
+type DistStats struct {
+	Avg        float64 `json:"avg"`
+	Median     float64 `json:"median"`
+	Percentile float64 `json:"p95"`
+}
+
+type WordStatDetail struct {
+	WordID   int64   `json:"word_id"`
+	ZhText   string  `json:"zh_text"`
+	Pinyin   *string `json:"pinyin"`
+	EnTexts  []string `json:"en_texts"`
+	Correct  int     `json:"total_correct"`
+	Attempts int     `json:"total_attempts"`
+	Accuracy float64 `json:"accuracy"`
+	Easiness float64 `json:"easiness"`
+}
+
 type DailyStatEntry struct {
 	Date          string `json:"date"`
 	Attempts      int    `json:"attempts"`

@@ -40,6 +40,7 @@ func newRouter(s *db.Store) http.Handler {
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
+	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
@@ -1129,5 +1130,97 @@ func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
 	}
 	if resp.Days[0].WordsSeen != 0 {
 		t.Errorf("words_seen: want 0, got %d", resp.Days[0].WordsSeen)
+	}
+}
+
+func TestWordStats_Empty(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/word-stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.WordStatsResponse
+	decodeJSON(t, rec, &resp)
+	if resp.TotalSeen != 0 {
+		t.Errorf("total_seen: want 0, got %d", resp.TotalSeen)
+	}
+}
+
+func TestWordStats_WithData(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Seed words and answer them to create progress data
+	seedWord(t, s, "猫", "māo", []string{"cat"})
+	seedWord(t, s, "狗", "gǒu", []string{"dog"})
+	seedWord(t, s, "鱼", "yú", []string{"fish"})
+
+	// Get cards to set first_seen_date (triggers stamp)
+	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
+
+	// Answer 猫 correctly 3 times
+	for i := 0; i < 3; i++ {
+		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": 1, "mode": "zh_to_en", "answer": "cat",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer cat: want 200, got %d", rec.Code)
+		}
+	}
+	// Answer 狗 wrong once, correct once
+	do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": 2, "mode": "zh_to_en", "answer": "wrong",
+	})
+	do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": 2, "mode": "zh_to_en", "answer": "dog",
+	})
+	// Answer 鱼 correct once
+	do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": 3, "mode": "zh_to_en", "answer": "fish",
+	})
+
+	// Mark first_seen_date for all words that were answered (stamps on next card fetch)
+	// We need to manually ensure first_seen_date is set via the quiz flow
+	// The answer flow doesn't set first_seen_date — GetNextCard does.
+	// Let's fetch cards for each to stamp them.
+	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
+	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
+
+	rec := do(t, r, "GET", "/api/quiz/word-stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.WordStatsResponse
+	decodeJSON(t, rec, &resp)
+
+	// At least 1 word should be seen (the one fetched via GetNextCard)
+	if resp.TotalSeen < 1 {
+		t.Errorf("total_seen: want >= 1, got %d", resp.TotalSeen)
+	}
+
+	// Milestones should have keys
+	if _, ok := resp.Milestones["1+"]; !ok {
+		t.Error("milestones missing '1+' key")
+	}
+	if _, ok := resp.Milestones["10+"]; !ok {
+		t.Error("milestones missing '10+' key")
+	}
+
+	// Accuracy buckets should have keys
+	if _, ok := resp.AccBuckets["100"]; !ok {
+		t.Error("accuracy_buckets missing '100' key")
+	}
+
+	// Most practiced should be non-empty
+	if len(resp.MostPract) == 0 {
+		t.Error("most_practiced should not be empty")
+	}
+	// Verify en_texts are populated
+	for _, w := range resp.MostPract {
+		if len(w.EnTexts) == 0 {
+			t.Errorf("most_practiced word %d missing en_texts", w.WordID)
+		}
 	}
 }
