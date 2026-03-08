@@ -46,7 +46,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	requestedMode := r.URL.Query().Get("mode")
 
 	// Progressive mode: new words (total_attempts==0) are shown as introductions
-	if requestedMode == models.ModeProgressive && progress.TotalAttempts == 0 {
+	if progress.TotalAttempts == 0 {
 		enWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, "en")
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
