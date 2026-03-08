@@ -154,7 +154,21 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 
 func TestQuizNext_ModeParam(t *testing.T) {
 	s := openTestDB(t)
-	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Give the word some attempts so it is not returned as a new_word introduction.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
 	r := newRouter(s)
 
 	for _, mode := range []string{models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn} {
