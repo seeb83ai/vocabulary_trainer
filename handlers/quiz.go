@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ type QuizHandler struct {
 	Store        *db.Store
 	MaxNewPerDay int
 	capResetDate string // date string (YYYY-MM-DD) on which the new-word cap was reset
+	newCapBase   int    // newToday count at cap-reset time; cap = newCapBase + MaxNewPerDay
 }
 
 // Next returns the next card to study.
@@ -27,7 +27,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 	cap := h.MaxNewPerDay
 	if h.capResetDate == time.Now().Format("2006-01-02") {
-		cap = math.MaxInt32
+		extra := h.MaxNewPerDay
+		if extra < 1 {
+			extra = 1
+		}
+		cap = h.newCapBase + extra
 	}
 	word, progress, err := h.Store.GetNextCard(r.Context(), tags, cap)
 	if err != nil {
@@ -344,7 +348,11 @@ func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
 		advanced = n
 	}
 	if req.ResetNewCap {
-		h.capResetDate = time.Now().Format("2006-01-02")
+		_, _, newToday, err := h.Store.GetStats(r.Context(), nil)
+		if err == nil {
+			h.capResetDate = time.Now().Format("2006-01-02")
+			h.newCapBase = newToday
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"advanced":  advanced,
