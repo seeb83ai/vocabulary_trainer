@@ -64,7 +64,7 @@ async function loadNextCard() {
       show('empty-state');
       return;
     }
-    if (latestStats.due_today === 0) {
+    if (latestStats.due_today === 0 && !latestStats.new_available) {
       setText('success-stats', `${latestStats.today_attempts} attempts · ${latestStats.today_mistakes} mistakes`);
       document.querySelectorAll('.advance-btn').forEach(btn => {
         btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);

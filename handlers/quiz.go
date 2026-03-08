@@ -316,6 +316,26 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	cap := h.MaxNewPerDay
+	if h.capResetDate == time.Now().Format("2006-01-02") {
+		extra := h.MaxNewPerDay
+		if extra < 1 {
+			extra = 1
+		}
+		cap = h.newCapBase + extra
+	}
+	newAvailable := 0
+	if newToday < cap {
+		n, err := h.Store.CountUnseenZhWords(r.Context(), tags)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if remaining := cap - newToday; n > remaining {
+			n = remaining
+		}
+		newAvailable = n
+	}
 	writeJSON(w, http.StatusOK, map[string]int{
 		"due_today":            due,
 		"total":                total,
@@ -324,6 +344,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"today_attempts":       todayAttempts,
 		"today_mistakes":       todayMistakes,
 		"available_to_advance": availableToAdvance,
+		"new_available":        newAvailable,
 	})
 }
 

@@ -720,6 +720,34 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 	return
 }
 
+// CountUnseenZhWords returns the number of zh words that have never been presented
+// (first_seen_date IS NULL), optionally filtered by tags.
+func (s *Store) CountUnseenZhWords(ctx context.Context, tags []string) (int, error) {
+	tagFilter := ""
+	var args []any
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		tagFilter = ` AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE w.language = 'zh' AND p.first_seen_date IS NULL`+tagFilter,
+		args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count unseen zh words: %w", err)
+	}
+	return count, nil
+}
+
 // LookupConfusion checks if the user's wrong answer matches a different known word.
 // For zh_to_en / zh_pinyin_to_en: looks for an EN word matching the answer, then
 // returns the zh word it belongs to (if different from zhWordID).
