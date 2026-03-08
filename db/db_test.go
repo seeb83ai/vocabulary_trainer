@@ -1126,3 +1126,120 @@ func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
 		t.Errorf("expected 0 rows, got %d", len(stats))
 	}
 }
+
+// ── GetTodaySessionInfo ───────────────────────────────────────────────────────
+
+func TestGetTodaySessionInfo_NoRows(t *testing.T) {
+	s := openTestDB(t)
+	attempts, mistakes, available, err := s.GetTodaySessionInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 || mistakes != 0 {
+		t.Errorf("expected 0/0, got %d/%d", attempts, mistakes)
+	}
+	if available != 0 {
+		t.Errorf("expected 0 available, got %d", available)
+	}
+}
+
+func TestGetTodaySessionInfo_WithData(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Mark the word as seen with a future due date.
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_date = date('now'), due_date = datetime('now', '+1 day') WHERE word_id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+
+	// Record a daily stat (1 correct answer).
+	if err := s.RecordDailyStat(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+
+	attempts, mistakes, available, err := s.GetTodaySessionInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 {
+		t.Errorf("expected 1 attempt, got %d", attempts)
+	}
+	if mistakes != 0 {
+		t.Errorf("expected 0 mistakes, got %d", mistakes)
+	}
+	if available != 1 {
+		t.Errorf("expected 1 available to advance, got %d", available)
+	}
+}
+
+// ── AdvanceDueDates ───────────────────────────────────────────────────────────
+
+func TestAdvanceDueDates_AdvancesNWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed 5 words and mark them as seen with staggered future due dates.
+	ids := make([]int64, 5)
+	for i := range ids {
+		ids[i] = seedWord(t, s, []string{"一", "二", "三", "四", "五"}[i], "", []string{"en"})
+		days := i + 1 // 1 day, 2 days, ..., 5 days from now
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE sm2_progress SET first_seen_date = date('now'), due_date = datetime('now', ? || ' days') WHERE word_id = ?`,
+			days, ids[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Advance 3 words (the 3rd earliest due date is +3 days).
+	nowDue, err := s.AdvanceDueDates(ctx, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nowDue != 3 {
+		t.Errorf("expected 3 words due now, got %d", nowDue)
+	}
+
+	// Verify exactly 3 are due and 2 are still future.
+	var due, future int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress WHERE due_date <= CURRENT_TIMESTAMP AND first_seen_date IS NOT NULL`).Scan(&due); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress WHERE due_date > CURRENT_TIMESTAMP AND first_seen_date IS NOT NULL`).Scan(&future); err != nil {
+		t.Fatal(err)
+	}
+	if due != 3 {
+		t.Errorf("expected 3 due, got %d", due)
+	}
+	if future != 2 {
+		t.Errorf("expected 2 future, got %d", future)
+	}
+}
+
+func TestAdvanceDueDates_FewerThanN(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Only 2 seen words with future due dates.
+	for i, zh := range []string{"一", "二"} {
+		id := seedWord(t, s, zh, "", []string{"en"})
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE sm2_progress SET first_seen_date = date('now'), due_date = datetime('now', ? || ' days') WHERE word_id = ?`,
+			i+1, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Request 10 but only 2 available — should return 0 without error.
+	nowDue, err := s.AdvanceDueDates(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nowDue != 0 {
+		t.Errorf("expected 0, got %d", nowDue)
+	}
+}

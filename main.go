@@ -100,6 +100,7 @@ func main() {
 		r.Post("/quiz/answer", quizH.Answer)
 		r.Post("/quiz/skip", quizH.Skip)
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)
+		r.Post("/quiz/advance", quizH.Advance)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Get("/quiz/word-stats", quizH.WordStats)

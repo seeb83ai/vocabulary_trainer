@@ -39,6 +39,7 @@ async function loadNextCard() {
   isSubmitted = false;
   hide('result-area');
   hide('empty-state');
+  hide('success-state');
   hide('error-state');
   hide('add-translation-btn');
   hide('result-play-btn');
@@ -60,7 +61,17 @@ async function loadNextCard() {
   } catch (e) {
     if (e.message === 'no words available') {
       hide('card-area');
-      show('empty-state');
+      const statsUrl = selectedTags.length ? `/api/quiz/stats?tags=${selectedTags.join(',')}` : '/api/quiz/stats';
+      const stats = await apiFetch(statsUrl).catch(() => null);
+      if (!stats || stats.total === 0) {
+        show('empty-state');
+      } else {
+        setText('success-stats', `${stats.today_attempts} attempts · ${stats.today_mistakes} mistakes`);
+        document.querySelectorAll('.advance-btn').forEach(btn => {
+          btn.disabled = stats.available_to_advance < parseInt(btn.dataset.advance);
+        });
+        show('success-state');
+      }
     } else {
       hide('card-area');
       show('error-state');
@@ -380,6 +391,24 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     loadNextCard();
+  });
+
+  document.querySelectorAll('.advance-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const count = parseInt(btn.dataset.advance);
+      const resetNewCap = $('reset-cap-checkbox').checked;
+      try {
+        await apiFetch('/api/quiz/advance', {
+          method: 'POST',
+          body: JSON.stringify({ count, reset_new_cap: resetNewCap }),
+        });
+      } catch (err) {
+        alert('Error: ' + err.message);
+        return;
+      }
+      hide('success-state');
+      loadNextCard();
+    });
   });
 
   loadNextCard();

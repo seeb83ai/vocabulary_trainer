@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"strings"
+	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
@@ -14,6 +16,7 @@ import (
 type QuizHandler struct {
 	Store        *db.Store
 	MaxNewPerDay int
+	capResetDate string // date string (YYYY-MM-DD) on which the new-word cap was reset
 }
 
 // Next returns the next card to study.
@@ -22,7 +25,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	if t := r.URL.Query().Get("tags"); t != "" {
 		tags = strings.Split(t, ",")
 	}
-	word, progress, err := h.Store.GetNextCard(r.Context(), tags, h.MaxNewPerDay)
+	cap := h.MaxNewPerDay
+	if h.capResetDate == time.Now().Format("2006-01-02") {
+		cap = math.MaxInt32
+	}
+	word, progress, err := h.Store.GetNextCard(r.Context(), tags, cap)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -289,7 +296,7 @@ func (h *QuizHandler) WordStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stats)
 }
 
-// Stats returns due-today and total card counts.
+// Stats returns due-today and total card counts, plus today's session info.
 func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	var tags []string
 	if t := r.URL.Query().Get("tags"); t != "" {
@@ -300,10 +307,47 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]int{
-		"due_today":       due,
-		"total":           total,
-		"new_today":       newToday,
-		"max_new_per_day": h.MaxNewPerDay,
+		"due_today":            due,
+		"total":                total,
+		"new_today":            newToday,
+		"max_new_per_day":      h.MaxNewPerDay,
+		"today_attempts":       todayAttempts,
+		"today_mistakes":       todayMistakes,
+		"available_to_advance": availableToAdvance,
+	})
+}
+
+// Advance pulls forward the due dates of n seen zh words so they become due now,
+// and optionally resets the daily new-word cap for the rest of the day.
+func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Count       int  `json:"count"`
+		ResetNewCap bool `json:"reset_new_cap"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	advanced := 0
+	if req.Count > 0 {
+		n, err := h.Store.AdvanceDueDates(r.Context(), req.Count)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		advanced = n
+	}
+	if req.ResetNewCap {
+		h.capResetDate = time.Now().Format("2006-01-02")
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"advanced":  advanced,
+		"cap_reset": req.ResetNewCap,
 	})
 }
