@@ -1352,7 +1352,7 @@ func (s *Store) AdvanceDueDates(ctx context.Context, n int) (int, error) {
 	if delta <= 0 {
 		return 0, nil
 	}
-	modifier := fmt.Sprintf("-%d seconds", int64(delta.Seconds()))
+	modifier := fmt.Sprintf("-%d seconds", int64(delta.Seconds())+1)
 
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE sm2_progress SET due_date = datetime(due_date, ?)
