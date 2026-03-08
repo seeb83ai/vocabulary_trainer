@@ -701,10 +701,15 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 		return
 	}
 	dueArgs := append([]any{}, tagArgs...)
+	// Include words in the wrong-retry window (due within the next
+	// WrongRetryDelay*3 seconds) so that due_today stays > 0 while
+	// recently-failed cards are waiting for their short re-test delay.
+	retryWindowSec := int((sm2.WrongRetryDelay * 3).Seconds())
 	err = s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sm2_progress p
+		fmt.Sprintf(`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter, dueArgs...).Scan(&dueToday)
+		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
+		   AND p.due_date <= datetime('now', '+%d seconds')`, retryWindowSec)+tagFilter, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
 	}
