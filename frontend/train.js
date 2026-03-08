@@ -4,6 +4,7 @@ let currentCard = null;
 let isSubmitted = false;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
 let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
+let latestStats = null;
 
 function applyModeButtons() {
   document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -29,6 +30,7 @@ async function loadStats() {
   try {
     const statsUrl = selectedTags.length ? `/api/quiz/stats?tags=${selectedTags.join(',')}` : '/api/quiz/stats';
     const stats = await apiFetch(statsUrl);
+    latestStats = stats;
     setText('stats-due', stats.due_today);
     setText('stats-total', stats.total);
     setText('stats-new', `${stats.new_today} / ${stats.max_new_per_day}`);
@@ -39,6 +41,7 @@ async function loadNextCard() {
   isSubmitted = false;
   hide('result-area');
   hide('empty-state');
+  hide('success-state');
   hide('error-state');
   hide('add-translation-btn');
   hide('result-play-btn');
@@ -50,6 +53,27 @@ async function loadNextCard() {
   reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
   reviewBtn.onclick = null;
 
+  // Fetch fresh stats first. The backend's GetNextCard may return non-due
+  // (future) cards via its fallback queries even when due_today = 0, so we
+  // cannot rely solely on a 404 "no words available" to trigger the success
+  // screen — we must check due_today proactively.
+  await loadStats();
+
+  if (latestStats) {
+    if (latestStats.total === 0) {
+      show('empty-state');
+      return;
+    }
+    if (latestStats.due_today === 0 && !latestStats.new_available) {
+      setText('success-stats', `${latestStats.today_attempts} attempts · ${latestStats.today_mistakes} mistakes`);
+      document.querySelectorAll('.advance-btn').forEach(btn => {
+        btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);
+      });
+      show('success-state');
+      return;
+    }
+  }
+
   try {
     const params = new URLSearchParams();
     if (selectedMode !== 'random') params.set('mode', selectedMode);
@@ -58,11 +82,21 @@ async function loadNextCard() {
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
   } catch (e) {
+    hide('card-area');
     if (e.message === 'no words available') {
-      hide('card-area');
-      show('empty-state');
+      // latestStats was fetched above; if stale or fetch failed, re-fetch now.
+      const statsUrl = selectedTags.length ? `/api/quiz/stats?tags=${selectedTags.join(',')}` : '/api/quiz/stats';
+      const stats = latestStats || await apiFetch(statsUrl).catch(() => null);
+      if (!stats || stats.total === 0) {
+        show('empty-state');
+      } else {
+        setText('success-stats', `${stats.today_attempts} attempts · ${stats.today_mistakes} mistakes`);
+        document.querySelectorAll('.advance-btn').forEach(btn => {
+          btn.disabled = stats.available_to_advance < parseInt(btn.dataset.advance);
+        });
+        show('success-state');
+      }
     } else {
-      hide('card-area');
       show('error-state');
       setText('error-msg', e.message);
     }
@@ -380,6 +414,24 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     loadNextCard();
+  });
+
+  document.querySelectorAll('.advance-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const count = parseInt(btn.dataset.advance);
+      const resetNewCap = $('reset-cap-checkbox').checked;
+      try {
+        await apiFetch('/api/quiz/advance', {
+          method: 'POST',
+          body: JSON.stringify({ count, reset_new_cap: resetNewCap }),
+        });
+      } catch (err) {
+        alert('Error: ' + err.message);
+        return;
+      }
+      hide('success-state');
+      loadNextCard();
+    });
   });
 
   loadNextCard();

@@ -38,6 +38,7 @@ func newRouter(s *db.Store) http.Handler {
 	r.Post("/api/quiz/answer", quizH.Answer)
 	r.Post("/api/quiz/skip", quizH.Skip)
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
+	r.Post("/api/quiz/advance", quizH.Advance)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
@@ -153,7 +154,21 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 
 func TestQuizNext_ModeParam(t *testing.T) {
 	s := openTestDB(t)
-	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Give the word some attempts so it is not returned as a new_word introduction.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
 	r := newRouter(s)
 
 	for _, mode := range []string{models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn} {
@@ -1222,5 +1237,144 @@ func TestWordStats_WithData(t *testing.T) {
 		if len(w.EnTexts) == 0 {
 			t.Errorf("most_practiced word %d missing en_texts", w.WordID)
 		}
+	}
+}
+
+// ── /api/quiz/stats new fields ────────────────────────────────────────────────
+
+func TestStatsHandlerNewFields(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+
+	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available"} {
+		if _, ok := resp[key]; !ok {
+			t.Errorf("stats response missing key %q", key)
+		}
+	}
+}
+
+// ── /api/quiz/advance ─────────────────────────────────────────────────────────
+
+func TestAdvanceHandler_NoWordsAvailable(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// No seen words — advance should return 0 without error.
+	rec := do(t, r, "POST", "/api/quiz/advance", map[string]any{"count": 10, "reset_new_cap": false})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["advanced"].(float64) != 0 {
+		t.Errorf("expected advanced=0, got %v", resp["advanced"])
+	}
+}
+
+func TestAdvanceHandler_AdvancesWords(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+
+	// Seed a word, acknowledge it (marks as seen, due_date = now), then skip
+	// it forward so it has a future due date.
+	wid, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "测试", EnTexts: []string{"test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, wid); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SkipWord(ctx, wid, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "POST", "/api/quiz/advance", map[string]any{"count": 1, "reset_new_cap": false})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["advanced"].(float64) != 1 {
+		t.Errorf("expected advanced=1, got %v", resp["advanced"])
+	}
+}
+
+func TestStatsHandlerNewAvailable(t *testing.T) {
+	s := openTestDB(t)
+	// Use MaxNewPerDay=0 so new words are blocked by default.
+	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 0}
+	r := chi.NewRouter()
+	r.Get("/api/quiz/stats", quizH.Stats)
+	r.Post("/api/quiz/advance", quizH.Advance)
+	ctx := context.Background()
+
+	// Seed an unseen word.
+	if _, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "未见", EnTexts: []string{"unseen"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Before cap reset: new_available should be 0 (cap=0 blocks new words).
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["new_available"] != 0 {
+		t.Errorf("new_available before cap reset: got %d, want 0", resp["new_available"])
+	}
+
+	// Reset cap.
+	rec = do(t, r, "POST", "/api/quiz/advance", map[string]any{"count": 0, "reset_new_cap": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	// After cap reset: new_available should be 1.
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	decodeJSON(t, rec, &resp)
+	if resp["new_available"] != 1 {
+		t.Errorf("new_available after cap reset: got %d, want 1", resp["new_available"])
+	}
+}
+
+func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
+	s := openTestDB(t)
+	// Use a handler with MaxNewPerDay=0 so new words are normally blocked.
+	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 0}
+	r := chi.NewRouter()
+	r.Get("/api/quiz/next", quizH.Next)
+	r.Post("/api/quiz/advance", quizH.Advance)
+	ctx := context.Background()
+
+	// Seed a word (unseen).
+	if _, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "新词", EnTexts: []string{"new word"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// With cap=0 and no reset, next should return no words.
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 before cap reset, got %d", rec.Code)
+	}
+
+	// Reset cap.
+	rec = do(t, r, "POST", "/api/quiz/advance", map[string]any{"count": 0, "reset_new_cap": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	// Now next should return the unseen word.
+	rec = do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 after cap reset, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

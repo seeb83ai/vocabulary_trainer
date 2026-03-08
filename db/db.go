@@ -701,10 +701,15 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 		return
 	}
 	dueArgs := append([]any{}, tagArgs...)
+	// Include words in the wrong-retry window (due within the next
+	// WrongRetryDelay*3 seconds) so that due_today stays > 0 while
+	// recently-failed cards are waiting for their short re-test delay.
+	retryWindowSec := int((sm2.WrongRetryDelay * 3).Seconds())
 	err = s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sm2_progress p
+		fmt.Sprintf(`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter, dueArgs...).Scan(&dueToday)
+		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
+		   AND p.due_date <= datetime('now', '+%d seconds')`, retryWindowSec)+tagFilter, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
 	}
@@ -713,6 +718,34 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND p.first_seen_date = date('now')`).Scan(&newToday)
 	return
+}
+
+// CountUnseenZhWords returns the number of zh words that have never been presented
+// (first_seen_date IS NULL), optionally filtered by tags.
+func (s *Store) CountUnseenZhWords(ctx context.Context, tags []string) (int, error) {
+	tagFilter := ""
+	var args []any
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		tagFilter = ` AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE w.language = 'zh' AND p.first_seen_date IS NULL`+tagFilter,
+		args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count unseen zh words: %w", err)
+	}
+	return count, nil
 }
 
 // LookupConfusion checks if the user's wrong answer matches a different known word.
@@ -1298,4 +1331,77 @@ func calcDistStats(vals []float64) models.DistStats {
 		Median:     round(median),
 		Percentile: round(p95),
 	}
+}
+
+// GetTodaySessionInfo returns today's attempt and mistake counts from daily_stats,
+// and the number of seen zh words whose due date is still in the future.
+func (s *Store) GetTodaySessionInfo(ctx context.Context) (attempts, mistakes, availableToAdvance int, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(attempts, 0), COALESCE(mistakes, 0) FROM daily_stats WHERE date = date('now')`).
+		Scan(&attempts, &mistakes)
+	if err == sql.ErrNoRows {
+		err = nil
+		attempts, mistakes = 0, 0
+	}
+	if err != nil {
+		err = fmt.Errorf("get today session info: %w", err)
+		return
+	}
+	err = s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sm2_progress p
+		JOIN words w ON w.id = p.word_id
+		WHERE w.language = 'zh'
+		  AND p.first_seen_date IS NOT NULL
+		  AND p.due_date > CURRENT_TIMESTAMP`).Scan(&availableToAdvance)
+	if err != nil {
+		err = fmt.Errorf("count available to advance: %w", err)
+	}
+	return
+}
+
+// AdvanceDueDates pulls forward the due dates of seen zh words so that at least
+// n words become due now. It finds the Nth earliest future due date among seen
+// zh words, computes the delta to now, and subtracts it from all seen zh words'
+// due dates. Returns the number of zh words now due after the operation.
+func (s *Store) AdvanceDueDates(ctx context.Context, n int) (int, error) {
+	var nthDueDateStr string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT p.due_date FROM sm2_progress p
+		JOIN words w ON w.id = p.word_id
+		WHERE w.language = 'zh'
+		  AND p.first_seen_date IS NOT NULL
+		  AND p.due_date > CURRENT_TIMESTAMP
+		ORDER BY p.due_date ASC
+		LIMIT 1 OFFSET ?`, n-1).Scan(&nthDueDateStr)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("find nth due date: %w", err)
+	}
+
+	nthDueDate := parseDateTime(nthDueDateStr)
+	delta := time.Until(nthDueDate)
+	if delta <= 0 {
+		return 0, nil
+	}
+	modifier := fmt.Sprintf("-%d seconds", int64(delta.Seconds())+1)
+
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE sm2_progress SET due_date = datetime(due_date, ?)
+		WHERE first_seen_date IS NOT NULL
+		  AND word_id IN (SELECT id FROM words WHERE language = 'zh')`, modifier); err != nil {
+		return 0, fmt.Errorf("advance due dates: %w", err)
+	}
+
+	var nowDue int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM sm2_progress p
+		JOIN words w ON w.id = p.word_id
+		WHERE w.language = 'zh'
+		  AND p.first_seen_date IS NOT NULL
+		  AND p.due_date <= CURRENT_TIMESTAMP`).Scan(&nowDue); err != nil {
+		return 0, fmt.Errorf("count now due: %w", err)
+	}
+	return nowDue, nil
 }
