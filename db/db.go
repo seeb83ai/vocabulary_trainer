@@ -1027,7 +1027,9 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL AND p.total_correct >= 5`).Scan(&wordsKnown); err != nil {
+		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
+		   AND p.total_attempts >= 10
+		   AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.85`).Scan(&wordsKnown); err != nil {
 		return fmt.Errorf("count words known: %w", err)
 	}
 	if err := s.db.QueryRowContext(ctx,

@@ -1024,9 +1024,9 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 	ctx := context.Background()
 	seedWord(t, s, "猫", "māo", []string{"cat"})
 
-	// Mark the word as seen and with enough correct answers to be "known"
+	// Mark the word as seen and meeting the "known" threshold (≥10 attempts, ≥85% accuracy)
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now'), total_correct = 5`); err != nil {
+		`UPDATE sm2_progress SET first_seen_date = date('now'), total_correct = 9, total_attempts = 10`); err != nil {
 		t.Fatal(err)
 	}
 
