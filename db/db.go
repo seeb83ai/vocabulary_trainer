@@ -1137,7 +1137,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	resp := &models.WordStatsResponse{
 		TotalSeen:  len(all),
 		Milestones: map[string]int{"1+": 0, "3+": 0, "5+": 0, "10+": 0},
-		AccBuckets: map[string]int{"0-49": 0, "50-79": 0, "80-99": 0, "100": 0},
+		AccBuckets: map[string]int{"0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0},
 		Hardest:    []models.WordStatDetail{},
 		MostPract:  []models.WordStatDetail{},
 	}
@@ -1175,12 +1175,12 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 
 		if r.attempts > 0 {
 			switch {
-			case r.accuracy >= 100:
-				resp.AccBuckets["100"]++
-			case r.accuracy >= 80:
-				resp.AccBuckets["80-99"]++
+			case r.accuracy >= 85:
+				resp.AccBuckets["85-100"]++
+			case r.accuracy >= 70:
+				resp.AccBuckets["70-84"]++
 			case r.accuracy >= 50:
-				resp.AccBuckets["50-79"]++
+				resp.AccBuckets["50-69"]++
 			default:
 				resp.AccBuckets["0-49"]++
 			}

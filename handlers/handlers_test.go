@@ -1226,8 +1226,8 @@ func TestWordStats_WithData(t *testing.T) {
 	}
 
 	// Accuracy buckets should have keys
-	if _, ok := resp.AccBuckets["100"]; !ok {
-		t.Error("accuracy_buckets missing '100' key")
+	if _, ok := resp.AccBuckets["85-100"]; !ok {
+		t.Error("accuracy_buckets missing '85-100' key")
 	}
 
 	// Most practiced should be non-empty

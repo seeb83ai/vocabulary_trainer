@@ -151,8 +151,8 @@ function renderWordStats(ws) {
 
   // Accuracy distribution doughnut
   const aCtx = $('accuracy-chart').getContext('2d');
-  const bucketLabels = ['0–49%', '50–79%', '80–99%', '100%'];
-  const bucketKeys = ['0-49', '50-79', '80-99', '100'];
+  const bucketLabels = ['0–49%', '50–69%', '70–84%', '85–100%'];
+  const bucketKeys = ['0-49', '50-69', '70-84', '85-100'];
   const aData = bucketKeys.map(k => ws.accuracy_buckets[k] || 0);
   new Chart(aCtx, {
     type: 'doughnut',
