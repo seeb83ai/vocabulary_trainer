@@ -74,7 +74,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	case models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn:
 		mode = requestedMode
 	case models.ModeProgressive:
-		mode = sm2.SelectProgressiveMode(progress.TotalCorrect)
+		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts)
 	default:
 		mode = sm2.SelectMode()
 	}

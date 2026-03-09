@@ -83,15 +83,16 @@ The training page stats bar shows **New today: X / Y** so you can see how many n
 
 ## Progressive mode
 
-The **Progressive** quiz mode introduces new words gently and gradually increases difficulty based on your learning progress:
+The **Progressive** quiz mode introduces new words gently and gradually increases difficulty based on your accuracy (correct answers ÷ total attempts):
 
-| Progress | What happens |
+| Condition | What happens |
 |---|---|
 | Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all English translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. |
-| Introduced but never correct (`total_correct = 0`) | **EN → ZH** — easiest direction: see English, type Chinese |
-| 1–2 correct answers | **ZH + Pinyin → EN** — see Chinese with pinyin hint, type English |
-| 3–4 correct answers | **ZH → EN** — see Chinese only, type English |
-| 5+ correct answers | **Random** — any of the three quiz directions |
+| `total_attempts < 3` | **EN → ZH** — not enough data yet; stay at the easiest direction |
+| Accuracy < 50% | **EN → ZH** — still struggling; see English, type Chinese |
+| Accuracy < 70% **or** `total_attempts < 10` | **ZH + Pinyin → EN** — making progress; see Chinese with pinyin hint, type English |
+| Accuracy < 85% (and `total_attempts ≥ 10`) | **ZH → EN** — reliable; see Chinese only, type English |
+| Accuracy ≥ 85% and `total_attempts ≥ 10` | **Random** — any of the three quiz directions |
 
 **Skip vs Got it:**
 - **Got it** marks the word as introduced and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.
