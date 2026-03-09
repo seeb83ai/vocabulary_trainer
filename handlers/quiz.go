@@ -25,6 +25,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	if t := r.URL.Query().Get("tags"); t != "" {
 		tags = strings.Split(t, ",")
 	}
+	bucket := r.URL.Query().Get("bucket")
 	cap := h.MaxNewPerDay
 	if h.capResetDate == time.Now().Format("2006-01-02") {
 		extra := h.MaxNewPerDay
@@ -33,7 +34,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 		cap = h.newCapBase + extra
 	}
-	word, progress, err := h.Store.GetNextCard(r.Context(), tags, cap)
+	word, progress, err := h.Store.GetNextCard(r.Context(), tags, cap, bucket)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -306,7 +307,8 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	if t := r.URL.Query().Get("tags"); t != "" {
 		tags = strings.Split(t, ",")
 	}
-	due, total, newToday, err := h.Store.GetStats(r.Context(), tags)
+	bucket := r.URL.Query().Get("bucket")
+	due, total, newToday, err := h.Store.GetStats(r.Context(), tags, bucket)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -325,7 +327,8 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		cap = h.newCapBase + extra
 	}
 	newAvailable := 0
-	if newToday < cap {
+	// When drilling a specific tier, don't introduce new words (they have no tier yet).
+	if bucket == "" && newToday < cap {
 		n, err := h.Store.CountUnseenZhWords(r.Context(), tags)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -369,7 +372,7 @@ func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
 		advanced = n
 	}
 	if req.ResetNewCap {
-		_, _, newToday, err := h.Store.GetStats(r.Context(), nil)
+		_, _, newToday, err := h.Store.GetStats(r.Context(), nil, "")
 		if err == nil {
 			h.capResetDate = time.Now().Format("2006-01-02")
 			h.newCapBase = newToday

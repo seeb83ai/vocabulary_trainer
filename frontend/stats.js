@@ -151,22 +151,20 @@ function renderWordStats(ws) {
 
   // Accuracy distribution doughnut
   const aCtx = $('accuracy-chart').getContext('2d');
-  const bucketLabels = ['0–49%', '50–69%', '70–84%', '85–100%'];
-  const bucketKeys = ['0-49', '50-69', '70-84', '85-100'];
-  const aData = bucketKeys.map(k => ws.accuracy_buckets[k] || 0);
+  const aData = TIERS.map(t => ws.accuracy_buckets[t.key] || 0);
   new Chart(aCtx, {
     type: 'doughnut',
     data: {
-      labels: bucketLabels,
+      labels: TIERS.map(t => t.label),
       datasets: [{
         data: aData,
-        backgroundColor: ['rgba(239,68,68,0.7)', 'rgba(245,158,11,0.7)', 'rgba(59,130,246,0.7)', 'rgba(34,197,94,0.7)'],
+        backgroundColor: TIERS.map(t => t.color + 'b3'), // 70% opacity
       }],
     },
     options: {
       responsive: true,
       plugins: {
-        legend: { position: 'bottom' },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             label(ctx) {
@@ -179,6 +177,22 @@ function renderWordStats(ws) {
       },
     },
   });
+
+  // Tier legend below chart
+  const legend = $('tier-legend');
+  const total = aData.reduce((a, b) => a + b, 0);
+  legend.innerHTML = TIERS.map((t, i) => {
+    const count = aData[i];
+    const pct = total > 0 ? Math.round(count / total * 100) : 0;
+    return `<div class="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
+      <div class="flex items-center gap-2">
+        <span class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${t.color}"></span>
+        <span class="font-medium text-gray-700">${t.label}</span>
+        <span class="text-gray-400 text-xs">${t.desc}</span>
+      </div>
+      <span class="text-gray-600 tabular-nums">${count} <span class="text-gray-400">(${pct}%)</span></span>
+    </div>`;
+  }).join('');
 
   // Aggregates table
   $('word-stats-total').textContent = `(${ws.total_seen} words seen)`;

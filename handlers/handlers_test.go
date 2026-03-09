@@ -215,7 +215,7 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 	}
 
 	// Call GetNextCard once (high limit) to stamp id1 as today's introduced word.
-	w, _, err := s.GetNextCard(ctx, nil, 100)
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
 	if err != nil || w == nil || w.ID != id1 {
 		t.Fatalf("setup: expected id1=%d to be stamped, got w=%v err=%v", id1, w, err)
 	}

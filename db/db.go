@@ -472,11 +472,31 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 	return nil
 }
 
+// tierFilter returns the SQL WHERE fragment (prefixed with AND) that restricts
+// rows to words in the given accuracy/attempt tier. The alias "p" must refer to
+// sm2_progress in the enclosing query. Returns "" for an empty/unknown key.
+// The conditions mirror SelectProgressiveMode in sm2/sm2.go.
+func tierFilter(bucket string) string {
+	switch bucket {
+	case "0-49":
+		return ` AND p.total_attempts > 0 AND (p.total_attempts < 3 OR CAST(p.total_correct AS REAL) / p.total_attempts < 0.50)`
+	case "50-69":
+		return ` AND p.total_attempts >= 3 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.50` +
+			` AND (CAST(p.total_correct AS REAL) / p.total_attempts < 0.70 OR p.total_attempts < 10)`
+	case "70-84":
+		return ` AND p.total_attempts >= 10 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.70` +
+			` AND CAST(p.total_correct AS REAL) / p.total_attempts < 0.85`
+	case "85-100":
+		return ` AND p.total_attempts >= 10 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.85`
+	}
+	return ""
+}
+
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
 // maxNew caps how many new words (first_seen_date IS NULL) can be introduced today; once
 // the count for today reaches maxNew, only already-seen cards are returned.
-func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int) (*models.Word, *models.SM2Progress, error) {
+func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, bucket string) (*models.Word, *models.SM2Progress, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -491,6 +511,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int) (*mo
 			JOIN tags tg ON tg.id = wt.tag_id
 			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
 	}
+	bucketSQL := tierFilter(bucket)
 
 	// Count new words already introduced today (global, not per-tag).
 	var newToday int
@@ -515,7 +536,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int) (*mo
 		       p.total_correct, p.total_attempts
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
-		WHERE w.language = 'zh'` + tagFilter + newWordFilter + ` %s
+		WHERE w.language = 'zh'` + tagFilter + newWordFilter + bucketSQL + ` %s
 		ORDER BY p.due_date ASC
 		LIMIT 1`
 
@@ -679,7 +700,7 @@ func (s *Store) AcknowledgeWord(ctx context.Context, wordID int64) error {
 
 // GetStats returns due-today count, total word count (zh words only), and the number of
 // new words introduced today (globally, not filtered by tag).
-func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, newToday int, err error) {
+func (s *Store) GetStats(ctx context.Context, tags []string, bucket string) (dueToday, total, newToday int, err error) {
 	tagFilter := ""
 	var tagArgs []any
 	if len(tags) > 0 {
@@ -693,10 +714,18 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 			JOIN tags tg ON tg.id = wt.tag_id
 			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
 	}
+	bucketSQL := tierFilter(bucket)
 
+	// When a bucket filter is active the total count must join sm2_progress.
 	totalArgs := append([]any{}, tagArgs...)
-	err = s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM words w WHERE w.language = 'zh'`+tagFilter, totalArgs...).Scan(&total)
+	if bucket != "" {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM words w JOIN sm2_progress p ON p.word_id = w.id`+
+				` WHERE w.language = 'zh'`+tagFilter+bucketSQL, totalArgs...).Scan(&total)
+	} else {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM words w WHERE w.language = 'zh'`+tagFilter, totalArgs...).Scan(&total)
+	}
 	if err != nil {
 		return
 	}
@@ -709,7 +738,7 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 		fmt.Sprintf(`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
-		   AND p.due_date <= datetime('now', '+%d seconds')`, retryWindowSec)+tagFilter, dueArgs...).Scan(&dueToday)
+		   AND p.due_date <= datetime('now', '+%d seconds')`, retryWindowSec)+tagFilter+bucketSQL, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
 	}

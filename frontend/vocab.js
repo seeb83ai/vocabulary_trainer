@@ -72,7 +72,7 @@ function renderTable(words) {
         ${word.en_texts.map(escHtml).join(', ')}
         ${(word.tags || []).map(t => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1">${escHtml(t)}</span>`).join('')}
       </td>
-      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderRepetitions(word)}</td>
+      <td class="py-3 px-4 whitespace-nowrap">${renderTierBadge(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderDue(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap">
         <button class="btn-edit text-blue-600 hover:text-blue-800 mr-3 font-medium" data-id="${word.id}">Edit</button>
@@ -210,24 +210,11 @@ async function deleteWord(id) {
   }
 }
 
-function renderRepetitions(word) {
-  if (word.total_attempts === 0) {
-    return '<span class="text-gray-400">New</span>';
-  }
-  const pct = Math.round((word.total_correct / word.total_attempts) * 100);
-  let barColor = 'bg-red-400';
-  if (pct >= 80) barColor = 'bg-green-400';
-  else if (pct >= 50) barColor = 'bg-yellow-400';
-  return `
-    <div class="flex flex-col gap-0.5 min-w-[90px]">
-      <div class="flex items-center gap-1">
-        <div class="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div class="${barColor} h-full rounded-full" style="width:${pct}%"></div>
-        </div>
-        <span class="text-gray-500">${pct}%</span>
-      </div>
-      <div class="text-gray-400">${word.repetitions} reps</div>
-    </div>`;
+function renderTierBadge(word) {
+  const tier = wordTier(word.total_correct, word.total_attempts);
+  if (!tier) return '<span class="text-gray-400 text-xs">New</span>';
+  const pct = Math.round(word.total_correct / word.total_attempts * 100);
+  return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
 }
 
 function renderDue(word) {

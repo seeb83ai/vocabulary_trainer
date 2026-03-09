@@ -282,7 +282,7 @@ func TestAddTranslation_NotFound(t *testing.T) {
 
 func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 	s := openTestDB(t)
-	w, p, err := s.GetNextCard(context.Background(), nil, 100)
+	w, p, err := s.GetNextCard(context.Background(), nil, 100, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	w, p, err := s.GetNextCard(context.Background(), nil, 100)
+	w, p, err := s.GetNextCard(context.Background(), nil, 100, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, past, id2)
 	_ = id1
 
-	w, _, err := s.GetNextCard(ctx, nil, 100)
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
 
 	// With maxNew=1 the daily cap is reached; only id1 (already introduced) should be returned.
-	w, _, err := s.GetNextCard(ctx, nil, 1)
+	w, _, err := s.GetNextCard(ctx, nil, 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	}
 
 	// With maxNew=5 new words are still allowed; any of the three words may be returned.
-	w2, _, err := s.GetNextCard(ctx, nil, 5)
+	w2, _, err := s.GetNextCard(ctx, nil, 5, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestUpdateSM2Progress_Persists(t *testing.T) {
 
 func TestGetStats_Empty(t *testing.T) {
 	s := openTestDB(t)
-	due, total, _, err := s.GetStats(context.Background(), nil)
+	due, total, _, err := s.GetStats(context.Background(), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +416,7 @@ func TestGetStats_Empty(t *testing.T) {
 func TestGetStats_CountsOnlyZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello", "hi"})
-	_, total, _, err := s.GetStats(context.Background(), nil)
+	_, total, _, err := s.GetStats(context.Background(), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestGetStats_DueTodayCount(t *testing.T) {
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, future, id1)
 
-	due, _, _, err := s.GetStats(ctx, nil)
+	due, _, _, err := s.GetStats(ctx, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +457,7 @@ func TestGetStats_NewTodayCount(t *testing.T) {
 	// Stamp one word as introduced today.
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
 
-	_, _, newToday, err := s.GetStats(ctx, nil)
+	_, _, newToday, err := s.GetStats(ctx, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +592,7 @@ func TestGetNextCard_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	id2 := seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 
-	w, _, err := s.GetNextCard(context.Background(), []string{"food"}, 100)
+	w, _, err := s.GetNextCard(context.Background(), []string{"food"}, 100, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -608,7 +608,7 @@ func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 
-	w, _, err := s.GetNextCard(context.Background(), []string{"nonexistent"}, 100)
+	w, _, err := s.GetNextCard(context.Background(), []string{"nonexistent"}, 100, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -622,7 +622,7 @@ func TestGetStats_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 
-	_, total, _, err := s.GetStats(context.Background(), []string{"food"})
+	_, total, _, err := s.GetStats(context.Background(), []string{"food"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
