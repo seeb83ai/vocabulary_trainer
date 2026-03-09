@@ -1098,6 +1098,45 @@ func TestWordList_ReviewFilter(t *testing.T) {
 	}
 }
 
+func TestWordList_HideUnseenFilter(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	r := newRouter(s)
+
+	// Submit an answer for id1 to mark it as seen (increments total_attempts)
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id1,
+		Mode:   "zh_to_en",
+		Answer: "hello",
+	})
+
+	// Default: hide_unseen is on, only id1 (seen) should appear
+	rec := do(t, r, "GET", "/api/words/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.WordListResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 1 {
+		t.Errorf("hide unseen default: want total=1, got %d", resp.Total)
+	}
+	if len(resp.Words) != 1 || resp.Words[0].ID != id1 {
+		t.Errorf("hide unseen default: expected word %d, got %v", id1, resp.Words)
+	}
+
+	// With hide_unseen=0, both words should appear
+	rec2 := do(t, r, "GET", "/api/words/?hide_unseen=0", nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec2.Code, rec2.Body)
+	}
+	var resp2 models.WordListResponse
+	decodeJSON(t, rec2, &resp2)
+	if resp2.Total != 2 {
+		t.Errorf("hide_unseen=0: want total=2, got %d", resp2.Total)
+	}
+}
+
 // ── GET /api/quiz/daily-stats ────────────────────────────────────────────────
 
 func TestDailyStats_Empty(t *testing.T) {
