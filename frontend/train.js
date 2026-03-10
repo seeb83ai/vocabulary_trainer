@@ -55,6 +55,7 @@ async function loadStats() {
 
 async function loadNextCard() {
   isSubmitted = false;
+  hide('card-area');
   hide('result-area');
   hide('empty-state');
   hide('success-state');
