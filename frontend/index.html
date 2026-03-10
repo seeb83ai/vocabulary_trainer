@@ -41,15 +41,16 @@
       <button data-mode="zh_to_en"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">ZH → EN</button>
       <button data-mode="zh_pinyin_to_en" class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition">ZH + Pinyin → EN</button>
     </div>
-    <!-- Mobile: selected chip + edit trigger -->
+    <!-- Mobile: selected chip + level chip + edit trigger -->
     <div class="flex sm:hidden max-w-2xl mx-auto px-4 py-2 items-center gap-2">
       <span id="mode-mobile-label" class="px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white"></span>
+      <span id="level-mobile-label" class="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600"></span>
       <button id="open-filter-overlay" class="ml-auto text-xs text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition">&#9660;&nbsp;Edit</button>
     </div>
   </div>
 
-  <!-- Tier filter (always visible) -->
-  <div id="tier-filter-bar" class="bg-white border-b border-gray-200">
+  <!-- Tier filter (desktop only; mobile uses overlay) -->
+  <div id="tier-filter-bar" class="hidden sm:block bg-white border-b border-gray-200">
     <div class="max-w-2xl mx-auto px-4 py-2 flex gap-2 flex-wrap items-center">
       <span class="text-xs text-gray-500 font-medium mr-1">Level:</span>
       <button data-bucket="" class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition">All</button>
@@ -60,17 +61,10 @@
     </div>
   </div>
 
-  <!-- Tag filter -->
+  <!-- Tag filter (desktop only; mobile uses overlay) -->
   <div id="tag-filter-bar" class="hidden bg-white border-b border-gray-200">
-    <!-- Desktop: all tag chips -->
-    <div id="tag-chips-desktop" class="hidden sm:flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
+    <div id="tag-chips-desktop" class="flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
       <span class="text-xs text-gray-500 font-medium mr-1">Tags:</span>
-    </div>
-    <!-- Mobile: selected tags summary + edit trigger -->
-    <div class="flex sm:hidden max-w-2xl mx-auto px-4 py-2 items-center gap-2">
-      <span class="text-xs text-gray-500 font-medium shrink-0">Tags:</span>
-      <div id="tag-mobile-summary" class="flex gap-1.5 flex-nowrap overflow-x-auto flex-1 min-w-0 py-0.5"></div>
-      <button id="open-filter-overlay-tags" class="shrink-0 text-xs text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition">&#9660;&nbsp;Edit</button>
     </div>
   </div>
 

@@ -36,6 +36,18 @@ function applyTierPills() {
       : `overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition `) +
       (active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200');
   });
+  // Mobile: update the single level chip next to the mode chip
+  const levelLabel = document.getElementById('level-mobile-label');
+  if (levelLabel) {
+    const tier = TIERS.find(t => t.key === selectedBucket);
+    if (tier) {
+      levelLabel.textContent = tier.label;
+      levelLabel.className = 'px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white';
+    } else {
+      levelLabel.textContent = 'All';
+      levelLabel.className = 'px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600';
+    }
+  }
 }
 
 async function loadStats() {
@@ -308,6 +320,7 @@ async function loadTrainTags() {
     $('overlay-tags-section').classList.add('hidden');
     return;
   }
+  // Tag bar is desktop-only; on mobile the overlay handles tag selection.
   bar.classList.remove('hidden');
   // Remove stale tags from selection
   selectedTags = selectedTags.filter(t => allTags.includes(t));
@@ -330,23 +343,6 @@ async function loadTrainTags() {
       loadNextCard();
     });
     desktopContainer.appendChild(pill);
-  }
-
-  // Mobile summary: show selected tags, or "All" if none selected
-  const mobileSummary = $('tag-mobile-summary');
-  mobileSummary.innerHTML = '';
-  if (selectedTags.length === 0) {
-    const all = document.createElement('span');
-    all.className = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 shrink-0';
-    all.textContent = 'All';
-    mobileSummary.appendChild(all);
-  } else {
-    for (const tag of selectedTags) {
-      const chip = document.createElement('span');
-      chip.className = 'px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-600 text-white shrink-0';
-      chip.textContent = tag;
-      mobileSummary.appendChild(chip);
-    }
   }
 
   // Overlay: render all tag chips with toggle behaviour
@@ -415,7 +411,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.style.overflow = '';
   }
   $('open-filter-overlay').addEventListener('click', openFilterOverlay);
-  $('open-filter-overlay-tags').addEventListener('click', openFilterOverlay);
   $('filter-overlay-close').addEventListener('click', closeFilterOverlay);
   $('filter-overlay-backdrop').addEventListener('click', closeFilterOverlay);
   document.querySelectorAll('.overlay-mode-btn').forEach(btn => {
