@@ -29,8 +29,8 @@ async function loadWords() {
   if (reviewFilterActive) {
     params.set('review', '1');
   }
-  if (!hideUnseenActive) {
-    params.set('hide_unseen', '0');
+  if (hideUnseenActive) {
+    params.set('hide_unseen', '1');
   }
   try {
     const data = await apiFetch(`/api/words?${params}`);

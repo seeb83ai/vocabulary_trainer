@@ -1111,29 +1111,29 @@ func TestWordList_HideUnseenFilter(t *testing.T) {
 		Answer: "hello",
 	})
 
-	// Default: hide_unseen is on, only id1 (seen) should appear
-	rec := do(t, r, "GET", "/api/words/", nil)
+	// With hide_unseen=1, only id1 (seen) should appear
+	rec := do(t, r, "GET", "/api/words/?hide_unseen=1", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
 	var resp models.WordListResponse
 	decodeJSON(t, rec, &resp)
 	if resp.Total != 1 {
-		t.Errorf("hide unseen default: want total=1, got %d", resp.Total)
+		t.Errorf("hide_unseen=1: want total=1, got %d", resp.Total)
 	}
 	if len(resp.Words) != 1 || resp.Words[0].ID != id1 {
-		t.Errorf("hide unseen default: expected word %d, got %v", id1, resp.Words)
+		t.Errorf("hide_unseen=1: expected word %d, got %v", id1, resp.Words)
 	}
 
-	// With hide_unseen=0, both words should appear
-	rec2 := do(t, r, "GET", "/api/words/?hide_unseen=0", nil)
+	// Without hide_unseen, both words should appear
+	rec2 := do(t, r, "GET", "/api/words/", nil)
 	if rec2.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec2.Code, rec2.Body)
 	}
 	var resp2 models.WordListResponse
 	decodeJSON(t, rec2, &resp2)
 	if resp2.Total != 2 {
-		t.Errorf("hide_unseen=0: want total=2, got %d", resp2.Total)
+		t.Errorf("no hide_unseen param: want total=2, got %d", resp2.Total)
 	}
 }
 
