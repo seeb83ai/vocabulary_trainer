@@ -482,13 +482,13 @@ func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
 	switch bucket {
 	case "0-49":
-		return ` AND p.total_attempts > 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
+		return ` AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
 	case "50-69":
 		return ` AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
 	case "70-84":
-		return ` AND p.total_attempts >= 3 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
+		return ` AND p.total_attempts >= 10 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
 	case "85-100":
-		return ` AND p.total_attempts >= 3 AND ` + acc + ` >= 0.85`
+		return ` AND p.total_attempts >= 10 AND ` + acc + ` >= 0.85`
 	}
 	return ""
 }
