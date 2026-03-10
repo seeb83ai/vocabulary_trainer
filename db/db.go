@@ -45,12 +45,14 @@ var validSortExprs = map[string]string{
 	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id)",
 	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
 	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
+	"accuracy":    "CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
 }
 
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
 // If reviewOnly is true, only words with needs_review = 1 are returned.
 // If hideUnseen is true, only words with at least one quiz attempt are returned.
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool) ([]models.WordDetail, int, error) {
+// bucket filters by accuracy tier (same rules as tierFilter / GetWordStats AccBuckets).
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string) ([]models.WordDetail, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -89,6 +91,8 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		hideUnseenFilter = " AND COALESCE(p.total_attempts, 0) > 0"
 	}
 
+	bucketFilter := tierFilter(bucket)
+
 	orderExpr, ok := validSortExprs[sortBy]
 	if !ok {
 		orderExpr = "w.created_at"
@@ -122,7 +126,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))` + tagFilter + reviewFilter + hideUnseenFilter + `
+		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + `
 		ORDER BY ` + orderClause + `
 		LIMIT ? OFFSET ?`
 	listArgs := []any{q, q, q, q}
@@ -478,11 +482,36 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 	return nil
 }
 
+// tierFilter returns the SQL WHERE fragment (prefixed with AND) that restricts
+// rows to the given accuracy/attempt bucket. The alias "p" must refer to
+// sm2_progress in the enclosing query. Returns "" for an empty/unknown key.
+//
+// Bucket rules (must be kept in sync with wordTier in app.js and AccBuckets
+// in GetWordStats):
+//   0-49   : < 3 attempts OR accuracy < 50 %   (includes new/unseen words)
+//   50-69  : ≥ 3 attempts AND 50 % ≤ acc < 70 %
+//   70-84  : ≥ 10 attempts AND 70 % ≤ acc < 85 %
+//   85-100 : ≥ 10 attempts AND acc ≥ 85 %
+func tierFilter(bucket string) string {
+	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
+	switch bucket {
+	case "0-49":
+		return ` AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
+	case "50-69":
+		return ` AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
+	case "70-84":
+		return ` AND p.total_attempts >= 10 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
+	case "85-100":
+		return ` AND p.total_attempts >= 10 AND ` + acc + ` >= 0.85`
+	}
+	return ""
+}
+
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
 // maxNew caps how many new words (first_seen_date IS NULL) can be introduced today; once
 // the count for today reaches maxNew, only already-seen cards are returned.
-func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int) (*models.Word, *models.SM2Progress, error) {
+func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, bucket string) (*models.Word, *models.SM2Progress, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -497,6 +526,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int) (*mo
 			JOIN tags tg ON tg.id = wt.tag_id
 			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
 	}
+	bucketSQL := tierFilter(bucket)
 
 	// Count new words already introduced today (global, not per-tag).
 	var newToday int
@@ -521,7 +551,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int) (*mo
 		       p.total_correct, p.total_attempts
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
-		WHERE w.language = 'zh'` + tagFilter + newWordFilter + ` %s
+		WHERE w.language = 'zh'` + tagFilter + newWordFilter + bucketSQL + ` %s
 		ORDER BY p.due_date ASC
 		LIMIT 1`
 
@@ -685,7 +715,7 @@ func (s *Store) AcknowledgeWord(ctx context.Context, wordID int64) error {
 
 // GetStats returns due-today count, total word count (zh words only), and the number of
 // new words introduced today (globally, not filtered by tag).
-func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, newToday int, err error) {
+func (s *Store) GetStats(ctx context.Context, tags []string, bucket string) (dueToday, total, newToday int, err error) {
 	tagFilter := ""
 	var tagArgs []any
 	if len(tags) > 0 {
@@ -699,10 +729,18 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 			JOIN tags tg ON tg.id = wt.tag_id
 			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
 	}
+	bucketSQL := tierFilter(bucket)
 
+	// When a bucket filter is active the total count must join sm2_progress.
 	totalArgs := append([]any{}, tagArgs...)
-	err = s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM words w WHERE w.language = 'zh'`+tagFilter, totalArgs...).Scan(&total)
+	if bucket != "" {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM words w JOIN sm2_progress p ON p.word_id = w.id`+
+				` WHERE w.language = 'zh'`+tagFilter+bucketSQL, totalArgs...).Scan(&total)
+	} else {
+		err = s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM words w WHERE w.language = 'zh'`+tagFilter, totalArgs...).Scan(&total)
+	}
 	if err != nil {
 		return
 	}
@@ -715,7 +753,7 @@ func (s *Store) GetStats(ctx context.Context, tags []string) (dueToday, total, n
 		fmt.Sprintf(`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
-		   AND p.due_date <= datetime('now', '+%d seconds')`, retryWindowSec)+tagFilter, dueArgs...).Scan(&dueToday)
+		   AND p.due_date <= datetime('now', '+%d seconds')`, retryWindowSec)+tagFilter+bucketSQL, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
 	}
@@ -1033,7 +1071,9 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL AND p.total_correct >= 5`).Scan(&wordsKnown); err != nil {
+		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
+		   AND p.total_attempts >= 10
+		   AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.85`).Scan(&wordsKnown); err != nil {
 		return fmt.Errorf("count words known: %w", err)
 	}
 	if err := s.db.QueryRowContext(ctx,
@@ -1143,7 +1183,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	resp := &models.WordStatsResponse{
 		TotalSeen:  len(all),
 		Milestones: map[string]int{"1+": 0, "3+": 0, "5+": 0, "10+": 0},
-		AccBuckets: map[string]int{"0-49": 0, "50-79": 0, "80-99": 0, "100": 0},
+		AccBuckets: map[string]int{"0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0},
 		Hardest:    []models.WordStatDetail{},
 		MostPract:  []models.WordStatDetail{},
 	}
@@ -1181,12 +1221,12 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 
 		if r.attempts > 0 {
 			switch {
-			case r.accuracy >= 100:
-				resp.AccBuckets["100"]++
-			case r.accuracy >= 80:
-				resp.AccBuckets["80-99"]++
-			case r.accuracy >= 50:
-				resp.AccBuckets["50-79"]++
+			case r.attempts >= 10 && r.accuracy >= 85:
+				resp.AccBuckets["85-100"]++
+			case r.attempts >= 10 && r.accuracy >= 70:
+				resp.AccBuckets["70-84"]++
+			case r.attempts >= 3 && r.accuracy >= 50 && r.accuracy < 70:
+				resp.AccBuckets["50-69"]++
 			default:
 				resp.AccBuckets["0-49"]++
 			}

@@ -126,19 +126,24 @@ func expandVariants(a string) []string {
 	return out
 }
 
-// SelectProgressiveMode picks a quiz mode based on the word's total correct count.
+// SelectProgressiveMode picks a quiz mode based on the word's accuracy (correct/attempts).
 // This implements the progressive training ladder:
-//   - 0 correct → en_to_zh (easiest)
-//   - 1-2 correct → zh_pinyin_to_en
-//   - 3-4 correct → zh_to_en
-//   - 5+ correct → random
-func SelectProgressiveMode(totalCorrect int) string {
-	switch {
-	case totalCorrect < 1:
+//   - attempts < 3                          → en_to_zh (not enough data)
+//   - accuracy < 50%                        → en_to_zh (still struggling)
+//   - accuracy < 70% or attempts < 10       → zh_pinyin_to_en (progressing; pinyin scaffold)
+//   - accuracy < 85%                        → zh_to_en (reliable; drop pinyin)
+//   - accuracy ≥ 85% and attempts ≥ 10      → random (mastered)
+func SelectProgressiveMode(totalCorrect, totalAttempts int) string {
+	if totalAttempts < 3 {
 		return models.ModeEnToZh
-	case totalCorrect < 3:
+	}
+	accuracy := float64(totalCorrect) / float64(totalAttempts)
+	switch {
+	case accuracy < 0.50:
+		return models.ModeEnToZh
+	case accuracy < 0.70 || totalAttempts < 10:
 		return models.ModeZhPinyinToEn
-	case totalCorrect < 5:
+	case accuracy < 0.85:
 		return models.ModeZhToEn
 	default:
 		return SelectMode()

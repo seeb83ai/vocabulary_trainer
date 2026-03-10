@@ -96,8 +96,11 @@
         <input id="search-input" type="search" placeholder="Search…"
           class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-52">
       </div>
+      <div id="filter-tier-bar" class="px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
+        <span class="text-xs text-gray-500 font-medium mr-1">Level:</span>
+      </div>
       <div id="filter-tags-bar" class="hidden px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
-        <span class="text-xs text-gray-500 font-medium mr-1">Filter:</span>
+        <span class="text-xs text-gray-500 font-medium mr-1">Tags:</span>
       </div>
 
       <div class="overflow-x-auto">
@@ -107,7 +110,7 @@
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="zh">Chinese <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="pinyin">Pinyin <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="en">English <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="repetitions">Progress <span class="sort-indicator"></span></th>
+              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="accuracy">Level <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="due_date">Due <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left">Actions</th>
             </tr>

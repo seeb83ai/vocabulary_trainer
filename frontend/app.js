@@ -1,5 +1,28 @@
 // Shared utilities used by both train.js and vocab.js
 
+// Accuracy/attempt tier definitions — mirrors the progressive mode ladder.
+const TIERS = [
+  { key: '0-49',   label: 'Struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700'    },
+  { key: '50-69',  label: 'Learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700' },
+  { key: '70-84',  label: 'Practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700'   },
+  { key: '85-100', label: 'Mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700' },
+];
+
+// Returns the TIERS entry for a word, or null for brand-new words (0 attempts).
+// Must stay in sync with tierFilter (db/db.go) and AccBuckets (GetWordStats).
+//   Mastered  : ≥10 attempts AND acc ≥ 85 %
+//   Practicing: ≥10 attempts AND 70 % ≤ acc < 85 %
+//   Learning  : ≥3 attempts  AND 50 % ≤ acc < 70 %
+//   Struggling: everything else (< 3 attempts, acc < 50 %, or gray-zone)
+function wordTier(totalCorrect, totalAttempts) {
+  if (totalAttempts === 0) return null;
+  const acc = totalCorrect / totalAttempts;
+  if (totalAttempts >= 10 && acc >= 0.85) return TIERS[3];
+  if (totalAttempts >= 10 && acc >= 0.70) return TIERS[2];
+  if (totalAttempts >= 3  && acc >= 0.50 && acc < 0.70) return TIERS[1];
+  return TIERS[0];
+}
+
 const MODE_LABELS = {
   'en_to_zh': 'English → Chinese',
   'zh_to_en': 'Chinese → English',

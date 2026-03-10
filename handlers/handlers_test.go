@@ -215,7 +215,7 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 	}
 
 	// Call GetNextCard once (high limit) to stamp id1 as today's introduced word.
-	w, _, err := s.GetNextCard(ctx, nil, 100)
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
 	if err != nil || w == nil || w.ID != id1 {
 		t.Fatalf("setup: expected id1=%d to be stamped, got w=%v err=%v", id1, w, err)
 	}
@@ -877,7 +877,7 @@ func TestQuizNext_ProgressiveAfterAcknowledge(t *testing.T) {
 		t.Fatalf("acknowledge: want 204, got %d: %s", rec.Code, rec.Body)
 	}
 
-	// Next progressive card should be en_to_zh (total_correct=0)
+	// Next progressive card should be en_to_zh (total_attempts=1 < 3)
 	rec = do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
@@ -898,36 +898,38 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 	// Acknowledge first
 	do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
 
-	// Helper to set total_correct directly
-	setCorrect := func(n int) {
+	// Helper to set total_correct and total_attempts directly
+	setProgress := func(correct, attempts int) {
 		p, _ := s.GetSM2Progress(ctx, id)
-		p.TotalCorrect = n
+		p.TotalCorrect = correct
+		p.TotalAttempts = attempts
 		p.DueDate = time.Now().UTC().Add(-time.Hour) // ensure due
 		s.UpdateSM2Progress(ctx, *p)
 	}
 
 	tests := []struct {
 		correct  int
+		attempts int
 		wantMode string
 	}{
-		{0, models.ModeEnToZh},
-		{1, models.ModeZhPinyinToEn},
-		{2, models.ModeZhPinyinToEn},
-		{3, models.ModeZhToEn},
-		{4, models.ModeZhToEn},
+		{0, 1, models.ModeEnToZh},        // attempts < 3 → en_to_zh
+		{1, 10, models.ModeEnToZh},       // accuracy 10% < 50% → en_to_zh
+		{6, 10, models.ModeZhPinyinToEn}, // accuracy 60% < 70% → zh_pinyin_to_en
+		{3, 4, models.ModeZhPinyinToEn},  // accuracy 75% but attempts < 10 → zh_pinyin_to_en
+		{8, 10, models.ModeZhToEn},       // accuracy 80%, attempts >= 10 → zh_to_en
 	}
 	for _, tt := range tests {
-		setCorrect(tt.correct)
+		setProgress(tt.correct, tt.attempts)
 		rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
 		var card models.QuizCard
 		decodeJSON(t, rec, &card)
 		if card.Mode != tt.wantMode {
-			t.Errorf("correct=%d: want mode %s, got %s", tt.correct, tt.wantMode, card.Mode)
+			t.Errorf("correct=%d attempts=%d: want mode %s, got %s", tt.correct, tt.attempts, tt.wantMode, card.Mode)
 		}
 	}
 
-	// 5+ correct: should return one of the 3 valid modes
-	setCorrect(5)
+	// accuracy >= 85% and attempts >= 10: random (any valid mode)
+	setProgress(9, 10)
 	validModes := map[string]bool{
 		models.ModeEnToZh:       true,
 		models.ModeZhToEn:       true,
@@ -941,7 +943,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		var card models.QuizCard
 		decodeJSON(t, rec, &card)
 		if !validModes[card.Mode] {
-			t.Errorf("correct=5: got invalid mode %s", card.Mode)
+			t.Errorf("mastered (90%% 10 attempts): got invalid mode %s", card.Mode)
 		}
 	}
 }
@@ -1263,8 +1265,8 @@ func TestWordStats_WithData(t *testing.T) {
 	}
 
 	// Accuracy buckets should have keys
-	if _, ok := resp.AccBuckets["100"]; !ok {
-		t.Error("accuracy_buckets missing '100' key")
+	if _, ok := resp.AccBuckets["85-100"]; !ok {
+		t.Error("accuracy_buckets missing '85-100' key")
 	}
 
 	// Most practiced should be non-empty
