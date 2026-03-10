@@ -386,7 +386,6 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedBucket = btn.dataset.bucket;
       localStorage.setItem('quizBucket', selectedBucket);
       applyTierPills();
-      closeFilterOverlay();
       loadNextCard();
     });
   });
@@ -418,7 +417,6 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedMode = btn.dataset.mode;
       localStorage.setItem('quizMode', selectedMode);
       applyModeButtons();
-      closeFilterOverlay();
       loadNextCard();
     });
   });
