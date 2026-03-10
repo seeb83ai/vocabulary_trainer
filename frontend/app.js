@@ -9,11 +9,11 @@ const TIERS = [
 ];
 
 // Returns the TIERS entry for a word, or null for brand-new words (0 attempts).
-// Uses the same pure-accuracy ranges as the pie chart / GetWordStats.
+// Requires ≥3 attempts to leave Struggling, matching GetWordStats / tierFilter.
 function wordTier(totalCorrect, totalAttempts) {
   if (totalAttempts === 0) return null;
   const acc = totalCorrect / totalAttempts;
-  if (acc < 0.50) return TIERS[0];
+  if (totalAttempts < 3 || acc < 0.50) return TIERS[0];
   if (acc < 0.70) return TIERS[1];
   if (acc < 0.85) return TIERS[2];
   return TIERS[3];

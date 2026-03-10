@@ -474,20 +474,21 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 
 // tierFilter returns the SQL WHERE fragment (prefixed with AND) that restricts
 // rows to words in the given accuracy bucket. Buckets match the ranges used by
-// GetWordStats / the pie chart (pure accuracy, no attempts guard).
+// GetWordStats / the pie chart. Requires ≥3 attempts to leave Struggling so
+// that a word seen only once or twice cannot appear in an upper tier.
 // The alias "p" must refer to sm2_progress in the enclosing query.
 // Returns "" for an empty/unknown key.
 func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
 	switch bucket {
 	case "0-49":
-		return ` AND p.total_attempts > 0 AND ` + acc + ` < 0.50`
+		return ` AND p.total_attempts > 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
 	case "50-69":
-		return ` AND p.total_attempts > 0 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
+		return ` AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
 	case "70-84":
-		return ` AND p.total_attempts > 0 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
+		return ` AND p.total_attempts >= 3 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
 	case "85-100":
-		return ` AND p.total_attempts > 0 AND ` + acc + ` >= 0.85`
+		return ` AND p.total_attempts >= 3 AND ` + acc + ` >= 0.85`
 	}
 	return ""
 }
@@ -1206,11 +1207,11 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 
 		if r.attempts > 0 {
 			switch {
-			case r.accuracy >= 85:
+			case r.attempts >= 3 && r.accuracy >= 85:
 				resp.AccBuckets["85-100"]++
-			case r.accuracy >= 70:
+			case r.attempts >= 3 && r.accuracy >= 70:
 				resp.AccBuckets["70-84"]++
-			case r.accuracy >= 50:
+			case r.attempts >= 3 && r.accuracy >= 50:
 				resp.AccBuckets["50-69"]++
 			default:
 				resp.AccBuckets["0-49"]++
