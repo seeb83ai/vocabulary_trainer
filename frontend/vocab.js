@@ -11,6 +11,7 @@ let allTags = [];
 let formTags = [];
 let selectedFilterTags = [];
 let reviewFilterActive = false;
+let hideUnseenActive = true;
 let selectedTierFilter = '';
 
 async function loadWords() {
@@ -28,6 +29,9 @@ async function loadWords() {
   }
   if (reviewFilterActive) {
     params.set('review', '1');
+  }
+  if (hideUnseenActive) {
+    params.set('hide_unseen', '1');
   }
   if (selectedTierFilter) {
     params.set('bucket', selectedTierFilter);
@@ -385,6 +389,15 @@ async function handleTranslate() {
   }
 }
 
+function updateHideUnseenBtn() {
+  const btn = $('hide-unseen-btn');
+  if (hideUnseenActive) {
+    btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-blue-400 bg-blue-50 text-blue-600';
+  } else {
+    btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100';
+  }
+}
+
 function updateReviewFilterBtn() {
   const btn = $('review-filter-btn');
   if (reviewFilterActive) {
@@ -400,6 +413,13 @@ document.addEventListener('DOMContentLoaded', () => {
   loadWords();
   renderTierFilter();
   initTranslateButton();
+
+  $('hide-unseen-btn').addEventListener('click', () => {
+    hideUnseenActive = !hideUnseenActive;
+    updateHideUnseenBtn();
+    currentPage = 1;
+    loadWords();
+  });
 
   $('review-filter-btn').addEventListener('click', () => {
     reviewFilterActive = !reviewFilterActive;
