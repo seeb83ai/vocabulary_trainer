@@ -45,11 +45,13 @@ var validSortExprs = map[string]string{
 	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id)",
 	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
 	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
+	"accuracy":    "CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
 }
 
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
 // If reviewOnly is true, only words with needs_review = 1 are returned.
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool) ([]models.WordDetail, int, error) {
+// bucket filters by accuracy tier (same rules as tierFilter / GetWordStats AccBuckets).
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, bucket string) ([]models.WordDetail, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -82,6 +84,8 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	if reviewOnly {
 		reviewFilter = " AND w.needs_review = 1"
 	}
+
+	bucketFilter := tierFilter(bucket)
 
 	orderExpr, ok := validSortExprs[sortBy]
 	if !ok {
@@ -116,7 +120,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))` + tagFilter + reviewFilter + `
+		       ))` + tagFilter + reviewFilter + bucketFilter + `
 		ORDER BY ` + orderClause + `
 		LIMIT ? OFFSET ?`
 	listArgs := []any{q, q, q, q}
@@ -473,11 +477,15 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 }
 
 // tierFilter returns the SQL WHERE fragment (prefixed with AND) that restricts
-// rows to words in the given accuracy bucket. Buckets match the ranges used by
-// GetWordStats / the pie chart. Requires ≥3 attempts to leave Struggling so
-// that a word seen only once or twice cannot appear in an upper tier.
-// The alias "p" must refer to sm2_progress in the enclosing query.
-// Returns "" for an empty/unknown key.
+// rows to the given accuracy/attempt bucket. The alias "p" must refer to
+// sm2_progress in the enclosing query. Returns "" for an empty/unknown key.
+//
+// Bucket rules (must be kept in sync with wordTier in app.js and AccBuckets
+// in GetWordStats):
+//   0-49   : < 3 attempts OR accuracy < 50 %   (includes new/unseen words)
+//   50-69  : ≥ 3 attempts AND 50 % ≤ acc < 70 %
+//   70-84  : ≥ 10 attempts AND 70 % ≤ acc < 85 %
+//   85-100 : ≥ 10 attempts AND acc ≥ 85 %
 func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
 	switch bucket {
@@ -1207,11 +1215,11 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 
 		if r.attempts > 0 {
 			switch {
-			case r.attempts >= 3 && r.accuracy >= 85:
+			case r.attempts >= 10 && r.accuracy >= 85:
 				resp.AccBuckets["85-100"]++
-			case r.attempts >= 3 && r.accuracy >= 70:
+			case r.attempts >= 10 && r.accuracy >= 70:
 				resp.AccBuckets["70-84"]++
-			case r.attempts >= 3 && r.accuracy >= 50:
+			case r.attempts >= 3 && r.accuracy >= 50 && r.accuracy < 70:
 				resp.AccBuckets["50-69"]++
 			default:
 				resp.AccBuckets["0-49"]++

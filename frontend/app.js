@@ -9,14 +9,18 @@ const TIERS = [
 ];
 
 // Returns the TIERS entry for a word, or null for brand-new words (0 attempts).
-// Requires ≥3 attempts to leave Struggling, matching GetWordStats / tierFilter.
+// Must stay in sync with tierFilter (db/db.go) and AccBuckets (GetWordStats).
+//   Mastered  : ≥10 attempts AND acc ≥ 85 %
+//   Practicing: ≥10 attempts AND 70 % ≤ acc < 85 %
+//   Learning  : ≥3 attempts  AND 50 % ≤ acc < 70 %
+//   Struggling: everything else (< 3 attempts, acc < 50 %, or gray-zone)
 function wordTier(totalCorrect, totalAttempts) {
   if (totalAttempts === 0) return null;
   const acc = totalCorrect / totalAttempts;
-  if (totalAttempts < 3 || acc < 0.50) return TIERS[0];
-  if (acc < 0.70) return TIERS[1];
-  if (acc < 0.85) return TIERS[2];
-  return TIERS[3];
+  if (totalAttempts >= 10 && acc >= 0.85) return TIERS[3];
+  if (totalAttempts >= 10 && acc >= 0.70) return TIERS[2];
+  if (totalAttempts >= 3  && acc >= 0.50 && acc < 0.70) return TIERS[1];
+  return TIERS[0];
 }
 
 const MODE_LABELS = {

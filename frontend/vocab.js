@@ -11,6 +11,7 @@ let allTags = [];
 let formTags = [];
 let selectedFilterTags = [];
 let reviewFilterActive = false;
+let selectedTierFilter = '';
 
 async function loadWords() {
   const params = new URLSearchParams({
@@ -27,6 +28,9 @@ async function loadWords() {
   }
   if (reviewFilterActive) {
     params.set('review', '1');
+  }
+  if (selectedTierFilter) {
+    params.set('bucket', selectedTierFilter);
   }
   try {
     const data = await apiFetch(`/api/words?${params}`);
@@ -313,6 +317,25 @@ function renderFilterTags() {
   }
 }
 
+function renderTierFilter() {
+  const bar = $('filter-tier-bar');
+  bar.querySelectorAll('.tier-filter-pill').forEach(p => p.remove());
+  for (const tier of TIERS) {
+    const pill = document.createElement('button');
+    const active = selectedTierFilter === tier.key;
+    pill.className = `tier-filter-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`;
+    if (active) pill.style.backgroundColor = tier.color;
+    pill.textContent = tier.label;
+    pill.addEventListener('click', () => {
+      selectedTierFilter = selectedTierFilter === tier.key ? '' : tier.key;
+      currentPage = 1;
+      renderTierFilter();
+      loadWords();
+    });
+    bar.appendChild(pill);
+  }
+}
+
 async function initTranslateButton() {
   try {
     const cfg = await apiFetch('/api/config');
@@ -375,6 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
   resetForm();
   loadTags();
   loadWords();
+  renderTierFilter();
   initTranslateButton();
 
   $('review-filter-btn').addEventListener('click', () => {
