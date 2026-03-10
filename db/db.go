@@ -49,7 +49,8 @@ var validSortExprs = map[string]string{
 
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
 // If reviewOnly is true, only words with needs_review = 1 are returned.
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool) ([]models.WordDetail, int, error) {
+// If hideUnseen is true, only words with at least one quiz attempt are returned.
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool) ([]models.WordDetail, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -81,6 +82,11 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	reviewFilter := ""
 	if reviewOnly {
 		reviewFilter = " AND w.needs_review = 1"
+	}
+
+	hideUnseenFilter := ""
+	if hideUnseen {
+		hideUnseenFilter = " AND COALESCE(p.total_attempts, 0) > 0"
 	}
 
 	orderExpr, ok := validSortExprs[sortBy]
@@ -116,7 +122,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))` + tagFilter + reviewFilter + `
+		       ))` + tagFilter + reviewFilter + hideUnseenFilter + `
 		ORDER BY ` + orderClause + `
 		LIMIT ? OFFSET ?`
 	listArgs := []any{q, q, q, q}
