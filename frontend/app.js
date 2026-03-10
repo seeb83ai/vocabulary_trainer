@@ -9,12 +9,12 @@ const TIERS = [
 ];
 
 // Returns the TIERS entry for a word, or null for brand-new words (0 attempts).
-// Mirrors SelectProgressiveMode in sm2/sm2.go.
+// Uses the same pure-accuracy ranges as the pie chart / GetWordStats.
 function wordTier(totalCorrect, totalAttempts) {
   if (totalAttempts === 0) return null;
   const acc = totalCorrect / totalAttempts;
-  if (totalAttempts < 3 || acc < 0.50) return TIERS[0];
-  if (acc < 0.70 || totalAttempts < 10) return TIERS[1];
+  if (acc < 0.50) return TIERS[0];
+  if (acc < 0.70) return TIERS[1];
   if (acc < 0.85) return TIERS[2];
   return TIERS[3];
 }

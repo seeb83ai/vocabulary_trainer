@@ -473,21 +473,21 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 }
 
 // tierFilter returns the SQL WHERE fragment (prefixed with AND) that restricts
-// rows to words in the given accuracy/attempt tier. The alias "p" must refer to
-// sm2_progress in the enclosing query. Returns "" for an empty/unknown key.
-// The conditions mirror SelectProgressiveMode in sm2/sm2.go.
+// rows to words in the given accuracy bucket. Buckets match the ranges used by
+// GetWordStats / the pie chart (pure accuracy, no attempts guard).
+// The alias "p" must refer to sm2_progress in the enclosing query.
+// Returns "" for an empty/unknown key.
 func tierFilter(bucket string) string {
+	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
 	switch bucket {
 	case "0-49":
-		return ` AND p.total_attempts > 0 AND (p.total_attempts < 3 OR CAST(p.total_correct AS REAL) / p.total_attempts < 0.50)`
+		return ` AND p.total_attempts > 0 AND ` + acc + ` < 0.50`
 	case "50-69":
-		return ` AND p.total_attempts >= 3 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.50` +
-			` AND (CAST(p.total_correct AS REAL) / p.total_attempts < 0.70 OR p.total_attempts < 10)`
+		return ` AND p.total_attempts > 0 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
 	case "70-84":
-		return ` AND p.total_attempts >= 10 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.70` +
-			` AND CAST(p.total_correct AS REAL) / p.total_attempts < 0.85`
+		return ` AND p.total_attempts > 0 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
 	case "85-100":
-		return ` AND p.total_attempts >= 10 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.85`
+		return ` AND p.total_attempts > 0 AND ` + acc + ` >= 0.85`
 	}
 	return ""
 }
