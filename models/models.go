@@ -43,7 +43,6 @@ type QuizCard struct {
 	DueDate         time.Time `json:"due_date"`
 	IntervalDays    int       `json:"interval_days"`
 	LearningNewWord bool      `json:"learning_new_word"`
-	TotalCorrect    int       `json:"total_correct"`
 }
 
 type AnswerRequest struct {

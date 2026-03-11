@@ -158,6 +158,43 @@ func expandVariants(a string) []string {
 	return out
 }
 
+// MaskPinyin returns a masked pinyin hint for learning-phase en_to_zh cards.
+// The masking level depends on totalCorrect:
+//
+//	0 → first char of each syllable visible, rest replaced with * per char ("nǐ hǎo" → "n** h**")
+//	1 → first char of full pinyin visible + * per remaining char            ("nǐ hǎo" → "n*****")
+//	2+ → empty string (no hint)
+func MaskPinyin(pinyin string, totalCorrect int) string {
+	if pinyin == "" || totalCorrect >= 2 {
+		return ""
+	}
+	runes := []rune(pinyin)
+	if totalCorrect == 1 {
+		var b strings.Builder
+		b.WriteRune(runes[0])
+		for _, r := range runes[1:] {
+			if r == ' ' {
+				b.WriteRune(' ')
+			} else {
+				b.WriteRune('*')
+			}
+		}
+		return b.String()
+	}
+	// totalCorrect == 0: mask each space-separated syllable
+	words := strings.Split(pinyin, " ")
+	for i, w := range words {
+		wr := []rune(w)
+		var b strings.Builder
+		b.WriteRune(wr[0])
+		for range wr[1:] {
+			b.WriteRune('*')
+		}
+		words[i] = b.String()
+	}
+	return strings.Join(words, " ")
+}
+
 // SelectProgressiveMode picks a quiz mode based on the word's accuracy (correct/attempts).
 // This implements the progressive training ladder:
 //   - attempts < 3                          → en_to_zh (not enough data)

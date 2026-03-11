@@ -91,7 +91,6 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		DueDate:         progress.DueDate,
 		IntervalDays:    progress.IntervalDays,
 		LearningNewWord: progress.LearningNewWord,
-		TotalCorrect:    progress.TotalCorrect,
 	}
 
 	switch mode {
@@ -105,9 +104,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			for _, ew := range enWords {
 				card.EnTexts = append(card.EnTexts, ew.Text)
 			}
-			// Include pinyin for learning words so the frontend can show masked hints
-			if progress.LearningNewWord {
-				card.Pinyin = word.Pinyin
+			// For learning words, send a masked pinyin hint based on progress
+			if progress.LearningNewWord && word.Pinyin != nil {
+				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
+					card.Pinyin = &masked
+				}
 			}
 		}
 	case models.ModeZhToEn:

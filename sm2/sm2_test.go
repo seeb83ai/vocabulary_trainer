@@ -196,6 +196,62 @@ func TestUpdateLearning_WrongShortInterval(t *testing.T) {
 	}
 }
 
+// ── MaskPinyin ───────────────────────────────────────────────────────────────
+
+func TestMaskPinyin_Empty(t *testing.T) {
+	if got := MaskPinyin("", 0); got != "" {
+		t.Errorf("empty pinyin should return empty, got %q", got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect2_NoHint(t *testing.T) {
+	if got := MaskPinyin("nǐ hǎo", 2); got != "" {
+		t.Errorf("totalCorrect>=2 should return empty, got %q", got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect0_MaskEachSyllable(t *testing.T) {
+	// nǐ = 2 runes (n + ǐ) → n*; hǎo = 3 runes (h + ǎ + o) → h**
+	got := MaskPinyin("nǐ hǎo", 0)
+	want := "n* h**"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect0_SingleSyllable(t *testing.T) {
+	got := MaskPinyin("kùn", 0)
+	want := "k**"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect0_ThreeSyllables(t *testing.T) {
+	// bù = 2 runes → b*; kè = 2 runes → k*; qi = 2 runes → q*
+	got := MaskPinyin("bù kè qi", 0)
+	want := "b* k* q*"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect1_FirstCharOnly(t *testing.T) {
+	got := MaskPinyin("nǐ hǎo", 1)
+	want := "n* ***"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect1_SingleSyllable(t *testing.T) {
+	got := MaskPinyin("kùn", 1)
+	want := "k**"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
 // ── CheckAnswer ───────────────────────────────────────────────────────────────
 
 func TestCheckAnswer_ExactMatch(t *testing.T) {
