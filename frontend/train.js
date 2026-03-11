@@ -279,7 +279,13 @@ async function submitAnswer(e) {
       hide('add-translation-btn');
     }
 
-    setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
+    if (result.graduated) {
+      setText('next-due-info', 'Graduated! Word is now in the regular review queue.');
+    } else if (result.learning_new_word) {
+      setText('next-due-info', 'Learning — get 3 correct in a row to graduate');
+    } else {
+      setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
+    }
     setText('attempt-stats',
       `Correct: ${result.total_correct} / ${result.total_attempts}`);
 

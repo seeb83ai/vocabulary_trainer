@@ -219,8 +219,9 @@ async function deleteWord(id) {
 }
 
 function renderTierBadge(word) {
-  const tier = wordTier(word.total_correct, word.total_attempts);
-  if (!tier) return '<span class="text-gray-400 text-xs">New</span>';
+  const tier = wordTier(word.total_correct, word.total_attempts, word.learning_new_word);
+  if (!tier) return '<span class="text-gray-400 text-xs">Unseen</span>';
+  if (word.learning_new_word) return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span>`;
   const pct = Math.round(word.total_correct / word.total_attempts * 100);
   return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
 }

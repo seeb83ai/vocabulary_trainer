@@ -116,6 +116,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		       COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
 		       COALESCE(p.due_date, CURRENT_TIMESTAMP),
 		       COALESCE(w.needs_review, 0),
+		       COALESCE(p.learning_new_word, 1),
 		       COUNT(*) OVER() AS total
 		FROM words w
 		LEFT JOIN sm2_progress p ON p.word_id = w.id
@@ -143,17 +144,18 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	for rows.Next() {
 		var wd models.WordDetail
 		var createdAt, dueDate string
-		var needsReview int
+		var needsReview, learning int
 		if err := rows.Scan(
 			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
 			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate,
-			&needsReview,
+			&needsReview, &learning,
 			&total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
 		}
 		wd.NeedsReview = needsReview == 1
+		wd.LearningNewWord = learning == 1
 		wd.CreatedAt = parseDateTime(createdAt)
 		wd.DueDate = parseDateTime(dueDate)
 		words = append(words, wd)
@@ -495,14 +497,16 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
 	switch bucket {
+	case "new":
+		return ` AND COALESCE(p.learning_new_word, 1) = 1 AND p.first_seen_date IS NOT NULL`
 	case "0-49":
-		return ` AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
+		return ` AND COALESCE(p.learning_new_word, 1) = 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
 	case "50-69":
-		return ` AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
+		return ` AND COALESCE(p.learning_new_word, 1) = 0 AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
 	case "70-84":
-		return ` AND p.total_attempts >= 10 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
+		return ` AND COALESCE(p.learning_new_word, 1) = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
 	case "85-100":
-		return ` AND p.total_attempts >= 10 AND ` + acc + ` >= 0.85`
+		return ` AND COALESCE(p.learning_new_word, 1) = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.85`
 	}
 	return ""
 }
@@ -548,7 +552,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 	query := `
 		SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
 		       p.repetitions, p.easiness, p.interval_days, p.due_date,
-		       p.total_correct, p.total_attempts
+		       p.total_correct, p.total_attempts, COALESCE(p.learning_new_word, 1)
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh'` + tagFilter + newWordFilter + bucketSQL + ` %s
@@ -561,13 +565,15 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		var w models.Word
 		var p models.SM2Progress
 		var createdAt, dueDate string
+		var learning int
 		err := row.Scan(
 			&w.ID, &w.Text, &w.Language, &w.Pinyin, &createdAt,
 			&p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts,
+			&p.TotalCorrect, &p.TotalAttempts, &learning,
 		)
 		w.CreatedAt = parseDateTime(createdAt)
 		p.DueDate = parseDateTime(dueDate)
+		p.LearningNewWord = learning == 1
 		if err == sql.ErrNoRows {
 			return nil, nil, nil
 		}
@@ -643,12 +649,14 @@ func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, target
 func (s *Store) GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Progress, error) {
 	var p models.SM2Progress
 	var dueDate string
+	var learning int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts
+		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, COALESCE(learning_new_word, 1)
 		 FROM sm2_progress WHERE word_id = ?`, wordID).
 		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts)
+			&p.TotalCorrect, &p.TotalAttempts, &learning)
 	p.DueDate = parseDateTime(dueDate)
+	p.LearningNewWord = learning == 1
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -660,14 +668,18 @@ func (s *Store) GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Pr
 
 // UpdateSM2Progress saves updated SM-2 state back to the DB.
 func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) error {
+	learningInt := 0
+	if p.LearningNewWord {
+		learningInt = 1
+	}
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress
 		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
-		     total_correct = ?, total_attempts = ?
+		     total_correct = ?, total_attempts = ?, learning_new_word = ?
 		 WHERE word_id = ?`,
 		p.Repetitions, p.Easiness, p.IntervalDays,
 		p.DueDate.UTC().Format("2006-01-02 15:04:05"),
-		p.TotalCorrect, p.TotalAttempts, p.WordID)
+		p.TotalCorrect, p.TotalAttempts, learningInt, p.WordID)
 	if err != nil {
 		return fmt.Errorf("update sm2: %w", err)
 	}
@@ -1145,7 +1157,8 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	// Fetch per-word stats for all seen zh words in a single query.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id, w.text, w.pinyin,
-		       p.total_correct, p.total_attempts, p.easiness
+		       p.total_correct, p.total_attempts, p.easiness,
+		       COALESCE(p.learning_new_word, 1)
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
@@ -1163,13 +1176,16 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 		attempts int
 		easiness float64
 		accuracy float64
+		learning bool
 	}
 	var all []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.id, &r.text, &r.pinyin, &r.correct, &r.attempts, &r.easiness); err != nil {
+		var learning int
+		if err := rows.Scan(&r.id, &r.text, &r.pinyin, &r.correct, &r.attempts, &r.easiness, &learning); err != nil {
 			return nil, fmt.Errorf("scan word stat: %w", err)
 		}
+		r.learning = learning == 1
 		if r.attempts > 0 {
 			r.accuracy = float64(r.correct) / float64(r.attempts) * 100
 		}
@@ -1183,7 +1199,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	resp := &models.WordStatsResponse{
 		TotalSeen:  len(all),
 		Milestones: map[string]int{"1+": 0, "3+": 0, "5+": 0, "10+": 0},
-		AccBuckets: map[string]int{"0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0},
+		AccBuckets: map[string]int{"new": 0, "0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0},
 		Hardest:    []models.WordStatDetail{},
 		MostPract:  []models.WordStatDetail{},
 	}
@@ -1219,7 +1235,9 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 			resp.Milestones["10+"]++
 		}
 
-		if r.attempts > 0 {
+		if r.learning {
+			resp.AccBuckets["new"]++
+		} else if r.attempts > 0 {
 			switch {
 			case r.attempts >= 10 && r.accuracy >= 85:
 				resp.AccBuckets["85-100"]++

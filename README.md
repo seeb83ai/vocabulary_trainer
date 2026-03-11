@@ -88,14 +88,35 @@ The **Progressive** quiz mode introduces new words gently and gradually increase
 | Condition | What happens |
 |---|---|
 | Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all English translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. |
+| **Learning phase** (`learning_new_word = true`) | Word is in the **New** bucket. Short retry intervals (minutes, not days) so you can drill it in one session. Get **3 correct in a row** to graduate. Wrong answers reset the streak. |
 | `total_attempts < 3` | **EN → ZH** — not enough data yet; stay at the easiest direction |
 | Accuracy < 50% | **EN → ZH** — still struggling; see English, type Chinese |
 | Accuracy < 70% **or** `total_attempts < 10` | **ZH + Pinyin → EN** — making progress; see Chinese with pinyin hint, type English |
 | Accuracy < 85% (and `total_attempts ≥ 10`) | **ZH → EN** — reliable; see Chinese only, type English |
 | Accuracy ≥ 85% and `total_attempts ≥ 10` | **Random** — any of the three quiz directions |
 
+**Learning phase ("New" bucket):**
+
+When you acknowledge a new word ("Got it"), it enters the learning phase. During this phase:
+- Short intervals (1–5 minutes) are used instead of day-scale SM-2 intervals
+- You need **3 consecutive correct answers** to graduate
+- Wrong answers reset the streak counter back to 0
+- On graduation: SM-2 progress is reset to a clean baseline (accuracy starts at 100%, total_attempts = 3) and the word moves to the regular review queue with a 1-day interval
+
+The training page and vocabulary list show a **New** tier badge for words still in the learning phase. You can filter by the "New" bucket to drill only recently introduced words.
+
+**Accuracy tiers:**
+
+| Tier | Criteria |
+|---|---|
+| **New** | `learning_new_word = true` (still in learning phase) |
+| **Struggling** | `< 3 attempts` or `accuracy < 50%` |
+| **Learning** | `≥ 3 attempts` and `50% ≤ accuracy < 70%` |
+| **Practicing** | `≥ 10 attempts` and `70% ≤ accuracy < 85%` |
+| **Mastered** | `≥ 10 attempts` and `accuracy ≥ 85%` |
+
 **Skip vs Got it:**
-- **Got it** marks the word as introduced and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.
+- **Got it** marks the word as introduced, enters the learning phase, and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.
 - **Skip** defers the word by 7 days. Does *not* count as seen — the word remains "new" and will be shown as an introduction again when it comes due.
 
 ## Auto-translate (DeepL)

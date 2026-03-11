@@ -16,9 +16,11 @@ var reParens = regexp.MustCompile(`\s*\([^)]*\)\s*`)
 var reTrailingPunct = regexp.MustCompile(`[\p{P}\p{S}\s]+$`)
 
 const (
-	QualityCorrect  = 4
-	QualityWrong    = 0
-	WrongRetryDelay = 3 * time.Minute
+	QualityCorrect       = 4
+	QualityWrong         = 0
+	WrongRetryDelay      = 3 * time.Minute
+	LearningCorrectDelay = 2 * time.Minute
+	LearningGraduateReps = 3
 )
 
 // Update applies the SM-2 algorithm and returns an updated SM2Progress.
@@ -58,6 +60,36 @@ func Update(p models.SM2Progress, quality int) models.SM2Progress {
 	jitter := time.Duration(rand.Int63n(int64(2*time.Hour))) - 2*time.Hour
 	p.DueDate = time.Now().UTC().Add(time.Duration(intervalDays)*24*time.Hour + jitter)
 	return p
+}
+
+// UpdateLearning applies a simplified update for words still in the learning phase.
+// Uses short intervals (minutes) so all 3 correct answers can happen in one session.
+// Returns the updated progress and whether the word has graduated (repetitions >= 3).
+func UpdateLearning(p models.SM2Progress, quality int) (models.SM2Progress, bool) {
+	if quality < 3 {
+		// Wrong answer: reset streak
+		p.Repetitions = 0
+		p.DueDate = time.Now().UTC().Add(WrongRetryDelay + time.Duration(rand.Int63n(int64(WrongRetryDelay*2))))
+		return p, false
+	}
+
+	p.Repetitions++
+	jitter := time.Duration(rand.Int63n(int64(LearningCorrectDelay)))
+	p.DueDate = time.Now().UTC().Add(LearningCorrectDelay + jitter)
+
+	if p.Repetitions >= LearningGraduateReps {
+		// Graduate: reset SM-2 state for a clean start
+		p.LearningNewWord = false
+		p.Repetitions = 0
+		p.Easiness = 2.5
+		p.IntervalDays = 1
+		p.TotalCorrect = 3
+		p.TotalAttempts = 3
+		p.DueDate = time.Now().UTC().Add(24*time.Hour + time.Duration(rand.Int63n(int64(2*time.Hour))))
+		return p, true
+	}
+
+	return p, false
 }
 
 // CheckAnswer returns true if the user's answer matches any accepted answer

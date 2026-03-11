@@ -2,6 +2,7 @@
 
 // Accuracy/attempt tier definitions — mirrors the progressive mode ladder.
 const TIERS = [
+  { key: 'new',    label: 'New',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700' },
   { key: '0-49',   label: 'Struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700'    },
   { key: '50-69',  label: 'Learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700' },
   { key: '70-84',  label: 'Practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700'   },
@@ -10,17 +11,19 @@ const TIERS = [
 
 // Returns the TIERS entry for a word, or null for brand-new words (0 attempts).
 // Must stay in sync with tierFilter (db/db.go) and AccBuckets (GetWordStats).
+//   New       : learning_new_word = true
 //   Mastered  : ≥10 attempts AND acc ≥ 85 %
 //   Practicing: ≥10 attempts AND 70 % ≤ acc < 85 %
 //   Learning  : ≥3 attempts  AND 50 % ≤ acc < 70 %
 //   Struggling: everything else (< 3 attempts, acc < 50 %, or gray-zone)
-function wordTier(totalCorrect, totalAttempts) {
+function wordTier(totalCorrect, totalAttempts, learningNewWord) {
   if (totalAttempts === 0) return null;
+  if (learningNewWord) return TIERS[0]; // "New"
   const acc = totalCorrect / totalAttempts;
-  if (totalAttempts >= 10 && acc >= 0.85) return TIERS[3];
-  if (totalAttempts >= 10 && acc >= 0.70) return TIERS[2];
-  if (totalAttempts >= 3  && acc >= 0.50 && acc < 0.70) return TIERS[1];
-  return TIERS[0];
+  if (totalAttempts >= 10 && acc >= 0.85) return TIERS[4];
+  if (totalAttempts >= 10 && acc >= 0.70) return TIERS[3];
+  if (totalAttempts >= 3  && acc >= 0.50 && acc < 0.70) return TIERS[2];
+  return TIERS[1];
 }
 
 const MODE_LABELS = {

@@ -178,10 +178,22 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated := sm2.Update(*progress, quality)
-	updated.TotalAttempts++
-	if correct {
-		updated.TotalCorrect++
+	var updated models.SM2Progress
+	var graduated bool
+	if progress.LearningNewWord {
+		updated, graduated = sm2.UpdateLearning(*progress, quality)
+		if !graduated {
+			updated.TotalAttempts++
+			if correct {
+				updated.TotalCorrect++
+			}
+		}
+	} else {
+		updated = sm2.Update(*progress, quality)
+		updated.TotalAttempts++
+		if correct {
+			updated.TotalCorrect++
+		}
 	}
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
@@ -196,15 +208,17 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	_ = h.Store.RecordDailyStat(r.Context(), correct)
 
 	resp := models.AnswerResponse{
-		Correct:        correct,
-		CorrectAnswers: correctTexts,
-		ZhText:         zhWord.ZhText,
-		Pinyin:         zhWord.Pinyin,
-		EnTexts:        zhWord.EnTexts,
-		NextDue:        updated.DueDate,
-		IntervalDays:   updated.IntervalDays,
-		TotalCorrect:   updated.TotalCorrect,
-		TotalAttempts:  updated.TotalAttempts,
+		Correct:         correct,
+		CorrectAnswers:  correctTexts,
+		ZhText:          zhWord.ZhText,
+		Pinyin:          zhWord.Pinyin,
+		EnTexts:         zhWord.EnTexts,
+		NextDue:         updated.DueDate,
+		IntervalDays:    updated.IntervalDays,
+		TotalCorrect:    updated.TotalCorrect,
+		TotalAttempts:   updated.TotalAttempts,
+		LearningNewWord: updated.LearningNewWord,
+		Graduated:       graduated,
 	}
 
 	if !correct {
