@@ -62,6 +62,7 @@ type AnswerResponse struct {
 	TotalCorrect    int              `json:"total_correct"`
 	TotalAttempts   int              `json:"total_attempts"`
 	Repetitions     int              `json:"repetitions"`
+	GraduateReps    int              `json:"graduate_reps,omitempty"`
 	LearningNewWord bool             `json:"learning_new_word"`
 	Graduated       bool             `json:"graduated,omitempty"`
 	ConfusedWith    *ConfusionDetail `json:"confused_with,omitempty"`

@@ -225,6 +225,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		TotalCorrect:    updated.TotalCorrect,
 		TotalAttempts:   updated.TotalAttempts,
 		Repetitions:     updated.Repetitions,
+		GraduateReps:    sm2.LearningGraduateReps,
 		LearningNewWord: updated.LearningNewWord,
 		Graduated:       graduated,
 	}

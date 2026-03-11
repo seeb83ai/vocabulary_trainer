@@ -136,7 +136,7 @@ function applyResult(doc, result, answer) {
 
   doc.getElementById('next-due-info').textContent = `Next review in ${result.interval_days} day(s)`;
   if (result.learning_new_word || result.graduated) {
-    doc.getElementById('attempt-stats').textContent = `Streak: ${result.repetitions} / 3`;
+    doc.getElementById('attempt-stats').textContent = `Streak: ${result.repetitions} / ${result.graduate_reps}`;
   } else {
     doc.getElementById('attempt-stats').textContent =
       `Correct: ${result.total_correct} / ${result.total_attempts}`;

@@ -286,12 +286,12 @@ async function submitAnswer(e) {
     if (result.graduated) {
       setText('next-due-info', 'Graduated! Word is now in the regular review queue.');
     } else if (result.learning_new_word) {
-      setText('next-due-info', 'Learning — get 3 correct in a row to graduate');
+      setText('next-due-info', `Learning — get ${result.graduate_reps} correct in a row to graduate`);
     } else {
       setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
     }
     if (result.learning_new_word || result.graduated) {
-      setText('attempt-stats', `Streak: ${result.repetitions} / 3`);
+      setText('attempt-stats', `Streak: ${result.repetitions} / ${result.graduate_reps}`);
     } else {
       setText('attempt-stats',
         `Correct: ${result.total_correct} / ${result.total_attempts}`);
