@@ -110,6 +110,48 @@ describe('wordTier', () => {
   });
 });
 
+// ── maskPinyin ───────────────────────────────────────────────────────────────
+// Inline from app.js
+
+function maskPinyin(pinyin, totalCorrect) {
+  if (!pinyin || totalCorrect >= 2) return null;
+  if (totalCorrect === 1) return pinyin.charAt(0) + '***';
+  return pinyin.split(' ').map(s => s.charAt(0) + '***').join(' ');
+}
+
+describe('maskPinyin', () => {
+  it('returns null for falsy pinyin', () => {
+    expect(maskPinyin(null, 0)).toBeNull();
+    expect(maskPinyin('', 0)).toBeNull();
+    expect(maskPinyin(undefined, 0)).toBeNull();
+  });
+
+  it('returns null when totalCorrect >= 2', () => {
+    expect(maskPinyin('nǐ hǎo', 2)).toBeNull();
+    expect(maskPinyin('nǐ hǎo', 5)).toBeNull();
+  });
+
+  it('masks each syllable at totalCorrect 0', () => {
+    expect(maskPinyin('nǐ hǎo', 0)).toBe('n*** h***');
+  });
+
+  it('masks single syllable at totalCorrect 0', () => {
+    expect(maskPinyin('kùn', 0)).toBe('k***');
+  });
+
+  it('shows only first char + *** at totalCorrect 1', () => {
+    expect(maskPinyin('nǐ hǎo', 1)).toBe('n***');
+  });
+
+  it('handles single syllable at totalCorrect 1', () => {
+    expect(maskPinyin('kùn', 1)).toBe('k***');
+  });
+
+  it('handles multi-word pinyin at totalCorrect 0', () => {
+    expect(maskPinyin('bù kè qi', 0)).toBe('b*** k*** q***');
+  });
+});
+
 // ── apiFetch ──────────────────────────────────────────────────────────────────
 // Re-implement apiFetch the same way app.js does, using the global fetch.
 

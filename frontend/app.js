@@ -102,6 +102,17 @@ function playAudio(wordId, zhText) {
   });
 }
 
+// maskPinyin returns a masked version of pinyin for learning-phase hints.
+//   totalCorrect 0 → first char of each syllable + "***"  (e.g. "nǐ hǎo" → "n*** h***")
+//   totalCorrect 1 → first char of full string + "***"    (e.g. "nǐ hǎo" → "n***")
+//   totalCorrect 2+ → null (no hint)
+function maskPinyin(pinyin, totalCorrect) {
+  if (!pinyin || totalCorrect >= 2) return null;
+  if (totalCorrect === 1) return pinyin.charAt(0) + '***';
+  // totalCorrect === 0: mask each space-separated syllable
+  return pinyin.split(' ').map(s => s.charAt(0) + '***').join(' ');
+}
+
 function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')

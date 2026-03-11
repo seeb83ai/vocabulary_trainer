@@ -2,6 +2,7 @@
 
 let currentCard = null;
 let isSubmitted = false;
+let retryCard = null; // set when a learning word is answered wrong — retry same card
 let selectedMode = localStorage.getItem('quizMode') || 'random';
 let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 let selectedBucket = localStorage.getItem('quizBucket') || '';
@@ -82,6 +83,14 @@ async function loadNextCard() {
   reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
   reviewBtn.onclick = null;
 
+  // Retry: if a learning word was answered wrong, re-show the same card
+  if (retryCard) {
+    currentCard = retryCard;
+    retryCard = null;
+    showCard();
+    return;
+  }
+
   // Fetch fresh stats first. The backend's GetNextCard may return non-due
   // (future) cards via its fallback queries even when due_today = 0, so we
   // cannot rely solely on a 404 "no words available" to trigger the success
@@ -150,6 +159,11 @@ async function loadNextCard() {
     return;
   }
 
+  showCard();
+  await loadStats();
+}
+
+function showCard() {
   show('card-area');
   setText('mode-label', MODE_LABELS[currentCard.mode] || currentCard.mode);
   setText('prompt-word', currentCard.prompt);
@@ -164,7 +178,16 @@ async function loadNextCard() {
     hide('play-btn');
   }
 
-  if (currentCard.pinyin) {
+  // Pinyin hint: for en_to_zh learning cards, show masked pinyin based on progress
+  if (currentCard.learning_new_word && currentCard.mode === 'en_to_zh' && currentCard.pinyin) {
+    const masked = maskPinyin(currentCard.pinyin, currentCard.total_correct);
+    if (masked) {
+      setText('pinyin-hint', masked);
+      show('pinyin-hint');
+    } else {
+      hide('pinyin-hint');
+    }
+  } else if (currentCard.pinyin) {
     setText('pinyin-hint', currentCard.pinyin);
     show('pinyin-hint');
   } else {
@@ -180,7 +203,6 @@ async function loadNextCard() {
   }
 
   $('answer-input').focus();
-  await loadStats();
 }
 
 async function submitAnswer(e) {
@@ -288,6 +310,11 @@ async function submitAnswer(e) {
     }
     setText('attempt-stats',
       `Correct: ${result.total_correct} / ${result.total_attempts}`);
+
+    // Learning word wrong → queue retry with the same card
+    if (!result.correct && result.learning_new_word) {
+      retryCard = Object.assign({}, currentCard, { total_correct: result.total_correct });
+    }
 
     const reviewBtn = $('needs-review-btn');
     reviewBtn.textContent = 'Flag for Review';

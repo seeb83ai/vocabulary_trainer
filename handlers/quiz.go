@@ -86,10 +86,12 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	card := models.QuizCard{
-		WordID:       word.ID,
-		Mode:         mode,
-		DueDate:      progress.DueDate,
-		IntervalDays: progress.IntervalDays,
+		WordID:          word.ID,
+		Mode:            mode,
+		DueDate:         progress.DueDate,
+		IntervalDays:    progress.IntervalDays,
+		LearningNewWord: progress.LearningNewWord,
+		TotalCorrect:    progress.TotalCorrect,
 	}
 
 	switch mode {
@@ -102,6 +104,10 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			card.Prompt = enWords[0].Text
 			for _, ew := range enWords {
 				card.EnTexts = append(card.EnTexts, ew.Text)
+			}
+			// Include pinyin for learning words so the frontend can show masked hints
+			if progress.LearningNewWord {
+				card.Pinyin = word.Pinyin
 			}
 		}
 	case models.ModeZhToEn:

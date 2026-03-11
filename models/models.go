@@ -35,13 +35,15 @@ type SM2Progress struct {
 // API request/response structs
 
 type QuizCard struct {
-	WordID       int64     `json:"word_id"`
-	Mode         string    `json:"mode"`
-	Prompt       string    `json:"prompt"`
-	Pinyin       *string   `json:"pinyin"`
-	EnTexts      []string  `json:"en_texts,omitempty"`
-	DueDate      time.Time `json:"due_date"`
-	IntervalDays int       `json:"interval_days"`
+	WordID          int64     `json:"word_id"`
+	Mode            string    `json:"mode"`
+	Prompt          string    `json:"prompt"`
+	Pinyin          *string   `json:"pinyin"`
+	EnTexts         []string  `json:"en_texts,omitempty"`
+	DueDate         time.Time `json:"due_date"`
+	IntervalDays    int       `json:"interval_days"`
+	LearningNewWord bool      `json:"learning_new_word"`
+	TotalCorrect    int       `json:"total_correct"`
 }
 
 type AnswerRequest struct {
