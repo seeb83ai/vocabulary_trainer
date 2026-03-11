@@ -86,10 +86,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	card := models.QuizCard{
-		WordID:       word.ID,
-		Mode:         mode,
-		DueDate:      progress.DueDate,
-		IntervalDays: progress.IntervalDays,
+		WordID:          word.ID,
+		Mode:            mode,
+		DueDate:         progress.DueDate,
+		IntervalDays:    progress.IntervalDays,
+		LearningNewWord: progress.LearningNewWord,
 	}
 
 	switch mode {
@@ -102,6 +103,12 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			card.Prompt = enWords[0].Text
 			for _, ew := range enWords {
 				card.EnTexts = append(card.EnTexts, ew.Text)
+			}
+			// For learning words, send a masked pinyin hint based on progress
+			if progress.LearningNewWord && word.Pinyin != nil {
+				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
+					card.Pinyin = &masked
+				}
 			}
 		}
 	case models.ModeZhToEn:
@@ -178,10 +185,22 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated := sm2.Update(*progress, quality)
-	updated.TotalAttempts++
-	if correct {
-		updated.TotalCorrect++
+	var updated models.SM2Progress
+	var graduated bool
+	if progress.LearningNewWord {
+		updated, graduated = sm2.UpdateLearning(*progress, quality)
+		if !graduated {
+			updated.TotalAttempts++
+			if correct {
+				updated.TotalCorrect++
+			}
+		}
+	} else {
+		updated = sm2.Update(*progress, quality)
+		updated.TotalAttempts++
+		if correct {
+			updated.TotalCorrect++
+		}
 	}
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
@@ -196,15 +215,19 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	_ = h.Store.RecordDailyStat(r.Context(), correct)
 
 	resp := models.AnswerResponse{
-		Correct:        correct,
-		CorrectAnswers: correctTexts,
-		ZhText:         zhWord.ZhText,
-		Pinyin:         zhWord.Pinyin,
-		EnTexts:        zhWord.EnTexts,
-		NextDue:        updated.DueDate,
-		IntervalDays:   updated.IntervalDays,
-		TotalCorrect:   updated.TotalCorrect,
-		TotalAttempts:  updated.TotalAttempts,
+		Correct:         correct,
+		CorrectAnswers:  correctTexts,
+		ZhText:          zhWord.ZhText,
+		Pinyin:          zhWord.Pinyin,
+		EnTexts:         zhWord.EnTexts,
+		NextDue:         updated.DueDate,
+		IntervalDays:    updated.IntervalDays,
+		TotalCorrect:    updated.TotalCorrect,
+		TotalAttempts:   updated.TotalAttempts,
+		Repetitions:     updated.Repetitions,
+		GraduateReps:    sm2.LearningGraduateReps,
+		LearningNewWord: updated.LearningNewWord,
+		Graduated:       graduated,
 	}
 
 	if !correct {

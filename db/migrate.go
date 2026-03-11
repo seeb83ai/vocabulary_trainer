@@ -140,6 +140,11 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 			return nil
 		},
 	},
+	{
+		version: 5,
+		sql: `ALTER TABLE sm2_progress ADD COLUMN learning_new_word INTEGER NOT NULL DEFAULT 1;
+UPDATE sm2_progress SET learning_new_word = 0 WHERE total_correct >= 3;`,
+	},
 }
 
 // Migrate runs all pending migrations on the given database.

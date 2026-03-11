@@ -109,6 +109,149 @@ func TestUpdate_CorrectDueDateJitter(t *testing.T) {
 	}
 }
 
+// ── UpdateLearning ───────────────────────────────────────────────────────────
+
+func TestUpdateLearning_CorrectIncrementsReps(t *testing.T) {
+	p := models.SM2Progress{Repetitions: 0, Easiness: 2.5, LearningNewWord: true}
+	got, graduated := UpdateLearning(p, QualityCorrect)
+
+	if got.Repetitions != 1 {
+		t.Errorf("repetitions: want 1, got %d", got.Repetitions)
+	}
+	if graduated {
+		t.Error("should not graduate after 1 correct")
+	}
+	if !got.LearningNewWord {
+		t.Error("should still be in learning phase")
+	}
+}
+
+func TestUpdateLearning_WrongResetsReps(t *testing.T) {
+	p := models.SM2Progress{Repetitions: 2, Easiness: 2.5, LearningNewWord: true}
+	got, graduated := UpdateLearning(p, QualityWrong)
+
+	if got.Repetitions != 0 {
+		t.Errorf("repetitions should reset to 0, got %d", got.Repetitions)
+	}
+	if graduated {
+		t.Error("should not graduate after wrong answer")
+	}
+	if !got.LearningNewWord {
+		t.Error("should still be in learning phase after wrong")
+	}
+}
+
+func TestUpdateLearning_GraduatesAfter3Correct(t *testing.T) {
+	p := models.SM2Progress{Repetitions: 2, Easiness: 2.0, LearningNewWord: true, TotalCorrect: 5, TotalAttempts: 8}
+	got, graduated := UpdateLearning(p, QualityCorrect)
+
+	if !graduated {
+		t.Error("should graduate after 3rd consecutive correct")
+	}
+	if got.LearningNewWord {
+		t.Error("learning_new_word should be false after graduation")
+	}
+	if got.Repetitions != 0 {
+		t.Errorf("repetitions should reset to 0, got %d", got.Repetitions)
+	}
+	if got.Easiness != 2.5 {
+		t.Errorf("easiness should reset to 2.5, got %f", got.Easiness)
+	}
+	if got.TotalCorrect != 3 {
+		t.Errorf("total_correct should reset to 3, got %d", got.TotalCorrect)
+	}
+	if got.TotalAttempts != 3 {
+		t.Errorf("total_attempts should reset to 3, got %d", got.TotalAttempts)
+	}
+	if got.IntervalDays != 1 {
+		t.Errorf("interval_days should be 1, got %d", got.IntervalDays)
+	}
+}
+
+func TestUpdateLearning_ShortIntervals(t *testing.T) {
+	before := time.Now()
+	p := models.SM2Progress{Repetitions: 0, Easiness: 2.5, LearningNewWord: true}
+	got, _ := UpdateLearning(p, QualityCorrect)
+
+	// Due date should be within minutes, not days
+	maxDelay := LearningCorrectDelay * 2
+	wantMax := before.Add(maxDelay + time.Second)
+	if got.DueDate.After(wantMax) {
+		t.Errorf("learning due date should be within %v, got %v from now", maxDelay, got.DueDate.Sub(before))
+	}
+	if got.DueDate.Before(before) {
+		t.Errorf("learning due date should be in the future")
+	}
+}
+
+func TestUpdateLearning_WrongShortInterval(t *testing.T) {
+	before := time.Now()
+	p := models.SM2Progress{Repetitions: 1, Easiness: 2.5, LearningNewWord: true}
+	got, _ := UpdateLearning(p, QualityWrong)
+
+	maxDelay := WrongRetryDelay * 3
+	wantMax := before.Add(maxDelay + time.Second)
+	if got.DueDate.After(wantMax) {
+		t.Errorf("wrong retry delay too long: %v", got.DueDate.Sub(before))
+	}
+}
+
+// ── MaskPinyin ───────────────────────────────────────────────────────────────
+
+func TestMaskPinyin_Empty(t *testing.T) {
+	if got := MaskPinyin("", 0); got != "" {
+		t.Errorf("empty pinyin should return empty, got %q", got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect2_NoHint(t *testing.T) {
+	if got := MaskPinyin("nǐ hǎo", 2); got != "" {
+		t.Errorf("totalCorrect>=2 should return empty, got %q", got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect0_MaskEachSyllable(t *testing.T) {
+	// nǐ = 2 runes (n + ǐ) → n*; hǎo = 3 runes (h + ǎ + o) → h**
+	got := MaskPinyin("nǐ hǎo", 0)
+	want := "n* h**"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect0_SingleSyllable(t *testing.T) {
+	got := MaskPinyin("kùn", 0)
+	want := "k**"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect0_ThreeSyllables(t *testing.T) {
+	// bù = 2 runes → b*; kè = 2 runes → k*; qi = 2 runes → q*
+	got := MaskPinyin("bù kè qi", 0)
+	want := "b* k* q*"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect1_FirstCharOnly(t *testing.T) {
+	got := MaskPinyin("nǐ hǎo", 1)
+	want := "n* ***"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
+func TestMaskPinyin_TotalCorrect1_SingleSyllable(t *testing.T) {
+	got := MaskPinyin("kùn", 1)
+	want := "k**"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
+}
+
 // ── CheckAnswer ───────────────────────────────────────────────────────────────
 
 func TestCheckAnswer_ExactMatch(t *testing.T) {

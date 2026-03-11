@@ -22,25 +22,27 @@ type Word struct {
 }
 
 type SM2Progress struct {
-	WordID        int64
-	Repetitions   int
-	Easiness      float64
-	IntervalDays  int
-	DueDate       time.Time
-	TotalCorrect  int
-	TotalAttempts int
+	WordID          int64
+	Repetitions     int
+	Easiness        float64
+	IntervalDays    int
+	DueDate         time.Time
+	TotalCorrect    int
+	TotalAttempts   int
+	LearningNewWord bool
 }
 
 // API request/response structs
 
 type QuizCard struct {
-	WordID       int64     `json:"word_id"`
-	Mode         string    `json:"mode"`
-	Prompt       string    `json:"prompt"`
-	Pinyin       *string   `json:"pinyin"`
-	EnTexts      []string  `json:"en_texts,omitempty"`
-	DueDate      time.Time `json:"due_date"`
-	IntervalDays int       `json:"interval_days"`
+	WordID          int64     `json:"word_id"`
+	Mode            string    `json:"mode"`
+	Prompt          string    `json:"prompt"`
+	Pinyin          *string   `json:"pinyin"`
+	EnTexts         []string  `json:"en_texts,omitempty"`
+	DueDate         time.Time `json:"due_date"`
+	IntervalDays    int       `json:"interval_days"`
+	LearningNewWord bool      `json:"learning_new_word"`
 }
 
 type AnswerRequest struct {
@@ -50,16 +52,20 @@ type AnswerRequest struct {
 }
 
 type AnswerResponse struct {
-	Correct        bool      `json:"correct"`
-	CorrectAnswers []string  `json:"correct_answers"`
-	ZhText         string    `json:"zh_text"`
-	Pinyin         *string   `json:"pinyin"`
-	EnTexts        []string  `json:"en_texts"`
-	NextDue        time.Time `json:"next_due"`
-	IntervalDays   int       `json:"interval_days"`
-	TotalCorrect   int       `json:"total_correct"`
-	TotalAttempts  int       `json:"total_attempts"`
-	ConfusedWith   *ConfusionDetail `json:"confused_with,omitempty"`
+	Correct         bool             `json:"correct"`
+	CorrectAnswers  []string         `json:"correct_answers"`
+	ZhText          string           `json:"zh_text"`
+	Pinyin          *string          `json:"pinyin"`
+	EnTexts         []string         `json:"en_texts"`
+	NextDue         time.Time        `json:"next_due"`
+	IntervalDays    int              `json:"interval_days"`
+	TotalCorrect    int              `json:"total_correct"`
+	TotalAttempts   int              `json:"total_attempts"`
+	Repetitions     int              `json:"repetitions"`
+	GraduateReps    int              `json:"graduate_reps,omitempty"`
+	LearningNewWord bool             `json:"learning_new_word"`
+	Graduated       bool             `json:"graduated,omitempty"`
+	ConfusedWith    *ConfusionDetail `json:"confused_with,omitempty"`
 }
 
 type CreateWordRequest struct {
@@ -77,19 +83,20 @@ type UpdateWordRequest struct {
 }
 
 type WordDetail struct {
-	ID            int64     `json:"id"`
-	ZhText        string    `json:"zh_text"`
-	Pinyin        *string   `json:"pinyin"`
-	EnTexts       []string  `json:"en_texts"`
-	CreatedAt     time.Time `json:"created_at"`
-	Repetitions   int       `json:"repetitions"`
-	Easiness      float64   `json:"easiness"`
-	IntervalDays  int       `json:"interval_days"`
-	TotalCorrect  int       `json:"total_correct"`
-	TotalAttempts int       `json:"total_attempts"`
-	DueDate       time.Time `json:"due_date"`
-	Tags          []string  `json:"tags"`
-	NeedsReview   bool      `json:"needs_review"`
+	ID              int64     `json:"id"`
+	ZhText          string    `json:"zh_text"`
+	Pinyin          *string   `json:"pinyin"`
+	EnTexts         []string  `json:"en_texts"`
+	CreatedAt       time.Time `json:"created_at"`
+	Repetitions     int       `json:"repetitions"`
+	Easiness        float64   `json:"easiness"`
+	IntervalDays    int       `json:"interval_days"`
+	TotalCorrect    int       `json:"total_correct"`
+	TotalAttempts   int       `json:"total_attempts"`
+	DueDate         time.Time `json:"due_date"`
+	Tags            []string  `json:"tags"`
+	NeedsReview     bool      `json:"needs_review"`
+	LearningNewWord bool      `json:"learning_new_word"`
 }
 
 type ConfusionDetail struct {
