@@ -38,7 +38,8 @@ func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
 	reviewOnly := r.URL.Query().Get("review") == "1"
 	hideUnseen := r.URL.Query().Get("hide_unseen") == "1"
 	bucket := r.URL.Query().Get("bucket")
-	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket)
+	dueFilter := r.URL.Query().Get("due")
+	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

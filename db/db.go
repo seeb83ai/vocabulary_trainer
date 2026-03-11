@@ -52,7 +52,7 @@ var validSortExprs = map[string]string{
 // If reviewOnly is true, only words with needs_review = 1 are returned.
 // If hideUnseen is true, only words with at least one quiz attempt are returned.
 // bucket filters by accuracy tier (same rules as tierFilter / wordTier in app.js).
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string) ([]models.WordDetail, int, error) {
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string) ([]models.WordDetail, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -91,6 +91,14 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		hideUnseenFilter = " AND COALESCE(p.total_attempts, 0) > 0"
 	}
 
+	dueFilterSQL := ""
+	switch dueFilter {
+	case "today":
+		dueFilterSQL = " AND p.due_date < date('now', '+1 day')"
+	case "tomorrow":
+		dueFilterSQL = " AND p.due_date >= date('now', '+1 day') AND p.due_date < date('now', '+2 day')"
+	}
+
 	bucketFilter := tierFilter(bucket)
 
 	orderExpr, ok := validSortExprs[sortBy]
@@ -127,7 +135,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + `
+		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + `
 		ORDER BY ` + orderClause + `
 		LIMIT ? OFFSET ?`
 	listArgs := []any{q, q, q, q}
@@ -490,10 +498,11 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 //
 // Bucket rules (must be kept in sync with wordTier in app.js
 // in GetWordStats):
-//   0-49   : < 3 attempts OR accuracy < 50 %   (includes new/unseen words)
-//   50-69  : ≥ 3 attempts AND 50 % ≤ acc < 70 %
-//   70-84  : ≥ 10 attempts AND 70 % ≤ acc < 85 %
-//   85-100 : ≥ 10 attempts AND acc ≥ 85 %
+//
+//	0-49   : < 3 attempts OR accuracy < 50 %   (includes new/unseen words)
+//	50-69  : ≥ 3 attempts AND 50 % ≤ acc < 70 %
+//	70-84  : ≥ 10 attempts AND 70 % ≤ acc < 85 %
+//	85-100 : ≥ 10 attempts AND acc ≥ 85 %
 func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
 	switch bucket {
@@ -757,15 +766,14 @@ func (s *Store) GetStats(ctx context.Context, tags []string, bucket string) (due
 		return
 	}
 	dueArgs := append([]any{}, tagArgs...)
-	// Include words in the wrong-retry window (due within the next
-	// WrongRetryDelay*3 seconds) so that due_today stays > 0 while
-	// recently-failed cards are waiting for their short re-test delay.
-	retryWindowSec := int((sm2.WrongRetryDelay * 3).Seconds())
+	// Count all words due by end of today (midnight) so the user sees the
+	// full day's workload and the "done" screen only appears once every
+	// card due today has been reviewed.
 	err = s.db.QueryRowContext(ctx,
-		fmt.Sprintf(`SELECT COUNT(*) FROM sm2_progress p
+		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
-		   AND p.due_date <= datetime('now', '+%d seconds')`, retryWindowSec)+tagFilter+bucketSQL, dueArgs...).Scan(&dueToday)
+		   AND p.due_date < date('now', '+1 day')`+tagFilter+bucketSQL, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
 	}

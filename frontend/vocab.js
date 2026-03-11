@@ -1,7 +1,7 @@
 // Vocabulary management page logic
 
 let currentPage = 1;
-const PER_PAGE = 20;
+let perPage = parseInt(localStorage.getItem('vocabPerPage')) || 20;
 let searchQuery = '';
 let sortBy = '';
 let sortDir = 'desc';
@@ -13,12 +13,13 @@ let selectedFilterTags = [];
 let reviewFilterActive = false;
 let hideUnseenActive = true;
 let selectedTierFilter = '';
+let dueFilter = '';
 
 async function loadWords() {
   const params = new URLSearchParams({
     q: searchQuery,
     page: currentPage,
-    per_page: PER_PAGE,
+    per_page: perPage,
   });
   if (sortBy) {
     params.set('sort', sortBy);
@@ -35,6 +36,9 @@ async function loadWords() {
   }
   if (selectedTierFilter) {
     params.set('bucket', selectedTierFilter);
+  }
+  if (dueFilter) {
+    params.set('due', dueFilter);
   }
   try {
     const data = await apiFetch(`/api/words?${params}`);
@@ -100,11 +104,59 @@ function renderTable(words) {
   });
 }
 
-function renderPagination(total, page, perPage) {
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
-  setText('page-info', `Page ${page} of ${totalPages} (${total} entries)`);
+function renderPagination(total, page, ppSize) {
+  const totalPages = Math.max(1, Math.ceil(total / ppSize));
   $('prev-btn').disabled = page <= 1;
   $('next-page-btn').disabled = page >= totalPages;
+
+  // Page number links
+  const pageNums = $('page-numbers');
+  pageNums.innerHTML = '';
+  const maxVisible = 7;
+  let start = Math.max(1, page - Math.floor(maxVisible / 2));
+  let end = Math.min(totalPages, start + maxVisible - 1);
+  if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
+
+  if (start > 1) {
+    pageNums.appendChild(makePageBtn(1, page));
+    if (start > 2) {
+      const dots = document.createElement('span');
+      dots.className = 'px-1 text-gray-400';
+      dots.textContent = '…';
+      pageNums.appendChild(dots);
+    }
+  }
+  for (let i = start; i <= end; i++) {
+    pageNums.appendChild(makePageBtn(i, page));
+  }
+  if (end < totalPages) {
+    if (end < totalPages - 1) {
+      const dots = document.createElement('span');
+      dots.className = 'px-1 text-gray-400';
+      dots.textContent = '…';
+      pageNums.appendChild(dots);
+    }
+    pageNums.appendChild(makePageBtn(totalPages, page));
+  }
+
+  // Total count
+  setText('page-total', `${total} entries`);
+
+  // Per-page dropdown
+  $('per-page-select').value = ppSize;
+}
+
+function makePageBtn(pageNum, activePage) {
+  const btn = document.createElement('button');
+  btn.textContent = pageNum;
+  btn.className = pageNum === activePage
+    ? 'px-2.5 py-1 rounded text-sm font-medium bg-blue-600 text-white'
+    : 'px-2.5 py-1 rounded text-sm font-medium text-gray-600 hover:bg-gray-100';
+  btn.addEventListener('click', () => {
+    currentPage = pageNum;
+    loadWords();
+  });
+  return btn;
 }
 
 function openEditForm(word) {
@@ -408,6 +460,17 @@ function updateReviewFilterBtn() {
   }
 }
 
+function updateDueFilterBtns() {
+  ['today', 'tomorrow'].forEach(key => {
+    const btn = $('due-' + key + '-btn');
+    if (dueFilter === key) {
+      btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-blue-400 bg-blue-50 text-blue-600';
+    } else {
+      btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100';
+    }
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
   loadTags();
@@ -425,6 +488,22 @@ document.addEventListener('DOMContentLoaded', () => {
   $('review-filter-btn').addEventListener('click', () => {
     reviewFilterActive = !reviewFilterActive;
     updateReviewFilterBtn();
+    currentPage = 1;
+    loadWords();
+  });
+
+  ['today', 'tomorrow'].forEach(key => {
+    $('due-' + key + '-btn').addEventListener('click', () => {
+      dueFilter = dueFilter === key ? '' : key;
+      updateDueFilterBtns();
+      currentPage = 1;
+      loadWords();
+    });
+  });
+
+  $('per-page-select').addEventListener('change', (e) => {
+    perPage = parseInt(e.target.value);
+    localStorage.setItem('vocabPerPage', perPage);
     currentPage = 1;
     loadWords();
   });

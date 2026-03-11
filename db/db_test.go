@@ -112,7 +112,7 @@ func TestGetWords_ReturnsAll(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "")
+words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestGetWords_SearchByZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-words, total, err := s.GetWords(context.Background(), "你好", 1, 20, "", "", nil, false, false, "")
+words, total, err := s.GetWords(context.Background(), "你好", 1, 20, "", "", nil, false, false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestGetWords_SearchByEnText(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-words, total, err := s.GetWords(context.Background(), "thank", 1, 20, "", "", nil, false, false, "")
+words, total, err := s.GetWords(context.Background(), "thank", 1, 20, "", "", nil, false, false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestGetWords_Pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		seedWord(t, s, string(rune(0x4e00+i)), "", []string{"word"})
 	}
-words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "", nil, false, false, "")
+words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "", nil, false, false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "", nil, fal
 		t.Errorf("page 1 per_page 3: want 3 results, got %d", len(words))
 	}
 
-words2, _, err := s.GetWords(context.Background(), "", 2, 3, "", "", nil, false, false, "")
+words2, _, err := s.GetWords(context.Background(), "", 2, 3, "", "", nil, false, false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,7 +557,7 @@ func TestGetWords_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "吃饭", "chī fàn", []string{"eat"}, []string{"food"})
 	seedWordWithTags(t, s, "谢谢", "xiè xiè", []string{"thanks"}, []string{"greetings"})
 
-words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings"}, false, false, "")
+words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings"}, false, false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +575,7 @@ func TestGetWords_FilterByMultipleTags_OR(t *testing.T) {
 	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 	seedWordWithTags(t, s, "书", "", []string{"book"}, []string{"school"})
 
-words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings", "food"}, false, false, "")
+words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings", "food"}, false, false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1005,7 +1005,7 @@ func TestGetWords_ReviewOnlyFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "desc", nil, true, false, "")
+words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "desc", nil, true, false, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1029,7 +1029,7 @@ func TestGetWords_HideUnseenFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	words, total, err := s.GetWords(ctx, "", 1, 20, "", "desc", nil, false, true, "")
+	words, total, err := s.GetWords(ctx, "", 1, 20, "", "desc", nil, false, true, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
