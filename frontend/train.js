@@ -290,8 +290,12 @@ async function submitAnswer(e) {
     } else {
       setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
     }
-    setText('attempt-stats',
-      `Correct: ${result.total_correct} / ${result.total_attempts}`);
+    if (result.learning_new_word || result.graduated) {
+      setText('attempt-stats', `Streak: ${result.repetitions} / 3`);
+    } else {
+      setText('attempt-stats',
+        `Correct: ${result.total_correct} / ${result.total_attempts}`);
+    }
 
     const reviewBtn = $('needs-review-btn');
     reviewBtn.textContent = 'Flag for Review';

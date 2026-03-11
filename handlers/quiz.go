@@ -224,6 +224,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		IntervalDays:    updated.IntervalDays,
 		TotalCorrect:    updated.TotalCorrect,
 		TotalAttempts:   updated.TotalAttempts,
+		Repetitions:     updated.Repetitions,
 		LearningNewWord: updated.LearningNewWord,
 		Graduated:       graduated,
 	}
