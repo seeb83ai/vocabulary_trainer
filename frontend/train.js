@@ -290,7 +290,7 @@ async function submitAnswer(e) {
     } else {
       setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
     }
-    if (result.graduate) {
+    if (result.graduated) {
       setText('attempt-stats', ``);
     } else if (result.learning_new_word) {
       setText('attempt-stats', `Streak: ${result.repetitions} / ${result.graduate_reps}`);
