@@ -351,16 +351,25 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	}
 	newAvailable := 0
 	// When drilling a specific tier, don't introduce new words (they have no tier yet).
+	// Also skip new words if there are still words in the learning ("new") phase
+	// for the current selection — finish learning those first.
 	if bucket == "" && newToday < cap {
-		n, err := h.Store.CountUnseenZhWords(r.Context(), tags)
+		learningCount, err := h.Store.CountLearningNewWords(r.Context(), tags)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if remaining := cap - newToday; n > remaining {
-			n = remaining
+		if learningCount == 0 {
+			n, err := h.Store.CountUnseenZhWords(r.Context(), tags)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if remaining := cap - newToday; n > remaining {
+				n = remaining
+			}
+			newAvailable = n
 		}
-		newAvailable = n
 	}
 	writeJSON(w, http.StatusOK, map[string]int{
 		"due_today":            due,
