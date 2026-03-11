@@ -498,15 +498,15 @@ func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
 	switch bucket {
 	case "new":
-		return ` AND COALESCE(p.learning_new_word, 1) = 1 AND p.first_seen_date IS NOT NULL`
+		return ` AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`
 	case "0-49":
-		return ` AND COALESCE(p.learning_new_word, 1) = 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
+		return ` AND p.learning_new_word = 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
 	case "50-69":
-		return ` AND COALESCE(p.learning_new_word, 1) = 0 AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
+		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
 	case "70-84":
-		return ` AND COALESCE(p.learning_new_word, 1) = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
+		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
 	case "85-100":
-		return ` AND COALESCE(p.learning_new_word, 1) = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.85`
+		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.85`
 	}
 	return ""
 }
@@ -552,7 +552,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 	query := `
 		SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
 		       p.repetitions, p.easiness, p.interval_days, p.due_date,
-		       p.total_correct, p.total_attempts, COALESCE(p.learning_new_word, 1)
+		       p.total_correct, p.total_attempts, p.learning_new_word
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh'` + tagFilter + newWordFilter + bucketSQL + ` %s
@@ -651,7 +651,7 @@ func (s *Store) GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Pr
 	var dueDate string
 	var learning int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, COALESCE(learning_new_word, 1)
+		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, learning_new_word
 		 FROM sm2_progress WHERE word_id = ?`, wordID).
 		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
 			&p.TotalCorrect, &p.TotalAttempts, &learning)
@@ -1158,7 +1158,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id, w.text, w.pinyin,
 		       p.total_correct, p.total_attempts, p.easiness,
-		       COALESCE(p.learning_new_word, 1)
+		       p.learning_new_word
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL

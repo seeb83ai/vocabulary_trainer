@@ -142,24 +142,8 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 	},
 	{
 		version: 5,
-		fn: func(db *sql.DB) error {
-			var count int
-			if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sm2_progress') WHERE name = 'learning_new_word'`).Scan(&count); err != nil {
-				return fmt.Errorf("check learning_new_word column: %w", err)
-			}
-			if count > 0 {
-				return nil // column already exists
-			}
-			// Add column with default 1 (all new words start in learning phase).
-			if _, err := db.Exec(`ALTER TABLE sm2_progress ADD COLUMN learning_new_word INTEGER NOT NULL DEFAULT 1`); err != nil {
-				return fmt.Errorf("add learning_new_word column: %w", err)
-			}
-			// Words that have been answered correctly ≥3 times are considered graduated.
-			if _, err := db.Exec(`UPDATE sm2_progress SET learning_new_word = 0 WHERE total_correct >= 3`); err != nil {
-				return fmt.Errorf("backfill learning_new_word: %w", err)
-			}
-			return nil
-		},
+		sql: `ALTER TABLE sm2_progress ADD COLUMN learning_new_word INTEGER NOT NULL DEFAULT 1;
+UPDATE sm2_progress SET learning_new_word = 0 WHERE total_correct >= 3;`,
 	},
 }
 
