@@ -83,31 +83,35 @@
 
     <!-- Search & list -->
     <div class="bg-white rounded-2xl shadow overflow-hidden">
-      <div class="px-6 py-4 border-b border-gray-200 flex items-center gap-4">
-        <h2 class="text-lg font-semibold text-gray-800 flex-1">Vocabulary List</h2>
-        <button id="hide-unseen-btn"
-          class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-blue-400 bg-blue-50 text-blue-600">
-          Hide Unseen
-        </button>
-        <button id="review-filter-btn"
-          class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
-          Needs Review
-        </button>
-        <button id="due-today-btn"
-          class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
-          Due Today
-        </button>
-        <button id="due-tomorrow-btn"
-          class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
-          Due Tomorrow
-        </button>
-        <input id="search-input" type="search" placeholder="Search…"
-          class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-52">
+      <div class="px-4 sm:px-6 py-4 border-b border-gray-200 space-y-3">
+        <div class="flex items-center gap-3">
+          <h2 class="text-lg font-semibold text-gray-800 flex-1">Vocabulary List</h2>
+          <input id="search-input" type="search" placeholder="Search…"
+            class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-36 sm:w-52">
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button id="hide-unseen-btn"
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-blue-400 bg-blue-50 text-blue-600">
+            Hide Unseen
+          </button>
+          <button id="review-filter-btn"
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
+            Needs Review
+          </button>
+          <button id="due-today-btn"
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
+            Due Today
+          </button>
+          <button id="due-tomorrow-btn"
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
+            Due Tomorrow
+          </button>
+        </div>
       </div>
-      <div id="filter-tier-bar" class="px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
+      <div id="filter-tier-bar" class="px-4 sm:px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
         <span class="text-xs text-gray-500 font-medium mr-1">Level:</span>
       </div>
-      <div id="filter-tags-bar" class="hidden px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
+      <div id="filter-tags-bar" class="hidden px-4 sm:px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
         <span class="text-xs text-gray-500 font-medium mr-1">Tags:</span>
       </div>
 
@@ -128,19 +132,19 @@
       </div>
 
       <!-- Pagination -->
-      <div id="pagination" class="px-6 py-4 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600">
-        <div class="flex items-center gap-1">
+      <div id="pagination" class="px-4 sm:px-6 py-3 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-gray-600">
+        <div class="flex items-center gap-1 min-w-0">
           <button id="prev-btn"
-            class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition">
+            class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex-none">
             ←
           </button>
-          <span id="page-numbers" class="flex items-center gap-0.5"></span>
+          <span id="page-numbers" class="flex items-center gap-0.5 flex-wrap min-w-0"></span>
           <button id="next-page-btn"
-            class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition">
+            class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex-none">
             →
           </button>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 flex-none">
           <span id="page-total" class="text-gray-500"></span>
           <select id="per-page-select" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="20">20 / page</option>
