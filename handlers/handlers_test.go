@@ -1256,14 +1256,6 @@ func TestWordStats_WithData(t *testing.T) {
 		t.Errorf("total_seen: want >= 1, got %d", resp.TotalSeen)
 	}
 
-	// Milestones should have keys
-	if _, ok := resp.Milestones["1+"]; !ok {
-		t.Error("milestones missing '1+' key")
-	}
-	if _, ok := resp.Milestones["10+"]; !ok {
-		t.Error("milestones missing '10+' key")
-	}
-
 	// Accuracy buckets should have keys
 	if _, ok := resp.AccBuckets["85-100"]; !ok {
 		t.Error("accuracy_buckets missing '85-100' key")

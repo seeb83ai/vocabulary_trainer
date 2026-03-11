@@ -129,26 +129,6 @@ function renderTable(days) {
 }
 
 function renderWordStats(ws) {
-  // Milestones bar chart
-  const mCtx = $('milestones-chart').getContext('2d');
-  const mLabels = ['1+', '3+', '5+', '10+'];
-  const mData = mLabels.map(k => ws.milestones[k] || 0);
-  new Chart(mCtx, {
-    type: 'bar',
-    data: {
-      labels: mLabels.map(l => l + ' correct'),
-      datasets: [{
-        data: mData,
-        backgroundColor: ['rgba(59,130,246,0.7)', 'rgba(34,197,94,0.7)', 'rgba(168,85,247,0.7)', 'rgba(245,158,11,0.7)'],
-      }],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { display: false } },
-      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-    },
-  });
-
   // Accuracy distribution doughnut
   const aCtx = $('accuracy-chart').getContext('2d');
   const aData = TIERS.map(t => ws.accuracy_buckets[t.key] || 0);
@@ -158,7 +138,7 @@ function renderWordStats(ws) {
       labels: TIERS.map(t => t.label),
       datasets: [{
         data: aData,
-        backgroundColor: TIERS.map(t => t.color + 'b3'), // 70% opacity
+        backgroundColor: TIERS.map(t => t.color + 'b3'),
       }],
     },
     options: {
@@ -178,7 +158,7 @@ function renderWordStats(ws) {
     },
   });
 
-  // Tier legend below chart
+  // Tier legend
   const legend = $('tier-legend');
   const total = aData.reduce((a, b) => a + b, 0);
   legend.innerHTML = TIERS.map((t, i) => {
@@ -193,24 +173,6 @@ function renderWordStats(ws) {
       <span class="text-gray-600 tabular-nums">${count} <span class="text-gray-400">(${pct}%)</span></span>
     </div>`;
   }).join('');
-
-  // Aggregates table
-  $('word-stats-total').textContent = `(${ws.total_seen} words seen)`;
-  const agg = ws.aggregates;
-  const rows = [
-    { label: 'Correct answers', d: agg.correct, unit: '' },
-    { label: 'Total attempts', d: agg.attempts, unit: '' },
-    { label: 'Accuracy', d: agg.accuracy, unit: '%' },
-    { label: 'Ease factor', d: agg.easiness, unit: '' },
-  ];
-  $('aggregates-body').innerHTML = rows.map(r =>
-    `<tr class="border-b border-gray-100">
-      <td class="py-2 pr-4 font-medium">${escHtml(r.label)}</td>
-      <td class="py-2 pr-4 text-right">${r.d.avg}${r.unit}</td>
-      <td class="py-2 pr-4 text-right">${r.d.median}${r.unit}</td>
-      <td class="py-2 text-right">${r.d.p95}${r.unit}</td>
-    </tr>`
-  ).join('');
 
   // Hardest words
   renderWordTable('hardest-body', ws.hardest, ['accuracy', 'attempts']);

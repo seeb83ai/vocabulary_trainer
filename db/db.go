@@ -51,7 +51,7 @@ var validSortExprs = map[string]string{
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
 // If reviewOnly is true, only words with needs_review = 1 are returned.
 // If hideUnseen is true, only words with at least one quiz attempt are returned.
-// bucket filters by accuracy tier (same rules as tierFilter / GetWordStats AccBuckets).
+// bucket filters by accuracy tier (same rules as tierFilter / wordTier in app.js).
 func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string) ([]models.WordDetail, int, error) {
 	if page < 1 {
 		page = 1
@@ -488,7 +488,7 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 // rows to the given accuracy/attempt bucket. The alias "p" must refer to
 // sm2_progress in the enclosing query. Returns "" for an empty/unknown key.
 //
-// Bucket rules (must be kept in sync with wordTier in app.js and AccBuckets
+// Bucket rules (must be kept in sync with wordTier in app.js
 // in GetWordStats):
 //   0-49   : < 3 attempts OR accuracy < 50 %   (includes new/unseen words)
 //   50-69  : ≥ 3 attempts AND 50 % ≤ acc < 70 %
@@ -1198,7 +1198,6 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 
 	resp := &models.WordStatsResponse{
 		TotalSeen:  len(all),
-		Milestones: map[string]int{"1+": 0, "3+": 0, "5+": 0, "10+": 0},
 		AccBuckets: map[string]int{"new": 0, "0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0},
 		Hardest:    []models.WordStatDetail{},
 		MostPract:  []models.WordStatDetail{},
@@ -1208,33 +1207,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 		return resp, nil
 	}
 
-	corrects := make([]float64, len(all))
-	attempts := make([]float64, len(all))
-	accuracies := make([]float64, 0, len(all))
-	easinesses := make([]float64, len(all))
-
-	for i, r := range all {
-		corrects[i] = float64(r.correct)
-		attempts[i] = float64(r.attempts)
-		easinesses[i] = r.easiness
-
-		if r.attempts > 0 {
-			accuracies = append(accuracies, r.accuracy)
-		}
-
-		if r.correct >= 1 {
-			resp.Milestones["1+"]++
-		}
-		if r.correct >= 3 {
-			resp.Milestones["3+"]++
-		}
-		if r.correct >= 5 {
-			resp.Milestones["5+"]++
-		}
-		if r.correct >= 10 {
-			resp.Milestones["10+"]++
-		}
-
+	for _, r := range all {
 		if r.learning {
 			resp.AccBuckets["new"]++
 		} else if r.attempts > 0 {
@@ -1251,14 +1224,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 		}
 	}
 
-	resp.Aggregates.Correct = calcDistStats(corrects)
-	resp.Aggregates.Attempts = calcDistStats(attempts)
-	if len(accuracies) > 0 {
-		resp.Aggregates.Accuracy = calcDistStats(accuracies)
-	}
-	resp.Aggregates.Easiness = calcDistStats(easinesses)
-
-	// Hardest words: lowest accuracy, min 3 attempts, up to 5
+	// Hardest words: lowest accuracy, min 3 attempts, up to 20
 	type scored struct {
 		idx int
 		acc float64
@@ -1277,7 +1243,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 			}
 		}
 	}
-	limit := 5
+	limit := 20
 	if limit > len(candidates) {
 		limit = len(candidates)
 	}
@@ -1295,7 +1261,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	}
 
 	// Most practiced: already sorted by total_attempts DESC from query
-	mpLimit := 5
+	mpLimit := 20
 	if mpLimit > len(all) {
 		mpLimit = len(all)
 	}
@@ -1353,48 +1319,6 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	}
 
 	return resp, nil
-}
-
-func calcDistStats(vals []float64) models.DistStats {
-	if len(vals) == 0 {
-		return models.DistStats{}
-	}
-	// Copy and sort for percentile calculations
-	sorted := make([]float64, len(vals))
-	copy(sorted, vals)
-	for i := 0; i < len(sorted); i++ {
-		for j := i + 1; j < len(sorted); j++ {
-			if sorted[j] < sorted[i] {
-				sorted[i], sorted[j] = sorted[j], sorted[i]
-			}
-		}
-	}
-	var sum float64
-	for _, v := range sorted {
-		sum += v
-	}
-	n := len(sorted)
-	avg := sum / float64(n)
-
-	var median float64
-	if n%2 == 0 {
-		median = (sorted[n/2-1] + sorted[n/2]) / 2
-	} else {
-		median = sorted[n/2]
-	}
-
-	p95Idx := int(float64(n-1) * 0.95)
-	p95 := sorted[p95Idx]
-
-	// Round to 1 decimal
-	round := func(v float64) float64 {
-		return float64(int(v*10+0.5)) / 10
-	}
-	return models.DistStats{
-		Avg:        round(avg),
-		Median:     round(median),
-		Percentile: round(p95),
-	}
 }
 
 // GetTodaySessionInfo returns today's attempt and mistake counts from daily_stats,

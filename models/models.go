@@ -136,24 +136,9 @@ type DailyStatsResponse struct {
 
 type WordStatsResponse struct {
 	TotalSeen  int              `json:"total_seen"`
-	Milestones map[string]int   `json:"milestones"`
 	AccBuckets map[string]int   `json:"accuracy_buckets"`
-	Aggregates WordAggregates   `json:"aggregates"`
 	Hardest    []WordStatDetail `json:"hardest"`
 	MostPract  []WordStatDetail `json:"most_practiced"`
-}
-
-type WordAggregates struct {
-	Correct  DistStats `json:"correct"`
-	Attempts DistStats `json:"attempts"`
-	Accuracy DistStats `json:"accuracy"`
-	Easiness DistStats `json:"easiness"`
-}
-
-type DistStats struct {
-	Avg        float64 `json:"avg"`
-	Median     float64 `json:"median"`
-	Percentile float64 `json:"p95"`
 }
 
 type WordStatDetail struct {
