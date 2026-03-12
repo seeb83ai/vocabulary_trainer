@@ -104,10 +104,20 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			for _, ew := range enWords {
 				card.EnTexts = append(card.EnTexts, ew.Text)
 			}
-			// For learning words, send a masked pinyin hint based on progress
+			// For learning words, send a masked pinyin hint based on progress.
+			// For struggling words (non-learning, <3 attempts or accuracy <50%),
+			// show first character only (mask level 1).
 			if progress.LearningNewWord && word.Pinyin != nil {
 				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
 					card.Pinyin = &masked
+				}
+			} else if word.Pinyin != nil {
+				isStruggling := progress.TotalAttempts < 3 ||
+					(progress.TotalAttempts > 0 && float64(progress.TotalCorrect)/float64(progress.TotalAttempts) < 0.50)
+				if isStruggling {
+					if masked := sm2.MaskPinyin(*word.Pinyin, 1); masked != "" {
+						card.Pinyin = &masked
+					}
 				}
 			}
 		}

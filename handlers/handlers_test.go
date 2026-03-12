@@ -129,6 +129,77 @@ func TestQuizNext_ReturnsCard(t *testing.T) {
 	}
 }
 
+func TestQuizNext_StrugglingWordPinyinHint(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	// Struggling: 5 attempts, 1 correct → 20% accuracy (< 50%)
+	p.TotalAttempts = 5
+	p.TotalCorrect = 1
+	p.LearningNewWord = false
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=en_to_zh", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeEnToZh {
+		t.Fatalf("want mode en_to_zh, got %s", card.Mode)
+	}
+	if card.Pinyin == nil {
+		t.Fatal("want pinyin hint for struggling word, got nil")
+	}
+	// MaskPinyin level 1: first char visible, rest masked ("n*****")
+	if (*card.Pinyin)[0] != 'n' {
+		t.Errorf("want pinyin hint starting with 'n', got %q", *card.Pinyin)
+	}
+	// Should not be the full pinyin
+	if *card.Pinyin == "nǐ hǎo" {
+		t.Error("pinyin hint should be masked, not full pinyin")
+	}
+}
+
+func TestQuizNext_NonStrugglingWordNoHint(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	// Not struggling: 10 attempts, 8 correct → 80% accuracy (≥ 50%)
+	p.TotalAttempts = 10
+	p.TotalCorrect = 8
+	p.LearningNewWord = false
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=en_to_zh", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Pinyin != nil {
+		t.Errorf("want no pinyin hint for non-struggling word, got %q", *card.Pinyin)
+	}
+}
+
 func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	s := openTestDB(t)
 	// Word with no pinyin — zh_pinyin_to_en must never be returned
