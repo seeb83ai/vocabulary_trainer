@@ -550,10 +550,19 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		return nil, nil, fmt.Errorf("count new today: %w", err)
 	}
 
-	// When the daily cap is reached, skip words that have never been presented.
+	// When the daily cap is reached, or there are still words in the learning
+	// phase for the current filter set, skip words that have never been presented.
 	newWordFilter := ""
 	if newToday >= maxNew {
 		newWordFilter = " AND p.first_seen_date IS NOT NULL"
+	} else {
+		learningCount, err := s.CountLearningNewWords(ctx, tags)
+		if err != nil {
+			return nil, nil, fmt.Errorf("count learning words: %w", err)
+		}
+		if learningCount > 0 {
+			newWordFilter = " AND p.first_seen_date IS NOT NULL"
+		}
 	}
 
 	// Only quiz on zh words — they are the canonical unit; en words are just
