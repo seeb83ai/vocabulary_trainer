@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     data = await apiFetch('/api/quiz/daily-stats');
   } catch (e) {
     $('stats-table-body').innerHTML =
-      '<tr><td colspan="8" class="py-8 text-center text-red-500">Failed to load stats.</td></tr>';
+      '<tr><td colspan="13" class="py-8 text-center text-red-500">Failed to load stats.</td></tr>';
     return;
   }
 
@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('stats-chart').style.display = 'none';
     show('chart-empty');
     $('stats-table-body').innerHTML =
-      '<tr><td colspan="8" class="py-8 text-center text-gray-400">No training data yet.</td></tr>';
+      '<tr><td colspan="13" class="py-8 text-center text-gray-400">No training data yet.</td></tr>';
   } else {
     renderChart(days);
     renderTable(days);
@@ -94,7 +94,8 @@ function renderChart(days) {
               const idx = items[0].dataIndex;
               const d = days[idx];
               const acc = d.attempts > 0 ? Math.round(((d.attempts - d.mistakes) / d.attempts) * 100) : 0;
-              return `Accuracy: ${acc}%\nNew words: ${d.new_words}\nWords seen: ${d.words_seen}\nBest streak: ${d.correct_streak}`;
+              return `Accuracy: ${acc}%\nNew words: ${d.new_words}\nWords seen: ${d.words_seen}\nBest streak: ${d.correct_streak}\n` +
+                `Buckets: ${d.bucket_new||0} new · ${d.bucket_struggling||0} struggling · ${d.bucket_learning||0} learning · ${d.bucket_practicing||0} practicing · ${d.bucket_mastered||0} mastered`;
             },
           },
         },
@@ -108,7 +109,7 @@ function renderTable(days) {
   const recent = days.slice(-14).reverse();
   const tbody = $('stats-table-body');
   if (recent.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-gray-400">No data in the last 14 days.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="py-8 text-center text-gray-400">No data in the last 14 days.</td></tr>';
     return;
   }
   tbody.innerHTML = recent.map(d => {
@@ -123,7 +124,12 @@ function renderTable(days) {
       <td class="py-2 pr-4 text-right">${d.words_seen}</td>
       <td class="py-2 pr-4 text-right">${d.words_known}</td>
       <td class="py-2 pr-4 text-right">${d.new_words}</td>
-      <td class="py-2 text-right">${d.correct_streak}</td>
+      <td class="py-2 pr-4 text-right">${d.correct_streak}</td>
+      <td class="py-2 pr-4 text-right text-violet-600">${d.bucket_new || 0}</td>
+      <td class="py-2 pr-4 text-right text-red-600">${d.bucket_struggling || 0}</td>
+      <td class="py-2 pr-4 text-right text-amber-600">${d.bucket_learning || 0}</td>
+      <td class="py-2 pr-4 text-right text-blue-600">${d.bucket_practicing || 0}</td>
+      <td class="py-2 text-right text-green-600">${d.bucket_mastered || 0}</td>
     </tr>`;
   }).join('');
 }

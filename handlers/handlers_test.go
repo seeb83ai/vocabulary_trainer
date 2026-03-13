@@ -1187,6 +1187,71 @@ func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
 	if resp.Days[0].WordsSeen != 0 {
 		t.Errorf("words_seen: want 0, got %d", resp.Days[0].WordsSeen)
 	}
+	// Word was not presented via GetNextCard, so first_seen_date is NULL
+	// and all bucket counts should be 0.
+	if resp.Days[0].BucketNew != 0 {
+		t.Errorf("bucket_new: want 0, got %d", resp.Days[0].BucketNew)
+	}
+	if resp.Days[0].BucketStruggling != 0 {
+		t.Errorf("bucket_struggling: want 0, got %d", resp.Days[0].BucketStruggling)
+	}
+	if resp.Days[0].BucketMastered != 0 {
+		t.Errorf("bucket_mastered: want 0, got %d", resp.Days[0].BucketMastered)
+	}
+}
+
+func TestDailyStats_BucketCounts(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "猫", "māo", []string{"cat"})
+	seedWord(t, s, "狗", "gǒu", []string{"dog"})
+	r := newRouter(s)
+
+	// Present both words so first_seen_date is stamped
+	do(t, r, "GET", "/api/quiz/next", nil)
+	do(t, r, "GET", "/api/quiz/next", nil)
+
+	// Answer 猫 correctly once — still learning_new_word=1 → bucket "new"
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": 1, "mode": "zh_to_en", "answer": "cat",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer cat: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Answer 狗 wrong once — still learning_new_word=1 → bucket "new"
+	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": 2, "mode": "zh_to_en", "answer": "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer dog: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/daily-stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DailyStatsResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Days) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(resp.Days))
+	}
+	day := resp.Days[0]
+	// Both words are learning_new_word=1 with first_seen_date set
+	if day.BucketNew != 2 {
+		t.Errorf("bucket_new: want 2, got %d", day.BucketNew)
+	}
+	if day.BucketStruggling != 0 {
+		t.Errorf("bucket_struggling: want 0, got %d", day.BucketStruggling)
+	}
+	if day.BucketLearning != 0 {
+		t.Errorf("bucket_learning: want 0, got %d", day.BucketLearning)
+	}
+	if day.BucketPracticing != 0 {
+		t.Errorf("bucket_practicing: want 0, got %d", day.BucketPracticing)
+	}
+	if day.BucketMastered != 0 {
+		t.Errorf("bucket_mastered: want 0, got %d", day.BucketMastered)
+	}
 }
 
 func TestWordStats_Empty(t *testing.T) {

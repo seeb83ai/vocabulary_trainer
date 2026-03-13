@@ -254,13 +254,18 @@ func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
 	resp := models.DailyStatsResponse{Days: make([]models.DailyStatEntry, len(stats))}
 	for i, s := range stats {
 		resp.Days[i] = models.DailyStatEntry{
-			Date:          s.Date,
-			Attempts:      s.Attempts,
-			Mistakes:      s.Mistakes,
-			WordsKnown:    s.WordsKnown,
-			NewWords:      s.NewWords,
-			WordsSeen:     s.WordsSeen,
-			CorrectStreak: s.CorrectStreak,
+			Date:             s.Date,
+			Attempts:         s.Attempts,
+			Mistakes:         s.Mistakes,
+			WordsKnown:       s.WordsKnown,
+			NewWords:         s.NewWords,
+			WordsSeen:        s.WordsSeen,
+			CorrectStreak:    s.CorrectStreak,
+			BucketNew:        s.BucketNew,
+			BucketStruggling: s.BucketStruggling,
+			BucketLearning:   s.BucketLearning,
+			BucketPracticing: s.BucketPracticing,
+			BucketMastered:   s.BucketMastered,
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)

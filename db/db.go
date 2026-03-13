@@ -1137,6 +1137,35 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 		return fmt.Errorf("count words seen: %w", err)
 	}
 
+	var bNew, bStruggling, bLearning, bPracticing, bMastered int
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT
+		  COALESCE(SUM(CASE WHEN p.learning_new_word = 1 THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
+		    AND (p.total_attempts < 3 OR CAST(p.total_correct AS REAL) / p.total_attempts < 0.50)
+		    THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
+		    AND p.total_attempts >= 3
+		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.50
+		    AND CAST(p.total_correct AS REAL) / p.total_attempts < 0.70
+		    THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
+		    AND p.total_attempts >= 10
+		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.70
+		    AND CAST(p.total_correct AS REAL) / p.total_attempts < 0.85
+		    THEN 1 ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
+		    AND p.total_attempts >= 10
+		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.85
+		    THEN 1 ELSE 0 END), 0)
+		FROM sm2_progress p
+		JOIN words w ON w.id = p.word_id
+		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(
+		&bNew, &bStruggling, &bLearning, &bPracticing, &bMastered,
+	); err != nil {
+		return fmt.Errorf("count buckets: %w", err)
+	}
+
 	mistakeInc := 0
 	streakInit := 0
 	if correct {
@@ -1146,18 +1175,30 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO daily_stats (date, attempts, mistakes, words_known, new_words, words_seen, correct_streak, current_streak)
-		VALUES (date('now'), 1, ?, ?, ?, ?, ?, ?)
+		INSERT INTO daily_stats (date, attempts, mistakes, words_known, new_words, words_seen,
+			correct_streak, current_streak,
+			bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
+		VALUES (date('now'), 1, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?)
 		ON CONFLICT(date) DO UPDATE SET
-			attempts       = attempts + 1,
-			mistakes       = mistakes + ?,
-			words_known    = ?,
-			new_words      = ?,
-			words_seen     = ?,
-			current_streak = CASE WHEN ? = 0 THEN current_streak + 1 ELSE 0 END,
-			correct_streak = CASE WHEN ? = 0 THEN MAX(correct_streak, current_streak + 1) ELSE correct_streak END`,
+			attempts         = attempts + 1,
+			mistakes         = mistakes + ?,
+			words_known      = ?,
+			new_words        = ?,
+			words_seen       = ?,
+			current_streak   = CASE WHEN ? = 0 THEN current_streak + 1 ELSE 0 END,
+			correct_streak   = CASE WHEN ? = 0 THEN MAX(correct_streak, current_streak + 1) ELSE correct_streak END,
+			bucket_new       = ?,
+			bucket_struggling = ?,
+			bucket_learning  = ?,
+			bucket_practicing = ?,
+			bucket_mastered  = ?`,
+		// INSERT values
 		mistakeInc, wordsKnown, newWords, wordsSeen, streakInit, streakInit,
+		bNew, bStruggling, bLearning, bPracticing, bMastered,
+		// UPDATE values
 		mistakeInc, wordsKnown, newWords, wordsSeen, mistakeInc, mistakeInc,
+		bNew, bStruggling, bLearning, bPracticing, bMastered,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert daily stat: %w", err)
@@ -1168,7 +1209,8 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 // GetDailyStatsHistory returns all daily stats ordered by date ascending.
 func (s *Store) GetDailyStatsHistory(ctx context.Context) ([]models.DailyStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT date, attempts, mistakes, words_known, new_words, words_seen, correct_streak
+		SELECT date, attempts, mistakes, words_known, new_words, words_seen, correct_streak,
+		       bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered
 		FROM daily_stats ORDER BY date ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("get daily stats: %w", err)
@@ -1177,7 +1219,8 @@ func (s *Store) GetDailyStatsHistory(ctx context.Context) ([]models.DailyStat, e
 	var stats []models.DailyStat
 	for rows.Next() {
 		var d models.DailyStat
-		if err := rows.Scan(&d.Date, &d.Attempts, &d.Mistakes, &d.WordsKnown, &d.NewWords, &d.WordsSeen, &d.CorrectStreak); err != nil {
+		if err := rows.Scan(&d.Date, &d.Attempts, &d.Mistakes, &d.WordsKnown, &d.NewWords, &d.WordsSeen, &d.CorrectStreak,
+			&d.BucketNew, &d.BucketStruggling, &d.BucketLearning, &d.BucketPracticing, &d.BucketMastered); err != nil {
 			return nil, fmt.Errorf("scan daily stat: %w", err)
 		}
 		stats = append(stats, d)
