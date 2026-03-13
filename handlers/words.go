@@ -81,6 +81,12 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if req.StartTraining {
+		if err := h.Store.AcknowledgeWord(r.Context(), id); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	if h.Audio != nil {
 		go h.Audio.generate(id, req.ZhText)
 	}
@@ -141,6 +147,12 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if req.StartTraining {
+		if err := h.Store.AcknowledgeWord(r.Context(), id); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	if h.Audio != nil {
 		go h.Audio.regenerate(id, req.ZhText)

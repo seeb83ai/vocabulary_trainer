@@ -69,17 +69,19 @@ type AnswerResponse struct {
 }
 
 type CreateWordRequest struct {
-	ZhText  string   `json:"zh_text"`
-	Pinyin  string   `json:"pinyin"`
-	EnTexts []string `json:"en_texts"`
-	Tags    []string `json:"tags"`
+	ZhText        string   `json:"zh_text"`
+	Pinyin        string   `json:"pinyin"`
+	EnTexts       []string `json:"en_texts"`
+	Tags          []string `json:"tags"`
+	StartTraining bool     `json:"start_training"`
 }
 
 type UpdateWordRequest struct {
-	ZhText  string   `json:"zh_text"`
-	Pinyin  string   `json:"pinyin"`
-	EnTexts []string `json:"en_texts"`
-	Tags    []string `json:"tags"`
+	ZhText        string   `json:"zh_text"`
+	Pinyin        string   `json:"pinyin"`
+	EnTexts       []string `json:"en_texts"`
+	Tags          []string `json:"tags"`
+	StartTraining bool     `json:"start_training"`
 }
 
 type WordDetail struct {
