@@ -439,9 +439,12 @@ async function handleTranslate() {
     if (result.pinyin && !$('form-pinyin').value.trim()) {
       $('form-pinyin').value = result.pinyin;
     }
-    if (result.en_text && !en) {
-      if (enInputs.length > 0) {
-        enInputs[0].value = result.en_text;
+    const translations = result.en_texts || (result.en_text ? [result.en_text] : []);
+    if (translations.length > 0 && !en) {
+      const container = $('en-inputs-container');
+      container.innerHTML = '';
+      for (const t of translations) {
+        addEnInput(t);
       }
     }
   } catch (e) {
