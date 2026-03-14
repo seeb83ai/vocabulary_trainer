@@ -1202,17 +1202,18 @@ func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
 
 func TestDailyStats_BucketCounts(t *testing.T) {
 	s := openTestDB(t)
-	seedWord(t, s, "猫", "māo", []string{"cat"})
-	seedWord(t, s, "狗", "gǒu", []string{"dog"})
+	catID := seedWord(t, s, "猫", "māo", []string{"cat"})
+	dogID := seedWord(t, s, "狗", "gǒu", []string{"dog"})
 	r := newRouter(s)
 
-	// Present both words so first_seen_date is stamped
+	// Present words so first_seen_date is stamped
 	do(t, r, "GET", "/api/quiz/next", nil)
-	do(t, r, "GET", "/api/quiz/next", nil)
+	// Acknowledge the second word directly so both get first_seen_date
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": dogID})
 
 	// Answer 猫 correctly once — still learning_new_word=1 → bucket "new"
 	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
-		"word_id": 1, "mode": "zh_to_en", "answer": "cat",
+		"word_id": catID, "mode": "zh_to_en", "answer": "cat",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("answer cat: want 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1220,7 +1221,7 @@ func TestDailyStats_BucketCounts(t *testing.T) {
 
 	// Answer 狗 wrong once — still learning_new_word=1 → bucket "new"
 	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
-		"word_id": 2, "mode": "zh_to_en", "answer": "wrong",
+		"word_id": dogID, "mode": "zh_to_en", "answer": "wrong",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("answer dog: want 200, got %d: %s", rec.Code, rec.Body.String())
