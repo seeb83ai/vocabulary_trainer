@@ -188,6 +188,13 @@ function openEditForm(word) {
   formTags = [...(word.tags || [])];
   renderFormTags();
 
+  if (word.total_attempts === 0) {
+    show('start-training-row');
+    $('form-start-training').checked = false;
+  } else {
+    hide('start-training-row');
+  }
+
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
   $('form-zh').focus();
 }
@@ -205,6 +212,8 @@ function resetForm() {
   $('form-tag-input').value = '';
   const notice = $('review-notice');
   if (notice) notice.remove();
+  show('start-training-row');
+  $('form-start-training').checked = false;
 }
 
 function addEnInput(value = '') {
@@ -230,6 +239,7 @@ function buildFormPayload() {
       .map(i => i.value.trim())
       .filter(Boolean),
     tags: [...formTags],
+    start_training: $('form-start-training').checked,
   };
 }
 

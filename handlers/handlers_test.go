@@ -483,6 +483,52 @@ func TestWordsCreate_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestWordsCreate_StartTraining(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:        "学习",
+		Pinyin:        "xuéxí",
+		EnTexts:       []string{"to study"},
+		StartTraining: true,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp map[string]int64
+	decodeJSON(t, rec, &resp)
+
+	// Fetch the word and verify it was acknowledged (total_attempts = 1).
+	rec2 := do(t, r, "GET", fmt.Sprintf("/api/words/%d", resp["id"]), nil)
+	var wd models.WordDetail
+	decodeJSON(t, rec2, &wd)
+	if wd.TotalAttempts != 1 {
+		t.Errorf("want TotalAttempts=1 after start_training, got %d", wd.TotalAttempts)
+	}
+}
+
+func TestWordsUpdate_StartTraining(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
+		ZhText:        "你好",
+		Pinyin:        "nǐ hǎo",
+		EnTexts:       []string{"hello"},
+		StartTraining: true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var wd models.WordDetail
+	decodeJSON(t, rec, &wd)
+	if wd.TotalAttempts != 1 {
+		t.Errorf("want TotalAttempts=1 after start_training, got %d", wd.TotalAttempts)
+	}
+}
+
 // ── GET /api/words/{id} ───────────────────────────────────────────────────────
 
 func TestWordsGetByID_Found(t *testing.T) {
