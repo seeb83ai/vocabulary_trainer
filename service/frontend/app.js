@@ -14,15 +14,15 @@ const TIERS = [
 //   New       : learning_new_word = true
 //   Mastered  : ≥10 attempts AND acc ≥ 85 %
 //   Practicing: ≥10 attempts AND 70 % ≤ acc < 85 %
-//   Learning  : ≥3 attempts  AND 50 % ≤ acc < 70 %
-//   Struggling: everything else (< 3 attempts, acc < 50 %, or gray-zone)
+//   Learning  : ≥3 attempts  AND acc ≥ 50 % (but not qualifying for Practicing/Mastered)
+//   Struggling: everything else (< 3 attempts OR acc < 50 %)
 function wordTier(totalCorrect, totalAttempts, learningNewWord) {
   if (totalAttempts === 0) return null;
   if (learningNewWord) return TIERS[0]; // "New"
   const acc = totalCorrect / totalAttempts;
   if (totalAttempts >= 10 && acc >= 0.85) return TIERS[4];
   if (totalAttempts >= 10 && acc >= 0.70) return TIERS[3];
-  if (totalAttempts >= 3  && acc >= 0.50 && acc < 0.70) return TIERS[2];
+  if (totalAttempts >= 3  && acc >= 0.50) return TIERS[2];
   return TIERS[1];
 }
 

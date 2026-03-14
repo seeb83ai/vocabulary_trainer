@@ -508,7 +508,7 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 // in GetWordStats):
 //
 //	0-49   : < 3 attempts OR accuracy < 50 %   (includes new/unseen words)
-//	50-69  : ≥ 3 attempts AND 50 % ≤ acc < 70 %
+//	50-69  : ≥ 3 attempts AND acc ≥ 50 % (but not qualifying for 70-84 or 85-100)
 //	70-84  : ≥ 10 attempts AND 70 % ≤ acc < 85 %
 //	85-100 : ≥ 10 attempts AND acc ≥ 85 %
 func tierFilter(bucket string) string {
@@ -519,7 +519,7 @@ func tierFilter(bucket string) string {
 	case "0-49":
 		return ` AND p.learning_new_word = 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
 	case "50-69":
-		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND ` + acc + ` < 0.70`
+		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND NOT (p.total_attempts >= 10 AND ` + acc + ` >= 0.70)`
 	case "70-84":
 		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
 	case "85-100":
@@ -1150,7 +1150,7 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
 		    AND p.total_attempts >= 3
 		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.50
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts < 0.70
+		    AND NOT (p.total_attempts >= 10 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.70)
 		    THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
 		    AND p.total_attempts >= 10
@@ -1296,7 +1296,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 				resp.AccBuckets["85-100"]++
 			case r.attempts >= 10 && r.accuracy >= 70:
 				resp.AccBuckets["70-84"]++
-			case r.attempts >= 3 && r.accuracy >= 50 && r.accuracy < 70:
+			case r.attempts >= 3 && r.accuracy >= 50:
 				resp.AccBuckets["50-69"]++
 			default:
 				resp.AccBuckets["0-49"]++
