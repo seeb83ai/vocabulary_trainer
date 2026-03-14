@@ -53,6 +53,40 @@ func TestConfigEndpoint(t *testing.T) {
 	}
 }
 
+func TestSplitTranslations(t *testing.T) {
+	tests := []struct {
+		input string
+		want  []string
+	}{
+		{"hello / hi / greetings", []string{"hello", "hi", "greetings"}},
+		{"hello", []string{"hello"}},
+		{"", []string{""}},
+		{"  hello  /  hi  ", []string{"hello", "hi"}},
+		{"on/off", []string{"on/off"}},
+		{"hello /  / hi", []string{"hello", "hi"}},
+		{" / ", []string{}},
+	}
+	for _, tt := range tests {
+		got := splitTranslations(tt.input)
+		// Special case: empty-ish input returns original text
+		if tt.input == " / " {
+			if len(got) != 1 || got[0] != " / " {
+				t.Errorf("splitTranslations(%q) = %v, want [%q]", tt.input, got, " / ")
+			}
+			continue
+		}
+		if len(got) != len(tt.want) {
+			t.Errorf("splitTranslations(%q): got %d parts %v, want %d parts %v", tt.input, len(got), got, len(tt.want), tt.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tt.want[i] {
+				t.Errorf("splitTranslations(%q)[%d] = %q, want %q", tt.input, i, got[i], tt.want[i])
+			}
+		}
+	}
+}
+
 func TestTranslateHandler_ValidationErrors(t *testing.T) {
 	h := &TranslateHandler{APIKey: "test-key", TargetLang: "DE"}
 

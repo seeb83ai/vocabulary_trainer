@@ -130,7 +130,7 @@ DEEPL_TARGET_LANGUAGE=de   # any DeepL language code; default: en
 
 When enabled, an **Auto-translate** button appears in the Add/Edit Word form. It auto-detects direction based on which fields are filled:
 
-- **Chinese filled, translation empty** → translates Chinese to the target language and generates pinyin
+- **Chinese filled, translation empty** → translates Chinese to the target language and generates pinyin. The backend uses DeepL's `custom_instructions` to request up to 3 distinct meanings; each meaning populates a separate translation field automatically.
 - **Translation filled, Chinese empty** → translates to Chinese and generates pinyin
 - **Both filled** → generates pinyin only
 
