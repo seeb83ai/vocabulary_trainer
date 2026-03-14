@@ -107,6 +107,7 @@ func main() {
 		r.Route("/words", func(r chi.Router) {
 			r.Get("/", wordsH.List)
 			r.Post("/", wordsH.Create)
+			r.Get("/export", wordsH.Export)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", wordsH.GetByID)
 				r.Put("/", wordsH.Update)
