@@ -228,6 +228,26 @@ func (h *WordsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *WordsHandler) Export(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	sortBy := r.URL.Query().Get("sort")
+	sortDir := r.URL.Query().Get("order")
+	var tags []string
+	if t := r.URL.Query().Get("tags"); t != "" {
+		tags = strings.Split(t, ",")
+	}
+	reviewOnly := r.URL.Query().Get("review") == "1"
+	hideUnseen := r.URL.Query().Get("hide_unseen") == "1"
+	bucket := r.URL.Query().Get("bucket")
+	dueFilter := r.URL.Query().Get("due")
+	words, _, err := h.Store.GetWords(r.Context(), q, 1, 0, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, words)
+}
+
 func (h *WordsHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := h.Store.GetAllTags(r.Context())
 	if err != nil {

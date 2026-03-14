@@ -53,14 +53,16 @@ var validSortExprs = map[string]string{
 // If hideUnseen is true, only words with at least one quiz attempt are returned.
 // bucket filters by accuracy tier (same rules as tierFilter / wordTier in app.js).
 func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string) ([]models.WordDetail, int, error) {
-	if page < 1 {
+	exportAll := perPage <= 0
+	if exportAll {
 		page = 1
-	}
-	if perPage < 1 {
-		perPage = 20
-	}
-	if perPage > 100 {
-		perPage = 100
+	} else {
+		if page < 1 {
+			page = 1
+		}
+		if perPage > 100 {
+			perPage = 100
+		}
 	}
 	offset := (page - 1) * perPage
 
@@ -115,6 +117,11 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	}
 	orderClause := strings.Join(orderTerms, ", ")
 
+	limitClause := "\n\t\tLIMIT ? OFFSET ?"
+	if exportAll {
+		limitClause = ""
+	}
+
 	// Single query: COUNT(*) OVER() returns the total alongside each row,
 	// eliminating the separate count query.
 	listQuery := `
@@ -136,11 +143,12 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
 		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + `
-		ORDER BY ` + orderClause + `
-		LIMIT ? OFFSET ?`
+		ORDER BY ` + orderClause + limitClause
 	listArgs := []any{q, q, q, q}
 	listArgs = append(listArgs, tagArgs...)
-	listArgs = append(listArgs, perPage, offset)
+	if !exportAll {
+		listArgs = append(listArgs, perPage, offset)
+	}
 	rows, err := s.db.QueryContext(ctx, listQuery, listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list words: %w", err)

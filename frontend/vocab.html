@@ -94,6 +94,10 @@
           <h2 class="text-lg font-semibold text-gray-800 flex-1">Vocabulary List</h2>
           <input id="search-input" type="search" placeholder="Search…"
             class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-36 sm:w-52">
+          <button id="download-btn"
+            class="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100 transition flex-none">
+            ↓ Download
+          </button>
         </div>
         <div class="flex flex-wrap gap-2">
           <button id="hide-unseen-btn"
@@ -162,6 +166,69 @@
     </div>
 
   </main>
+
+  <!-- Download modal -->
+  <div id="download-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-5">
+      <h3 class="text-lg font-semibold text-gray-800">Download Vocabulary</h3>
+      <div>
+        <p class="text-sm font-medium text-gray-700 mb-2">Columns</p>
+        <div class="grid grid-cols-2 gap-y-2 gap-x-4">
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="dl-col-zh" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Chinese
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="dl-col-pinyin" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Pinyin
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="dl-col-en" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Translations
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="dl-col-tags" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Tags
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="dl-col-tier" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Level
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="dl-col-accuracy" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Accuracy
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="dl-col-attempts" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Attempts
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" id="dl-col-due" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Due Date
+          </label>
+        </div>
+      </div>
+      <div>
+        <p class="text-sm font-medium text-gray-700 mb-2">Format</p>
+        <div class="flex flex-wrap gap-x-5 gap-y-2">
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="radio" name="dl-format" value="csv" checked class="w-4 h-4 text-blue-600 focus:ring-blue-500"> CSV
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="radio" name="dl-format" value="tsv" class="w-4 h-4 text-blue-600 focus:ring-blue-500"> TSV
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="radio" name="dl-format" value="json" class="w-4 h-4 text-blue-600 focus:ring-blue-500"> JSON
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="radio" name="dl-format" value="txt" class="w-4 h-4 text-blue-600 focus:ring-blue-500"> Plain text
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button id="dl-confirm-btn"
+          class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition">
+          Download
+        </button>
+        <button id="dl-cancel-btn"
+          class="text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
   <script src="vocab.js"></script>
