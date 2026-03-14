@@ -22,9 +22,10 @@ type translateRequest struct {
 }
 
 type translateResponse struct {
-	ZhText string `json:"zh_text"`
-	Pinyin string `json:"pinyin"`
-	EnText string `json:"en_text"`
+	ZhText  string   `json:"zh_text"`
+	Pinyin  string   `json:"pinyin"`
+	EnText  string   `json:"en_text"`
+	EnTexts []string `json:"en_texts,omitempty"`
 }
 
 func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
@@ -44,17 +45,22 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 	resp := translateResponse{ZhText: req.ZhText, EnText: req.EnText}
 
 	if req.ZhText != "" && req.EnText == "" {
-		// Chinese provided → translate to target language
-		translated, err := deeplTranslate([]string{req.ZhText}, h.TargetLang, "ZH", h.APIKey)
+		// Chinese provided → translate to target language (request multiple meanings)
+		instructions := []string{
+			"If this word has multiple distinct meanings in the target language, list up to 3 translations separated by ' / '. Only include genuinely different meanings, not synonyms.",
+		}
+		translated, err := deeplTranslate([]string{req.ZhText}, h.TargetLang, "ZH", h.APIKey, instructions)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
 			return
 		}
-		resp.EnText = translated[0]
+		parts := splitTranslations(translated[0])
+		resp.EnText = parts[0]
+		resp.EnTexts = parts
 		resp.Pinyin = toPinyin(req.ZhText)
 	} else if req.EnText != "" && req.ZhText == "" {
 		// Target language provided → translate to Chinese
-		translated, err := deeplTranslate([]string{req.EnText}, "ZH", "", h.APIKey)
+		translated, err := deeplTranslate([]string{req.EnText}, "ZH", "", h.APIKey, nil)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
 			return
@@ -104,18 +110,34 @@ func toPinyin(zh string) string {
 	return strings.Join(parts, " ")
 }
 
-func deeplTranslate(texts []string, targetLang, sourceLang, apiKey string) ([]string, error) {
+func splitTranslations(text string) []string {
+	parts := strings.Split(text, " / ")
+	var out []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return []string{text}
+	}
+	return out
+}
+
+func deeplTranslate(texts []string, targetLang, sourceLang, apiKey string, customInstructions []string) ([]string, error) {
 	base := "https://api.deepl.com/v2/translate"
 	if strings.HasSuffix(apiKey, ":fx") {
 		base = "https://api-free.deepl.com/v2/translate"
 	}
 
 	type reqBody struct {
-		Text       []string `json:"text"`
-		TargetLang string   `json:"target_lang"`
-		SourceLang string   `json:"source_lang,omitempty"`
+		Text               []string `json:"text"`
+		TargetLang         string   `json:"target_lang"`
+		SourceLang         string   `json:"source_lang,omitempty"`
+		CustomInstructions []string `json:"custom_instructions,omitempty"`
 	}
-	body := reqBody{Text: texts, TargetLang: targetLang}
+	body := reqBody{Text: texts, TargetLang: targetLang, CustomInstructions: customInstructions}
 	if sourceLang != "" {
 		body.SourceLang = sourceLang
 	}

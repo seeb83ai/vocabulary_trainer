@@ -46,6 +46,7 @@ func newRouter(s *db.Store) http.Handler {
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
 		r.Post("/", wordsH.Create)
+		r.Get("/export", wordsH.Export)
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", wordsH.GetByID)
 			r.Put("/", wordsH.Update)
@@ -708,6 +709,46 @@ func TestWordsAddTranslation_Idempotent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("'hi' should appear exactly once, got %d", count)
+	}
+}
+
+// ── GET /api/words/export ─────────────────────────────────────────────────────
+
+func TestWordsExport_ReturnsAllWords(t *testing.T) {
+	s := openTestDB(t)
+	for i := 0; i < 5; i++ {
+		seedWord(t, s, fmt.Sprintf("词%d", i), "", []string{"word"})
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/words/export", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var words []models.WordDetail
+	decodeJSON(t, rec, &words)
+	if len(words) != 5 {
+		t.Errorf("want 5 words, got %d", len(words))
+	}
+}
+
+func TestWordsExport_RespectsFilters(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	seedWord(t, s, "谢谢", "xièxiè", []string{"thank you"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/words/export?q=你好", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var words []models.WordDetail
+	decodeJSON(t, rec, &words)
+	if len(words) != 1 {
+		t.Errorf("want 1 word matching search, got %d", len(words))
+	}
+	if len(words) > 0 && words[0].ZhText != "你好" {
+		t.Errorf("want 你好, got %s", words[0].ZhText)
 	}
 }
 
