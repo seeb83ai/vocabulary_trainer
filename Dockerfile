@@ -1,12 +1,12 @@
 # Stage 1: Build
 FROM golang:1.24-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/service
 
-COPY go.mod go.sum ./
+COPY service/go.mod service/go.sum ./
 RUN go mod download
 
-COPY . .
+COPY service/ .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vocab-trainer .
 

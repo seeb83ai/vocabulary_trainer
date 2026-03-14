@@ -28,21 +28,21 @@ logs:
 ## dev: run locally without Docker (requires Go 1.22+)
 dev:
 	mkdir -p data
-	DB_PATH=data/vocab.db go run .
+	DB_PATH=data/vocab.db go run ./service
 
 ## tidy: tidy Go module dependencies
 tidy:
-	go mod tidy
+	cd service && go mod tidy
 
 ## import: import vocabulary from a text file (FILE=voc.txt DB=data/vocab.db)
 import:
 	mkdir -p data
-	go run ./cmd/import -db $(or $(DB),data/vocab.db) -file $(or $(FILE),voc.txt)
+	cd service && go run ./cmd/import -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../voc.txt)
 
 ## import-hsk: fetch and import HSK vocabulary from mandarinbean.com (LEVELS=1,2,3,4,5,6 DB=data/vocab.db)
 import-hsk:
 	mkdir -p data
-	go run ./cmd/import-hsk -db $(or $(DB),data/vocab.db) -levels $(or $(LEVELS),1,2,3,4,5,6)
+	cd service && go run ./cmd/import-hsk -db $(or $(DB),../data/vocab.db) -levels $(or $(LEVELS),1,2,3,4,5,6)
 
 backup:
 	sqlite3 data/vocab.db ".backup data/vocab_backup$(EXT).sq3"
@@ -50,8 +50,8 @@ backup:
 ## release: cross-compile for Raspberry Pi (arm64) and rsync to RSYNC_DEST
 release:
 	@test -n "$(RSYNC_DEST)" || (echo "RSYNC_DEST is not set. Copy .env.example to .env and fill it in." && exit 1)
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o vocab-trainer .
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o import-hsk ./cmd/import-hsk
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../vocab-trainer .
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-hsk ./cmd/import-hsk
 	rsync -avz --progress \
 	    Makefile \
 		vocab-trainer \
@@ -68,7 +68,7 @@ test: test-go test-js
 
 ## test-go: run Go tests (uses in-memory SQLite, no server needed)
 test-go:
-	go test ./... -count=1
+	cd service && go test ./... -count=1
 
 ## test-js: run frontend tests with Vitest (requires Node; run 'npm install' first)
 test-js:
