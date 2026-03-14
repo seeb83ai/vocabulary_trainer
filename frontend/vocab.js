@@ -112,7 +112,7 @@ function renderPagination(total, page, ppSize) {
   // Page number links
   const pageNums = $('page-numbers');
   pageNums.innerHTML = '';
-  const maxVisible = 7;
+  const maxVisible = window.innerWidth < 640 ? 3 : 7;
   let start = Math.max(1, page - Math.floor(maxVisible / 2));
   let end = Math.min(totalPages, start + maxVisible - 1);
   if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
