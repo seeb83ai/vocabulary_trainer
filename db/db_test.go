@@ -363,6 +363,33 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	}
 }
 
+func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// idLearning: already seen today, still in learning phase (learning_new_word=1).
+	idLearning := seedWord(t, s, "一", "", []string{"one"})
+	s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_date = date('now'), learning_new_word = 1 WHERE word_id = ?`,
+		idLearning)
+
+	// idUnseen: never presented (first_seen_date IS NULL).
+	seedWord(t, s, "二", "", []string{"two"})
+
+	// Even though the daily cap (100) is not reached, the unseen word must not
+	// be returned while a learning word exists.
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a card to be returned")
+	}
+	if w.ID != idLearning {
+		t.Errorf("expected learning word (id=%d), got id=%d — unseen word was returned while learning words existed", idLearning, w.ID)
+	}
+}
+
 // ── UpdateSM2Progress ─────────────────────────────────────────────────────────
 
 func TestUpdateSM2Progress_Persists(t *testing.T) {
