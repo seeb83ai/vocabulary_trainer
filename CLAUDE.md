@@ -20,13 +20,13 @@ the scope of the current task.
 - Use the **standard library only** (`testing` package). Do not add testify or any other assertion library.
 - Use **in-memory SQLite** (`db.Open(":memory:")`) for all DB tests — never touch `data/vocab.db`.
 - When you change a function, update or add tests in the same package (`_test.go` alongside the source file).
-- When you add or change an HTTP endpoint, update `handlers/handlers_test.go`.
+- When you add or change an HTTP endpoint, update `service/handlers/handlers_test.go`.
 - Run `go test ./... -count=1` before considering a task done.
 
 ### JS tests (Vitest)
 - Add or update tests **only for pure/utility functions** (e.g. `escHtml`, `renderProgress`, `buildFormPayload`,
   `normalize`, answer-checking helpers). Skip DOM event handlers and async fetch flows.
-- Test files live in `frontend/` as `*.test.js`.
+- Test files live in `service/frontend/` as `*.test.js`.
 - Run `npm test` to verify.
 
 ## README
@@ -41,7 +41,7 @@ Update `README.md` whenever:
 - **No extra abstractions.** Don't add interfaces, wrapper types, middleware layers, or utility helpers
   unless they are used in at least two places.
 - Match the style of the surrounding code exactly (package layout, error handling pattern, SQL style).
-- SQL queries stay in `db/db.go` — no SQL anywhere else.
+- SQL queries stay in `service/db/db.go` — no SQL anywhere else.
 - All datetime columns are scanned as `string` and parsed with `parseDateTime()` — never scan directly into `time.Time`.
 - `db.SetMaxOpenConns(1)` is intentional (SQLite WAL). Collect all rows and call `rows.Close()` **before**
   issuing any follow-up query in the same function to avoid deadlocks.
@@ -75,28 +75,28 @@ Never rename or drop tables.
 
 - SM-2 progress is always tracked on the **zh word** (canonical unit). `word_id` in quiz responses is always the zh word ID.
 - `GetNextCard` must filter `WHERE w.language = 'zh'` — EN words must never be returned as quiz prompts.
-- Answer normalisation lives in `sm2/sm2.go` (`normalize`, `expandVariants`, `CheckAnswer`).
+- Answer normalisation lives in `service/sm2/sm2.go` (`normalize`, `expandVariants`, `CheckAnswer`).
   Rules applied in order: lowercase + trim whitespace → strip trailing sentence punctuation (`。.！!？?`) →
   strip optional parenthesised segments → split on `/` for alternatives.
-- Static frontend files are embedded in the binary via `//go:embed frontend`. No separate build step.
-- The import tools (`cmd/import`, `cmd/import-hsk`) call `db.Migrate()` for schema setup and can run
+- Static frontend files are embedded in the binary via `//go:embed frontend` (from `service/main.go`). No separate build step.
+- The import tools (`service/cmd/import`, `service/cmd/import-hsk`) call `db.Migrate()` for schema setup and can run
   independently of the main server.
 
 ## File map
 
 | Path | Purpose |
 |---|---|
-| `main.go` | Router setup, embed directive, `DB_PATH` env var |
-| `db/migrate.go` | Version-based schema migrations (`Migrate()`, `migrations` slice) |
-| `db/db.go` | All SQL — Store methods, `parseDateTime`, `upsertWord`, `initSM2` |
-| `handlers/words.go` | CRUD + `AddTranslation` handler, shared `writeJSON`/`writeError`/`parseID` |
-| `handlers/quiz.go` | `Next`, `Answer`, `Stats` handlers |
-| `models/models.go` | All shared structs and mode constants |
-| `sm2/sm2.go` | SM-2 algorithm, `CheckAnswer`, `expandVariants`, `normalize` |
-| `cmd/import/main.go` | Standalone vocabulary import tool |
-| `frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`) |
-| `frontend/train.js` | Training page state machine |
-| `frontend/vocab.js` | Vocabulary management logic |
+| `service/main.go` | Router setup, embed directive, `DB_PATH` env var |
+| `service/db/migrate.go` | Version-based schema migrations (`Migrate()`, `migrations` slice) |
+| `service/db/db.go` | All SQL — Store methods, `parseDateTime`, `upsertWord`, `initSM2` |
+| `service/handlers/words.go` | CRUD + `AddTranslation` handler, shared `writeJSON`/`writeError`/`parseID` |
+| `service/handlers/quiz.go` | `Next`, `Answer`, `Stats` handlers |
+| `service/models/models.go` | All shared structs and mode constants |
+| `service/sm2/sm2.go` | SM-2 algorithm, `CheckAnswer`, `expandVariants`, `normalize` |
+| `service/cmd/import/main.go` | Standalone vocabulary import tool |
+| `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`) |
+| `service/frontend/train.js` | Training page state machine |
+| `service/frontend/vocab.js` | Vocabulary management logic |
 | `deploy/nginx.conf` | Sample nginx reverse-proxy config |
 | `deploy/vocab-trainer.service` | systemd unit (auto-restarts on binary change via `WatchPaths`) |
 | `.github/workflows/test.yml` | CI: runs Go + JS tests on every push/PR |
