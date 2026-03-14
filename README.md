@@ -19,8 +19,8 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - **Auto-translate** — when a DeepL API key is configured, an auto-translate button appears in the Add/Edit Word form; enter Chinese to get the translation + pinyin filled in automatically, or enter the translation to get Chinese + pinyin back (pinyin generated locally via [go-pinyin](https://github.com/mozillazg/go-pinyin))
 - Vocabulary management: add, edit, delete, search, paginate, sort by any column; SM-2 progress shown per word
 - Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
-- Bulk import from a structured text file (see `cmd/import`)
-- HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `cmd/import-hsk`)
+- Bulk import from a structured text file (see `service/cmd/import`)
+- HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `service/cmd/import-hsk`)
 - Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
 - SQLite database stored on the host filesystem
 - Runs in Docker or natively; static frontend is embedded in the Go binary — no Python or external tools required
@@ -170,7 +170,7 @@ make import
 make import FILE=my_vocab.txt DB=data/vocab.db
 
 # Preview without writing
-go run ./cmd/import -db data/vocab.db -file voc.txt -dry-run
+go run ./service/cmd/import -db data/vocab.db -file voc.txt -dry-run
 ```
 
 Duplicate detection prevents re-inserting entries where both the Chinese text/pinyin and the English translation already exist.
@@ -187,16 +187,16 @@ make import-hsk
 make import-hsk LEVELS=1,2
 
 # Import with German translations (requires DEEPL_API_KEY)
-DEEPL_API_KEY=your-key go run ./cmd/import-hsk -lang de
+DEEPL_API_KEY=your-key go run ./service/cmd/import-hsk -lang de
 
 # Custom DB path
 make import-hsk DB=/path/to/vocab.db
 
 # Preview without writing
-go run ./cmd/import-hsk -dry-run
+go run ./service/cmd/import-hsk -dry-run
 
 # Single level, dry-run
-go run ./cmd/import-hsk -levels 3 -dry-run
+go run ./service/cmd/import-hsk -levels 3 -dry-run
 ```
 
 Flags:
@@ -286,34 +286,37 @@ The server listens on `:8080` and stores the database at `data/vocab.db`.
 
 ```
 vocabulary_trainer/
-├── main.go                  # Server entry point, router, embedded static files
-├── db/
-│   ├── migrate.go           # Version-based schema migrations
-│   └── db.go                # Data access layer (Store)
-├── handlers/
-│   ├── quiz.go              # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
-│   ├── words.go             # CRUD /api/words + POST /api/words/{id}/translations
-│   ├── mismatches.go        # GET /api/mismatches
-│   ├── translate.go         # POST /api/translate, GET /api/config — DeepL proxy + pinyin
-│   └── audio.go             # GET /api/audio/{id} — serve/generate cached MP3
-├── models/models.go         # Shared structs and mode constants
-├── sm2/sm2.go               # SM-2 algorithm, answer checking, variant expansion
-├── tts/tts.go               # Microsoft Edge TTS WebSocket client
-├── cmd/import/main.go       # Standalone vocabulary import tool (text file)
-├── cmd/import-hsk/main.go   # HSK vocabulary import from mandarinbean.com
+├── service/                 # All Go source and embedded frontend
+│   ├── main.go              # Server entry point, router, embedded static files
+│   ├── go.mod / go.sum
+│   ├── db/
+│   │   ├── migrate.go       # Version-based schema migrations
+│   │   └── db.go            # Data access layer (Store)
+│   ├── handlers/
+│   │   ├── quiz.go          # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
+│   │   ├── words.go         # CRUD /api/words + POST /api/words/{id}/translations
+│   │   ├── mismatches.go    # GET /api/mismatches
+│   │   ├── translate.go     # POST /api/translate, GET /api/config — DeepL proxy + pinyin
+│   │   └── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
+│   ├── models/models.go     # Shared structs and mode constants
+│   ├── sm2/sm2.go           # SM-2 algorithm, answer checking, variant expansion
+│   ├── tts/tts.go           # Microsoft Edge TTS WebSocket client
+│   ├── cmd/import/main.go   # Standalone vocabulary import tool (text file)
+│   ├── cmd/import-hsk/main.go # HSK vocabulary import from mandarinbean.com
+│   └── frontend/
+│       ├── index.html       # Training page
+│       ├── vocab.html       # Vocabulary management page
+│       ├── mismatches.html  # Confusion pairs page
+│       ├── stats.html       # Training stats page
+│       ├── app.js           # Shared fetch utilities and DOM helpers
+│       ├── train.js         # Training page logic
+│       ├── vocab.js         # Vocabulary management logic
+│       ├── mismatches.js    # Confusion pairs page logic
+│       └── stats.js         # Training stats page logic
 ├── deploy/
 │   ├── nginx.conf           # Sample nginx reverse-proxy config
 │   └── vocab-trainer.service # systemd unit (auto-restart on binary change)
-└── frontend/
-    ├── index.html           # Training page
-    ├── vocab.html           # Vocabulary management page
-    ├── mismatches.html      # Confusion pairs page
-    ├── stats.html           # Training stats page
-    ├── app.js               # Shared fetch utilities and DOM helpers
-    ├── train.js             # Training page logic
-    ├── vocab.js             # Vocabulary management logic
-    ├── mismatches.js        # Confusion pairs page logic
-    └── stats.js             # Training stats page logic
+└── Dockerfile / docker-compose.yml
 ```
 
 ## API

@@ -21,7 +21,7 @@ the scope of the current task.
 - Use **in-memory SQLite** (`db.Open(":memory:")`) for all DB tests — never touch `data/vocab.db`.
 - When you change a function, update or add tests in the same package (`_test.go` alongside the source file).
 - When you add or change an HTTP endpoint, update `service/handlers/handlers_test.go`.
-- Run `go test ./... -count=1` before considering a task done.
+- Run `cd service && go test ./... -count=1` before considering a task done.
 
 ### JS tests (Vitest)
 - Add or update tests **only for pure/utility functions** (e.g. `escHtml`, `renderProgress`, `buildFormPayload`,
@@ -56,12 +56,12 @@ Update `README.md` whenever:
 
 ## Schema changes
 
-The schema is managed by a version-based migration system in `db/migrate.go`.
+The schema is managed by a version-based migration system in `service/db/migrate.go`.
 A `schema_version` table tracks the current version. Each migration has a version number,
 optional SQL, and an optional Go function. Migrations run in order on startup.
 
 To add a schema change, append a new `migration` entry to the `migrations` slice in
-`db/migrate.go` with the next version number. Use `CREATE ... IF NOT EXISTS` and
+`service/db/migrate.go` with the next version number. Use `CREATE ... IF NOT EXISTS` and
 `ALTER TABLE ... ADD COLUMN` with duplicate-column guards for idempotency.
 Dropping columns is allowed via `ALTER TABLE ... DROP COLUMN` with existence guards.
 Never rename or drop tables.
