@@ -63,7 +63,8 @@ optional SQL, and an optional Go function. Migrations run in order on startup.
 To add a schema change, append a new `migration` entry to the `migrations` slice in
 `db/migrate.go` with the next version number. Use `CREATE ... IF NOT EXISTS` and
 `ALTER TABLE ... ADD COLUMN` with duplicate-column guards for idempotency.
-Never rename or drop columns/tables.
+Dropping columns is allowed via `ALTER TABLE ... DROP COLUMN` with existence guards.
+Never rename or drop tables.
 
 ## Off-limits — do not change without explicit instruction
 

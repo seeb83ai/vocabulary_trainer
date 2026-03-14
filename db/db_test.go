@@ -1105,12 +1105,6 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 	if d.Mistakes != 1 {
 		t.Errorf("mistakes: got %d, want 1", d.Mistakes)
 	}
-	if d.WordsKnown != 1 {
-		t.Errorf("words_known: got %d, want 1", d.WordsKnown)
-	}
-	if d.NewWords != 1 {
-		t.Errorf("new_words: got %d, want 1", d.NewWords)
-	}
 	if d.WordsSeen != 1 {
 		t.Errorf("words_seen: got %d, want 1", d.WordsSeen)
 	}
@@ -1146,8 +1140,8 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 	// Insert rows for multiple dates manually
 	for _, d := range []string{"2026-02-10", "2026-02-12", "2026-02-11"} {
 		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO daily_stats (date, attempts, mistakes, words_known, new_words, correct_streak, current_streak)
-			 VALUES (?, 10, 2, 5, 1, 3, 0)`, d); err != nil {
+			`INSERT INTO daily_stats (date, attempts, mistakes, correct_streak, current_streak)
+			 VALUES (?, 10, 2, 3, 0)`, d); err != nil {
 			t.Fatal(err)
 		}
 	}

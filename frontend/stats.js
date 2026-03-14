@@ -62,17 +62,6 @@ function renderChart(days) {
           tension: 0.3,
           pointRadius: 2,
         },
-        {
-          label: 'Words Known',
-          data: days.map(d => d.words_known),
-          type: 'line',
-          borderColor: 'rgba(59, 130, 246, 0.9)',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          fill: true,
-          yAxisID: 'y1',
-          tension: 0.3,
-          pointRadius: 2,
-        },
       ],
     },
     options: {
@@ -95,7 +84,7 @@ function renderChart(days) {
               const idx = items[0].dataIndex;
               const d = days[idx];
               const acc = d.attempts > 0 ? Math.round(((d.attempts - d.mistakes) / d.attempts) * 100) : 0;
-              return `Accuracy: ${acc}%\nNew words: ${d.new_words}\nWords seen: ${d.words_seen}\nBest streak: ${d.correct_streak}\n` +
+              return `Accuracy: ${acc}%\nWords seen: ${d.words_seen}\nBest streak: ${d.correct_streak}\n` +
                 `Buckets: ${d.bucket_new||0} new · ${d.bucket_struggling||0} struggling · ${d.bucket_learning||0} learning · ${d.bucket_practicing||0} practicing · ${d.bucket_mastered||0} mastered`;
             },
           },
