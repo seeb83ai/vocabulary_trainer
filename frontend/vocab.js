@@ -403,6 +403,32 @@ function renderTierFilter() {
   }
 }
 
+async function applyPinyin(newPinyin) {
+  if (!newPinyin) return;
+  const field = $('form-pinyin');
+  const current = field.value.trim();
+  if (!current) {
+    field.value = newPinyin;
+  } else if (current !== newPinyin) {
+    if (confirm(`Replace pinyin "${current}" with "${newPinyin}"?`)) {
+      field.value = newPinyin;
+    }
+  }
+}
+
+let pinyinTimer = null;
+
+async function fetchAndFillPinyin(zh) {
+  if (!zh) return;
+  try {
+    const result = await apiFetch('/api/pinyin', {
+      method: 'POST',
+      body: JSON.stringify({ zh_text: zh }),
+    });
+    await applyPinyin(result.pinyin);
+  } catch (_) {}
+}
+
 async function initTranslateButton() {
   try {
     const cfg = await apiFetch('/api/config');
@@ -436,9 +462,7 @@ async function handleTranslate() {
     if (result.zh_text && !zh) {
       $('form-zh').value = result.zh_text;
     }
-    if (result.pinyin && !$('form-pinyin').value.trim()) {
-      $('form-pinyin').value = result.pinyin;
-    }
+    await applyPinyin(result.pinyin);
     const translations = result.en_texts || (result.en_text ? [result.en_text] : []);
     if (translations.length > 0 && !en) {
       const container = $('en-inputs-container');
@@ -668,6 +692,12 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('form-tag-input').addEventListener('blur', () => {
     setTimeout(() => $('tag-autocomplete').classList.add('hidden'), 150);
+  });
+
+  $('form-zh').addEventListener('input', () => {
+    clearTimeout(pinyinTimer);
+    const zh = $('form-zh').value.trim();
+    pinyinTimer = setTimeout(() => fetchAndFillPinyin(zh), 500);
   });
 
   $('add-en-btn').addEventListener('click', () => addEnInput(''));

@@ -119,6 +119,7 @@ func main() {
 		r.Get("/tags", wordsH.ListTags)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
+		r.Post("/pinyin", handlers.Pinyin)
 		r.Get("/config", handlers.Config(translateH != nil))
 		if translateH != nil {
 			r.Post("/translate", translateH.Translate)
