@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     data = await apiFetch('/api/quiz/daily-stats');
   } catch (e) {
     $('stats-table-body').innerHTML =
-      '<tr><td colspan="8" class="py-8 text-center text-red-500">Failed to load stats.</td></tr>';
+      '<tr><td colspan="11" class="py-8 text-center text-red-500">Failed to load stats.</td></tr>';
     return;
   }
 
@@ -14,9 +14,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('stats-chart').style.display = 'none';
     show('chart-empty');
     $('stats-table-body').innerHTML =
-      '<tr><td colspan="8" class="py-8 text-center text-gray-400">No training data yet.</td></tr>';
+      '<tr><td colspan="11" class="py-8 text-center text-gray-400">No training data yet.</td></tr>';
   } else {
     renderChart(days);
+    renderBucketChart(days);
     renderTable(days);
   }
 
@@ -61,17 +62,6 @@ function renderChart(days) {
           tension: 0.3,
           pointRadius: 2,
         },
-        {
-          label: 'Words Known',
-          data: days.map(d => d.words_known),
-          type: 'line',
-          borderColor: 'rgba(59, 130, 246, 0.9)',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          fill: true,
-          yAxisID: 'y1',
-          tension: 0.3,
-          pointRadius: 2,
-        },
       ],
     },
     options: {
@@ -94,7 +84,89 @@ function renderChart(days) {
               const idx = items[0].dataIndex;
               const d = days[idx];
               const acc = d.attempts > 0 ? Math.round(((d.attempts - d.mistakes) / d.attempts) * 100) : 0;
-              return `Accuracy: ${acc}%\nNew words: ${d.new_words}\nWords seen: ${d.words_seen}\nBest streak: ${d.correct_streak}`;
+              return `Accuracy: ${acc}%\nWords seen: ${d.words_seen}\nBest streak: ${d.correct_streak}\n` +
+                `Buckets: ${d.bucket_new||0} new · ${d.bucket_struggling||0} struggling · ${d.bucket_learning||0} learning · ${d.bucket_practicing||0} practicing · ${d.bucket_mastered||0} mastered`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderBucketChart(days) {
+  // Only show if at least one day has bucket data
+  const hasBuckets = days.some(d => (d.bucket_new||0) + (d.bucket_struggling||0) + (d.bucket_learning||0) + (d.bucket_practicing||0) + (d.bucket_mastered||0) > 0);
+  if (!hasBuckets) return;
+  show('bucket-chart-section');
+
+  const labels = days.map(d => formatDateLabel(d.date));
+  const ctx = $('bucket-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Mastered',
+          data: days.map(d => d.bucket_mastered || 0),
+          backgroundColor: '#22c55eb3',
+          borderColor: '#22c55e',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+        },
+        {
+          label: 'Practicing',
+          data: days.map(d => d.bucket_practicing || 0),
+          backgroundColor: '#3b82f6b3',
+          borderColor: '#3b82f6',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+        },
+        {
+          label: 'Learning',
+          data: days.map(d => d.bucket_learning || 0),
+          backgroundColor: '#f59e0bb3',
+          borderColor: '#f59e0b',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+        },
+        {
+          label: 'Struggling',
+          data: days.map(d => d.bucket_struggling || 0),
+          backgroundColor: '#ef4444b3',
+          borderColor: '#ef4444',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+        },
+        {
+          label: 'New',
+          data: days.map(d => d.bucket_new || 0),
+          backgroundColor: '#8b5cf6b3',
+          borderColor: '#8b5cf6',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
+        y: { beginAtZero: true, stacked: true, title: { display: true, text: 'Words' } },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            footer(items) {
+              const total = items.reduce((s, i) => s + i.raw, 0);
+              return `Total: ${total}`;
             },
           },
         },
@@ -108,7 +180,7 @@ function renderTable(days) {
   const recent = days.slice(-14).reverse();
   const tbody = $('stats-table-body');
   if (recent.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-gray-400">No data in the last 14 days.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="py-8 text-center text-gray-400">No data in the last 14 days.</td></tr>';
     return;
   }
   tbody.innerHTML = recent.map(d => {
@@ -121,9 +193,12 @@ function renderTable(days) {
       <td class="py-2 pr-4 text-right">${d.mistakes}</td>
       <td class="py-2 pr-4 text-right ${accColor} font-medium">${acc}%</td>
       <td class="py-2 pr-4 text-right">${d.words_seen}</td>
-      <td class="py-2 pr-4 text-right">${d.words_known}</td>
-      <td class="py-2 pr-4 text-right">${d.new_words}</td>
-      <td class="py-2 text-right">${d.correct_streak}</td>
+      <td class="py-2 pr-4 text-right">${d.correct_streak}</td>
+      <td class="py-2 pr-4 text-right text-violet-600">${d.bucket_new || 0}</td>
+      <td class="py-2 pr-4 text-right text-red-600">${d.bucket_struggling || 0}</td>
+      <td class="py-2 pr-4 text-right text-amber-600">${d.bucket_learning || 0}</td>
+      <td class="py-2 pr-4 text-right text-blue-600">${d.bucket_practicing || 0}</td>
+      <td class="py-2 text-right text-green-600">${d.bucket_mastered || 0}</td>
     </tr>`;
   }).join('');
 }

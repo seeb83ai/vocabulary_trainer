@@ -121,13 +121,16 @@ type WordListResponse struct {
 }
 
 type DailyStat struct {
-	Date          string
-	Attempts      int
-	Mistakes      int
-	WordsKnown    int
-	NewWords      int
-	WordsSeen     int
-	CorrectStreak int
+	Date             string
+	Attempts         int
+	Mistakes         int
+	WordsSeen        int
+	CorrectStreak    int
+	BucketNew        int
+	BucketStruggling int
+	BucketLearning   int
+	BucketPracticing int
+	BucketMastered   int
 }
 
 type DailyStatsResponse struct {
@@ -153,11 +156,14 @@ type WordStatDetail struct {
 }
 
 type DailyStatEntry struct {
-	Date          string `json:"date"`
-	Attempts      int    `json:"attempts"`
-	Mistakes      int    `json:"mistakes"`
-	WordsKnown    int    `json:"words_known"`
-	NewWords      int    `json:"new_words"`
-	WordsSeen     int    `json:"words_seen"`
-	CorrectStreak int    `json:"correct_streak"`
+	Date             string `json:"date"`
+	Attempts         int    `json:"attempts"`
+	Mistakes         int    `json:"mistakes"`
+	WordsSeen        int    `json:"words_seen"`
+	CorrectStreak    int    `json:"correct_streak"`
+	BucketNew        int    `json:"bucket_new"`
+	BucketStruggling int    `json:"bucket_struggling"`
+	BucketLearning   int    `json:"bucket_learning"`
+	BucketPracticing int    `json:"bucket_practicing"`
+	BucketMastered   int    `json:"bucket_mastered"`
 }

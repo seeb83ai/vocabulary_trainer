@@ -32,6 +32,12 @@
       <div style="min-height:250px"><canvas id="stats-chart" height="200"></canvas></div>
     </div>
 
+    <!-- Bucket Breakdown Chart -->
+    <div id="bucket-chart-section" class="hidden bg-white rounded-2xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-4">Bucket Breakdown</h2>
+      <div style="min-height:250px"><canvas id="bucket-chart" height="200"></canvas></div>
+    </div>
+
     <!-- Table -->
     <div class="bg-white rounded-2xl shadow p-6">
       <h2 class="text-lg font-semibold text-gray-800 mb-4">Last 14 Days</h2>
@@ -44,13 +50,16 @@
               <th class="py-2 pr-4 text-right">Mistakes</th>
               <th class="py-2 pr-4 text-right">Accuracy</th>
               <th class="py-2 pr-4 text-right">Words Seen</th>
-              <th class="py-2 pr-4 text-right">Words Known</th>
-              <th class="py-2 pr-4 text-right">New Words</th>
-              <th class="py-2 text-right">Best Streak</th>
+              <th class="py-2 pr-4 text-right">Best Streak</th>
+              <th class="py-2 pr-4 text-right text-violet-600">New</th>
+              <th class="py-2 pr-4 text-right text-red-600">Struggling</th>
+              <th class="py-2 pr-4 text-right text-amber-600">Learning</th>
+              <th class="py-2 pr-4 text-right text-blue-600">Practicing</th>
+              <th class="py-2 text-right text-green-600">Mastered</th>
             </tr>
           </thead>
           <tbody id="stats-table-body">
-            <tr><td colspan="8" class="py-8 text-center text-gray-400">Loading...</td></tr>
+            <tr><td colspan="11" class="py-8 text-center text-gray-400">Loading...</td></tr>
           </tbody>
         </table>
       </div>
