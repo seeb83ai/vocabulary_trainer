@@ -94,9 +94,13 @@
           <h2 class="text-lg font-semibold text-gray-800 flex-1">Vocabulary List</h2>
           <input id="search-input" type="search" placeholder="Search…"
             class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-36 sm:w-52">
-          <button id="download-btn"
-            class="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-100 transition flex-none">
-            ↓ Download
+          <button id="download-btn" title="Download vocabulary"
+            class="p-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition flex-none">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
           </button>
         </div>
         <div class="flex flex-wrap gap-2">
