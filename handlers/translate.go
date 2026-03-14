@@ -69,6 +69,22 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func Pinyin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ZhText string `json:"zh_text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.ZhText = strings.TrimSpace(req.ZhText)
+	if req.ZhText == "" {
+		writeError(w, http.StatusBadRequest, "zh_text is required")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"pinyin": toPinyin(req.ZhText)})
+}
+
 func Config(deeplEnabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"deepl_enabled": deeplEnabled})
