@@ -363,6 +363,33 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	}
 }
 
+func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// idLearning: already seen today, still in learning phase (learning_new_word=1).
+	idLearning := seedWord(t, s, "一", "", []string{"one"})
+	s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_date = date('now'), learning_new_word = 1 WHERE word_id = ?`,
+		idLearning)
+
+	// idUnseen: never presented (first_seen_date IS NULL).
+	seedWord(t, s, "二", "", []string{"two"})
+
+	// Even though the daily cap (100) is not reached, the unseen word must not
+	// be returned while a learning word exists.
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a card to be returned")
+	}
+	if w.ID != idLearning {
+		t.Errorf("expected learning word (id=%d), got id=%d — unseen word was returned while learning words existed", idLearning, w.ID)
+	}
+}
+
 // ── UpdateSM2Progress ─────────────────────────────────────────────────────────
 
 func TestUpdateSM2Progress_Persists(t *testing.T) {
@@ -1078,12 +1105,6 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 	if d.Mistakes != 1 {
 		t.Errorf("mistakes: got %d, want 1", d.Mistakes)
 	}
-	if d.WordsKnown != 1 {
-		t.Errorf("words_known: got %d, want 1", d.WordsKnown)
-	}
-	if d.NewWords != 1 {
-		t.Errorf("new_words: got %d, want 1", d.NewWords)
-	}
 	if d.WordsSeen != 1 {
 		t.Errorf("words_seen: got %d, want 1", d.WordsSeen)
 	}
@@ -1119,8 +1140,8 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 	// Insert rows for multiple dates manually
 	for _, d := range []string{"2026-02-10", "2026-02-12", "2026-02-11"} {
 		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO daily_stats (date, attempts, mistakes, words_known, new_words, correct_streak, current_streak)
-			 VALUES (?, 10, 2, 5, 1, 3, 0)`, d); err != nil {
+			`INSERT INTO daily_stats (date, attempts, mistakes, correct_streak, current_streak)
+			 VALUES (?, 10, 2, 3, 0)`, d); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -145,6 +145,47 @@ CREATE TABLE IF NOT EXISTS daily_stats (
 		sql: `ALTER TABLE sm2_progress ADD COLUMN learning_new_word INTEGER NOT NULL DEFAULT 1;
 UPDATE sm2_progress SET learning_new_word = 0 WHERE total_correct >= 3;`,
 	},
+	{
+		version: 6,
+		fn: func(db *sql.DB) error {
+			cols := []struct{ name, def string }{
+				{"bucket_new", "INTEGER NOT NULL DEFAULT 0"},
+				{"bucket_struggling", "INTEGER NOT NULL DEFAULT 0"},
+				{"bucket_learning", "INTEGER NOT NULL DEFAULT 0"},
+				{"bucket_practicing", "INTEGER NOT NULL DEFAULT 0"},
+				{"bucket_mastered", "INTEGER NOT NULL DEFAULT 0"},
+			}
+			for _, c := range cols {
+				var count int
+				if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('daily_stats') WHERE name = ?`, c.name).Scan(&count); err != nil {
+					return fmt.Errorf("check %s column: %w", c.name, err)
+				}
+				if count == 0 {
+					if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE daily_stats ADD COLUMN %s %s`, c.name, c.def)); err != nil {
+						return fmt.Errorf("add %s column: %w", c.name, err)
+					}
+				}
+			}
+			return nil
+		},
+	},
+	{
+		version: 7,
+		fn: func(db *sql.DB) error {
+			for _, col := range []string{"words_known", "new_words"} {
+				var count int
+				if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('daily_stats') WHERE name = ?`, col).Scan(&count); err != nil {
+					return fmt.Errorf("check %s column: %w", col, err)
+				}
+				if count > 0 {
+					if _, err := db.Exec(fmt.Sprintf(`ALTER TABLE daily_stats DROP COLUMN %s`, col)); err != nil {
+						return fmt.Errorf("drop %s column: %w", col, err)
+					}
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // Migrate runs all pending migrations on the given database.
