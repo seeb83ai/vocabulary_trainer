@@ -207,3 +207,51 @@ describe('buildFormPayload', () => {
     expect(p.start_training).toBe(true);
   });
 });
+
+// ── renderDue ─────────────────────────────────────────────────────────────────
+// Inline the fixed function from vocab.js.
+
+function renderDue(word) {
+  if (word.total_attempts === 0) {
+    return '<span class="text-gray-400">—</span>';
+  }
+  if (!word.due_date) {
+    return '<span class="text-gray-400">—</span>';
+  }
+  const due = new Date(word.due_date);
+  if (isNaN(due.getTime())) {
+    return '<span class="text-gray-400">—</span>';
+  }
+  const diffDays = Math.round((due - new Date()) / 86400000);
+  if (diffDays <= 0) return '<span class="text-orange-500">Due</span>';
+  return `<span class="text-gray-500">in ${diffDays}d</span>`;
+}
+
+describe('renderDue', () => {
+  it('returns em-dash for unseen words (total_attempts=0)', () => {
+    expect(renderDue({ total_attempts: 0, due_date: null })).toContain('—');
+  });
+
+  it('returns em-dash for null due_date', () => {
+    expect(renderDue({ total_attempts: 1, due_date: null })).toContain('—');
+  });
+
+  it('returns em-dash for invalid date string', () => {
+    expect(renderDue({ total_attempts: 1, due_date: 'not-a-date' })).toContain('—');
+  });
+
+  it('returns "Due" for past due date', () => {
+    const past = new Date(Date.now() - 86400000 * 2).toISOString();
+    expect(renderDue({ total_attempts: 1, due_date: past })).toContain('Due');
+  });
+
+  it('returns "Due" for due date exactly now', () => {
+    const now = new Date().toISOString();
+    expect(renderDue({ total_attempts: 1, due_date: now })).toContain('Due');
+  });
+
+  it('returns "in Nd" for future due date', () => {
+    const future = new Date(Date.now() + 86400000 * 5).toISOString();
+    expect(renderDue({ total_attempts: 1, due_date: future })).toMatch(/in \d+d/);
+  });
+});

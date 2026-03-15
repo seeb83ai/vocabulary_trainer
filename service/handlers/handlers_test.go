@@ -1087,6 +1087,9 @@ func TestQuizAcknowledge_Valid(t *testing.T) {
 	if p.TotalCorrect != 0 {
 		t.Errorf("total_correct: want 0, got %d", p.TotalCorrect)
 	}
+	if !p.LearningNewWord {
+		t.Error("acknowledge must set learning_new_word=true so the word enters the learning phase")
+	}
 }
 
 func TestQuizAcknowledge_Idempotent(t *testing.T) {
@@ -1562,5 +1565,88 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 	rec = do(t, r, "GET", "/api/quiz/next", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 after cap reset, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── StartTraining sets learning phase ─────────────────────────────────────────
+
+func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:        "学",
+		EnTexts:       []string{"study"},
+		StartTraining: true,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp map[string]int64
+	decodeJSON(t, rec, &resp)
+
+	p, err := s.GetSM2Progress(ctx, resp["id"])
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	if !p.LearningNewWord {
+		t.Error("start_training=true must set learning_new_word=1 so the word enters the learning phase")
+	}
+}
+
+// ── Input length validation ───────────────────────────────────────────────────
+
+func TestWordsCreate_ZhTextTooLong(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	longText := string(make([]rune, 201))
+	for i := range []rune(longText) {
+		longText = longText[:i] + "好" + longText[i+1:]
+		if i == 200 {
+			break
+		}
+	}
+	// Build a 201-rune string
+	long201 := ""
+	for i := 0; i < 201; i++ {
+		long201 += "好"
+	}
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:  long201,
+		EnTexts: []string{"ok"},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for zh_text > 200 chars, got %d", rec.Code)
+	}
+}
+
+func TestWordsCreate_TooManyTranslations(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	texts := make([]string, 21)
+	for i := range texts {
+		texts[i] = fmt.Sprintf("translation %d", i)
+	}
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:  "好",
+		EnTexts: texts,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for > 20 translations, got %d", rec.Code)
+	}
+}
+
+func TestWordsCreate_TooManyTags(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	tags := make([]string, 21)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("tag%d", i)
+	}
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:  "好",
+		EnTexts: []string{"ok"},
+		Tags:    tags,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for > 20 tags, got %d", rec.Code)
 	}
 }

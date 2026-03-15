@@ -862,6 +862,138 @@ func TestLookupConfusion_EmptyAnswer_NotFound(t *testing.T) {
 	}
 }
 
+// ── CountLearningNewWords ─────────────────────────────────────────────────────
+
+func TestCountLearningNewWords_BeforePresented(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Newly created word: learning_new_word=1 (default), first_seen_date=NULL
+	seedWord(t, s, "一", "", []string{"one"})
+
+	count, err := s.CountLearningNewWords(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Must count unseen learning words so the new-word gate works correctly.
+	if count != 1 {
+		t.Errorf("want 1 learning word (unseen), got %d", count)
+	}
+}
+
+func TestCountLearningNewWords_GraduatedNotCounted(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id := seedWord(t, s, "一", "", []string{"one"})
+	// Graduate the word (learning_new_word=0)
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET learning_new_word = 0 WHERE word_id = ?`, id)
+
+	count, err := s.CountLearningNewWords(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("graduated word should not count as learning, got %d", count)
+	}
+}
+
+// ── AcknowledgeWord ───────────────────────────────────────────────────────────
+
+func TestAcknowledgeWord_SetsLearningPhase(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	if err := s.AcknowledgeWord(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	if !p.LearningNewWord {
+		t.Error("AcknowledgeWord should set learning_new_word=1")
+	}
+	if p.TotalAttempts != 1 {
+		t.Errorf("total_attempts: want 1, got %d", p.TotalAttempts)
+	}
+}
+
+func TestAcknowledgeWord_Idempotent(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	s.AcknowledgeWord(ctx, id)
+	if err := s.AcknowledgeWord(ctx, id); err != nil {
+		t.Errorf("second AcknowledgeWord should not error: %v", err)
+	}
+
+	p, _ := s.GetSM2Progress(ctx, id)
+	if p.TotalAttempts != 1 {
+		t.Errorf("total_attempts should not increment beyond 1: got %d", p.TotalAttempts)
+	}
+}
+
+// ── SkipWord ──────────────────────────────────────────────────────────────────
+
+func TestSkipWord_AdvancesDueDateByNDays(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "一", "", []string{"one"})
+
+	before := time.Now().UTC()
+	if err := s.SkipWord(ctx, id, 7); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+
+	minDue := before.Add(7 * 24 * time.Hour)
+	maxDue := time.Now().UTC().Add(8 * 24 * time.Hour)
+	if p.DueDate.Before(minDue) || p.DueDate.After(maxDue) {
+		t.Errorf("due_date not advanced by ~7 days; got %v (expected between %v and %v)", p.DueDate, minDue, maxDue)
+	}
+}
+
+func TestSkipWord_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	err := s.SkipWord(context.Background(), 9999, 7)
+	if err == nil {
+		t.Error("expected error for unknown word id")
+	}
+}
+
+// ── DeleteWord shared tag ─────────────────────────────────────────────────────
+
+func TestDeleteWord_SharedTagRetained(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id1 := seedWordWithTags(t, s, "一", "", []string{"one"}, []string{"shared-tag"})
+	seedWordWithTags(t, s, "二", "", []string{"two"}, []string{"shared-tag"})
+
+	if err := s.DeleteWord(ctx, id1); err != nil {
+		t.Fatal(err)
+	}
+
+	tags, _ := s.GetAllTags(ctx)
+	found := false
+	for _, tg := range tags {
+		if tg == "shared-tag" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("shared-tag should be retained when another word still uses it")
+	}
+}
+
 func TestGetConfusions_PopulatesEnTexts(t *testing.T) {
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})

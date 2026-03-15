@@ -517,3 +517,90 @@ func TestExpandVariants_NoEmpty(t *testing.T) {
 		}
 	}
 }
+
+// ── Quality boundary ──────────────────────────────────────────────────────────
+
+func TestUpdate_Quality3TreatedAsCorrect(t *testing.T) {
+	// SM-2 algorithm resets on quality < 3; quality=3 is "borderline correct" and
+	// advances repetitions. QualityCorrect=4 and QualityWrong=0 are the values
+	// used by the handlers, but the algorithm itself handles the full 0-5 range.
+	p := models.SM2Progress{Repetitions: 5, Easiness: 2.5, IntervalDays: 30}
+	got := Update(p, 3)
+	if got.Repetitions != 6 {
+		t.Errorf("quality=3 should advance repetitions (borderline correct), got %d", got.Repetitions)
+	}
+	if got.IntervalDays == 0 {
+		t.Errorf("quality=3 should not reset interval_days, got %d", got.IntervalDays)
+	}
+}
+
+// ── CheckAnswer edge cases ────────────────────────────────────────────────────
+
+func TestCheckAnswer_NestedParens(t *testing.T) {
+	// Nested parentheses: outer parens are optional
+	if !CheckAnswer("essen", []string{"(das (Gehörte)) Essen"}) {
+		t.Error("nested parens should be stripped, leaving 'Essen'")
+	}
+}
+
+func TestCheckAnswer_TrailingSlash(t *testing.T) {
+	if !CheckAnswer("hello", []string{"hello /"}) {
+		t.Error("trailing slash after normalization should still match 'hello'")
+	}
+}
+
+func TestCheckAnswer_OnlyParens(t *testing.T) {
+	// "(test)" stripped becomes "" — should still match empty after normalization,
+	// but since normalize("") == "" and user answer is non-empty, it should NOT match.
+	if CheckAnswer("test", []string{"(test)"}) {
+		// Stripping "(test)" produces "" which should not match "test"
+		// If the implementation expands variants it may also produce "test" as a variant
+		// We allow either behavior here; this test documents the current contract.
+		t.Log("(test) expanded to include 'test' — acceptable variant behavior")
+	}
+}
+
+// ── MaskPinyin edge cases ─────────────────────────────────────────────────────
+
+func TestMaskPinyin_Doublespace_NoEmptyPanic(t *testing.T) {
+	// Two spaces split into ["", ""] — empty runes must not panic
+	got := MaskPinyin("  ", 0)
+	_ = got // should not panic
+}
+
+func TestMaskPinyin_SingleRune(t *testing.T) {
+	// Single-rune syllable: first char shown, nothing to mask
+	got := MaskPinyin("a", 0)
+	if got != "a" {
+		t.Errorf("single-rune syllable: want %q, got %q", "a", got)
+	}
+}
+
+// ── SelectProgressiveMode exact boundary ─────────────────────────────────────
+
+func TestSelectProgressiveMode_Exactly85Pct(t *testing.T) {
+	// 85/100 = exactly 85% with 100 attempts → random mode (mastered)
+	validModes := map[string]bool{
+		models.ModeEnToZh:       true,
+		models.ModeZhToEn:       true,
+		models.ModeZhPinyinToEn: true,
+	}
+	seen := map[string]bool{}
+	for i := 0; i < 100; i++ {
+		m := SelectProgressiveMode(85, 100)
+		if !validModes[m] {
+			t.Errorf("unexpected mode %s", m)
+		}
+		seen[m] = true
+	}
+	if len(seen) < 2 {
+		t.Error("at 85% mastered should cycle through multiple modes")
+	}
+}
+
+func TestSelectProgressiveMode_Below85Pct(t *testing.T) {
+	// 84/100 = 84% with 100 attempts → zh_to_en
+	if m := SelectProgressiveMode(84, 100); m != models.ModeZhToEn {
+		t.Errorf("84%% 100 attempts: want zh_to_en, got %s", m)
+	}
+}

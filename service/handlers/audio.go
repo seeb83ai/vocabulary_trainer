@@ -30,7 +30,7 @@ func (h *AudioHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 	if _, err := os.Stat(mp3Path); os.IsNotExist(err) {
 		wd, err := h.Store.GetWordByID(r.Context(), id)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			internalError(w, err)
 			return
 		}
 		if wd == nil {

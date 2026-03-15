@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 
@@ -41,7 +43,7 @@ func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
 	dueFilter := r.URL.Query().Get("due")
 	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, models.WordListResponse{
@@ -64,6 +66,14 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "zh_text is required")
 		return
 	}
+	if utf8.RuneCountInString(req.ZhText) > 200 {
+		writeError(w, http.StatusBadRequest, "zh_text too long (max 200 characters)")
+		return
+	}
+	if utf8.RuneCountInString(req.Pinyin) > 200 {
+		writeError(w, http.StatusBadRequest, "pinyin too long (max 200 characters)")
+		return
+	}
 	var filtered []string
 	for _, t := range req.EnTexts {
 		if s := strings.TrimSpace(t); s != "" {
@@ -74,16 +84,36 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "at least one en_texts entry is required")
 		return
 	}
+	if len(filtered) > 20 {
+		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
+		return
+	}
+	for _, t := range filtered {
+		if utf8.RuneCountInString(t) > 500 {
+			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
+			return
+		}
+	}
+	if len(req.Tags) > 20 {
+		writeError(w, http.StatusBadRequest, "too many tags (max 20)")
+		return
+	}
+	for _, tag := range req.Tags {
+		if utf8.RuneCountInString(tag) > 50 {
+			writeError(w, http.StatusBadRequest, "tag too long (max 50 characters)")
+			return
+		}
+	}
 	req.EnTexts = filtered
 
 	id, err := h.Store.CreateWord(r.Context(), req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	if req.StartTraining {
 		if err := h.Store.AcknowledgeWord(r.Context(), id); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			internalError(w, err)
 			return
 		}
 	}
@@ -101,7 +131,7 @@ func (h *WordsHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 	wd, err := h.Store.GetWordByID(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	if wd == nil {
@@ -128,6 +158,14 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "zh_text is required")
 		return
 	}
+	if utf8.RuneCountInString(req.ZhText) > 200 {
+		writeError(w, http.StatusBadRequest, "zh_text too long (max 200 characters)")
+		return
+	}
+	if utf8.RuneCountInString(req.Pinyin) > 200 {
+		writeError(w, http.StatusBadRequest, "pinyin too long (max 200 characters)")
+		return
+	}
 	var filtered []string
 	for _, t := range req.EnTexts {
 		if s := strings.TrimSpace(t); s != "" {
@@ -138,6 +176,26 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "at least one en_texts entry is required")
 		return
 	}
+	if len(filtered) > 20 {
+		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
+		return
+	}
+	for _, t := range filtered {
+		if utf8.RuneCountInString(t) > 500 {
+			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
+			return
+		}
+	}
+	if len(req.Tags) > 20 {
+		writeError(w, http.StatusBadRequest, "too many tags (max 20)")
+		return
+	}
+	for _, tag := range req.Tags {
+		if utf8.RuneCountInString(tag) > 50 {
+			writeError(w, http.StatusBadRequest, "tag too long (max 50 characters)")
+			return
+		}
+	}
 	req.EnTexts = filtered
 
 	if err := h.Store.UpdateWord(r.Context(), id, req); err != nil {
@@ -145,12 +203,12 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	if req.StartTraining {
 		if err := h.Store.AcknowledgeWord(r.Context(), id); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			internalError(w, err)
 			return
 		}
 	}
@@ -159,7 +217,7 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	wd, err := h.Store.GetWordByID(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, wd)
@@ -188,7 +246,7 @@ func (h *WordsHandler) AddTranslation(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -205,7 +263,7 @@ func (h *WordsHandler) MarkReview(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -222,7 +280,7 @@ func (h *WordsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -242,7 +300,7 @@ func (h *WordsHandler) Export(w http.ResponseWriter, r *http.Request) {
 	dueFilter := r.URL.Query().Get("due")
 	words, _, err := h.Store.GetWords(r.Context(), q, 1, 0, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, words)
@@ -251,7 +309,7 @@ func (h *WordsHandler) Export(w http.ResponseWriter, r *http.Request) {
 func (h *WordsHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := h.Store.GetAllTags(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, tags)
@@ -267,6 +325,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func internalError(w http.ResponseWriter, err error) {
+	log.Printf("internal error: %v", err)
+	writeError(w, http.StatusInternalServerError, "internal server error")
 }
 
 func parseID(r *http.Request) (int64, error) {

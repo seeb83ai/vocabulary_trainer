@@ -234,6 +234,7 @@ function renderWordStats(ws) {
   });
 
   // Tier legend
+  // Safety: t.color values come from the hardcoded TIERS array in app.js, never from user input.
   const legend = $('tier-legend');
   const total = aData.reduce((a, b) => a + b, 0);
   legend.innerHTML = TIERS.map((t, i) => {

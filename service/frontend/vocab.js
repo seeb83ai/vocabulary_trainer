@@ -292,7 +292,13 @@ function renderDue(word) {
   if (word.total_attempts === 0) {
     return '<span class="text-gray-400">—</span>';
   }
+  if (!word.due_date) {
+    return '<span class="text-gray-400">—</span>';
+  }
   const due = new Date(word.due_date);
+  if (isNaN(due.getTime())) {
+    return '<span class="text-gray-400">—</span>';
+  }
   const diffDays = Math.round((due - new Date()) / 86400000);
   if (diffDays <= 0) return '<span class="text-orange-500">Due</span>';
   return `<span class="text-gray-500">in ${diffDays}d</span>`;

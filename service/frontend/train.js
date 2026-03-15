@@ -377,6 +377,7 @@ async function loadTrainTags() {
       }
       localStorage.setItem('quizTags', JSON.stringify(selectedTags));
       loadTrainTags();
+      loadNextCard();
     });
     overlayTagChips.appendChild(pill);
   }
@@ -401,6 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedBucket = btn.dataset.bucket;
       localStorage.setItem('quizBucket', selectedBucket);
       applyTierPills();
+      loadNextCard();
     });
   });
   document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -432,6 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
       selectedMode = btn.dataset.mode;
       localStorage.setItem('quizMode', selectedMode);
       applyModeButtons();
+      loadNextCard();
     });
   });
 

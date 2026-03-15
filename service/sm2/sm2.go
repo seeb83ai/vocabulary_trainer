@@ -9,8 +9,9 @@ import (
 	"vocabulary_trainer/models"
 )
 
-// reParens matches a parenthesized segment and any surrounding whitespace.
-var reParens = regexp.MustCompile(`\s*\([^)]*\)\s*`)
+// reParens matches a parenthesized segment (no nested parens) and any surrounding whitespace.
+// Applied iteratively so that nested parens are stripped inside-out.
+var reParens = regexp.MustCompile(`\s*\([^()]*\)\s*`)
 
 // reTrailingPunct matches any trailing punctuation (Unicode \p{P} and \p{S}) and whitespace.
 var reTrailingPunct = regexp.MustCompile(`[\p{P}\p{S}\s]+$`)
@@ -138,8 +139,16 @@ func expandVariants(a string) []string {
 	// Full form (with parens, with slashes)
 	add(a)
 
-	// Form with parens stripped
-	noParens := strings.TrimSpace(reParens.ReplaceAllString(a, " "))
+	// Form with parens stripped (iterate until stable to handle nested parens)
+	stripped := a
+	for {
+		next := strings.TrimSpace(reParens.ReplaceAllString(stripped, " "))
+		if next == strings.TrimSpace(stripped) {
+			break
+		}
+		stripped = next
+	}
+	noParens := stripped
 	add(noParens)
 
 	// Slash-split variants of both the original and the paren-stripped form
@@ -185,6 +194,9 @@ func MaskPinyin(pinyin string, totalCorrect int) string {
 	words := strings.Split(pinyin, " ")
 	for i, w := range words {
 		wr := []rune(w)
+		if len(wr) == 0 {
+			continue
+		}
 		var b strings.Builder
 		b.WriteRune(wr[0])
 		for range wr[1:] {
