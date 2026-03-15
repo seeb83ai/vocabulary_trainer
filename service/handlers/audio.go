@@ -58,6 +58,7 @@ func (h *AudioHandler) regenerate(wordID int64, zhText string) error {
 // generate calls the Edge TTS service to produce an MP3 file.
 func (h *AudioHandler) generate(wordID int64, zhText string) error {
 	if err := os.MkdirAll(h.AudioDir, 0755); err != nil {
+		log.Printf("tts mkdir %s: %v", h.AudioDir, err)
 		return err
 	}
 	data, err := tts.Synthesize(zhText)
@@ -67,6 +68,7 @@ func (h *AudioHandler) generate(wordID int64, zhText string) error {
 	}
 	mp3Path := filepath.Join(h.AudioDir, fmt.Sprintf("%d.mp3", wordID))
 	if err := os.WriteFile(mp3Path, data, 0644); err != nil {
+		log.Printf("tts write word %d: %v", wordID, err)
 		return err
 	}
 	return nil
