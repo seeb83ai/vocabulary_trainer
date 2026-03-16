@@ -7,8 +7,9 @@ function renderProgress(word) {
   if (word.total_attempts === 0) {
     return '<span class="text-gray-400">New</span>';
   }
+  const effCorrect = word.total_correct + (word.streak_bonus || 0);
   const pct = word.total_attempts > 0
-    ? Math.round((word.total_correct / word.total_attempts) * 100)
+    ? Math.round((effCorrect / word.total_attempts) * 100)
     : 0;
   const due = new Date(word.due_date);
   const now = new Date();

@@ -429,7 +429,7 @@ func TestSelectMode_AllModesReachable(t *testing.T) {
 func TestSelectProgressiveMode_ColdStart(t *testing.T) {
 	// < 3 attempts always returns en_to_zh regardless of accuracy
 	for _, tc := range []struct{ correct, attempts int }{{0, 0}, {1, 1}, {2, 2}} {
-		if m := SelectProgressiveMode(tc.correct, tc.attempts); m != models.ModeEnToZh {
+		if m := SelectProgressiveMode(tc.correct, tc.attempts, 0); m != models.ModeEnToZh {
 			t.Errorf("attempts=%d correct=%d: want en_to_zh, got %s", tc.attempts, tc.correct, m)
 		}
 	}
@@ -437,40 +437,40 @@ func TestSelectProgressiveMode_ColdStart(t *testing.T) {
 
 func TestSelectProgressiveMode_LowAccuracy(t *testing.T) {
 	// accuracy < 50% → en_to_zh
-	if m := SelectProgressiveMode(1, 3); m != models.ModeEnToZh { // 33%
+	if m := SelectProgressiveMode(1, 3, 0); m != models.ModeEnToZh { // 33%
 		t.Errorf("33%% accuracy: want en_to_zh, got %s", m)
 	}
-	if m := SelectProgressiveMode(4, 9); m != models.ModeEnToZh { // 44%
+	if m := SelectProgressiveMode(4, 9, 0); m != models.ModeEnToZh { // 44%
 		t.Errorf("44%% accuracy: want en_to_zh, got %s", m)
 	}
 }
 
 func TestSelectProgressiveMode_MidAccuracyFewAttempts(t *testing.T) {
 	// accuracy >= 50% but attempts < 10 → zh_pinyin_to_en
-	if m := SelectProgressiveMode(2, 3); m != models.ModeZhPinyinToEn { // 67%, 3 attempts
+	if m := SelectProgressiveMode(2, 3, 0); m != models.ModeZhPinyinToEn { // 67%, 3 attempts
 		t.Errorf("67%% 3 attempts: want zh_pinyin_to_en, got %s", m)
 	}
-	if m := SelectProgressiveMode(8, 9); m != models.ModeZhPinyinToEn { // 89%, 9 attempts
+	if m := SelectProgressiveMode(8, 9, 0); m != models.ModeZhPinyinToEn { // 89%, 9 attempts
 		t.Errorf("89%% 9 attempts: want zh_pinyin_to_en, got %s", m)
 	}
 }
 
 func TestSelectProgressiveMode_MidAccuracyEnoughAttempts(t *testing.T) {
 	// 50% <= accuracy < 70%, attempts >= 10 → zh_pinyin_to_en
-	if m := SelectProgressiveMode(5, 10); m != models.ModeZhPinyinToEn { // 50%
+	if m := SelectProgressiveMode(5, 10, 0); m != models.ModeZhPinyinToEn { // 50%
 		t.Errorf("50%% 10 attempts: want zh_pinyin_to_en, got %s", m)
 	}
-	if m := SelectProgressiveMode(6, 10); m != models.ModeZhPinyinToEn { // 60%
+	if m := SelectProgressiveMode(6, 10, 0); m != models.ModeZhPinyinToEn { // 60%
 		t.Errorf("60%% 10 attempts: want zh_pinyin_to_en, got %s", m)
 	}
 }
 
 func TestSelectProgressiveMode_HighAccuracyEnoughAttempts(t *testing.T) {
 	// 70% <= accuracy < 85%, attempts >= 10 → zh_to_en
-	if m := SelectProgressiveMode(7, 10); m != models.ModeZhToEn { // 70%
+	if m := SelectProgressiveMode(7, 10, 0); m != models.ModeZhToEn { // 70%
 		t.Errorf("70%% 10 attempts: want zh_to_en, got %s", m)
 	}
-	if m := SelectProgressiveMode(12, 15); m != models.ModeZhToEn { // 80%
+	if m := SelectProgressiveMode(12, 15, 0); m != models.ModeZhToEn { // 80%
 		t.Errorf("80%% 15 attempts: want zh_to_en, got %s", m)
 	}
 }
@@ -483,7 +483,7 @@ func TestSelectProgressiveMode_Mastered(t *testing.T) {
 		models.ModeZhPinyinToEn: true,
 	}
 	for i := 0; i < 50; i++ {
-		m := SelectProgressiveMode(9, 10) // 90%, 10 attempts
+		m := SelectProgressiveMode(9, 10, 0) // 90%, 10 attempts
 		if !validModes[m] {
 			t.Errorf("mastered: got invalid mode %s", m)
 		}
@@ -492,8 +492,85 @@ func TestSelectProgressiveMode_Mastered(t *testing.T) {
 
 func TestSelectProgressiveMode_HighAccuracyFewAttempts(t *testing.T) {
 	// accuracy >= 85% but attempts < 10 → zh_pinyin_to_en (not yet graduated)
-	if m := SelectProgressiveMode(3, 3); m != models.ModeZhPinyinToEn { // 100%, 3 attempts
+	if m := SelectProgressiveMode(3, 3, 0); m != models.ModeZhPinyinToEn { // 100%, 3 attempts
 		t.Errorf("100%% 3 attempts: want zh_pinyin_to_en, got %s", m)
+	}
+}
+
+func TestSelectProgressiveMode_WithStreakBonus(t *testing.T) {
+	// Raw accuracy 40% (4/10) with streak_bonus=1 → effective 50% → zh_pinyin_to_en
+	if m := SelectProgressiveMode(4, 10, 1); m != models.ModeZhPinyinToEn {
+		t.Errorf("4/10 +1 bonus: want zh_pinyin_to_en, got %s", m)
+	}
+	// Raw accuracy 40% (4/10) with streak_bonus=3 → effective 70% → zh_to_en (needs >=10 attempts)
+	if m := SelectProgressiveMode(4, 10, 3); m != models.ModeZhToEn {
+		t.Errorf("4/10 +3 bonus: want zh_to_en, got %s", m)
+	}
+}
+
+// ── CalcStreakBonus ───────────────────────────────────────────────────────────
+
+func TestCalcStreakBonus_NoBoostBelowThree(t *testing.T) {
+	for _, reps := range []int{0, 1, 2} {
+		got := CalcStreakBonus(0, reps, 3, 10)
+		if got != 0 {
+			t.Errorf("reps=%d: want 0, got %d", reps, got)
+		}
+	}
+}
+
+func TestCalcStreakBonus_LearningTier(t *testing.T) {
+	// 3/10 raw accuracy (30%). Streak=3 → target 50%. Need ceil(0.50*10)-3=2
+	got := CalcStreakBonus(0, 3, 3, 10)
+	if got != 2 {
+		t.Errorf("reps=3, 3/10: want 2, got %d", got)
+	}
+}
+
+func TestCalcStreakBonus_PracticingTier(t *testing.T) {
+	// 5/15 raw accuracy (33%). Streak=6 → target 70%. Need ceil(0.70*15)-5=6
+	got := CalcStreakBonus(0, 6, 5, 15)
+	if got != 6 {
+		t.Errorf("reps=6, 5/15: want 6, got %d", got)
+	}
+}
+
+func TestCalcStreakBonus_MasteredTier(t *testing.T) {
+	// 8/20 raw accuracy (40%). Streak=9 → target 85%. Need ceil(0.85*20)-8=9
+	got := CalcStreakBonus(0, 9, 8, 20)
+	if got != 9 {
+		t.Errorf("reps=9, 8/20: want 9, got %d", got)
+	}
+}
+
+func TestCalcStreakBonus_NeverDecreases(t *testing.T) {
+	// Current bonus=5. Streak=3 → target 50%. Need ceil(0.50*10)-6=0 < 5 → keep 5
+	got := CalcStreakBonus(5, 3, 6, 10)
+	if got != 5 {
+		t.Errorf("should not decrease: want 5, got %d", got)
+	}
+}
+
+func TestCalcStreakBonus_NeverDecreasesOnLowStreak(t *testing.T) {
+	// Current bonus=5. Streak=0 (wrong answer) → no change
+	got := CalcStreakBonus(5, 0, 3, 10)
+	if got != 5 {
+		t.Errorf("streak=0 should not decrease: want 5, got %d", got)
+	}
+}
+
+func TestCalcStreakBonus_AlreadyAboveTarget(t *testing.T) {
+	// 9/10 raw accuracy (90%). Streak=3 → target 50%. Already above → bonus stays 0
+	got := CalcStreakBonus(0, 3, 9, 10)
+	if got != 0 {
+		t.Errorf("already above target: want 0, got %d", got)
+	}
+}
+
+func TestCalcStreakBonus_ZeroAttempts(t *testing.T) {
+	got := CalcStreakBonus(0, 5, 0, 0)
+	if got != 0 {
+		t.Errorf("zero attempts: want 0, got %d", got)
 	}
 }
 

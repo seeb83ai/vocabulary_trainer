@@ -75,7 +75,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	case models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn:
 		mode = requestedMode
 	case models.ModeProgressive:
-		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts)
+		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus)
 	default:
 		mode = sm2.SelectMode()
 	}
@@ -202,6 +202,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			updated.TotalCorrect++
 		}
 	}
+	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -224,6 +225,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		IntervalDays:    updated.IntervalDays,
 		TotalCorrect:    updated.TotalCorrect,
 		TotalAttempts:   updated.TotalAttempts,
+		StreakBonus:     updated.StreakBonus,
 		Repetitions:     updated.Repetitions,
 		GraduateReps:    sm2.LearningGraduateReps,
 		LearningNewWord: updated.LearningNewWord,

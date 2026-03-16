@@ -43,9 +43,9 @@ var validSortExprs = map[string]string{
 	"zh":          "w.text",
 	"pinyin":      "w.pinyin",
 	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id)",
-	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
+	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
 	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
-	"accuracy":    "CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
+	"accuracy":    "CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
 }
 
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
@@ -129,6 +129,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		       COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
 		       COALESCE(p.interval_days, 1),
 		       COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
+		       COALESCE(p.streak_bonus, 0),
 		       COALESCE(p.due_date, CURRENT_TIMESTAMP),
 		       COALESCE(w.needs_review, 0),
 		       COALESCE(p.learning_new_word, 1),
@@ -164,8 +165,8 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		if err := rows.Scan(
 			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
-			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate,
-			&needsReview, &learning,
+			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
+			&dueDate, &needsReview, &learning,
 			&total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
@@ -309,6 +310,7 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 		        COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
 		        COALESCE(p.interval_days, 1),
 		        COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
+		        COALESCE(p.streak_bonus, 0),
 		        COALESCE(p.due_date, CURRENT_TIMESTAMP),
 		        COALESCE(w.needs_review, 0)
 		 FROM words w
@@ -316,7 +318,8 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 		 WHERE w.id = ? AND w.language = 'zh'`, id).
 		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
-			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate, &needsReview)
+			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
+			&dueDate, &needsReview)
 	wd.CreatedAt = parseDateTime(createdAt)
 	wd.DueDate = parseDateTime(dueDate)
 	wd.NeedsReview = needsReview == 1
@@ -512,7 +515,7 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 //	70-84  : ≥ 10 attempts AND 70 % ≤ acc < 85 %
 //	85-100 : ≥ 10 attempts AND acc ≥ 85 %
 func tierFilter(bucket string) string {
-	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
+	const acc = `CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts`
 	switch bucket {
 	case "new":
 		return ` AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`
@@ -578,7 +581,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 	query := `
 		SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
 		       p.repetitions, p.easiness, p.interval_days, p.due_date,
-		       p.total_correct, p.total_attempts, p.learning_new_word
+		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh'` + tagFilter + newWordFilter + bucketSQL + ` %s
@@ -595,7 +598,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		err := row.Scan(
 			&w.ID, &w.Text, &w.Language, &w.Pinyin, &createdAt,
 			&p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts, &learning,
+			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning,
 		)
 		w.CreatedAt = parseDateTime(createdAt)
 		p.DueDate = parseDateTime(dueDate)
@@ -677,10 +680,10 @@ func (s *Store) GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Pr
 	var dueDate string
 	var learning int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, learning_new_word
+		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus, learning_new_word
 		 FROM sm2_progress WHERE word_id = ?`, wordID).
 		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts, &learning)
+			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning)
 	p.DueDate = parseDateTime(dueDate)
 	p.LearningNewWord = learning == 1
 	if err == sql.ErrNoRows {
@@ -701,11 +704,11 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress
 		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
-		     total_correct = ?, total_attempts = ?, learning_new_word = ?
+		     total_correct = ?, total_attempts = ?, streak_bonus = ?, learning_new_word = ?
 		 WHERE word_id = ?`,
 		p.Repetitions, p.Easiness, p.IntervalDays,
 		p.DueDate.UTC().Format("2006-01-02 15:04:05"),
-		p.TotalCorrect, p.TotalAttempts, learningInt, p.WordID)
+		p.TotalCorrect, p.TotalAttempts, p.StreakBonus, learningInt, p.WordID)
 	if err != nil {
 		return fmt.Errorf("update sm2: %w", err)
 	}
@@ -1145,21 +1148,21 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 		SELECT
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 1 THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
-		    AND (p.total_attempts < 3 OR CAST(p.total_correct AS REAL) / p.total_attempts < 0.50)
+		    AND (p.total_attempts < 3 OR CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts < 0.50)
 		    THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
 		    AND p.total_attempts >= 3
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.50
-		    AND NOT (p.total_attempts >= 10 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.70)
+		    AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.50
+		    AND NOT (p.total_attempts >= 10 AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.70)
 		    THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
 		    AND p.total_attempts >= 10
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.70
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts < 0.85
+		    AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.70
+		    AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts < 0.85
 		    THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
 		    AND p.total_attempts >= 10
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.85
+		    AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.85
 		    THEN 1 ELSE 0 END), 0)
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
@@ -1237,7 +1240,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	// Fetch per-word stats for all seen zh words in a single query.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id, w.text, w.pinyin,
-		       p.total_correct, p.total_attempts, p.easiness,
+		       p.total_correct, p.total_attempts, p.streak_bonus, p.easiness,
 		       p.learning_new_word
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
@@ -1249,25 +1252,26 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	defer rows.Close()
 
 	type row struct {
-		id       int64
-		text     string
-		pinyin   *string
-		correct  int
-		attempts int
-		easiness float64
-		accuracy float64
-		learning bool
+		id          int64
+		text        string
+		pinyin      *string
+		correct     int
+		attempts    int
+		streakBonus int
+		easiness    float64
+		accuracy    float64
+		learning    bool
 	}
 	var all []row
 	for rows.Next() {
 		var r row
 		var learning int
-		if err := rows.Scan(&r.id, &r.text, &r.pinyin, &r.correct, &r.attempts, &r.easiness, &learning); err != nil {
+		if err := rows.Scan(&r.id, &r.text, &r.pinyin, &r.correct, &r.attempts, &r.streakBonus, &r.easiness, &learning); err != nil {
 			return nil, fmt.Errorf("scan word stat: %w", err)
 		}
 		r.learning = learning == 1
 		if r.attempts > 0 {
-			r.accuracy = float64(r.correct) / float64(r.attempts) * 100
+			r.accuracy = float64(r.correct+r.streakBonus) / float64(r.attempts) * 100
 		}
 		all = append(all, r)
 	}
@@ -1334,7 +1338,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 		r := all[candidates[k].idx]
 		resp.Hardest = append(resp.Hardest, models.WordStatDetail{
 			WordID: r.id, ZhText: r.text, Pinyin: r.pinyin,
-			Correct: r.correct, Attempts: r.attempts,
+			Correct: r.correct, Attempts: r.attempts, StreakBonus: r.streakBonus,
 			Accuracy: r.accuracy, Easiness: r.easiness,
 		})
 		detailIDs = append(detailIDs, r.id)
@@ -1349,7 +1353,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 		r := all[k]
 		resp.MostPract = append(resp.MostPract, models.WordStatDetail{
 			WordID: r.id, ZhText: r.text, Pinyin: r.pinyin,
-			Correct: r.correct, Attempts: r.attempts,
+			Correct: r.correct, Attempts: r.attempts, StreakBonus: r.streakBonus,
 			Accuracy: r.accuracy, Easiness: r.easiness,
 		})
 		detailIDs = append(detailIDs, r.id)

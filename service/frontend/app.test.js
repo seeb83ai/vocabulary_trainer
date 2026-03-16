@@ -64,10 +64,10 @@ const TIERS = [
   { key: '85-100', label: 'Mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700' },
 ];
 
-function wordTier(totalCorrect, totalAttempts, learningNewWord) {
+function wordTier(totalCorrect, totalAttempts, learningNewWord, streakBonus) {
   if (totalAttempts === 0) return null;
   if (learningNewWord) return TIERS[0];
-  const acc = totalCorrect / totalAttempts;
+  const acc = (totalCorrect + (streakBonus || 0)) / totalAttempts;
   if (totalAttempts >= 10 && acc >= 0.85) return TIERS[4];
   if (totalAttempts >= 10 && acc >= 0.70) return TIERS[3];
   if (totalAttempts >= 3  && acc >= 0.50 && acc < 0.70) return TIERS[2];
@@ -106,6 +106,18 @@ describe('wordTier', () => {
 
   it('returns Struggling for high accuracy but few attempts', () => {
     const tier = wordTier(3, 3, false);
+    expect(tier.label).toBe('Struggling');
+  });
+
+  it('streak bonus boosts tier', () => {
+    // Raw: 4/10 = 40% → Struggling. With bonus 3: 7/10 = 70% → Practicing
+    const tier = wordTier(4, 10, false, 3);
+    expect(tier.label).toBe('Practicing');
+  });
+
+  it('streak bonus defaults to 0', () => {
+    // Same as without bonus
+    const tier = wordTier(4, 10, false);
     expect(tier.label).toBe('Struggling');
   });
 });

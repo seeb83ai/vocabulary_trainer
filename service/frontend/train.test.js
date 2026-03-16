@@ -138,8 +138,10 @@ function applyResult(doc, result, answer) {
   if (result.learning_new_word || result.graduated) {
     doc.getElementById('attempt-stats').textContent = `Streak: ${result.repetitions} / ${result.graduate_reps}`;
   } else {
+    const eff = result.total_correct + (result.streak_bonus || 0);
     doc.getElementById('attempt-stats').textContent =
-      `Correct: ${result.total_correct} / ${result.total_attempts}`;
+      `Correct: ${eff} / ${result.total_attempts}` +
+      (result.streak_bonus > 0 ? ` (+${result.streak_bonus} streak bonus)` : '');
   }
 }
 

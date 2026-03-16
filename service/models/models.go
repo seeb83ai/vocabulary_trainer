@@ -29,6 +29,7 @@ type SM2Progress struct {
 	DueDate         time.Time
 	TotalCorrect    int
 	TotalAttempts   int
+	StreakBonus     int
 	LearningNewWord bool
 }
 
@@ -61,6 +62,7 @@ type AnswerResponse struct {
 	IntervalDays    int              `json:"interval_days"`
 	TotalCorrect    int              `json:"total_correct"`
 	TotalAttempts   int              `json:"total_attempts"`
+	StreakBonus     int              `json:"streak_bonus"`
 	Repetitions     int              `json:"repetitions"`
 	GraduateReps    int              `json:"graduate_reps,omitempty"`
 	LearningNewWord bool             `json:"learning_new_word"`
@@ -95,6 +97,7 @@ type WordDetail struct {
 	IntervalDays    int       `json:"interval_days"`
 	TotalCorrect    int       `json:"total_correct"`
 	TotalAttempts   int       `json:"total_attempts"`
+	StreakBonus     int       `json:"streak_bonus"`
 	DueDate         time.Time `json:"due_date"`
 	Tags            []string  `json:"tags"`
 	NeedsReview     bool      `json:"needs_review"`
@@ -151,9 +154,10 @@ type WordStatDetail struct {
 	ZhText   string  `json:"zh_text"`
 	Pinyin   *string `json:"pinyin"`
 	EnTexts  []string `json:"en_texts"`
-	Correct  int     `json:"total_correct"`
-	Attempts int     `json:"total_attempts"`
-	Accuracy float64 `json:"accuracy"`
+	Correct     int     `json:"total_correct"`
+	Attempts    int     `json:"total_attempts"`
+	StreakBonus int     `json:"streak_bonus"`
+	Accuracy    float64 `json:"accuracy"`
 	Easiness float64 `json:"easiness"`
 }
 
