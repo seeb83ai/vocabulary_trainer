@@ -94,64 +94,43 @@ function renderChart(days) {
   });
 }
 
+let _bucketChart = null;
+let _bucketStacked = true;
+
 function renderBucketChart(days) {
   // Only show if at least one day has bucket data
   const hasBuckets = days.some(d => (d.bucket_new||0) + (d.bucket_struggling||0) + (d.bucket_learning||0) + (d.bucket_practicing||0) + (d.bucket_mastered||0) > 0);
   if (!hasBuckets) return;
   show('bucket-chart-section');
 
+  const toggle = $('bucket-stack-toggle');
+  toggle.addEventListener('click', () => {
+    _bucketStacked = !_bucketStacked;
+    toggle.textContent = _bucketStacked ? 'Unstacked' : 'Stacked';
+    drawBucketChart(days);
+  });
+
+  drawBucketChart(days);
+}
+
+function drawBucketChart(days) {
+  if (_bucketChart) {
+    _bucketChart.destroy();
+    _bucketChart = null;
+  }
+
   const labels = days.map(d => formatDateLabel(d.date));
   const ctx = $('bucket-chart').getContext('2d');
-  new Chart(ctx, {
+  _bucketChart = new Chart(ctx, {
     type: 'line',
     data: {
       labels,
       datasets: [
-        {
-          label: 'Mastered',
-          data: days.map(d => d.bucket_mastered || 0),
-          backgroundColor: '#22c55eb3',
-          borderColor: '#22c55e',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 2,
-        },
-        {
-          label: 'Practicing',
-          data: days.map(d => d.bucket_practicing || 0),
-          backgroundColor: '#3b82f6b3',
-          borderColor: '#3b82f6',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 2,
-        },
-        {
-          label: 'Learning',
-          data: days.map(d => d.bucket_learning || 0),
-          backgroundColor: '#f59e0bb3',
-          borderColor: '#f59e0b',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 2,
-        },
-        {
-          label: 'Struggling',
-          data: days.map(d => d.bucket_struggling || 0),
-          backgroundColor: '#ef4444b3',
-          borderColor: '#ef4444',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 2,
-        },
-        {
-          label: 'New',
-          data: days.map(d => d.bucket_new || 0),
-          backgroundColor: '#8b5cf6b3',
-          borderColor: '#8b5cf6',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 2,
-        },
+        { label: 'Mastered',   data: days.map(d => d.bucket_mastered   || 0), backgroundColor: '#22c55eb3', borderColor: '#22c55e', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: 'Practicing', data: days.map(d => d.bucket_practicing || 0), backgroundColor: '#3b82f6b3', borderColor: '#3b82f6', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: 'Learning',   data: days.map(d => d.bucket_learning   || 0), backgroundColor: '#f59e0bb3', borderColor: '#f59e0b', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: 'Struggling', data: days.map(d => d.bucket_struggling || 0), backgroundColor: '#ef4444b3', borderColor: '#ef4444', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: 'New',        data: days.map(d => d.bucket_new        || 0), backgroundColor: '#8b5cf6b3', borderColor: '#8b5cf6', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
       ],
     },
     options: {
@@ -159,7 +138,7 @@ function renderBucketChart(days) {
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
-        y: { beginAtZero: true, stacked: true, title: { display: true, text: 'Words' } },
+        y: { beginAtZero: true, stacked: _bucketStacked, title: { display: true, text: 'Words' } },
       },
       plugins: {
         tooltip: {
