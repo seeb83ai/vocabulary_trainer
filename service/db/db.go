@@ -857,6 +857,52 @@ func (s *Store) CountLearningNewWords(ctx context.Context, tags []string) (int, 
 	return count, nil
 }
 
+// GetWordCountByDueDate returns the number of zh words grouped by due date,
+// covering overdue words (grouped as today), today, and the next 30 days.
+// Unseen words (first_seen_date IS NULL) are excluded.
+func (s *Store) GetWordCountByDueDate(ctx context.Context, tags []string) ([]models.DueDateCount, error) {
+	tagFilter := ""
+	var args []any
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		tagFilter = ` AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
+	query := `SELECT
+		CASE
+			WHEN date(p.due_date) <= date('now') THEN date('now')
+			ELSE date(p.due_date)
+		END AS bucket_date,
+		COUNT(*) AS cnt
+	FROM sm2_progress p
+	JOIN words w ON w.id = p.word_id
+	WHERE w.language = 'zh'
+	  AND p.first_seen_date IS NOT NULL
+	  AND date(p.due_date) <= date('now', '+30 days')` + tagFilter + `
+	GROUP BY bucket_date
+	ORDER BY bucket_date`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get word count by due date: %w", err)
+	}
+	defer rows.Close()
+	var result []models.DueDateCount
+	for rows.Next() {
+		var d models.DueDateCount
+		if err := rows.Scan(&d.Date, &d.Count); err != nil {
+			return nil, fmt.Errorf("scan due date count: %w", err)
+		}
+		result = append(result, d)
+	}
+	return result, rows.Err()
+}
+
 // LookupConfusion checks if the user's wrong answer matches a different known word.
 // For zh_to_en / zh_pinyin_to_en: looks for an EN word matching the answer, then
 // returns the zh word it belongs to (if different from zhWordID).

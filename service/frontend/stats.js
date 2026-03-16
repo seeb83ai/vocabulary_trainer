@@ -29,6 +29,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       show('word-stats-section');
     }
   } catch (_) {}
+
+  // Load due-date distribution with tag filters
+  await initDueDateChart();
 });
 
 function renderChart(days) {
@@ -289,4 +292,97 @@ function formatDateLabel(dateStr) {
   const parts = dateStr.split('-');
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return months[parseInt(parts[1], 10) - 1] + ' ' + parseInt(parts[2], 10);
+}
+
+// --- Due Date Distribution Chart with Tag Filters ---
+
+let dueSelectedTags = [];
+let dueChart = null;
+
+async function initDueDateChart() {
+  let allTags = [];
+  try { allTags = await apiFetch('/api/tags'); } catch (_) {}
+  renderDueTagChips(allTags);
+  await loadDueDateChart();
+}
+
+function renderDueTagChips(allTags) {
+  const container = $('due-tag-chips');
+  container.innerHTML = '';
+  if (allTags.length === 0) return;
+  for (const tag of allTags) {
+    const pill = document.createElement('button');
+    const active = dueSelectedTags.includes(tag);
+    pill.className = `px-2.5 py-0.5 rounded-full text-xs font-medium transition cursor-pointer ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    pill.textContent = tag;
+    pill.addEventListener('click', () => {
+      if (dueSelectedTags.includes(tag)) {
+        dueSelectedTags = dueSelectedTags.filter(t => t !== tag);
+      } else {
+        dueSelectedTags.push(tag);
+      }
+      renderDueTagChips(allTags);
+      loadDueDateChart();
+    });
+    container.appendChild(pill);
+  }
+}
+
+async function loadDueDateChart() {
+  let url = '/api/quiz/due-date-distribution';
+  if (dueSelectedTags.length > 0) {
+    url += '?tags=' + encodeURIComponent(dueSelectedTags.join(','));
+  }
+  let data;
+  try { data = await apiFetch(url); } catch (_) { return; }
+  const dates = data.dates || [];
+  const canvas = $('due-date-chart');
+  if (dates.length === 0) {
+    canvas.style.display = 'none';
+    show('due-chart-empty');
+    if (dueChart) { dueChart.destroy(); dueChart = null; }
+    return;
+  }
+  canvas.style.display = '';
+  hide('due-chart-empty');
+  renderDueDateChart(dates);
+}
+
+function renderDueDateChart(dates) {
+  const today = new Date().toISOString().slice(0, 10);
+  const labels = dates.map(d => d.date === today ? 'Today' : formatDateLabel(d.date));
+  const colors = dates.map(d => {
+    if (d.date <= today) return 'rgba(239, 68, 68, 0.7)';   // overdue/today = red
+    return 'rgba(59, 130, 246, 0.7)';                        // future = blue
+  });
+  const ctx = $('due-date-chart').getContext('2d');
+  if (dueChart) dueChart.destroy();
+  dueChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Words',
+        data: dates.map(d => d.count),
+        backgroundColor: colors,
+      }],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
+        y: { beginAtZero: true, title: { display: true, text: 'Words' }, ticks: { precision: 0 } },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            title(items) {
+              const idx = items[0].dataIndex;
+              return dates[idx].date;
+            },
+          },
+        },
+      },
+    },
+  });
 }

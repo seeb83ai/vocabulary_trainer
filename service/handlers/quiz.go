@@ -386,6 +386,23 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DueDateDistribution returns word counts grouped by due date, optionally filtered by tags.
+func (h *QuizHandler) DueDateDistribution(w http.ResponseWriter, r *http.Request) {
+	var tags []string
+	if t := r.URL.Query().Get("tags"); t != "" {
+		tags = strings.Split(t, ",")
+	}
+	dates, err := h.Store.GetWordCountByDueDate(r.Context(), tags)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if dates == nil {
+		dates = []models.DueDateCount{}
+	}
+	writeJSON(w, http.StatusOK, models.DueDateDistributionResponse{Dates: dates})
+}
+
 // Advance pulls forward the due dates of n seen zh words so they become due now,
 // and optionally resets the daily new-word cap for the rest of the day.
 func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
