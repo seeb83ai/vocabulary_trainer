@@ -295,8 +295,10 @@ async function submitAnswer(e) {
     } else if (result.learning_new_word) {
       setText('attempt-stats', `Streak: ${result.repetitions} / ${result.graduate_reps}`);
     } else {
+      const eff = result.total_correct + (result.streak_bonus || 0);
       setText('attempt-stats',
-        `Correct: ${result.total_correct} / ${result.total_attempts}`);
+        `Correct: ${eff} / ${result.total_attempts}` +
+        (result.streak_bonus > 0 ? ` (+${result.streak_bonus} streak bonus)` : ''));
     }
 
     const reviewBtn = $('needs-review-btn');

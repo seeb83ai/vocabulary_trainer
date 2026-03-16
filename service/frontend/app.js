@@ -16,10 +16,10 @@ const TIERS = [
 //   Practicing: ≥10 attempts AND 70 % ≤ acc < 85 %
 //   Learning  : ≥3 attempts  AND acc ≥ 50 % (but not qualifying for Practicing/Mastered)
 //   Struggling: everything else (< 3 attempts OR acc < 50 %)
-function wordTier(totalCorrect, totalAttempts, learningNewWord) {
+function wordTier(totalCorrect, totalAttempts, learningNewWord, streakBonus) {
   if (totalAttempts === 0) return null;
   if (learningNewWord) return TIERS[0]; // "New"
-  const acc = totalCorrect / totalAttempts;
+  const acc = (totalCorrect + (streakBonus || 0)) / totalAttempts;
   if (totalAttempts >= 10 && acc >= 0.85) return TIERS[4];
   if (totalAttempts >= 10 && acc >= 0.70) return TIERS[3];
   if (totalAttempts >= 3  && acc >= 0.50) return TIERS[2];

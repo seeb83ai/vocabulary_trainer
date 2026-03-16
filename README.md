@@ -107,13 +107,28 @@ The training page and vocabulary list show a **New** tier badge for words still 
 
 **Accuracy tiers:**
 
+Tier assignment uses **effective accuracy** = `(total_correct + streak_bonus) / total_attempts`. The `streak_bonus` accelerates recovery from initial mistakes — see "Streak bonus" below.
+
 | Tier | Criteria |
 |---|---|
 | **New** | `learning_new_word = true` (still in learning phase) |
-| **Struggling** | `< 3 attempts` or `accuracy < 50%` |
-| **Learning** | `≥ 3 attempts` and `50% ≤ accuracy < 70%` |
-| **Practicing** | `≥ 10 attempts` and `70% ≤ accuracy < 85%` |
-| **Mastered** | `≥ 10 attempts` and `accuracy ≥ 85%` |
+| **Struggling** | `< 3 attempts` or `effective accuracy < 50%` |
+| **Learning** | `≥ 3 attempts` and `50% ≤ effective accuracy < 70%` |
+| **Practicing** | `≥ 10 attempts` and `70% ≤ effective accuracy < 85%` |
+| **Mastered** | `≥ 10 attempts` and `effective accuracy ≥ 85%` |
+
+**Streak bonus:**
+
+When you answer a word correctly multiple times in a row, the system grants a `streak_bonus` that boosts effective accuracy to match the bucket for your current streak length:
+
+| Consecutive correct (streak) | Target bucket | Min effective accuracy |
+|---|---|---|
+| < 3 | _(no boost)_ | — |
+| 3–5 | Learning | 50% |
+| 6–8 | Practicing | 70% |
+| ≥ 9 | Mastered | 85% |
+
+The bonus is calculated as the minimum value needed to reach the target accuracy threshold. It **never decreases** — once earned, it persists even if the streak later breaks. However, wrong answers naturally dilute the bonus over time because `total_attempts` grows while `streak_bonus` stays fixed. The training page shows effective accuracy with a "(+N streak bonus)" indicator when a bonus is active.
 
 **Skip vs Got it:**
 - **Got it** marks the word as introduced, enters the learning phase, and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.

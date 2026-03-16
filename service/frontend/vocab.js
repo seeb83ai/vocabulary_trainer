@@ -281,10 +281,10 @@ async function deleteWord(id) {
 }
 
 function renderTierBadge(word) {
-  const tier = wordTier(word.total_correct, word.total_attempts, word.learning_new_word);
+  const tier = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
   if (!tier) return '<span class="text-gray-400 text-xs">Unseen</span>';
   if (word.learning_new_word) return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span>`;
-  const pct = Math.round(word.total_correct / word.total_attempts * 100);
+  const pct = Math.round((word.total_correct + (word.streak_bonus || 0)) / word.total_attempts * 100);
   return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
 }
 
@@ -573,12 +573,13 @@ function buildDownload(words, cols, format) {
     if (cols.en)     vals.push((word.en_texts || []).join('; '));
     if (cols.tags)   vals.push((word.tags || []).join('; '));
     if (cols.tier) {
-      const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word);
+      const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
       vals.push(t ? t.label : '');
     }
     if (cols.accuracy) {
+      const effCorrect = word.total_correct + (word.streak_bonus || 0);
       vals.push(word.total_attempts > 0
-        ? Math.round(word.total_correct / word.total_attempts * 100) + '%'
+        ? Math.round(effCorrect / word.total_attempts * 100) + '%'
         : '');
     }
     if (cols.attempts) vals.push(String(word.total_attempts));
@@ -596,12 +597,13 @@ function buildDownload(words, cols, format) {
       if (cols.en)       obj.translations = word.en_texts || [];
       if (cols.tags)     obj.tags         = word.tags || [];
       if (cols.tier) {
-        const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word);
+        const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
         obj.level = t ? t.label : '';
       }
       if (cols.accuracy) {
+        const effCorrect = word.total_correct + (word.streak_bonus || 0);
         obj.accuracy = word.total_attempts > 0
-          ? Math.round(word.total_correct / word.total_attempts * 100)
+          ? Math.round(effCorrect / word.total_attempts * 100)
           : null;
       }
       if (cols.attempts) obj.attempts = word.total_attempts;
