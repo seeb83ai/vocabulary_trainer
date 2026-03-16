@@ -1583,12 +1583,22 @@ func TestDueDateDistribution_Empty(t *testing.T) {
 
 func TestDueDateDistribution_AfterAnswer(t *testing.T) {
 	s := openTestDB(t)
-	seedWord(t, s, "猫", "māo", []string{"cat"})
+	id := seedWord(t, s, "猫", "māo", []string{"cat"})
 	r := newRouter(s)
 
-	// Answer to mark word as seen (sets first_seen_date)
-	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
-		"word_id": 1,
+	// Present the word via /next to set first_seen_date
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("next: want 200, got %d", rec.Code)
+	}
+
+	// Acknowledge and answer the word
+	rec = do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": id})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("acknowledge: want 204, got %d", rec.Code)
+	}
+	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": id,
 		"mode":    "zh_to_en",
 		"answer":  "cat",
 	})
@@ -1625,19 +1635,26 @@ func TestDueDateDistribution_TagFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create word 1: %v", err)
 	}
-	_, err = s.CreateWord(ctx, models.CreateWordRequest{
+	id2, err := s.CreateWord(ctx, models.CreateWordRequest{
 		ZhText: "书", Pinyin: "shū", EnTexts: []string{"book"}, Tags: []string{"objects"},
 	})
 	if err != nil {
 		t.Fatalf("create word 2: %v", err)
 	}
-	_ = id1
 
 	r := newRouter(s)
 
-	// Answer both words
-	for _, wid := range []int{1, 2} {
-		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+	// Present and acknowledge+answer both words so first_seen_date is set
+	for _, wid := range []int64{id1, id2} {
+		rec := do(t, r, "GET", "/api/quiz/next", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("next for word %d: want 200, got %d", wid, rec.Code)
+		}
+		rec = do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": wid})
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("acknowledge word %d: want 204, got %d", wid, rec.Code)
+		}
+		rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
 			"word_id": wid,
 			"mode":    "zh_to_en",
 			"answer":  "wrong",
