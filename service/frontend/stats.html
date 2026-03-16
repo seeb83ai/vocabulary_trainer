@@ -34,7 +34,10 @@
 
     <!-- Bucket Breakdown Chart -->
     <div id="bucket-chart-section" class="hidden bg-white rounded-2xl shadow p-6">
-      <h2 class="text-lg font-semibold text-gray-800 mb-4">Bucket Breakdown</h2>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-gray-800">Bucket Breakdown</h2>
+        <button id="bucket-stack-toggle" class="text-sm px-3 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition">Unstacked</button>
+      </div>
       <div style="min-height:250px"><canvas id="bucket-chart" height="200"></canvas></div>
     </div>
 
