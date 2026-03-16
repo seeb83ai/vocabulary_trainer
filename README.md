@@ -13,6 +13,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
 - **Training stats** — daily progress tracking: attempts, mistakes, accuracy, words known, new words learned, and best correct streak; view a Chart.js bar/line chart of the full history and a detailed table of the last 14 days on the `/stats` page
 - **Word-level statistics** — real-time aggregate stats for all seen words on the `/stats` page: correctness milestones (1+/3+/5+/10+ correct), accuracy distribution (doughnut chart), avg/median/P95 of correct answers, attempts, accuracy, and ease factor; tables of the 5 hardest and 5 most-practiced words with translations; includes an info box explaining SM-2 ease factor and all metrics
+- **Due date distribution** — bar chart on the `/stats` page showing how many words are due on each day over the next 30 days; includes tag filter chips to narrow the view to specific word groups
 - **Confusion tracking** — if your wrong answer is a valid translation of a *different* known word, it is recorded as a confusion pair (works in all quiz modes); a yellow hint box shows immediately on the result screen, and the full history is visible on the `/mismatches` page
 - 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS, built into the binary), falls back silently to the browser's Web Speech API
 - **Tags** — assign tags to vocabulary words (e.g. "HSK1", "food", "travel"); filter by tag on both the vocabulary list and training page (OR logic when multiple tags selected); tags are created on-the-fly via an autocomplete input and cleaned up automatically when no longer used
@@ -345,6 +346,7 @@ vocabulary_trainer/
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
+| `GET` | `/api/quiz/due-date-distribution` | Get word counts grouped by due date for the next 30 days (`tags` query param) |
 | `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |
 | `POST` | `/api/words` | Create a vocabulary entry |
 | `GET` | `/api/words/{id}` | Get a single word with translations |

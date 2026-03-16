@@ -42,6 +42,7 @@ func newRouter(s *db.Store) http.Handler {
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
+	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
 	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
@@ -1562,5 +1563,134 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 	rec = do(t, r, "GET", "/api/quiz/next", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 after cap reset, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── GET /api/quiz/due-date-distribution ──────────────────────────────────────
+
+func TestDueDateDistribution_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/quiz/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Dates) != 0 {
+		t.Errorf("expected empty dates, got %d", len(resp.Dates))
+	}
+}
+
+func TestDueDateDistribution_AfterAnswer(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "猫", "māo", []string{"cat"})
+	r := newRouter(s)
+
+	// Present the word via /next to set first_seen_date
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("next: want 200, got %d", rec.Code)
+	}
+
+	// Acknowledge and answer the word
+	rec = do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": id})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("acknowledge: want 204, got %d", rec.Code)
+	}
+	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": id,
+		"mode":    "zh_to_en",
+		"answer":  "cat",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Dates) == 0 {
+		t.Fatal("expected at least one date entry")
+	}
+	total := 0
+	for _, d := range resp.Dates {
+		total += d.Count
+	}
+	if total != 1 {
+		t.Errorf("expected total count 1, got %d", total)
+	}
+}
+
+func TestDueDateDistribution_TagFilter(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Create two words with different tags
+	id1, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText: "猫", Pinyin: "māo", EnTexts: []string{"cat"}, Tags: []string{"animals"},
+	})
+	if err != nil {
+		t.Fatalf("create word 1: %v", err)
+	}
+	id2, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText: "书", Pinyin: "shū", EnTexts: []string{"book"}, Tags: []string{"objects"},
+	})
+	if err != nil {
+		t.Fatalf("create word 2: %v", err)
+	}
+
+	r := newRouter(s)
+
+	// Present and acknowledge+answer both words so first_seen_date is set
+	for _, wid := range []int64{id1, id2} {
+		rec := do(t, r, "GET", "/api/quiz/next", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("next for word %d: want 200, got %d", wid, rec.Code)
+		}
+		rec = do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": wid})
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("acknowledge word %d: want 204, got %d", wid, rec.Code)
+		}
+		rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": wid,
+			"mode":    "zh_to_en",
+			"answer":  "wrong",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer word %d: want 200, got %d", wid, rec.Code)
+		}
+	}
+
+	// Without filter: should see 2 words
+	rec := do(t, r, "GET", "/api/quiz/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	total := 0
+	for _, d := range resp.Dates {
+		total += d.Count
+	}
+	if total != 2 {
+		t.Errorf("unfiltered: expected total 2, got %d", total)
+	}
+
+	// With animals tag filter: should see 1 word
+	rec = do(t, r, "GET", "/api/quiz/due-date-distribution?tags=animals", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var filtered models.DueDateDistributionResponse
+	decodeJSON(t, rec, &filtered)
+	filteredTotal := 0
+	for _, d := range filtered.Dates {
+		filteredTotal += d.Count
+	}
+	if filteredTotal != 1 {
+		t.Errorf("filtered by 'animals': expected total 1, got %d", filteredTotal)
 	}
 }

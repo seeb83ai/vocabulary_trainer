@@ -161,6 +161,15 @@ type WordStatDetail struct {
 	Easiness float64 `json:"easiness"`
 }
 
+type DueDateCount struct {
+	Date  string `json:"date"`
+	Count int    `json:"count"`
+}
+
+type DueDateDistributionResponse struct {
+	Dates []DueDateCount `json:"dates"`
+}
+
 type DailyStatEntry struct {
 	Date             string `json:"date"`
 	Attempts         int    `json:"attempts"`
