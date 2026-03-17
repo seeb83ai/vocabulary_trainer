@@ -19,6 +19,28 @@ type QuizHandler struct {
 	newCapBase   int    // newToday count at cap-reset time; cap = newCapBase + MaxNewPerDay
 }
 
+// wordTier returns the accuracy bucket label for a progress record.
+// Must stay in sync with wordTier() in app.js and tierFilter() in db.go.
+func wordTier(p models.SM2Progress) string {
+	if p.TotalAttempts == 0 {
+		return ""
+	}
+	if p.LearningNewWord {
+		return "New"
+	}
+	acc := float64(p.TotalCorrect+p.StreakBonus) / float64(p.TotalAttempts)
+	switch {
+	case p.TotalAttempts >= 10 && acc >= 0.85:
+		return "Mastered"
+	case p.TotalAttempts >= 10 && acc >= 0.70:
+		return "Practicing"
+	case p.TotalAttempts >= 3 && acc >= 0.50:
+		return "Learning"
+	default:
+		return "Struggling"
+	}
+}
+
 // Next returns the next card to study.
 func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	var tags []string
@@ -184,6 +206,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "progress not found")
 		return
 	}
+	prevTier := wordTier(*progress)
 
 	var updated models.SM2Progress
 	var graduated bool
@@ -213,7 +236,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = h.Store.RecordDailyStat(r.Context(), correct)
+	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), correct)
 
 	resp := models.AnswerResponse{
 		Correct:         correct,
@@ -230,6 +253,16 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		GraduateReps:    sm2.LearningGraduateReps,
 		LearningNewWord: updated.LearningNewWord,
 		Graduated:       graduated,
+	}
+
+	if correct {
+		if sessionStreak > 1 {
+			resp.SessionStreak = sessionStreak
+		}
+		resp.Tier = wordTier(updated)
+		if prevTier != "" && prevTier != resp.Tier {
+			resp.PrevTier = prevTier
+		}
 	}
 
 	if !correct {

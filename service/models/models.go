@@ -68,6 +68,9 @@ type AnswerResponse struct {
 	LearningNewWord bool             `json:"learning_new_word"`
 	Graduated       bool             `json:"graduated,omitempty"`
 	ConfusedWith    *ConfusionDetail `json:"confused_with,omitempty"`
+	SessionStreak   int              `json:"session_streak,omitempty"`
+	Tier            string           `json:"tier,omitempty"`
+	PrevTier        string           `json:"prev_tier,omitempty"`
 }
 
 type CreateWordRequest struct {
