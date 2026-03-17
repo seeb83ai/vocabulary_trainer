@@ -1081,13 +1081,13 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, true); err != nil {
 		t.Fatalf("RecordDailyStat(correct): %v", err)
 	}
-	if err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, true); err != nil {
 		t.Fatalf("RecordDailyStat(correct): %v", err)
 	}
-	if err := s.RecordDailyStat(ctx, false); err != nil {
+	if _, err := s.RecordDailyStat(ctx, false); err != nil {
 		t.Fatalf("RecordDailyStat(wrong): %v", err)
 	}
 
@@ -1119,7 +1119,7 @@ func TestRecordDailyStat_StreakResets(t *testing.T) {
 
 	// wrong, correct, correct, wrong, correct
 	for _, correct := range []bool{false, true, true, false, true} {
-		if err := s.RecordDailyStat(ctx, correct); err != nil {
+		if _, err := s.RecordDailyStat(ctx, correct); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -1201,7 +1201,7 @@ func TestGetTodaySessionInfo_WithData(t *testing.T) {
 	}
 
 	// Record a daily stat (1 correct answer).
-	if err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, true); err != nil {
 		t.Fatal(err)
 	}
 

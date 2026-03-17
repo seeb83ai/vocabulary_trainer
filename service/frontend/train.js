@@ -75,6 +75,8 @@ async function loadNextCard() {
   hide('add-translation-btn');
   hide('result-play-btn');
   hide('new-word-area');
+  hide('bucket-info');
+  hide('streak-info');
   $('answer-input').value = '';
   const reviewBtn = $('needs-review-btn');
   reviewBtn.textContent = 'Flag for Review';
@@ -281,6 +283,23 @@ async function submitAnswer(e) {
       breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       show('word-breakdown');
       hide('add-translation-btn');
+
+      if (result.tier) {
+        const bucketEl = $('bucket-info');
+        bucketEl.textContent = result.prev_tier
+          ? `${result.prev_tier} → ${result.tier}`
+          : result.tier;
+        show('bucket-info');
+      } else {
+        hide('bucket-info');
+      }
+
+      if (result.session_streak > 1) {
+        $('streak-info').textContent = `Streak: ${result.session_streak}`;
+        show('streak-info');
+      } else {
+        hide('streak-info');
+      }
     }
 
     if (result.graduated) {

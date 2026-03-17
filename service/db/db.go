@@ -1180,13 +1180,14 @@ func (s *Store) GetAllTags(ctx context.Context) ([]string, error) {
 }
 
 // RecordDailyStat upserts today's daily_stats row after an answer submission.
-func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
+// It returns the updated session streak (consecutive correct answers today).
+func (s *Store) RecordDailyStat(ctx context.Context, correct bool) (int, error) {
 	var wordsSeen int
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(&wordsSeen); err != nil {
-		return fmt.Errorf("count words seen: %w", err)
+		return 0, fmt.Errorf("count words seen: %w", err)
 	}
 
 	var bNew, bStruggling, bLearning, bPracticing, bMastered int
@@ -1215,7 +1216,7 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(
 		&bNew, &bStruggling, &bLearning, &bPracticing, &bMastered,
 	); err != nil {
-		return fmt.Errorf("count buckets: %w", err)
+		return 0, fmt.Errorf("count buckets: %w", err)
 	}
 
 	mistakeInc := 0
@@ -1251,9 +1252,11 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 		bNew, bStruggling, bLearning, bPracticing, bMastered,
 	)
 	if err != nil {
-		return fmt.Errorf("upsert daily stat: %w", err)
+		return 0, fmt.Errorf("upsert daily stat: %w", err)
 	}
-	return nil
+	var streak int
+	_ = s.db.QueryRowContext(ctx, `SELECT current_streak FROM daily_stats WHERE date = date('now')`).Scan(&streak)
+	return streak, nil
 }
 
 // GetDailyStatsHistory returns all daily stats ordered by date ascending.
