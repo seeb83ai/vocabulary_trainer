@@ -294,8 +294,8 @@ async function submitAnswer(e) {
         hide('bucket-info');
       }
 
-      if (result.session_streak > 1) {
-        $('streak-info').textContent = `Streak: ${result.session_streak}`;
+      if (!result.learning_new_word && result.repetitions > 0) {
+        $('streak-info').textContent = `Streak: ${result.repetitions}`;
         show('streak-info');
       } else {
         hide('streak-info');
