@@ -309,6 +309,27 @@ func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 	}
 }
 
+func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// GetNextCard should return the word but NOT set first_seen_date.
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.ID != id {
+		t.Fatalf("expected word id=%d, got %v", id, w)
+	}
+
+	var firstSeen *string
+	s.db.QueryRowContext(ctx, `SELECT first_seen_date FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen)
+	if firstSeen != nil {
+		t.Errorf("GetNextCard should not set first_seen_date, but got %q", *firstSeen)
+	}
+}
+
 func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "一", "", []string{"one"})

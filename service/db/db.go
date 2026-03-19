@@ -613,35 +613,22 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		return &w, &p, nil
 	}
 
-	// stamp sets first_seen_date the first time a card is presented.
-	stamp := func(w *models.Word) {
-		if w != nil {
-			_, _ = s.db.ExecContext(ctx,
-				`UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ? AND first_seen_date IS NULL`,
-				w.ID)
-		}
-	}
-
 	// Only consider cards due by end of today so we don't pull in future
 	// cards and inflate the session beyond what due_today reports.
 	todayBound := "AND p.due_date < date('now', '+1 day')"
 
 	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP")
 	if err != nil || w != nil {
-		stamp(w)
 		return w, p, err
 	}
 	// No overdue cards — prefer cards outside the wrong-retry window so a
 	// recently failed card is not immediately repeated.
 	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds') %s", int(sm2.WrongRetryDelay.Seconds()), todayBound))
 	if err != nil || w != nil {
-		stamp(w)
 		return w, p, err
 	}
 	// All remaining cards are within the retry window; return the soonest one.
-	w, p, err = tryQuery(todayBound)
-	stamp(w)
-	return w, p, err
+	return tryQuery(todayBound)
 }
 
 // GetTranslationsForWord returns all words in targetLang linked to wordID.
