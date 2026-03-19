@@ -216,10 +216,9 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 		t.Fatalf("UpdateSM2Progress id2: %v", err)
 	}
 
-	// Call GetNextCard once (high limit) to stamp id1 as today's introduced word.
-	w, _, err := s.GetNextCard(ctx, nil, 100, "")
-	if err != nil || w == nil || w.ID != id1 {
-		t.Fatalf("setup: expected id1=%d to be stamped, got w=%v err=%v", id1, w, err)
+	// Acknowledge id1 so it counts as today's introduced word.
+	if err := s.AcknowledgeWord(ctx, id1); err != nil {
+		t.Fatalf("AcknowledgeWord id1: %v", err)
 	}
 
 	// Build a router with maxNew=1 (cap is now reached).
@@ -1399,7 +1398,7 @@ func TestWordStats_WithData(t *testing.T) {
 	var resp models.WordStatsResponse
 	decodeJSON(t, rec, &resp)
 
-	// At least 1 word should be seen (the one fetched via GetNextCard)
+	// At least 1 word should be seen (acknowledged words have first_seen_date set)
 	if resp.TotalSeen < 1 {
 		t.Errorf("total_seen: want >= 1, got %d", resp.TotalSeen)
 	}
