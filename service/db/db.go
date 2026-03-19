@@ -622,6 +622,10 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		}
 	}
 
+	// Only consider cards due by end of today so we don't pull in future
+	// cards and inflate the session beyond what due_today reports.
+	todayBound := "AND p.due_date < date('now', '+1 day')"
+
 	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP")
 	if err != nil || w != nil {
 		stamp(w)
@@ -629,13 +633,13 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 	}
 	// No overdue cards — prefer cards outside the wrong-retry window so a
 	// recently failed card is not immediately repeated.
-	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds')", int(sm2.WrongRetryDelay.Seconds())))
+	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds') %s", int(sm2.WrongRetryDelay.Seconds()), todayBound))
 	if err != nil || w != nil {
 		stamp(w)
 		return w, p, err
 	}
 	// All remaining cards are within the retry window; return the soonest one.
-	w, p, err = tryQuery("")
+	w, p, err = tryQuery(todayBound)
 	stamp(w)
 	return w, p, err
 }
