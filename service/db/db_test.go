@@ -309,6 +309,27 @@ func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 	}
 }
 
+func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// GetNextCard should return the word but NOT set first_seen_date.
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.ID != id {
+		t.Fatalf("expected word id=%d, got %v", id, w)
+	}
+
+	var firstSeen *string
+	s.db.QueryRowContext(ctx, `SELECT first_seen_date FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen)
+	if firstSeen != nil {
+		t.Errorf("GetNextCard should not set first_seen_date, but got %q", *firstSeen)
+	}
+}
+
 func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "一", "", []string{"one"})
@@ -611,6 +632,48 @@ words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []strin
 	}
 	if len(words) != 2 {
 		t.Errorf("multi-tag OR filter: want 2 words, got %d", len(words))
+	}
+}
+
+func TestGetNextCard_DoesNotReturnFutureCards(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id := seedWord(t, s, "一", "", []string{"one"})
+
+	// Mark the word as seen (first_seen_date set) and place its due_date
+	// 2 days in the future — it should NOT be returned by GetNextCard.
+	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_date = date('now') WHERE word_id = ?`, future, id)
+
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil {
+		t.Errorf("expected nil for a card due in the future (id=%d), but got id=%d", id, w.ID)
+	}
+}
+
+func TestGetNextCard_ReturnsTodayNotYetOverdue(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id := seedWord(t, s, "一", "", []string{"one"})
+
+	// Place due_date 5 minutes from now (today but not yet overdue).
+	soon := time.Now().UTC().Add(5 * time.Minute).Format("2006-01-02 15:04:05")
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_date = date('now') WHERE word_id = ?`, soon, id)
+
+	w, _, err := s.GetNextCard(ctx, nil, 100, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a card due today (in 5 min) to be returned")
+	}
+	if w.ID != id {
+		t.Errorf("expected word id=%d, got id=%d", id, w.ID)
 	}
 }
 

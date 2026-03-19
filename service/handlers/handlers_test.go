@@ -216,10 +216,9 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 		t.Fatalf("UpdateSM2Progress id2: %v", err)
 	}
 
-	// Call GetNextCard once (high limit) to stamp id1 as today's introduced word.
-	w, _, err := s.GetNextCard(ctx, nil, 100, "")
-	if err != nil || w == nil || w.ID != id1 {
-		t.Fatalf("setup: expected id1=%d to be stamped, got w=%v err=%v", id1, w, err)
+	// Acknowledge id1 so it counts as today's introduced word.
+	if err := s.AcknowledgeWord(ctx, id1); err != nil {
+		t.Fatalf("AcknowledgeWord id1: %v", err)
 	}
 
 	// Build a router with maxNew=1 (cap is now reached).
@@ -1294,9 +1293,8 @@ func TestDailyStats_BucketCounts(t *testing.T) {
 	dogID := seedWord(t, s, "狗", "gǒu", []string{"dog"})
 	r := newRouter(s)
 
-	// Present words so first_seen_date is stamped
-	do(t, r, "GET", "/api/quiz/next", nil)
-	// Acknowledge the second word directly so both get first_seen_date
+	// Acknowledge both words so first_seen_date is set
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": catID})
 	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": dogID})
 
 	// Answer 猫 correctly once — still learning_new_word=1 → bucket "new"
@@ -1367,8 +1365,10 @@ func TestWordStats_WithData(t *testing.T) {
 	seedWord(t, s, "狗", "gǒu", []string{"dog"})
 	seedWord(t, s, "鱼", "yú", []string{"fish"})
 
-	// Get cards to set first_seen_date (triggers stamp)
-	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
+	// Acknowledge all words so first_seen_date is set
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": 1})
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": 2})
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": 3})
 
 	// Answer 猫 correctly 3 times
 	for i := 0; i < 3; i++ {
@@ -1391,13 +1391,6 @@ func TestWordStats_WithData(t *testing.T) {
 		"word_id": 3, "mode": "zh_to_en", "answer": "fish",
 	})
 
-	// Mark first_seen_date for all words that were answered (stamps on next card fetch)
-	// We need to manually ensure first_seen_date is set via the quiz flow
-	// The answer flow doesn't set first_seen_date — GetNextCard does.
-	// Let's fetch cards for each to stamp them.
-	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
-	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
-
 	rec := do(t, r, "GET", "/api/quiz/word-stats", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1405,7 +1398,7 @@ func TestWordStats_WithData(t *testing.T) {
 	var resp models.WordStatsResponse
 	decodeJSON(t, rec, &resp)
 
-	// At least 1 word should be seen (the one fetched via GetNextCard)
+	// At least 1 word should be seen (acknowledged words have first_seen_date set)
 	if resp.TotalSeen < 1 {
 		t.Errorf("total_seen: want >= 1, got %d", resp.TotalSeen)
 	}
@@ -1586,13 +1579,13 @@ func TestDueDateDistribution_AfterAnswer(t *testing.T) {
 	id := seedWord(t, s, "猫", "māo", []string{"cat"})
 	r := newRouter(s)
 
-	// Present the word via /next to set first_seen_date
+	// Present the word via /next and then acknowledge to set first_seen_date
 	rec := do(t, r, "GET", "/api/quiz/next", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("next: want 200, got %d", rec.Code)
 	}
 
-	// Acknowledge and answer the word
+	// Acknowledge (sets first_seen_date) and answer the word
 	rec = do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": id})
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("acknowledge: want 204, got %d", rec.Code)
