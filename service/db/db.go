@@ -535,7 +535,8 @@ func tierFilter(bucket string) string {
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
 // maxNew caps how many new words (first_seen_date IS NULL) can be introduced today; once
 // the count for today reaches maxNew, only already-seen cards are returned.
-func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, bucket string) (*models.Word, *models.SM2Progress, error) {
+// skipNew forces unseen words to be excluded regardless of the daily cap.
+func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, bucket string, skipNew bool) (*models.Word, *models.SM2Progress, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -561,10 +562,10 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		return nil, nil, fmt.Errorf("count new today: %w", err)
 	}
 
-	// When the daily cap is reached, or there are still words in the learning
-	// phase for the current filter set, skip words that have never been presented.
+	// When the daily cap is reached, the user chose to skip new words, or there
+	// are still words in the learning phase, exclude never-presented words.
 	newWordFilter := ""
-	if newToday >= maxNew {
+	if skipNew || newToday >= maxNew {
 		newWordFilter = " AND p.first_seen_date IS NOT NULL"
 	} else {
 		learningCount, err := s.CountLearningNewWords(ctx, tags)

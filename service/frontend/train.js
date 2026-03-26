@@ -6,6 +6,7 @@ let selectedMode = localStorage.getItem('quizMode') || 'random';
 let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 let selectedBucket = localStorage.getItem('quizBucket') || '';
 let latestStats = null;
+let skipNewWords = false;
 
 function applyModeButtons() {
   document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -95,6 +96,11 @@ async function loadNextCard() {
       show('empty-state');
       return;
     }
+    // Once all due words are done, lift the skip-new-words restriction so new
+    // words become available again as promised.
+    if (skipNewWords && latestStats.due_today === 0) {
+      skipNewWords = false;
+    }
     if (latestStats.due_today === 0 && !latestStats.new_available) {
       setText('success-stats', `${latestStats.today_attempts} attempts · ${latestStats.today_mistakes} mistakes`);
       document.querySelectorAll('.advance-btn').forEach(btn => {
@@ -110,6 +116,7 @@ async function loadNextCard() {
     if (selectedMode !== 'random') params.set('mode', selectedMode);
     if (selectedTags.length) params.set('tags', selectedTags.join(','));
     if (selectedBucket) params.set('bucket', selectedBucket);
+    if (skipNewWords) params.set('skip_new', 'true');
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
@@ -482,6 +489,10 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('Error: ' + err.message);
       return;
     }
+    loadNextCard();
+  });
+  $('new-word-no-new-btn').addEventListener('click', () => {
+    skipNewWords = true;
     loadNextCard();
   });
 

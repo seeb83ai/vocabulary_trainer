@@ -56,7 +56,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 		cap = h.newCapBase + extra
 	}
-	word, progress, err := h.Store.GetNextCard(r.Context(), tags, cap, bucket)
+	skipNew := r.URL.Query().Get("skip_new") == "true"
+	word, progress, err := h.Store.GetNextCard(r.Context(), tags, cap, bucket, skipNew)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
