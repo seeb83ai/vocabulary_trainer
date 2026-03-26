@@ -76,6 +76,12 @@ async function loadNextCard() {
   hide('add-translation-btn');
   hide('result-play-btn');
   hide('new-word-area');
+  hide('card-decompose');
+  hide('card-decompose-content');
+  hide('new-word-decompose');
+  hide('new-word-decompose-content');
+  hide('result-decompose');
+  hide('result-decompose-content');
   hide('bucket-info');
   hide('streak-info');
   $('answer-input').value = '';
@@ -155,6 +161,7 @@ async function loadNextCard() {
     setText('new-word-en', (currentCard.en_texts || []).join(' · '));
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
+    loadDecomposition(currentCard.prompt, 'new-word-decompose', 'new-word-decompose-toggle');
     await loadStats();
     return;
   }
@@ -191,6 +198,10 @@ function showCard() {
     show('translations-hint');
   } else {
     hide('translations-hint');
+  }
+
+  if (isZhPrompt) {
+    loadDecomposition(currentCard.prompt, 'card-decompose', 'card-decompose-toggle');
   }
 
   $('answer-input').focus();
@@ -343,12 +354,70 @@ async function submitAnswer(e) {
       }
     };
 
+    loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+
     $('next-btn').focus();
     await loadStats();
   } catch (err) {
     isSubmitted = false;
     alert('Error: ' + err.message);
   }
+}
+
+function renderCharDecomposition(charData) {
+  let html = `<div class="p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">`;
+  html += `<div class="flex items-baseline gap-2 mb-1">`;
+  html += `<span class="text-2xl font-bold">${escHtml(charData.character)}</span>`;
+  if (charData.radical) {
+    html += `<span class="text-sm text-gray-400">radical: ${escHtml(charData.radical)}</span>`;
+  }
+  if (charData.definition) {
+    html += `<span class="text-sm text-gray-500">${escHtml(charData.definition)}</span>`;
+  }
+  html += `</div>`;
+
+  if (charData.etymology && charData.etymology.hint) {
+    html += `<div class="text-xs text-gray-400 italic mb-2">${escHtml(charData.etymology.hint)}</div>`;
+  }
+
+  if (charData.components && charData.components.length > 0) {
+    html += `<div class="flex flex-wrap gap-2 mt-1">`;
+    for (const comp of charData.components) {
+      html += `<div class="px-2 py-1 bg-white border border-gray-200 rounded-lg text-center min-w-[3rem]">`;
+      html += `<div class="text-lg font-medium">${escHtml(comp.character)}</div>`;
+      if (comp.definition) {
+        html += `<div class="text-xs text-gray-400 leading-tight">${escHtml(comp.definition)}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+async function loadDecomposition(zhText, containerId, toggleId) {
+  try {
+    const data = await apiFetch(`/api/hanzi/decompose?chars=${encodeURIComponent(zhText)}`);
+    if (!data || data.length === 0) return;
+
+    show(containerId);
+    const toggle = $(toggleId);
+    const content = $(containerId + '-content');
+
+    content.innerHTML = data.map(renderCharDecomposition).join('');
+
+    toggle.onclick = () => {
+      if (content.classList.contains('hidden')) {
+        content.classList.remove('hidden');
+        toggle.innerHTML = '&#9660; Character breakdown';
+      } else {
+        content.classList.add('hidden');
+        toggle.innerHTML = '&#9654; Character breakdown';
+      }
+    };
+  } catch (_) {}
 }
 
 async function loadTrainTags() {

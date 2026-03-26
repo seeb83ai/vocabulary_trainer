@@ -185,3 +185,19 @@ type DailyStatEntry struct {
 	BucketPracticing int    `json:"bucket_practicing"`
 	BucketMastered   int    `json:"bucket_mastered"`
 }
+
+type HanziDecomposition struct {
+	Character     string               `json:"character"`
+	Definition    string               `json:"definition,omitempty"`
+	Radical       string               `json:"radical,omitempty"`
+	Decomposition string               `json:"decomposition,omitempty"`
+	Etymology     *HanziEtymology      `json:"etymology,omitempty"`
+	Components    []HanziDecomposition  `json:"components,omitempty"`
+}
+
+type HanziEtymology struct {
+	Type     string `json:"type,omitempty"`
+	Hint     string `json:"hint,omitempty"`
+	Phonetic string `json:"phonetic,omitempty"`
+	Semantic string `json:"semantic,omitempty"`
+}

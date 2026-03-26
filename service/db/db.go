@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -1508,4 +1509,161 @@ func (s *Store) AdvanceDueDates(ctx context.Context, n int) (int, error) {
 		return 0, fmt.Errorf("count now due: %w", err)
 	}
 	return nowDue, nil
+}
+
+// idsOperator returns true for IDS operator runes (U+2FF0–U+2FFB).
+func idsOperator(r rune) bool {
+	return r >= 0x2FF0 && r <= 0x2FFB
+}
+
+// extractComponents returns the non-operator, non-placeholder runes from an IDS string.
+func extractComponents(decomposition string) []rune {
+	var out []rune
+	for _, r := range decomposition {
+		if !idsOperator(r) && r != '？' && r != '?' {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]models.HanziDecomposition, error) {
+	if len(chars) == 0 {
+		return nil, nil
+	}
+
+	// Build placeholders for the IN clause.
+	ph := make([]string, len(chars))
+	args := make([]any, len(chars))
+	for i, c := range chars {
+		ph[i] = "?"
+		args[i] = string(c)
+	}
+
+	query := `SELECT character, definition, radical, decomposition, etymology
+		FROM hanzi_decomposition WHERE character IN (` + strings.Join(ph, ",") + `)`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query hanzi decomposition: %w", err)
+	}
+
+	type rawRow struct {
+		character     string
+		definition    sql.NullString
+		radical       sql.NullString
+		decomposition sql.NullString
+		etymology     sql.NullString
+	}
+	var rawRows []rawRow
+	for rows.Next() {
+		var r rawRow
+		if err := rows.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan hanzi decomposition: %w", err)
+		}
+		rawRows = append(rawRows, r)
+	}
+	rows.Close()
+
+	// Collect all component characters for a second-level lookup.
+	compSet := map[rune]bool{}
+	for _, r := range rawRows {
+		if r.decomposition.Valid {
+			for _, c := range extractComponents(r.decomposition.String) {
+				compSet[c] = true
+			}
+		}
+	}
+	// Remove characters we already have from the top-level query.
+	for _, c := range chars {
+		delete(compSet, c)
+	}
+
+	// Second query for component definitions.
+	compMap := map[string]*models.HanziDecomposition{}
+	if len(compSet) > 0 {
+		ph2 := make([]string, 0, len(compSet))
+		args2 := make([]any, 0, len(compSet))
+		for c := range compSet {
+			ph2 = append(ph2, "?")
+			args2 = append(args2, string(c))
+		}
+		rows2, err := s.db.QueryContext(ctx, `SELECT character, definition, radical, decomposition, etymology
+			FROM hanzi_decomposition WHERE character IN (`+strings.Join(ph2, ",")+`)`, args2...)
+		if err != nil {
+			return nil, fmt.Errorf("query component decomposition: %w", err)
+		}
+		for rows2.Next() {
+			var r rawRow
+			if err := rows2.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology); err != nil {
+				rows2.Close()
+				return nil, fmt.Errorf("scan component decomposition: %w", err)
+			}
+			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+			compMap[r.character] = &d
+		}
+		rows2.Close()
+	}
+
+	// Also index top-level results so components can reference siblings.
+	for _, r := range rawRows {
+		if _, ok := compMap[r.character]; !ok {
+			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+			compMap[r.character] = &d
+		}
+	}
+
+	// Build result with components attached.
+	results := make([]models.HanziDecomposition, 0, len(rawRows))
+	for _, r := range rawRows {
+		d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+		if r.decomposition.Valid {
+			for _, c := range extractComponents(r.decomposition.String) {
+				if comp, ok := compMap[string(c)]; ok && string(c) != r.character {
+					appendComponent(&d, *comp)
+				}
+			}
+		}
+		results = append(results, d)
+	}
+
+	// Return in the same order as the input chars.
+	ordered := make([]models.HanziDecomposition, 0, len(chars))
+	idx := map[string]models.HanziDecomposition{}
+	for _, d := range results {
+		idx[d.Character] = d
+	}
+	for _, c := range chars {
+		if d, ok := idx[string(c)]; ok {
+			ordered = append(ordered, d)
+		}
+	}
+	return ordered, nil
+}
+
+func appendComponent(parent *models.HanziDecomposition, comp models.HanziDecomposition) {
+	comp.Components = nil
+	comp.Decomposition = ""
+	parent.Components = append(parent.Components, comp)
+}
+
+func buildDecomposition(character string, definition, radical, decomposition, etymology sql.NullString) models.HanziDecomposition {
+	d := models.HanziDecomposition{Character: character}
+	if definition.Valid {
+		d.Definition = definition.String
+	}
+	if radical.Valid {
+		d.Radical = radical.String
+	}
+	if decomposition.Valid {
+		d.Decomposition = decomposition.String
+	}
+	if etymology.Valid && etymology.String != "" {
+		var ety models.HanziEtymology
+		if err := json.Unmarshal([]byte(etymology.String), &ety); err == nil && ety.Type != "" {
+			d.Etymology = &ety
+		}
+	}
+	return d
 }

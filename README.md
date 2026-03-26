@@ -21,6 +21,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - Vocabulary management: add, edit, delete, search, paginate, sort by any column; SM-2 progress shown per word
 - Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
 - Bulk import from a structured text file (see `service/cmd/import`)
+- **Character breakdown** — on the training screen, a collapsible "Character breakdown" block appears below each Chinese character; click to reveal radical, definition, etymology hint, and component parts with their meanings (data from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported via `service/cmd/import-hanzi`)
 - HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `service/cmd/import-hsk`)
 - Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
 - SQLite database stored on the host filesystem
@@ -230,6 +231,24 @@ being stored. Translations are always stored as `language='en'` rows so the exis
 logic works unchanged. If `DEEPL_API_KEY` is not set, the original English text is used
 and a warning is printed.
 
+### Character decomposition import (makemeahanzi)
+
+Import character decomposition data from the [makemeahanzi](https://github.com/skishore/makemeahanzi)
+project's `dictionary.txt` file. This enables the "Character breakdown" feature on the training screen.
+
+1. Download `dictionary.txt` from the makemeahanzi repository
+2. Run the import:
+
+```bash
+cd service && go run ./cmd/import-hanzi -file /path/to/dictionary.txt
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-file` | *(required)* | Path to makemeahanzi `dictionary.txt` |
+| `-dry-run` | false | Parse and validate without writing |
+
 ## Deploy to Raspberry Pi
 
 ### Initial setup
@@ -313,12 +332,14 @@ vocabulary_trainer/
 │   │   ├── words.go         # CRUD /api/words + POST /api/words/{id}/translations
 │   │   ├── mismatches.go    # GET /api/mismatches
 │   │   ├── translate.go     # POST /api/translate, GET /api/config — DeepL proxy + pinyin
-│   │   └── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
+│   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
+│   │   └── hanzi.go         # GET /api/hanzi/decompose — character decomposition
 │   ├── models/models.go     # Shared structs and mode constants
 │   ├── sm2/sm2.go           # SM-2 algorithm, answer checking, variant expansion
 │   ├── tts/tts.go           # Microsoft Edge TTS WebSocket client
 │   ├── cmd/import/main.go   # Standalone vocabulary import tool (text file)
 │   ├── cmd/import-hsk/main.go # HSK vocabulary import from mandarinbean.com
+│   ├── cmd/import-hanzi/main.go # makemeahanzi character decomposition import
 │   └── frontend/
 │       ├── index.html       # Training page
 │       ├── vocab.html       # Vocabulary management page
@@ -358,6 +379,7 @@ vocabulary_trainer/
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
+| `GET` | `/api/hanzi/decompose` | Decompose Chinese characters into radicals and components (`chars` query param, max 20) |
 
 ## License
 
