@@ -213,6 +213,16 @@ UPDATE sm2_progress SET learning_new_word = 0 WHERE total_correct >= 3;`,
 		      WHERE total_attempts = 0
 		        AND first_seen_date IS NOT NULL;`,
 	},
+	{
+		version: 10,
+		sql: `CREATE TABLE IF NOT EXISTS hanzi_decomposition (
+			character     TEXT PRIMARY KEY,
+			definition    TEXT,
+			radical       TEXT,
+			decomposition TEXT,
+			etymology     TEXT
+		);`,
+	},
 }
 
 // Migrate runs all pending migrations on the given database.

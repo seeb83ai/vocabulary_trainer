@@ -81,6 +81,7 @@ func main() {
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
+	hanziH := &handlers.HanziHandler{Store: store}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -120,6 +121,7 @@ func main() {
 		r.Get("/tags", wordsH.ListTags)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
+		r.Get("/hanzi/decompose", hanziH.Decompose)
 		r.Post("/pinyin", handlers.Pinyin)
 		r.Get("/config", handlers.Config(translateH != nil))
 		if translateH != nil {
