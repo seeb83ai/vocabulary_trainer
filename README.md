@@ -236,11 +236,18 @@ and a warning is printed.
 Import character decomposition data from the [makemeahanzi](https://github.com/skishore/makemeahanzi)
 project's `dictionary.txt` file. This enables the "Character breakdown" feature on the training screen.
 
-1. Download `dictionary.txt` from the makemeahanzi repository
+1. Download `dictionary.txt` from the makemeahanzi repository into the project root
 2. Run the import:
 
 ```bash
-cd service && go run ./cmd/import-hanzi -file /path/to/dictionary.txt
+make import-hanzi                          # uses dictionary.txt in project root
+make import-hanzi FILE=/path/to/dictionary.txt  # custom path
+```
+
+Or directly:
+
+```bash
+cd service && go run ./cmd/import-hanzi -db ../data/vocab.db -file ../dictionary.txt
 ```
 
 | Flag | Default | Description |

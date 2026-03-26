@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hsk backup release test test-go test-js
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk backup release test test-go test-js
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -38,6 +38,11 @@ tidy:
 import:
 	mkdir -p data
 	cd service && go run ./cmd/import -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../voc.txt)
+
+## import-hanzi: import makemeahanzi dictionary.txt for character decomposition (FILE=dictionary.txt DB=data/vocab.db)
+import-hanzi:
+	mkdir -p data
+	cd service && go run ./cmd/import-hanzi -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../dictionary.txt)
 
 ## import-hsk: fetch and import HSK vocabulary from mandarinbean.com (LEVELS=1,2,3,4,5,6 DB=data/vocab.db)
 import-hsk:
