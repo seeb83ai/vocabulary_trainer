@@ -57,10 +57,13 @@ release:
 	@test -n "$(RSYNC_DEST)" || (echo "RSYNC_DEST is not set. Copy .env.example to .env and fill it in." && exit 1)
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../vocab-trainer .
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-hsk ./cmd/import-hsk
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-hanzi ./cmd/import-hanzi
 	rsync -avz --progress \
 	    Makefile \
+	    dictionary.txt \
 		vocab-trainer \
 		import-hsk \
+		import-hanzi \
 		.env.example \
 		deploy/vocab-trainer.service \
 		deploy/vocab-trainer-watcher.service \
