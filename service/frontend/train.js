@@ -161,7 +161,7 @@ async function loadNextCard() {
     setText('new-word-en', (currentCard.en_texts || []).join(' · '));
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
-    loadDecomposition(currentCard.prompt, 'new-word-decompose', 'new-word-decompose-toggle');
+    loadDecomposition(currentCard.prompt, 'new-word-decompose', 'new-word-decompose-toggle', true);
     await loadStats();
     return;
   }
@@ -201,7 +201,7 @@ function showCard() {
   }
 
   if (isZhPrompt) {
-    loadDecomposition(currentCard.prompt, 'card-decompose', 'card-decompose-toggle');
+    loadDecomposition(currentCard.prompt, 'card-decompose', 'card-decompose-toggle', true);
   }
 
   $('answer-input').focus();
@@ -364,20 +364,23 @@ async function submitAnswer(e) {
   }
 }
 
-function renderCharDecomposition(charData) {
+function renderCharDecomposition(charData, compact) {
+  if (compact && (!charData.components || charData.components.length === 0)) return '';
   let html = `<div class="p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">`;
-  html += `<div class="flex items-baseline gap-2 mb-1">`;
-  html += `<span class="text-2xl font-bold">${escHtml(charData.character)}</span>`;
-  if (charData.radical) {
-    html += `<span class="text-sm text-gray-400">radical: ${escHtml(charData.radical)}</span>`;
-  }
-  if (charData.definition) {
-    html += `<span class="text-sm text-gray-500">${escHtml(charData.definition)}</span>`;
-  }
-  html += `</div>`;
+  if (!compact) {
+    html += `<div class="flex items-baseline gap-2 mb-1">`;
+    html += `<span class="text-2xl font-bold">${escHtml(charData.character)}</span>`;
+    if (charData.radical) {
+      html += `<span class="text-sm text-gray-400">radical: ${escHtml(charData.radical)}</span>`;
+    }
+    if (charData.definition) {
+      html += `<span class="text-sm text-gray-500">${escHtml(charData.definition)}</span>`;
+    }
+    html += `</div>`;
 
-  if (charData.etymology && charData.etymology.hint) {
-    html += `<div class="text-xs text-gray-400 italic mb-2">${escHtml(charData.etymology.hint)}</div>`;
+    if (charData.etymology && charData.etymology.hint) {
+      html += `<div class="text-xs text-gray-400 italic mb-2">${escHtml(charData.etymology.hint)}</div>`;
+    }
   }
 
   if (charData.components && charData.components.length > 0) {
@@ -397,16 +400,19 @@ function renderCharDecomposition(charData) {
   return html;
 }
 
-async function loadDecomposition(zhText, containerId, toggleId) {
+async function loadDecomposition(zhText, containerId, toggleId, compact) {
   try {
     const data = await apiFetch(`/api/hanzi/decompose?chars=${encodeURIComponent(zhText)}`);
     if (!data || data.length === 0) return;
+
+    const html = data.map(d => renderCharDecomposition(d, compact)).join('');
+    if (!html) return;
 
     show(containerId);
     const toggle = $(toggleId);
     const content = $(containerId + '-content');
 
-    content.innerHTML = data.map(renderCharDecomposition).join('');
+    content.innerHTML = html;
 
     toggle.onclick = () => {
       if (content.classList.contains('hidden')) {
