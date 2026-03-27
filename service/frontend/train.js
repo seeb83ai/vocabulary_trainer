@@ -98,12 +98,8 @@ async function loadNextCard() {
       show('empty-state');
       return;
     }
-    // Once all due words are done, lift the skip-new-words restriction so new
-    // words become available again as promised.
-    if (skipNewWords && latestStats.due_today === 0) {
+    if (latestStats.due_today === 0 && (!latestStats.new_available || skipNewWords)) {
       skipNewWords = false;
-    }
-    if (latestStats.due_today === 0 && !latestStats.new_available) {
       setText('success-stats', `${latestStats.today_attempts} attempts · ${latestStats.today_mistakes} mistakes`);
       document.querySelectorAll('.advance-btn').forEach(btn => {
         btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);
