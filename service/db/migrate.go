@@ -224,7 +224,7 @@ UPDATE sm2_progress SET learning_new_word = 0 WHERE total_correct >= 3;`,
 		);`,
 	},
 	{
-		version: 11,
+		version: 13,
 		sql: `
 CREATE TABLE IF NOT EXISTS hmm_actors (
   initial    TEXT PRIMARY KEY,
@@ -254,28 +254,50 @@ CREATE TABLE IF NOT EXISTS hmm_scenes (
 			type actorSeed struct{ initial, category, hint string }
 			actors := []actorSeed{
 				// Male (18)
+				{"null", "male", "Null initial (vowel-only syllables)"},
 				{"b", "male", "Name starts with 'B'"}, {"p", "male", "Name starts with 'P'"},
 				{"m", "male", "Name starts with 'M'"}, {"f", "male", "Name starts with 'F'"},
 				{"d", "male", "Name starts with 'D'"}, {"t", "male", "Name starts with 'T'"},
 				{"n", "male", "Name starts with 'N'"}, {"l", "male", "Name starts with 'L'"},
 				{"g", "male", "Name starts with 'G'"}, {"k", "male", "Name starts with 'K'"},
-				{"h", "male", "Name starts with 'H'"}, {"zh", "male", "Name sounds like 'J'"},
+				{"h", "male", "Name starts with 'H'"}, {"zh", "male", "Name sounds like 'Zh'"},
 				{"ch", "male", "Name sounds like 'Ch'"}, {"sh", "male", "Name starts with 'Sh'"},
 				{"r", "male", "Name starts with 'R'"}, {"z", "male", "Name starts with 'Z'"},
-				{"c", "male", "Name starts with 'Ts'"}, {"s", "male", "Name starts with 'S'"},
+				{"c", "male", "Name starts with 'C'"}, {"s", "male", "Name starts with 'S'"},
 				// Female (7)
+				{"yi", "female", "Name starts with 'Yi'"},
 				{"bi", "female", "Name starts with 'B'"}, {"pi", "female", "Name starts with 'P'"},
 				{"mi", "female", "Name starts with 'M'"}, {"di", "female", "Name starts with 'D'"},
 				{"ti", "female", "Name starts with 'T'"}, {"ni", "female", "Name starts with 'N'"},
-				{"li", "female", "Name starts with 'L'"},
+				{"li", "female", "Name starts with 'L'"}, {"ji", "female", "Name starts with 'J'"},
+				{"qi", "female", "Name starts with 'Q'"}, {"xi", "female", "Name starts with 'X'"},
 				// Fictional (3)
-				{"j", "fictional", "Fictional, name starts with 'J'"},
-				{"q", "fictional", "Fictional, name starts with 'Ch'"},
-				{"x", "fictional", "Fictional, name starts with 'Sh'"},
+				{"wu", "fictional", "Fictional, name starts with 'Wu'"},
+				{"bu", "fictional", "Fictional, name starts with 'Bu'"},
+				{"pu", "fictional", "Fictional, name starts with 'Pu'"},
+				{"mu", "fictional", "Fictional, name starts with 'Mu'"},
+				{"fu", "fictional", "Fictional, name starts with 'Fu'"},
+				{"du", "fictional", "Fictional, name starts with 'Du'"},
+				{"tu", "fictional", "Fictional, name starts with 'Tu'"},
+				{"nu", "fictional", "Fictional, name starts with 'Nu'"},
+				{"lu", "fictional", "Fictional, name starts with 'Lu'"},
+				{"gu", "fictional", "Fictional, name starts with 'Gu'"},
+				{"ku", "fictional", "Fictional, name starts with 'Ku'"},
+				{"hu", "fictional", "Fictional, name starts with 'Hu'"},
+				{"zhu", "fictional", "Fictional, name starts with 'Zhu'"},
+				{"chu", "fictional", "Fictional, name starts with 'Chu'"},
+				{"shu", "fictional", "Fictional, name starts with 'Shu'"},
+				{"ru", "fictional", "Fictional, name starts with 'Ru'"},
+				{"zu", "fictional", "Fictional, name starts with 'Zu'"},
+				{"cu", "fictional", "Fictional, name starts with 'Cu'"},
+				{"su", "fictional", "Fictional, name starts with 'Su'"},
 				// Wildcard (3)
-				{"y", "wildcard", "God or world leader, name starts with 'Y'"},
-				{"w", "wildcard", "God or world leader, name starts with 'W'"},
-				{"null", "wildcard", "Null initial (vowel-only syllables)"},
+				{"yu", "wildcard", "God or world leader, name starts with 'Yu'"},
+				{"nü", "wildcard", "God or world leader, name starts with 'Nü'"},
+				{"lü", "wildcard", "God or world leader, name starts with 'Lü'"},
+				{"ju", "wildcard", "God or world leader, name starts with 'Ju'"},
+				{"qu", "wildcard", "God or world leader, name starts with 'Qu'"},
+				{"xu", "wildcard", "God or world leader, name starts with 'Xu'"},
 			}
 			for _, a := range actors {
 				name := ""
