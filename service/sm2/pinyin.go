@@ -19,6 +19,11 @@ var toneMarks = map[rune][4]rune{
 // NumberedToToneMark converts a syllable and tone number to tone-marked pinyin.
 // e.g. ("ba", 1) → "bā", ("lv", 3) → "lǚ", ("a", 2) → "á"
 func NumberedToToneMark(syllable string, tone int) string {
+	if tone == 5 {
+		// Neutral tone — no tone mark, just normalize ü
+		s := strings.ToLower(syllable)
+		return strings.ReplaceAll(s, "v", "ü")
+	}
 	if tone < 1 || tone > 4 {
 		return syllable
 	}
@@ -85,8 +90,8 @@ func ParsePinyinAnswer(answer string) (string, int, error) {
 		return "", 0, fmt.Errorf("answer too short")
 	}
 	last := s[len(s)-1]
-	if last < '1' || last > '4' {
-		return "", 0, fmt.Errorf("last character must be a tone number 1-4")
+	if last < '1' || last > '5' {
+		return "", 0, fmt.Errorf("last character must be a tone number 1-5")
 	}
 	tone := int(last - '0')
 	syllable := s[:len(s)-1]

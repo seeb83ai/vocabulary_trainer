@@ -24,9 +24,12 @@ func TestNumberedToToneMark(t *testing.T) {
 		{"zhuang", 1, "zhuāng"},
 		{"xian", 2, "xián"},
 		{"lei", 3, "lěi"},
+		// Neutral tone (5) — no mark, just normalize ü
+		{"ma", 5, "ma"},
+		{"de", 5, "de"},
+		{"lv", 5, "lü"},
 		// Invalid tone
 		{"ba", 0, "ba"},
-		{"ba", 5, "ba"},
 	}
 	for _, tt := range tests {
 		got := NumberedToToneMark(tt.syllable, tt.tone)
@@ -48,6 +51,12 @@ func TestFormatPinyinDisplay(t *testing.T) {
 	if got != want {
 		t.Errorf("FormatPinyinDisplay(\"zhi\", 4) = %q, want %q", got, want)
 	}
+
+	got = FormatPinyinDisplay("ma", 5)
+	want = "ma (ma5)"
+	if got != want {
+		t.Errorf("FormatPinyinDisplay(\"ma\", 5) = %q, want %q", got, want)
+	}
 }
 
 func TestParsePinyinAnswer(t *testing.T) {
@@ -62,9 +71,10 @@ func TestParsePinyinAnswer(t *testing.T) {
 		{"  ba 1  ", "ba", 1, false},
 		{"zhuang4", "zhuang", 4, false},
 		{"a2", "a", 2, false},
+		{"ma5", "ma", 5, false},  // neutral tone
+		{"de5", "de", 5, false},
 		// Errors
 		{"ba", "", 0, true},   // no tone
-		{"ba5", "", 0, true},  // invalid tone
 		{"b", "", 0, true},    // too short
 		{"", "", 0, true},     // empty
 	}
@@ -101,6 +111,8 @@ func TestCheckPinyinAnswer(t *testing.T) {
 		{"lv3", "lv", 3, true},   // v/ü equivalence
 		{"lü3", "lv", 3, true},
 		{"lv3", "lü", 3, true},
+		{"ma5", "ma", 5, true},   // neutral tone
+		{"ma1", "ma", 5, false},  // wrong tone
 	}
 	for _, tt := range tests {
 		got := CheckPinyinAnswer(tt.answer, tt.target, tt.tone)

@@ -58,19 +58,30 @@ func splitInitialFinal(syllable string) (string, string) {
 }
 
 func parseFilename(name string) (syllable string, tone int, ok bool) {
-	// Expect "ba1.mp3"
+	// Expect "ba1.mp3" (tones 1-5) or "ma.mp3" (neutral tone, stored as 5)
 	name = strings.TrimSuffix(name, ".mp3")
-	if len(name) < 2 {
+	if name == "" {
 		return "", 0, false
 	}
 	last := name[len(name)-1]
-	if last < '1' || last > '4' {
+	if last >= '1' && last <= '5' {
+		tone = int(last - '0')
+		syllable = name[:len(name)-1]
+	} else if last >= 'a' && last <= 'z' {
+		// No tone number — treat as neutral tone (5)
+		tone = 5
+		syllable = name
+	} else {
 		return "", 0, false
 	}
-	tone = int(last - '0')
-	syllable = name[:len(name)-1]
 	if syllable == "" {
 		return "", 0, false
+	}
+	// Validate: syllable must be all lowercase letters
+	for _, c := range syllable {
+		if c < 'a' || c > 'z' {
+			return "", 0, false
+		}
 	}
 	return syllable, tone, true
 }
