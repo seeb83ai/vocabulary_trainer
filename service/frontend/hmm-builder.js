@@ -91,8 +91,7 @@ function renderEditableBuilder(container, wordId, ctx) {
   const sceneText = ctx.scene?.scene_text || '';
   const dotClass = HMM_CATEGORY_DOTS[actorCat] || 'bg-gray-400';
 
-  const CAT_LABELS = { male: 'Male', female: 'Female', fictional: 'Fictional', wildcard: 'Wildcard' };
-  const catLabel = CAT_LABELS[actorCat] || actorCat;
+  const catLabel = t('hmm.cat.' + actorCat) || actorCat;
 
   // Build props rows
   const allRadicals = ctx.radicals || [];
@@ -105,7 +104,7 @@ function renderEditableBuilder(container, wordId, ctx) {
     propsHtml += `
       <div class="flex items-center gap-2">
         <span class="w-8 text-center text-lg shrink-0">${escHtml(rad)}</span>
-        <input type="text" value="${escHtml(pName)}" placeholder="A 3D object for ${escHtml(rad)}..."
+        <input type="text" value="${escHtml(pName)}" placeholder="${escHtml(t('hmm.propPlaceholder', {rad}))}"
           class="hmm-prop-input flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
           data-radical="${escHtml(rad)}">
       </div>`;
@@ -116,18 +115,18 @@ function renderEditableBuilder(container, wordId, ctx) {
 
   // Build actor placeholder with category hint
   const actorPlaceholder = actorHint
-    ? `${catLabel}: ${actorHint}`
-    : `${catLabel} person...`;
+    ? t('hmm.actorPlaceholderHint', { cat: catLabel, hint: actorHint })
+    : t('hmm.actorPlaceholder', { cat: catLabel });
 
   // Build location placeholder
   const locPlaceholder = ctx.final === 'null'
-    ? 'A familiar place (e.g. childhood home)...'
-    : `A place for final "${finalDisplay}"...`;
+    ? t('hmm.locPlaceholderNull')
+    : t('hmm.locPlaceholder', { final: finalDisplay });
 
   // Build room placeholder from default if room is pre-filled
   const roomPlaceholder = roomName
     ? ''
-    : `Where in the location? (tone ${ctx.tone || '?'})...`;
+    : t('hmm.roomPlaceholder', { tone: ctx.tone || '?' });
 
   container.innerHTML = `
     <div class="border border-purple-200 rounded-xl p-4 bg-purple-50/50 space-y-3">
@@ -137,19 +136,19 @@ function renderEditableBuilder(container, wordId, ctx) {
       </div>
 
       <div id="hmm-help-box" class="hidden text-xs text-gray-600 bg-white border border-purple-100 rounded-lg p-3 space-y-1">
-        <p><strong>Hanzi Movie Method:</strong> Create a vivid mental movie scene to remember this character.</p>
-        <p><span class="inline-block w-2 h-2 rounded-full ${dotClass}"></span> <strong>Actor</strong> = a <strong>${escHtml(catLabel.toLowerCase())}</strong> person mapped to the pinyin initial "<strong>${escHtml(initialDisplay)}</strong>"</p>
-        <p><strong>Location</strong> = a familiar place mapped to the pinyin final "<strong>${escHtml(finalDisplay)}</strong>"</p>
-        <p><strong>Room</strong> = a specific area within the location, based on tone ${ctx.tone || '?'}</p>
-        ${allRadicals.length ? '<p><strong>Props</strong> = 3D objects representing the character\'s radicals — use these as visual anchors</p>' : ''}
-        <p class="text-gray-400 mt-1">Tip: Your choices are saved globally — the same initial/final/tone will reuse your actor/location/room across all characters.</p>
+        <p><strong>${escHtml(t('hmm.helpIntro'))}</strong></p>
+        <p><span class="inline-block w-2 h-2 rounded-full ${dotClass}"></span> ${escHtml(t('hmm.helpActor', { cat: catLabel.toLowerCase(), initial: initialDisplay }))}</p>
+        <p>${escHtml(t('hmm.helpLocation', { final: finalDisplay }))}</p>
+        <p>${escHtml(t('hmm.helpRoom', { tone: ctx.tone || '?' }))}</p>
+        ${allRadicals.length ? `<p>${escHtml(t('hmm.helpProps'))}</p>` : ''}
+        <p class="text-gray-400 mt-1">${escHtml(t('hmm.helpTip'))}</p>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <div class="flex items-center gap-1 mb-0.5">
             <span class="w-2.5 h-2.5 rounded-full ${dotClass} shrink-0"></span>
-            <span class="text-xs text-gray-400">${escHtml(catLabel)} Actor</span>
+            <span class="text-xs text-gray-400">${escHtml(catLabel)} ${t('hmm.actor')}</span>
             <span class="text-xs text-gray-300">(${escHtml(initialDisplay)})</span>
           </div>
           <input id="hmm-actor" type="text" value="${escHtml(actorName)}" placeholder="${escHtml(actorPlaceholder)}"
@@ -157,7 +156,7 @@ function renderEditableBuilder(container, wordId, ctx) {
         </div>
         <div>
           <div class="flex items-center gap-1 mb-0.5">
-            <span class="text-xs text-gray-400">Location</span>
+            <span class="text-xs text-gray-400">${t('hmm.location')}</span>
             <span class="text-xs text-gray-300">(final: ${escHtml(finalDisplay)})</span>
           </div>
           <input id="hmm-location" type="text" value="${escHtml(locName)}" placeholder="${escHtml(locPlaceholder)}"
@@ -165,19 +164,19 @@ function renderEditableBuilder(container, wordId, ctx) {
         </div>
         <div>
           <div class="flex items-center gap-1 mb-0.5">
-            <span class="text-xs text-gray-400">Room</span>
-            <span class="text-xs text-gray-300">(tone ${ctx.tone || '?'})</span>
+            <span class="text-xs text-gray-400">${t('hmm.room')}</span>
+            <span class="text-xs text-gray-300">(${t('hmm.tone', {n: ctx.tone || '?'})})</span>
           </div>
           <input id="hmm-room" type="text" value="${escHtml(roomName)}" placeholder="${escHtml(roomPlaceholder)}"
             class="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400">
         </div>
       </div>
 
-      ${propsHtml ? `<div class="space-y-1"><div class="text-xs text-gray-400">Props <span class="text-gray-300">(radicals → 3D objects)</span></div>${propsHtml}</div>` : ''}
+      ${propsHtml ? `<div class="space-y-1"><div class="text-xs text-gray-400">${t('hmm.props')} <span class="text-gray-300">(${t('hmm.propsDesc')})</span></div>${propsHtml}</div>` : ''}
 
       <div id="hmm-prompt-line" class="text-xs text-gray-500 italic"></div>
 
-      <textarea id="hmm-scene-text" rows="3" placeholder="Describe a vivid scene: what is your actor doing at this location, in this room, with these props?"
+      <textarea id="hmm-scene-text" rows="3" placeholder="${escHtml(t('hmm.scenePlaceholder'))}"
         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-y">${escHtml(sceneText)}</textarea>
 
       <div class="flex items-center gap-3">

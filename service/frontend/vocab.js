@@ -295,9 +295,9 @@ async function deleteWord(id) {
 function renderTierBadge(word) {
   const tier = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
   if (!tier) return `<span class="text-gray-400 text-xs">${escHtml(t('vocab.unseen'))}</span>`;
-  if (word.learning_new_word) return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span>`;
+  if (word.learning_new_word) return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${t(tier.i18nKey)}</span>`;
   const pct = Math.round((word.total_correct + (word.streak_bonus || 0)) / word.total_attempts * 100);
-  return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
+  return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${t(tier.i18nKey)}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
 }
 
 function renderDue(word) {
@@ -404,7 +404,7 @@ function renderTierFilter() {
     const active = selectedTierFilter === tier.key;
     pill.className = `tier-filter-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`;
     if (active) pill.style.backgroundColor = tier.color;
-    pill.textContent = tier.label;
+    pill.textContent = t(tier.i18nKey);
     pill.addEventListener('click', () => {
       selectedTierFilter = selectedTierFilter === tier.key ? '' : tier.key;
       currentPage = 1;
@@ -766,5 +766,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('dl-confirm-btn').addEventListener('click', executeDownload);
   $('download-modal').addEventListener('click', e => {
     if (e.target === $('download-modal')) hide('download-modal');
+  });
+
+  // Re-render dynamic text when UI language changes
+  document.addEventListener('langchange', () => {
+    renderTierFilter();
+    loadWords();
   });
 });
