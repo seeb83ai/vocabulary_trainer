@@ -49,10 +49,10 @@ import-hsk:
 	mkdir -p data
 	cd service && go run ./cmd/import-hsk -db $(or $(DB),../data/vocab.db) -levels $(or $(LEVELS),1,2,3,4,5,6)
 
-## import-pinyin: import pinyin audio files (SOURCE=mp3 DB=data/vocab.db PINYIN_AUDIO_DIR=data/pinyin-audio)
+## import-pinyin: import pinyin audio files (SOURCE=mp3-chinese-pinyin-sound/mp3 DB=data/vocab.db PINYIN_AUDIO_DIR=data/pinyin-audio)
 import-pinyin:
 	mkdir -p data
-	cd service && go run ./cmd/import-pinyin -db $(or $(DB),../data/vocab.db) -source $(or $(SOURCE),../mp3) -audio-dir $(or $(PINYIN_AUDIO_DIR),../data/pinyin-audio)
+	cd service && go run ./cmd/import-pinyin -db $(or $(DB),../data/vocab.db) -source ../$(or $(SOURCE),mp3) -audio-dir ../$(or $(PINYIN_AUDIO_DIR),data/pinyin-audio)
 
 backup:
 	sqlite3 data/vocab.db ".backup data/vocab_backup$(EXT).sq3"
