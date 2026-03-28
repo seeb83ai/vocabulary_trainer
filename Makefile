@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk backup release test test-go test-js
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin backup release test test-go test-js
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -48,6 +48,13 @@ import-hanzi:
 import-hsk:
 	mkdir -p data
 	cd service && go run ./cmd/import-hsk -db $(or $(DB),../data/vocab.db) -levels $(or $(LEVELS),1,2,3,4,5,6)
+
+## import-pinyin: import pinyin audio files (SOURCE=mp3-chinese-pinyin-sound/mp3 DB=data/vocab.db PINYIN_AUDIO_DIR=data/pinyin-audio)
+## git clone https://github.com/davinfifield/mp3-chinese-pinyin-sound.git
+## make import-pinyin SOURCE=mp3-chinese-pinyin-sound/mp3
+import-pinyin:
+	mkdir -p data
+	cd service && go run ./cmd/import-pinyin -db $(or $(DB),../data/vocab.db) -source ../$(or $(SOURCE),mp3) -audio-dir ../$(or $(PINYIN_AUDIO_DIR),data/pinyin-audio)
 
 backup:
 	sqlite3 data/vocab.db ".backup data/vocab_backup$(EXT).sq3"
