@@ -155,15 +155,15 @@ type WordStatsResponse struct {
 }
 
 type WordStatDetail struct {
-	WordID   int64   `json:"word_id"`
-	ZhText   string  `json:"zh_text"`
-	Pinyin   *string `json:"pinyin"`
-	EnTexts  []string `json:"en_texts"`
-	Correct     int     `json:"total_correct"`
-	Attempts    int     `json:"total_attempts"`
-	StreakBonus int     `json:"streak_bonus"`
-	Accuracy    float64 `json:"accuracy"`
-	Easiness float64 `json:"easiness"`
+	WordID      int64    `json:"word_id"`
+	ZhText      string   `json:"zh_text"`
+	Pinyin      *string  `json:"pinyin"`
+	EnTexts     []string `json:"en_texts"`
+	Correct     int      `json:"total_correct"`
+	Attempts    int      `json:"total_attempts"`
+	StreakBonus int      `json:"streak_bonus"`
+	Accuracy    float64  `json:"accuracy"`
+	Easiness    float64  `json:"easiness"`
 }
 
 type DueDateCount struct {
@@ -194,7 +194,7 @@ type HanziDecomposition struct {
 	Radical       string               `json:"radical,omitempty"`
 	Decomposition string               `json:"decomposition,omitempty"`
 	Etymology     *HanziEtymology      `json:"etymology,omitempty"`
-	Components    []HanziDecomposition  `json:"components,omitempty"`
+	Components    []HanziDecomposition `json:"components,omitempty"`
 }
 
 type HanziEtymology struct {
@@ -251,7 +251,8 @@ type HMMSaveSceneRequest struct {
 	LocationName string    `json:"location_name"`
 	RoomName     string    `json:"room_name"`
 	Props        []HMMProp `json:"props"`
-// Pinyin listening training models
+	// Pinyin listening training models
+}
 
 const (
 	PinyinModeMultipleChoice = "multiple_choice"
@@ -318,9 +319,9 @@ type PinyinToneVariant struct {
 }
 
 type PinyinConfusionDetail struct {
-	SoundID          int64  `json:"sound_id"`
-	SoundLabel       string `json:"sound_label"`
-	ConfusedWithID   int64  `json:"confused_with_id"`
+	SoundID           int64  `json:"sound_id"`
+	SoundLabel        string `json:"sound_label"`
+	ConfusedWithID    int64  `json:"confused_with_id"`
 	ConfusedWithLabel string `json:"confused_with_label"`
-	Count            int    `json:"count"`
+	Count             int    `json:"count"`
 }

@@ -223,6 +223,7 @@ UPDATE sm2_progress SET learning_new_word = 0 WHERE total_correct >= 3;`,
 			etymology     TEXT
 		);`,
 	},
+	{
 		version: 11,
 		sql: `
 CREATE TABLE IF NOT EXISTS pinyin_sounds (
@@ -417,6 +418,7 @@ CREATE TABLE IF NOT EXISTS hmm_scenes (
 
 			return nil
 		},
+	},
 }
 
 // Migrate runs all pending migrations on the given database.
