@@ -23,6 +23,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - Bulk import from a structured text file (see `service/cmd/import`)
 - **Character breakdown** — on the training screen, a collapsible "Character breakdown" block appears below each Chinese character; click to reveal radical, definition, etymology hint, and component parts with their meanings (data from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported via `service/cmd/import-hanzi`)
 - **Hanzi Movie Method mnemonics** — for single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorise characters by mapping pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`; compose scenes in the vocabulary edit form; saved scenes appear automatically during training (expanded on wrong answers, collapsed on correct). Choices are remembered globally — set an actor for "b" once and it pre-fills everywhere
+- **Pinyin listening training** — dedicated `/pinyin` page for tone and sound discrimination; hear a pinyin syllable and identify it via multiple choice (learning phase) or typed answer e.g. `ba1` (review phase); SM-2 spaced repetition tracks progress per sound; ~1,600 syllable/tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection; filter by consonant group (b/p/m/f, zh/ch/sh/r, etc.); confusion tracking for commonly mixed-up sounds
 - HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `service/cmd/import-hsk`)
 - Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
 - SQLite database stored on the host filesystem
@@ -166,6 +167,7 @@ Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin
 | `make tidy` | Tidy Go module dependencies |
 | `make import` | Import vocabulary from a text file (see below) |
 | `make import-hsk` | Fetch and import HSK 1–6 vocabulary from mandarinbean.com (see below) |
+| `make import-pinyin` | Import pinyin audio files for listening training (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
 | `make test` | Run all Go and JS tests |
 | `make clean` | Stop containers and remove build artifacts |
@@ -257,6 +259,34 @@ cd service && go run ./cmd/import-hanzi -db ../data/vocab.db -file ../dictionary
 | `-file` | *(required)* | Path to makemeahanzi `dictionary.txt` |
 | `-dry-run` | false | Parse and validate without writing |
 
+### Pinyin audio import
+
+Import pinyin pronunciation audio files from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. This enables the `/pinyin` listening training page.
+
+1. Clone the audio repository:
+```bash
+git clone https://github.com/davinfifield/mp3-chinese-pinyin-sound.git
+```
+
+2. Import the audio files:
+```bash
+make import-pinyin SOURCE=mp3-chinese-pinyin-sound/mp3
+```
+
+Or directly:
+```bash
+cd service && go run ./cmd/import-pinyin -source ../mp3-chinese-pinyin-sound/mp3
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-source` | `mp3` | Directory containing pinyin MP3 files (e.g. `ba1.mp3`) |
+| `-audio-dir` | `data/pinyin-audio` | Destination directory for audio files |
+| `-dry-run` | false | Parse files without writing to DB or copying |
+
+Audio files are stored in `PINYIN_AUDIO_DIR` (default: `data/pinyin-audio/`). Set this environment variable to override the default location.
+
 ## Deploy to Raspberry Pi
 
 ### Initial setup
@@ -332,11 +362,9 @@ vocabulary_trainer/
 ├── service/                 # All Go source and embedded frontend
 │   ├── main.go              # Server entry point, router, embedded static files
 │   ├── go.mod / go.sum
-│   ├── db/
-│   │   ├── migrate.go       # Version-based schema migrations
-│   │   └── db.go            # Data access layer (Store)
 │   ├── handlers/
 │   │   ├── quiz.go          # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
+│   │   ├── pinyin_quiz.go   # GET /api/pinyin-quiz/next, POST /api/pinyin-quiz/answer, GET /api/pinyin-quiz/stats
 │   │   ├── words.go         # CRUD /api/words + POST /api/words/{id}/translations
 │   │   ├── hmm.go           # Hanzi Movie Method — library CRUD, scene builder, pinyin parsing
 │   │   ├── mismatches.go    # GET /api/mismatches
@@ -344,19 +372,28 @@ vocabulary_trainer/
 │   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
 │   │   └── hanzi.go         # GET /api/hanzi/decompose — character decomposition
 │   ├── models/models.go     # Shared structs and mode constants
-│   ├── sm2/sm2.go           # SM-2 algorithm, answer checking, variant expansion
+│   ├── sm2/
+│   │   ├── sm2.go           # SM-2 algorithm, answer checking, variant expansion
+│   │   └── pinyin.go        # Tone mark conversion, pinyin answer parsing
 │   ├── tts/tts.go           # Microsoft Edge TTS WebSocket client
+│   ├── db/
+│   │   ├── migrate.go       # Version-based schema migrations
+│   │   ├── db.go            # Data access layer (Store) — vocabulary
+│   │   └── pinyin.go        # Data access layer — pinyin listening
 │   ├── cmd/import/main.go   # Standalone vocabulary import tool (text file)
 │   ├── cmd/import-hsk/main.go # HSK vocabulary import from mandarinbean.com
 │   ├── cmd/import-hanzi/main.go # makemeahanzi character decomposition import
+│   ├── cmd/import-pinyin/main.go # Pinyin audio import tool
 │   └── frontend/
 │       ├── index.html       # Training page
+│       ├── pinyin.html      # Pinyin listening training page
 │       ├── vocab.html       # Vocabulary management page
 │       ├── mnemonics.html   # HMM mnemonic library settings page
 │       ├── mismatches.html  # Confusion pairs page
 │       ├── stats.html       # Training stats page
 │       ├── app.js           # Shared fetch utilities and DOM helpers
 │       ├── train.js         # Training page logic
+│       ├── pinyin.js        # Pinyin listening training logic
 │       ├── vocab.js         # Vocabulary management logic
 │       ├── hmm-builder.js   # Reusable HMM scene builder component
 │       ├── mnemonics.js     # HMM library settings page logic
@@ -404,6 +441,11 @@ vocabulary_trainer/
 | `GET` | `/api/words/{id}/hmm/context` | Get HMM scene context for a word (parsed pinyin, radicals, library lookups) |
 | `PUT` | `/api/words/{id}/hmm` | Save mnemonic scene and auto-update library |
 | `DELETE` | `/api/words/{id}/hmm` | Delete mnemonic scene |
+| `GET` | `/api/pinyin-quiz/next` | Get the next pinyin sound to study (`tags` query param) |
+| `POST` | `/api/pinyin-quiz/answer` | Submit a pinyin listening answer |
+| `GET` | `/api/pinyin-quiz/stats` | Get pinyin due-today and total counts (`tags` query param) |
+| `GET` | `/api/pinyin-quiz/audio/{filename}` | Serve a pinyin pronunciation MP3 file |
+| `GET` | `/api/pinyin-quiz/tags` | List pinyin consonant group tags |
 
 ## License
 
