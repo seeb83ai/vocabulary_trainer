@@ -342,26 +342,8 @@ CREATE TABLE IF NOT EXISTS hmm_scenes (
 			// Seed default radical→prop mappings
 			type propSeed struct{ radical, prop string }
 			props := []propSeed{
-				{"水", "water"}, {"氵", "water"}, {"木", "tree"}, {"火", "fire"}, {"灬", "fire"},
-				{"土", "earth/dirt"}, {"金", "gold bar"}, {"钅", "gold bar"},
-				{"日", "sun"}, {"月", "moon"}, {"山", "mountain"}, {"石", "rock"},
-				{"人", "person figure"}, {"亻", "person figure"},
-				{"口", "mouth"}, {"目", "eye"}, {"耳", "ear"},
-				{"手", "hand"}, {"扌", "hand"},
-				{"心", "heart"}, {"忄", "heart"},
-				{"足", "foot"}, {"⻊", "foot"},
-				{"女", "woman figure"}, {"子", "child figure"}, {"王", "crown"},
-				{"门", "door"}, {"門", "door"}, {"车", "car"}, {"車", "car"},
-				{"马", "horse"}, {"馬", "horse"}, {"鸟", "bird"}, {"鳥", "bird"},
-				{"鱼", "fish"}, {"魚", "fish"}, {"虫", "bug"},
-				{"犬", "dog"}, {"犭", "dog"}, {"牛", "cow"}, {"羊", "sheep"},
-				{"竹", "bamboo"}, {"⺮", "bamboo"}, {"米", "rice"}, {"禾", "grain"},
-				{"衣", "clothing"}, {"衤", "clothing"}, {"食", "food"}, {"饣", "food"},
-				{"言", "speech bubble"}, {"讠", "speech bubble"},
-				{"刀", "knife"}, {"刂", "knife"}, {"力", "dumbbell"},
-				{"雨", "rain"}, {"风", "wind fan"}, {"風", "wind fan"},
-				{"大", "giant"}, {"小", "tiny figurine"}, {"田", "field/farm"},
-				{"白", "white flag"}, {"黑", "black box"},
+				{"一", "razor blade"},
+				{"二", "twins"},
 			}
 			for _, p := range props {
 				if _, err := db.Exec(
