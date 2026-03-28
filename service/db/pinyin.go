@@ -71,6 +71,26 @@ func (s *Store) GetPinyinSoundBySyllableTone(ctx context.Context, syllable strin
 	return &ps, nil
 }
 
+// GetPinyinToneVariants returns all tone variants for a given syllable, ordered by tone.
+func (s *Store) GetPinyinToneVariants(ctx context.Context, syllable string) ([]models.PinyinSound, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, initial, final, tone, syllable, filename, tag
+		 FROM pinyin_sounds WHERE syllable = ? ORDER BY tone`, syllable)
+	if err != nil {
+		return nil, fmt.Errorf("get pinyin tone variants: %w", err)
+	}
+	defer rows.Close()
+	var results []models.PinyinSound
+	for rows.Next() {
+		var ps models.PinyinSound
+		if err := rows.Scan(&ps.ID, &ps.Initial, &ps.Final, &ps.Tone, &ps.Syllable, &ps.Filename, &ps.Tag); err != nil {
+			return nil, fmt.Errorf("scan pinyin tone variant: %w", err)
+		}
+		results = append(results, ps)
+	}
+	return results, rows.Err()
+}
+
 // GetNextPinyinCard returns the next pinyin sound to study using the same
 // 3-tier priority as GetNextCard: overdue → non-retry-window → retry-window.
 func (s *Store) GetNextPinyinCard(ctx context.Context, tags []string, skipNew bool) (*models.PinyinSound, *models.SM2Progress, error) {

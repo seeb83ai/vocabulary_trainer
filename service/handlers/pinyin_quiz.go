@@ -230,6 +230,17 @@ func (h *PinyinQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Include all tone variants for the syllable so the user can compare
+	variants, _ := h.Store.GetPinyinToneVariants(r.Context(), sound.Syllable)
+	for _, v := range variants {
+		resp.ToneVariants = append(resp.ToneVariants, models.PinyinToneVariant{
+			Label:    sm2.FormatPinyinDisplay(v.Syllable, v.Tone),
+			Filename: v.Filename,
+			Tone:     v.Tone,
+			Current:  v.ID == sound.ID,
+		})
+	}
+
 	if !correct && confusedWithID > 0 {
 		_ = h.Store.UpsertPinyinConfusion(r.Context(), sound.ID, confusedWithID)
 		detail, _ := h.Store.GetPinyinConfusionDetail(r.Context(), sound.ID, confusedWithID)

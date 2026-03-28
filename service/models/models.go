@@ -256,8 +256,16 @@ type PinyinAnswerResponse struct {
 	Learning      bool                   `json:"learning"`
 	Graduated     bool                   `json:"graduated,omitempty"`
 	ConfusedWith  *PinyinConfusionDetail `json:"confused_with,omitempty"`
+	ToneVariants  []PinyinToneVariant    `json:"tone_variants,omitempty"`
 	Tier          string                 `json:"tier,omitempty"`
 	PrevTier      string                 `json:"prev_tier,omitempty"`
+}
+
+type PinyinToneVariant struct {
+	Label    string `json:"label"`
+	Filename string `json:"filename"`
+	Tone     int    `json:"tone"`
+	Current  bool   `json:"current"`
 }
 
 type PinyinConfusionDetail struct {

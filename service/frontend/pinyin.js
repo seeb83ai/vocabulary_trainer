@@ -173,6 +173,25 @@ function showResult(resp) {
   setText('result-correct-answer', resp.correct_answer);
   $('result-play-btn').onclick = () => playPinyinAudio(currentCard.audio_file);
 
+  // Tone variants — let user listen to all tones
+  const tvContainer = $('tone-variants');
+  tvContainer.innerHTML = '';
+  if (resp.tone_variants && resp.tone_variants.length > 1) {
+    for (const v of resp.tone_variants) {
+      const btn = document.createElement('button');
+      btn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium transition ' +
+        (v.current
+          ? 'bg-purple-100 text-purple-700 border-2 border-purple-400'
+          : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200');
+      btn.textContent = v.label;
+      btn.addEventListener('click', () => playPinyinAudio(v.filename));
+      tvContainer.appendChild(btn);
+    }
+    show('tone-variants');
+  } else {
+    hide('tone-variants');
+  }
+
   // Your answer (type mode only)
   if (resp.your_answer) {
     $('result-your-answer').innerHTML = `Your answer: <strong>${escHtml(resp.your_answer)}</strong>`;
