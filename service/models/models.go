@@ -71,6 +71,7 @@ type AnswerResponse struct {
 	SessionStreak   int              `json:"session_streak,omitempty"`
 	Tier            string           `json:"tier,omitempty"`
 	PrevTier        string           `json:"prev_tier,omitempty"`
+	SceneText       string           `json:"scene_text,omitempty"`
 }
 
 type CreateWordRequest struct {
@@ -105,6 +106,7 @@ type WordDetail struct {
 	Tags            []string  `json:"tags"`
 	NeedsReview     bool      `json:"needs_review"`
 	LearningNewWord bool      `json:"learning_new_word"`
+	SceneText       string    `json:"scene_text,omitempty"`
 }
 
 type ConfusionDetail struct {
@@ -153,15 +155,15 @@ type WordStatsResponse struct {
 }
 
 type WordStatDetail struct {
-	WordID   int64   `json:"word_id"`
-	ZhText   string  `json:"zh_text"`
-	Pinyin   *string `json:"pinyin"`
-	EnTexts  []string `json:"en_texts"`
-	Correct     int     `json:"total_correct"`
-	Attempts    int     `json:"total_attempts"`
-	StreakBonus int     `json:"streak_bonus"`
-	Accuracy    float64 `json:"accuracy"`
-	Easiness float64 `json:"easiness"`
+	WordID      int64    `json:"word_id"`
+	ZhText      string   `json:"zh_text"`
+	Pinyin      *string  `json:"pinyin"`
+	EnTexts     []string `json:"en_texts"`
+	Correct     int      `json:"total_correct"`
+	Attempts    int      `json:"total_attempts"`
+	StreakBonus int      `json:"streak_bonus"`
+	Accuracy    float64  `json:"accuracy"`
+	Easiness    float64  `json:"easiness"`
 }
 
 type DueDateCount struct {
@@ -192,7 +194,7 @@ type HanziDecomposition struct {
 	Radical       string               `json:"radical,omitempty"`
 	Decomposition string               `json:"decomposition,omitempty"`
 	Etymology     *HanziEtymology      `json:"etymology,omitempty"`
-	Components    []HanziDecomposition  `json:"components,omitempty"`
+	Components    []HanziDecomposition `json:"components,omitempty"`
 }
 
 type HanziEtymology struct {
@@ -200,4 +202,126 @@ type HanziEtymology struct {
 	Hint     string `json:"hint,omitempty"`
 	Phonetic string `json:"phonetic,omitempty"`
 	Semantic string `json:"semantic,omitempty"`
+}
+
+// Hanzi Movie Method (HMM) structs
+
+type HMMActor struct {
+	Initial   string `json:"initial"`
+	Category  string `json:"category"`
+	ActorName string `json:"actor_name"`
+	Hint      string `json:"hint"`
+}
+
+type HMMLocation struct {
+	FinalKey     string `json:"final_key"`
+	LocationName string `json:"location_name"`
+}
+
+type HMMToneRoom struct {
+	Tone     int    `json:"tone"`
+	RoomName string `json:"room_name"`
+}
+
+type HMMProp struct {
+	Radical  string `json:"radical"`
+	PropName string `json:"prop_name"`
+}
+
+type HMMScene struct {
+	WordID    int64  `json:"word_id"`
+	SceneText string `json:"scene_text"`
+}
+
+type HMMSceneContext struct {
+	Initial  string       `json:"initial"`
+	Final    string       `json:"final"`
+	Tone     int          `json:"tone"`
+	Radicals []string     `json:"radicals"`
+	Actor    *HMMActor    `json:"actor"`
+	Location *HMMLocation `json:"location"`
+	ToneRoom *HMMToneRoom `json:"tone_room"`
+	Props    []HMMProp    `json:"props"`
+	Scene    *HMMScene    `json:"scene,omitempty"`
+}
+
+type HMMSaveSceneRequest struct {
+	SceneText    string    `json:"scene_text"`
+	ActorName    string    `json:"actor_name"`
+	LocationName string    `json:"location_name"`
+	RoomName     string    `json:"room_name"`
+	Props        []HMMProp `json:"props"`
+	// Pinyin listening training models
+}
+
+const (
+	PinyinModeMultipleChoice = "multiple_choice"
+	PinyinModeTypeAnswer     = "type_answer"
+)
+
+type PinyinSound struct {
+	ID       int64
+	Initial  string // "b", "zh", "" (pure vowels)
+	Final    string // "a", "an", "iao"
+	Tone     int    // 1-4
+	Syllable string // "ba" (without tone number)
+	Filename string // "ba1.mp3"
+	Tag      string // group tag: "b_p_m_f", "zh_ch_sh_r", "vowels"
+}
+
+type PinyinCard struct {
+	SoundID      int64          `json:"sound_id"`
+	Mode         string         `json:"mode"`
+	AudioFile    string         `json:"audio_file"`
+	Options      []PinyinOption `json:"options,omitempty"`
+	DueDate      time.Time      `json:"due_date"`
+	IntervalDays int            `json:"interval_days"`
+	Learning     bool           `json:"learning"`
+}
+
+type PinyinOption struct {
+	SoundID  int64  `json:"sound_id"`
+	Label    string `json:"label"`
+	Syllable string `json:"syllable"`
+	Tone     int    `json:"tone"`
+}
+
+type PinyinAnswerRequest struct {
+	SoundID int64  `json:"sound_id"`
+	Answer  string `json:"answer"`
+	Mode    string `json:"mode"`
+}
+
+type PinyinAnswerResponse struct {
+	Correct       bool                   `json:"correct"`
+	CorrectAnswer string                 `json:"correct_answer"`
+	YourAnswer    string                 `json:"your_answer,omitempty"`
+	NextDue       time.Time              `json:"next_due"`
+	IntervalDays  int                    `json:"interval_days"`
+	TotalCorrect  int                    `json:"total_correct"`
+	TotalAttempts int                    `json:"total_attempts"`
+	StreakBonus   int                    `json:"streak_bonus"`
+	Repetitions   int                    `json:"repetitions"`
+	GraduateReps  int                    `json:"graduate_reps,omitempty"`
+	Learning      bool                   `json:"learning"`
+	Graduated     bool                   `json:"graduated,omitempty"`
+	ConfusedWith  *PinyinConfusionDetail `json:"confused_with,omitempty"`
+	ToneVariants  []PinyinToneVariant    `json:"tone_variants,omitempty"`
+	Tier          string                 `json:"tier,omitempty"`
+	PrevTier      string                 `json:"prev_tier,omitempty"`
+}
+
+type PinyinToneVariant struct {
+	Label    string `json:"label"`
+	Filename string `json:"filename"`
+	Tone     int    `json:"tone"`
+	Current  bool   `json:"current"`
+}
+
+type PinyinConfusionDetail struct {
+	SoundID           int64  `json:"sound_id"`
+	SoundLabel        string `json:"sound_label"`
+	ConfusedWithID    int64  `json:"confused_with_id"`
+	ConfusedWithLabel string `json:"confused_with_label"`
+	Count             int    `json:"count"`
 }

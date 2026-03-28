@@ -93,9 +93,15 @@ Never rename or drop tables.
 | `service/handlers/quiz.go` | `Next`, `Answer`, `Stats` handlers |
 | `service/models/models.go` | All shared structs and mode constants |
 | `service/sm2/sm2.go` | SM-2 algorithm, `CheckAnswer`, `expandVariants`, `normalize` |
+| `service/sm2/pinyin.go` | Pinyin tone mark conversion, answer parsing (`NumberedToToneMark`, `CheckPinyinAnswer`) |
+| `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
+| `service/handlers/pinyin_quiz.go` | `PinyinQuizHandler`: `Next`, `Answer`, `Stats`, `ServeAudio` |
 | `service/cmd/import/main.go` | Standalone vocabulary import tool |
+| `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
 | `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`) |
 | `service/frontend/train.js` | Training page state machine |
+| `service/frontend/pinyin.js` | Pinyin listening training state machine |
+| `service/frontend/pinyin.html` | Pinyin listening training page |
 | `service/frontend/vocab.js` | Vocabulary management logic |
 | `deploy/nginx.conf` | Sample nginx reverse-proxy config |
 | `deploy/vocab-trainer.service` | systemd unit (auto-restarts on binary change via `WatchPaths`) |

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mnemonics — Vocab Trainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <span class="text-xl font-bold text-gray-800" data-i18n="nav.title">词汇训练 · Vocab Trainer</span>
+      <div class="flex gap-4 items-center">
+        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.train">Train</a>
+        <a href="/pinyin" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.pinyin">Pinyin</a>
+        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.vocabulary">Vocabulary</a>
+        <a href="/mnemonics" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5" data-i18n="nav.mnemonics">Mnemonics</a>
+        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mismatches">Mismatches</a>
+        <a href="/stats" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.stats">Stats</a>
+        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="en">🇬🇧 English</option>
+          <option value="zh">🇨🇳 中文</option>
+        </select>
+        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition" data-i18n="nav.signOut">Sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-6">
+
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h1 class="text-xl font-bold text-gray-800 mb-2" data-i18n="mnemonics.title">Hanzi Movie Method</h1>
+      <p class="text-sm text-gray-500 mb-6" data-i18n="mnemonics.desc">Configure your personal mnemonic library. Each Chinese character maps to a movie scene: an <strong>actor</strong> (pinyin initial) in a <strong>location</strong> (pinyin final), in a specific <strong>room</strong> (tone), interacting with <strong>props</strong> (radicals).</p>
+
+      <!-- Actors -->
+      <details open class="mb-6">
+        <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.actors">Actors</span> <span class="text-sm font-normal text-gray-400" data-i18n="mnemonics.actorsDesc">(pinyin initials)</span></summary>
+        <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.actorsHint">Pick a person for each initial. The method suggests choosing people whose names start with the initial sound.</p>
+        <div id="actors-container" class="space-y-4"></div>
+      </details>
+
+      <!-- Locations -->
+      <details class="mb-6">
+        <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.locations">Locations</span> <span class="text-sm font-normal text-gray-400" data-i18n="mnemonics.locationsDesc">(pinyin finals)</span></summary>
+        <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.locationsHint">Pick a familiar place for each final sound. Choose buildings you know intimately.</p>
+        <div id="locations-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </details>
+
+      <!-- Tone Rooms -->
+      <details class="mb-6">
+        <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.toneRooms">Tone Rooms</span> <span class="text-sm font-normal text-gray-400" data-i18n="mnemonics.toneRoomsDesc">(tones 1-5)</span></summary>
+        <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.toneRoomsHint">Each tone maps to a room or area within your location. Defaults follow the Mandarin Blueprint method.</p>
+        <div id="tonerooms-container" class="space-y-2"></div>
+      </details>
+
+      <!-- Props -->
+      <details class="mb-6">
+        <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.propsSection">Props</span> <span class="text-sm font-normal text-gray-400">(radicals &amp; components)</span></summary>
+        <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.propsDesc">Each radical maps to a 3D object (prop). Defaults are provided; override or add new ones below.</p>
+        <div class="flex gap-2 mb-3">
+          <input id="new-prop-radical" type="text" placeholder="Radical" data-i18n-placeholder="mnemonics.propRadicalPlaceholder" class="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <input id="new-prop-name" type="text" placeholder="Prop name" data-i18n-placeholder="mnemonics.propNamePlaceholder" class="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <button id="add-prop-btn" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition" data-i18n="mnemonics.addProp">Add</button>
+        </div>
+        <div id="props-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </details>
+    </div>
+
+  </main>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+  <script src="mnemonics.js"></script>
+</body>
+</html>

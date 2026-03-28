@@ -342,6 +342,41 @@ async function submitAnswer(e) {
 
     loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
 
+    // HMM mnemonic scene display
+    const hmmEl = $('result-hmm');
+    const isSingleChar = [...result.zh_text].length === 1;
+    if (isSingleChar && result.scene_text) {
+      if (!result.correct) {
+        // Wrong answer: auto-show scene
+        renderHMMSceneReadOnly('result-hmm', result.scene_text);
+        show('result-hmm');
+      } else {
+        // Correct answer: collapsed toggle
+        hmmEl.innerHTML = `
+          <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
+          <div id="hmm-toggle-content" class="hidden mt-2"></div>
+        `;
+        show('result-hmm');
+        $('hmm-toggle-btn').addEventListener('click', () => {
+          const content = $('hmm-toggle-content');
+          if (content.classList.contains('hidden')) {
+            renderHMMSceneReadOnly('hmm-toggle-content', result.scene_text);
+            content.classList.remove('hidden');
+            $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
+          } else {
+            content.classList.add('hidden');
+            $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
+          }
+        });
+      }
+    } else if (isSingleChar && !result.scene_text) {
+      hmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
+      show('result-hmm');
+    } else {
+      hmmEl.innerHTML = '';
+      hide('result-hmm');
+    }
+
     $('next-btn').focus();
     await loadStats();
   } catch (err) {

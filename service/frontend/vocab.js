@@ -195,6 +195,16 @@ function openEditForm(word) {
     hide('start-training-row');
   }
 
+  // HMM scene builder for single-character words
+  const hmmContainer = $('hmm-builder-container');
+  if ([...word.zh_text].length === 1 && word.id) {
+    hmmContainer.classList.remove('hidden');
+    loadHMMBuilder('hmm-builder-container', word.id);
+  } else {
+    hmmContainer.classList.add('hidden');
+    hmmContainer.innerHTML = '';
+  }
+
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
   $('form-zh').focus();
 }
@@ -214,6 +224,8 @@ function resetForm() {
   if (notice) notice.remove();
   show('start-training-row');
   $('form-start-training').checked = false;
+  $('hmm-builder-container').classList.add('hidden');
+  $('hmm-builder-container').innerHTML = '';
 }
 
 function addEnInput(value = '') {
@@ -644,6 +656,14 @@ document.addEventListener('DOMContentLoaded', () => {
   loadWords();
   renderTierFilter();
   initTranslateButton();
+
+  // Handle ?edit=<wordId> for deep-linking to edit form (e.g. from training page)
+  const editParam = new URLSearchParams(window.location.search).get('edit');
+  if (editParam) {
+    apiFetch(`/api/words/${editParam}`).then(word => {
+      if (word) openEditForm(word);
+    }).catch(() => {});
+  }
 
   $('hide-unseen-btn').addEventListener('click', () => {
     hideUnseenActive = !hideUnseenActive;
