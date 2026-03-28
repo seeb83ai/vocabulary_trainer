@@ -65,12 +65,14 @@ release:
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../vocab-trainer .
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-hsk ./cmd/import-hsk
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-hanzi ./cmd/import-hanzi
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-pinyin ./cmd/import-pinyin
 	rsync -avz --progress \
 	    Makefile \
 	    dictionary.txt \
 		vocab-trainer \
 		import-hsk \
 		import-hanzi \
+		import-pinyin \
 		.env.example \
 		deploy/vocab-trainer.service \
 		deploy/vocab-trainer-watcher.service \
