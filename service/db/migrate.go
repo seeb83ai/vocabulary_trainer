@@ -223,6 +223,135 @@ UPDATE sm2_progress SET learning_new_word = 0 WHERE total_correct >= 3;`,
 			etymology     TEXT
 		);`,
 	},
+	{
+		version: 11,
+		sql: `
+CREATE TABLE IF NOT EXISTS hmm_actors (
+  initial    TEXT PRIMARY KEY,
+  category   TEXT NOT NULL,
+  actor_name TEXT NOT NULL DEFAULT '',
+  hint       TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS hmm_locations (
+  final_key     TEXT PRIMARY KEY,
+  location_name TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS hmm_tone_rooms (
+  tone      INTEGER PRIMARY KEY,
+  room_name TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS hmm_props (
+  radical   TEXT PRIMARY KEY,
+  prop_name TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS hmm_scenes (
+  word_id    INTEGER PRIMARY KEY REFERENCES words(id) ON DELETE CASCADE,
+  scene_text TEXT NOT NULL DEFAULT ''
+);
+`,
+		fn: func(db *sql.DB) error {
+			// Seed actors by category with naming hints
+			type actorSeed struct{ initial, category, hint string }
+			actors := []actorSeed{
+				// Male (18)
+				{"b", "male", "Name starts with 'B'"}, {"p", "male", "Name starts with 'P'"},
+				{"m", "male", "Name starts with 'M'"}, {"f", "male", "Name starts with 'F'"},
+				{"d", "male", "Name starts with 'D'"}, {"t", "male", "Name starts with 'T'"},
+				{"n", "male", "Name starts with 'N'"}, {"l", "male", "Name starts with 'L'"},
+				{"g", "male", "Name starts with 'G'"}, {"k", "male", "Name starts with 'K'"},
+				{"h", "male", "Name starts with 'H'"}, {"zh", "male", "Name sounds like 'J'"},
+				{"ch", "male", "Name sounds like 'Ch'"}, {"sh", "male", "Name starts with 'Sh'"},
+				{"r", "male", "Name starts with 'R'"}, {"z", "male", "Name starts with 'Z'"},
+				{"c", "male", "Name starts with 'Ts'"}, {"s", "male", "Name starts with 'S'"},
+				// Female (7)
+				{"bi", "female", "Name starts with 'B'"}, {"pi", "female", "Name starts with 'P'"},
+				{"mi", "female", "Name starts with 'M'"}, {"di", "female", "Name starts with 'D'"},
+				{"ti", "female", "Name starts with 'T'"}, {"ni", "female", "Name starts with 'N'"},
+				{"li", "female", "Name starts with 'L'"},
+				// Fictional (3)
+				{"j", "fictional", "Fictional, name starts with 'J'"},
+				{"q", "fictional", "Fictional, name starts with 'Ch'"},
+				{"x", "fictional", "Fictional, name starts with 'Sh'"},
+				// Wildcard (3)
+				{"y", "wildcard", "God or world leader, name starts with 'Y'"},
+				{"w", "wildcard", "God or world leader, name starts with 'W'"},
+				{"null", "wildcard", "Null initial (vowel-only syllables)"},
+			}
+			for _, a := range actors {
+				name := ""
+				if a.initial == "null" {
+					name = "Jackie Chan"
+				}
+				if _, err := db.Exec(
+					`INSERT OR IGNORE INTO hmm_actors (initial, category, actor_name, hint) VALUES (?, ?, ?, ?)`,
+					a.initial, a.category, name, a.hint); err != nil {
+					return fmt.Errorf("seed actor %s: %w", a.initial, err)
+				}
+			}
+
+			// Seed tone rooms with method defaults
+			toneRooms := []struct {
+				tone int
+				name string
+			}{
+				{1, "Outside the entrance"},
+				{2, "Hallway / kitchen"},
+				{3, "Bedroom / living room"},
+				{4, "Bathroom / backyard"},
+				{5, "On the roof"},
+			}
+			for _, tr := range toneRooms {
+				if _, err := db.Exec(
+					`INSERT OR IGNORE INTO hmm_tone_rooms (tone, room_name) VALUES (?, ?)`,
+					tr.tone, tr.name); err != nil {
+					return fmt.Errorf("seed tone room %d: %w", tr.tone, err)
+				}
+			}
+
+			// Seed 13 location finals (empty names)
+			finals := []string{"a", "o", "e", "ai", "ei", "ao", "ou", "an", "ang", "en", "eng", "ong", "null"}
+			for _, f := range finals {
+				if _, err := db.Exec(
+					`INSERT OR IGNORE INTO hmm_locations (final_key, location_name) VALUES (?, '')`, f); err != nil {
+					return fmt.Errorf("seed location %s: %w", f, err)
+				}
+			}
+
+			// Seed default radical→prop mappings
+			type propSeed struct{ radical, prop string }
+			props := []propSeed{
+				{"水", "water"}, {"氵", "water"}, {"木", "tree"}, {"火", "fire"}, {"灬", "fire"},
+				{"土", "earth/dirt"}, {"金", "gold bar"}, {"钅", "gold bar"},
+				{"日", "sun"}, {"月", "moon"}, {"山", "mountain"}, {"石", "rock"},
+				{"人", "person figure"}, {"亻", "person figure"},
+				{"口", "mouth"}, {"目", "eye"}, {"耳", "ear"},
+				{"手", "hand"}, {"扌", "hand"},
+				{"心", "heart"}, {"忄", "heart"},
+				{"足", "foot"}, {"⻊", "foot"},
+				{"女", "woman figure"}, {"子", "child figure"}, {"王", "crown"},
+				{"门", "door"}, {"門", "door"}, {"车", "car"}, {"車", "car"},
+				{"马", "horse"}, {"馬", "horse"}, {"鸟", "bird"}, {"鳥", "bird"},
+				{"鱼", "fish"}, {"魚", "fish"}, {"虫", "bug"},
+				{"犬", "dog"}, {"犭", "dog"}, {"牛", "cow"}, {"羊", "sheep"},
+				{"竹", "bamboo"}, {"⺮", "bamboo"}, {"米", "rice"}, {"禾", "grain"},
+				{"衣", "clothing"}, {"衤", "clothing"}, {"食", "food"}, {"饣", "food"},
+				{"言", "speech bubble"}, {"讠", "speech bubble"},
+				{"刀", "knife"}, {"刂", "knife"}, {"力", "dumbbell"},
+				{"雨", "rain"}, {"风", "wind fan"}, {"風", "wind fan"},
+				{"大", "giant"}, {"小", "tiny figurine"}, {"田", "field/farm"},
+				{"白", "white flag"}, {"黑", "black box"},
+			}
+			for _, p := range props {
+				if _, err := db.Exec(
+					`INSERT OR IGNORE INTO hmm_props (radical, prop_name) VALUES (?, ?)`,
+					p.radical, p.prop); err != nil {
+					return fmt.Errorf("seed prop %s: %w", p.radical, err)
+				}
+			}
+
+			return nil
+		},
+	},
 }
 
 // Migrate runs all pending migrations on the given database.
