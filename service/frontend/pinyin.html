@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pinyin Listening · Vocab Trainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-2xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
+      <div class="flex gap-4 items-center">
+        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium">Train</a>
+        <a href="/pinyin" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5">Pinyin</a>
+        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium">Vocabulary</a>
+        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium">Mismatches</a>
+        <a href="/stats" class="text-gray-500 hover:text-gray-800 font-medium">Stats</a>
+        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition">Sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Stats bar -->
+  <div class="bg-purple-50 border-b border-purple-100">
+    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-6 text-sm text-purple-700">
+      <span class="flex flex-col sm:flex-row sm:gap-1"><span>Due today:</span> <strong id="stats-due">—</strong></span>
+      <span class="flex flex-col sm:flex-row sm:gap-1"><span>Total sounds:</span> <strong id="stats-total">—</strong></span>
+    </div>
+  </div>
+
+  <!-- Tag filter -->
+  <div id="tag-filter-bar" class="bg-white border-b border-gray-200">
+    <div id="tag-chips" class="max-w-2xl mx-auto px-4 py-2 flex gap-2 flex-wrap items-center">
+      <span class="text-xs text-gray-500 font-medium mr-1">Group:</span>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <main class="flex-1 flex items-start justify-center px-4 py-10">
+    <div class="w-full max-w-lg">
+
+      <!-- Empty state -->
+      <div id="empty-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
+        <div class="text-5xl mb-4">🔊</div>
+        <h2 class="text-xl font-semibold text-gray-700 mb-2">No pinyin sounds imported</h2>
+        <p class="text-gray-500 mb-6">Run <code class="bg-gray-100 px-2 py-1 rounded text-sm">make import-pinyin</code> to import audio files.</p>
+      </div>
+
+      <!-- Success state -->
+      <div id="success-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
+        <div class="text-5xl mb-4">🎉</div>
+        <h2 class="text-xl font-semibold text-gray-700 mb-2">All done for now!</h2>
+        <p class="text-gray-500 mb-6">No more pinyin sounds due. Come back later for review.</p>
+      </div>
+
+      <!-- Error state -->
+      <div id="error-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
+        <div class="text-4xl mb-4">⚠️</div>
+        <p id="error-msg" class="text-red-600"></p>
+      </div>
+
+      <!-- Card area -->
+      <div id="card-area" class="hidden">
+        <div class="bg-white rounded-2xl shadow p-8 text-center">
+          <div id="mode-label" class="text-sm font-medium text-purple-600 uppercase tracking-wider mb-6"></div>
+
+          <!-- Play button -->
+          <button id="play-btn" type="button" class="text-6xl text-gray-400 hover:text-purple-500 transition mb-6 mx-auto block" title="Play audio">
+            🔊
+          </button>
+          <p class="text-sm text-gray-400 mb-6">Listen and identify the pinyin sound</p>
+
+          <!-- Multiple choice options -->
+          <div id="mc-options" class="hidden grid grid-cols-2 gap-3 mb-4">
+          </div>
+
+          <!-- Type answer input -->
+          <form id="answer-form" class="hidden mt-4">
+            <input
+              id="answer-input"
+              type="text"
+              autocomplete="off"
+              autocorrect="off"
+              spellcheck="false"
+              placeholder="Type pinyin, e.g. ba1"
+              class="w-full border border-gray-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4 text-center"
+            >
+            <button
+              type="submit"
+              class="w-full bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white font-semibold py-3 rounded-xl text-lg transition"
+            >
+              Submit
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Result area -->
+      <div id="result-area" class="hidden">
+        <div class="bg-white rounded-2xl shadow p-8 text-center">
+          <div id="result-icon" class="text-3xl font-bold mb-4"></div>
+
+          <div id="result-correct-answer" class="text-2xl font-bold text-gray-800 mb-2"></div>
+          <button id="result-play-btn" type="button" class="text-2xl text-gray-400 hover:text-purple-500 transition mb-4" title="Replay">🔊</button>
+
+          <div id="result-your-answer" class="hidden text-gray-500 mb-4"></div>
+          <div id="result-confusion" class="hidden text-sm text-orange-600 mb-4"></div>
+
+          <div class="flex justify-center gap-6 text-sm text-gray-500 mb-8 mt-3">
+            <div class="text-center">
+              <span id="next-due-info"></span>
+              <div id="bucket-info" class="hidden text-xs text-gray-400 mt-0.5"></div>
+            </div>
+            <div class="text-center">
+              <span id="attempt-stats"></span>
+            </div>
+          </div>
+
+          <button
+            id="next-btn"
+            class="w-full bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white font-semibold py-3 rounded-xl text-lg transition"
+          >
+            Next →
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script src="pinyin.js"></script>
+</body>
+</html>

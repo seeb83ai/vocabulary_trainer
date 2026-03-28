@@ -201,3 +201,69 @@ type HanziEtymology struct {
 	Phonetic string `json:"phonetic,omitempty"`
 	Semantic string `json:"semantic,omitempty"`
 }
+
+// Pinyin listening training models
+
+const (
+	PinyinModeMultipleChoice = "multiple_choice"
+	PinyinModeTypeAnswer     = "type_answer"
+)
+
+type PinyinSound struct {
+	ID       int64
+	Initial  string // "b", "zh", "" (pure vowels)
+	Final    string // "a", "an", "iao"
+	Tone     int    // 1-4
+	Syllable string // "ba" (without tone number)
+	Filename string // "ba1.mp3"
+	Tag      string // group tag: "b_p_m_f", "zh_ch_sh_r", "vowels"
+}
+
+type PinyinCard struct {
+	SoundID      int64          `json:"sound_id"`
+	Mode         string         `json:"mode"`
+	AudioFile    string         `json:"audio_file"`
+	Options      []PinyinOption `json:"options,omitempty"`
+	DueDate      time.Time      `json:"due_date"`
+	IntervalDays int            `json:"interval_days"`
+	Learning     bool           `json:"learning"`
+}
+
+type PinyinOption struct {
+	SoundID  int64  `json:"sound_id"`
+	Label    string `json:"label"`
+	Syllable string `json:"syllable"`
+	Tone     int    `json:"tone"`
+}
+
+type PinyinAnswerRequest struct {
+	SoundID int64  `json:"sound_id"`
+	Answer  string `json:"answer"`
+	Mode    string `json:"mode"`
+}
+
+type PinyinAnswerResponse struct {
+	Correct       bool                   `json:"correct"`
+	CorrectAnswer string                 `json:"correct_answer"`
+	YourAnswer    string                 `json:"your_answer,omitempty"`
+	NextDue       time.Time              `json:"next_due"`
+	IntervalDays  int                    `json:"interval_days"`
+	TotalCorrect  int                    `json:"total_correct"`
+	TotalAttempts int                    `json:"total_attempts"`
+	StreakBonus   int                    `json:"streak_bonus"`
+	Repetitions   int                    `json:"repetitions"`
+	GraduateReps  int                    `json:"graduate_reps,omitempty"`
+	Learning      bool                   `json:"learning"`
+	Graduated     bool                   `json:"graduated,omitempty"`
+	ConfusedWith  *PinyinConfusionDetail `json:"confused_with,omitempty"`
+	Tier          string                 `json:"tier,omitempty"`
+	PrevTier      string                 `json:"prev_tier,omitempty"`
+}
+
+type PinyinConfusionDetail struct {
+	SoundID          int64  `json:"sound_id"`
+	SoundLabel       string `json:"sound_label"`
+	ConfusedWithID   int64  `json:"confused_with_id"`
+	ConfusedWithLabel string `json:"confused_with_label"`
+	Count            int    `json:"count"`
+}

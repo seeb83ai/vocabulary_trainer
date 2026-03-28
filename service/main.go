@@ -78,10 +78,16 @@ func main() {
 	}
 	log.Printf("Daily new-word cap: %d (set MAX_NEW_WORDS to change)", maxNewWords)
 
+	pinyinAudioDir := os.Getenv("PINYIN_AUDIO_DIR")
+	if pinyinAudioDir == "" {
+		pinyinAudioDir = filepath.Join(filepath.Dir(dbPath), "pinyin-audio")
+	}
+
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 	hanziH := &handlers.HanziHandler{Store: store}
+	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDir: pinyinAudioDir}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -123,6 +129,11 @@ func main() {
 		r.Get("/mismatches", mismatchH.List)
 		r.Get("/hanzi/decompose", hanziH.Decompose)
 		r.Post("/pinyin", handlers.Pinyin)
+		r.Get("/pinyin-quiz/next", pinyinQuizH.Next)
+		r.Post("/pinyin-quiz/answer", pinyinQuizH.Answer)
+		r.Get("/pinyin-quiz/stats", pinyinQuizH.Stats)
+		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
+		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Get("/config", handlers.Config(translateH != nil))
 		if translateH != nil {
 			r.Post("/translate", translateH.Translate)
@@ -151,6 +162,9 @@ func main() {
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "login.html")
+	})
+	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "pinyin.html")
 	})
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)
