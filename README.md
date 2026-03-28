@@ -22,6 +22,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
 - Bulk import from a structured text file (see `service/cmd/import`)
 - **Character breakdown** — on the training screen, a collapsible "Character breakdown" block appears below each Chinese character; click to reveal radical, definition, etymology hint, and component parts with their meanings (data from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported via `service/cmd/import-hanzi`)
+- **Hanzi Movie Method mnemonics** — for single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorise characters by mapping pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`; compose scenes in the vocabulary edit form; saved scenes appear automatically during training (expanded on wrong answers, collapsed on correct). Choices are remembered globally — set an actor for "b" once and it pre-fills everywhere
 - **Pinyin listening training** — dedicated `/pinyin` page for tone and sound discrimination; hear a pinyin syllable and identify it via multiple choice (learning phase) or typed answer e.g. `ba1` (review phase); SM-2 spaced repetition tracks progress per sound; ~1,600 syllable/tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection; filter by consonant group (b/p/m/f, zh/ch/sh/r, etc.); confusion tracking for commonly mixed-up sounds
 - HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `service/cmd/import-hsk`)
 - Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
@@ -365,6 +366,7 @@ vocabulary_trainer/
 │   │   ├── quiz.go          # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
 │   │   ├── pinyin_quiz.go   # GET /api/pinyin-quiz/next, POST /api/pinyin-quiz/answer, GET /api/pinyin-quiz/stats
 │   │   ├── words.go         # CRUD /api/words + POST /api/words/{id}/translations
+│   │   ├── hmm.go           # Hanzi Movie Method — library CRUD, scene builder, pinyin parsing
 │   │   ├── mismatches.go    # GET /api/mismatches
 │   │   ├── translate.go     # POST /api/translate, GET /api/config — DeepL proxy + pinyin
 │   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
@@ -386,12 +388,15 @@ vocabulary_trainer/
 │       ├── index.html       # Training page
 │       ├── pinyin.html      # Pinyin listening training page
 │       ├── vocab.html       # Vocabulary management page
+│       ├── mnemonics.html   # HMM mnemonic library settings page
 │       ├── mismatches.html  # Confusion pairs page
 │       ├── stats.html       # Training stats page
 │       ├── app.js           # Shared fetch utilities and DOM helpers
 │       ├── train.js         # Training page logic
 │       ├── pinyin.js        # Pinyin listening training logic
 │       ├── vocab.js         # Vocabulary management logic
+│       ├── hmm-builder.js   # Reusable HMM scene builder component
+│       ├── mnemonics.js     # HMM library settings page logic
 │       ├── mismatches.js    # Confusion pairs page logic
 │       └── stats.js         # Training stats page logic
 ├── deploy/
@@ -424,6 +429,18 @@ vocabulary_trainer/
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
 | `GET` | `/api/hanzi/decompose` | Decompose Chinese characters into radicals and components (`chars` query param, max 20) |
+| `GET` | `/api/hmm/actors` | List all HMM actor mappings (pinyin initial → person) |
+| `PUT` | `/api/hmm/actors/{initial}` | Update actor name for an initial |
+| `GET` | `/api/hmm/locations` | List all HMM location mappings (pinyin final → place) |
+| `PUT` | `/api/hmm/locations/{final}` | Update location name for a final |
+| `GET` | `/api/hmm/tone-rooms` | List all HMM tone room mappings (tone → room) |
+| `PUT` | `/api/hmm/tone-rooms/{tone}` | Update room name for a tone |
+| `GET` | `/api/hmm/props` | List all HMM prop mappings (radical → object) |
+| `PUT` | `/api/hmm/props` | Create or update a prop mapping |
+| `DELETE` | `/api/hmm/props/{radical}` | Delete a prop mapping |
+| `GET` | `/api/words/{id}/hmm/context` | Get HMM scene context for a word (parsed pinyin, radicals, library lookups) |
+| `PUT` | `/api/words/{id}/hmm` | Save mnemonic scene and auto-update library |
+| `DELETE` | `/api/words/{id}/hmm` | Delete mnemonic scene |
 | `GET` | `/api/pinyin-quiz/next` | Get the next pinyin sound to study (`tags` query param) |
 | `POST` | `/api/pinyin-quiz/answer` | Submit a pinyin listening answer |
 | `GET` | `/api/pinyin-quiz/stats` | Get pinyin due-today and total counts (`tags` query param) |

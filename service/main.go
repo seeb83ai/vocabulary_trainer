@@ -87,6 +87,7 @@ func main() {
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 	hanziH := &handlers.HanziHandler{Store: store}
+	hmmH := &handlers.HMMHandler{Store: store}
 	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDir: pinyinAudioDir}
 
 	r := chi.NewRouter()
@@ -122,6 +123,9 @@ func main() {
 				r.Delete("/", wordsH.Delete)
 				r.Post("/translations", wordsH.AddTranslation)
 				r.Post("/review", wordsH.MarkReview)
+				r.Get("/hmm/context", hmmH.GetSceneContext)
+				r.Put("/hmm", hmmH.SaveScene)
+				r.Delete("/hmm", hmmH.DeleteScene)
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
@@ -129,6 +133,17 @@ func main() {
 		r.Get("/mismatches", mismatchH.List)
 		r.Get("/hanzi/decompose", hanziH.Decompose)
 		r.Post("/pinyin", handlers.Pinyin)
+		r.Route("/hmm", func(r chi.Router) {
+			r.Get("/actors", hmmH.GetActors)
+			r.Put("/actors/{initial}", hmmH.UpdateActor)
+			r.Get("/locations", hmmH.GetLocations)
+			r.Put("/locations/{final}", hmmH.UpdateLocation)
+			r.Get("/tone-rooms", hmmH.GetToneRooms)
+			r.Put("/tone-rooms/{tone}", hmmH.UpdateToneRoom)
+			r.Get("/props", hmmH.GetProps)
+			r.Put("/props", hmmH.UpsertProp)
+			r.Delete("/props/{radical}", hmmH.DeleteProp)
+		})
 		r.Get("/pinyin-quiz/next", pinyinQuizH.Next)
 		r.Post("/pinyin-quiz/answer", pinyinQuizH.Answer)
 		r.Get("/pinyin-quiz/stats", pinyinQuizH.Stats)
@@ -159,6 +174,9 @@ func main() {
 	})
 	r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "stats.html")
+	})
+	r.Get("/mnemonics", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "mnemonics.html")
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "login.html")

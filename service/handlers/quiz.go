@@ -256,6 +256,8 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		Graduated:       graduated,
 	}
 
+	resp.SceneText, _ = h.Store.GetHMMSceneText(r.Context(), req.WordID)
+
 	if correct {
 		if sessionStreak > 1 {
 			resp.SessionStreak = sessionStreak
