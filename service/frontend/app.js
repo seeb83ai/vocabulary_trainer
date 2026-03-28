@@ -26,6 +26,11 @@ function wordTier(totalCorrect, totalAttempts, learningNewWord, streakBonus) {
   return TIERS[1];
 }
 
+function getModeLabel(mode) {
+  return t('modeLabel.' + mode) || mode;
+}
+
+// Legacy constant kept for backward-compat in mismatches.js
 const MODE_LABELS = {
   'en_to_zh': 'English → Chinese',
   'zh_to_en': 'Chinese → English',
@@ -60,7 +65,21 @@ async function logout() {
 }
 
 // Show the logout button only when auth is enabled.
+// Initialize language selector and apply translations.
 document.addEventListener('DOMContentLoaded', async () => {
+  // Language selector
+  const langSelect = document.getElementById('lang-select');
+  if (langSelect) {
+    langSelect.value = getUILang();
+    applyTranslations();
+    langSelect.addEventListener('change', () => {
+      setUILang(langSelect.value);
+      applyTranslations();
+      // Fire a custom event so page-specific JS can re-render dynamic content
+      document.dispatchEvent(new Event('langchange'));
+    });
+  }
+
   try {
     const res = await fetch('/api/auth/status');
     if (res.ok) {

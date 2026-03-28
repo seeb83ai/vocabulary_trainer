@@ -12,13 +12,17 @@
   <!-- Navigation -->
   <nav class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-4xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-      <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
+      <span class="text-xl font-bold text-gray-800" data-i18n="nav.title">词汇训练 · Vocab Trainer</span>
       <div class="flex gap-4 items-center">
-        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium">Train</a>
-        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium">Vocabulary</a>
-        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium">Mismatches</a>
-        <a href="/stats" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5">Stats</a>
-        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition">Sign out</button>
+        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.train">Train</a>
+        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.vocabulary">Vocabulary</a>
+        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mismatches">Mismatches</a>
+        <a href="/stats" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5" data-i18n="nav.stats">Stats</a>
+        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="en">🇬🇧 English</option>
+          <option value="zh">🇨🇳 中文</option>
+        </select>
+        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition" data-i18n="nav.signOut">Sign out</button>
       </div>
     </div>
   </nav>
@@ -27,16 +31,16 @@
 
     <!-- Chart -->
     <div class="bg-white rounded-2xl shadow p-6">
-      <h2 class="text-lg font-semibold text-gray-800 mb-4">Training History</h2>
-      <div id="chart-empty" class="hidden text-center text-gray-400 py-12">No training data yet. Start a quiz to see your progress!</div>
+      <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.trainingHistory">Training History</h2>
+      <div id="chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noTrainingData">No training data yet. Start a quiz to see your progress!</div>
       <div style="min-height:250px"><canvas id="stats-chart" height="200"></canvas></div>
     </div>
 
     <!-- Bucket Breakdown Chart -->
     <div id="bucket-chart-section" class="hidden bg-white rounded-2xl shadow p-6">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-gray-800">Bucket Breakdown</h2>
-        <button id="bucket-stack-toggle" class="text-sm px-3 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition">Unstacked</button>
+        <h2 class="text-lg font-semibold text-gray-800" data-i18n="stats.bucketBreakdown">Bucket Breakdown</h2>
+        <button id="bucket-stack-toggle" class="text-sm px-3 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition" data-i18n="stats.unstacked">Unstacked</button>
       </div>
       <div style="min-height:250px"><canvas id="bucket-chart" height="200"></canvas></div>
     </div>
@@ -44,35 +48,35 @@
     <!-- Word Count by Due Date -->
     <div class="bg-white rounded-2xl shadow p-6">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-        <h2 class="text-lg font-semibold text-gray-800">Words by Due Date</h2>
+        <h2 class="text-lg font-semibold text-gray-800" data-i18n="stats.wordsByDueDate">Words by Due Date</h2>
         <div id="due-tag-chips" class="flex flex-wrap gap-1.5"></div>
       </div>
-      <div id="due-chart-empty" class="hidden text-center text-gray-400 py-12">No seen words yet.</div>
+      <div id="due-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noSeenWords">No seen words yet.</div>
       <div style="min-height:250px"><canvas id="due-date-chart" height="200"></canvas></div>
     </div>
     
     <!-- Table -->
     <div class="bg-white rounded-2xl shadow p-6">
-      <h2 class="text-lg font-semibold text-gray-800 mb-4">Last 14 Days</h2>
+      <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.last14Days">Last 14 Days</h2>
       <div class="overflow-x-auto">
         <table class="w-full text-sm text-left">
           <thead class="text-gray-500 border-b">
             <tr>
-              <th class="py-2 pr-4">Date</th>
-              <th class="py-2 pr-4 text-right">Attempts</th>
-              <th class="py-2 pr-4 text-right">Mistakes</th>
-              <th class="py-2 pr-4 text-right">Accuracy</th>
-              <th class="py-2 pr-4 text-right">Words Seen</th>
-              <th class="py-2 pr-4 text-right">Best Streak</th>
-              <th class="py-2 pr-4 text-right text-violet-600">New</th>
-              <th class="py-2 pr-4 text-right text-red-600">Struggling</th>
-              <th class="py-2 pr-4 text-right text-amber-600">Learning</th>
-              <th class="py-2 pr-4 text-right text-blue-600">Practicing</th>
-              <th class="py-2 text-right text-green-600">Mastered</th>
+              <th class="py-2 pr-4" data-i18n="stats.date">Date</th>
+              <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
+              <th class="py-2 pr-4 text-right" data-i18n="stats.mistakes">Mistakes</th>
+              <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
+              <th class="py-2 pr-4 text-right" data-i18n="stats.wordsSeen">Words Seen</th>
+              <th class="py-2 pr-4 text-right" data-i18n="stats.bestStreak">Best Streak</th>
+              <th class="py-2 pr-4 text-right text-violet-600" data-i18n="tier.new">New</th>
+              <th class="py-2 pr-4 text-right text-red-600" data-i18n="tier.struggling">Struggling</th>
+              <th class="py-2 pr-4 text-right text-amber-600" data-i18n="tier.learning">Learning</th>
+              <th class="py-2 pr-4 text-right text-blue-600" data-i18n="tier.practicing">Practicing</th>
+              <th class="py-2 text-right text-green-600" data-i18n="tier.mastered">Mastered</th>
             </tr>
           </thead>
           <tbody id="stats-table-body">
-            <tr><td colspan="11" class="py-8 text-center text-gray-400">Loading...</td></tr>
+            <tr><td colspan="11" class="py-8 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
           </tbody>
         </table>
       </div>
@@ -83,7 +87,7 @@
 
       <!-- Accuracy Distribution -->
       <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Accuracy Distribution</h2>
+        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.accuracyDistribution">Accuracy Distribution</h2>
         <div class="flex flex-col sm:flex-row items-center gap-6">
           <div class="w-48 h-48 flex-shrink-0"><canvas id="accuracy-chart"></canvas></div>
           <div id="tier-legend" class="flex-1 text-sm w-full"></div>
@@ -93,37 +97,37 @@
       <!-- Hardest + Most practiced -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div class="bg-white rounded-2xl shadow p-6">
-          <h2 class="text-lg font-semibold text-gray-800 mb-4">Hardest Words</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.hardestWords">Hardest Words</h2>
           <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
               <thead class="text-gray-500 border-b">
                 <tr>
-                  <th class="py-2 pr-4">Word</th>
-                  <th class="py-2 pr-4">Translation</th>
-                  <th class="py-2 pr-4 text-right">Accuracy</th>
-                  <th class="py-2 text-right">Attempts</th>
+                  <th class="py-2 pr-4" data-i18n="stats.word">Word</th>
+                  <th class="py-2 pr-4" data-i18n="stats.translation">Translation</th>
+                  <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
+                  <th class="py-2 text-right" data-i18n="stats.attempts">Attempts</th>
                 </tr>
               </thead>
               <tbody id="hardest-body">
-                <tr><td colspan="4" class="py-4 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colspan="4" class="py-4 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
               </tbody>
             </table>
           </div>
         </div>
         <div class="bg-white rounded-2xl shadow p-6">
-          <h2 class="text-lg font-semibold text-gray-800 mb-4">Most Practiced</h2>
+          <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.mostPracticed">Most Practiced</h2>
           <div class="overflow-x-auto">
             <table class="w-full text-sm text-left">
               <thead class="text-gray-500 border-b">
                 <tr>
-                  <th class="py-2 pr-4">Word</th>
-                  <th class="py-2 pr-4">Translation</th>
-                  <th class="py-2 pr-4 text-right">Attempts</th>
-                  <th class="py-2 text-right">Accuracy</th>
+                  <th class="py-2 pr-4" data-i18n="stats.word">Word</th>
+                  <th class="py-2 pr-4" data-i18n="stats.translation">Translation</th>
+                  <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
+                  <th class="py-2 text-right" data-i18n="stats.accuracy">Accuracy</th>
                 </tr>
               </thead>
               <tbody id="most-practiced-body">
-                <tr><td colspan="4" class="py-4 text-center text-gray-400">Loading...</td></tr>
+                <tr><td colspan="4" class="py-4 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
               </tbody>
             </table>
           </div>
@@ -133,6 +137,7 @@
 
   </main>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
   <script src="stats.js"></script>
 </body>

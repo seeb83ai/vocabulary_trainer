@@ -6,6 +6,10 @@ const MISMATCH_MODE_LABELS = {
   zh_pinyin_to_en: 'ZH + Pinyin → EN',
 };
 
+function getMismatchModeLabel(mode) {
+  return t('mode.' + mode) || MISMATCH_MODE_LABELS[mode] || mode;
+}
+
 function wordCell(text, pinyin, enTexts) {
   const pinyinHtml = pinyin ? `<span class="text-gray-400 text-xs ml-1">${escHtml(pinyin)}</span>` : '';
   const enHtml = enTexts.length ? `<div class="text-gray-500 text-xs mt-0.5">${enTexts.map(escHtml).join(', ')}</div>` : '';
@@ -16,9 +20,9 @@ function formatDate(iso) {
   const d = new Date(iso);
   const diffMs = Date.now() - d.getTime();
   const diffDays = Math.floor(diffMs / 86400000);
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays}d ago`;
+  if (diffDays === 0) return t('mismatches.today');
+  if (diffDays === 1) return t('mismatches.yesterday');
+  if (diffDays < 7) return t('mismatches.daysAgo', { n: diffDays });
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
@@ -38,7 +42,7 @@ async function loadMismatches() {
       tr.innerHTML = `
         <td class="py-3 px-4">${wordCell(item.zh_text, item.zh_pinyin, item.zh_en_texts)}</td>
         <td class="py-3 px-4">${wordCell(item.confused_with_text, item.confused_with_pinyin, item.confused_with_en_texts)}</td>
-        <td class="py-3 px-4 text-gray-500">${escHtml(MISMATCH_MODE_LABELS[item.mode] || item.mode)}</td>
+        <td class="py-3 px-4 text-gray-500">${escHtml(getMismatchModeLabel(item.mode))}</td>
         <td class="py-3 px-4 font-semibold text-gray-700">${item.count}</td>
         <td class="py-3 px-4 text-gray-400">${formatDate(item.last_seen)}</td>`;
       tbody.appendChild(tr);
