@@ -23,9 +23,11 @@ func (s *Store) InsertPinyinSound(ctx context.Context, sound models.PinyinSound)
 	if affected > 0 {
 		id, _ = res.LastInsertId()
 	} else {
-		// Already existed; look up the ID.
+		// Already existed; look up the ID by syllable+tone (filename may differ
+		// for duplicates like de.mp3 vs de5.mp3).
 		if err := s.db.QueryRowContext(ctx,
-			`SELECT id FROM pinyin_sounds WHERE filename = ?`, sound.Filename).Scan(&id); err != nil {
+			`SELECT id FROM pinyin_sounds WHERE syllable = ? AND tone = ?`,
+			sound.Syllable, sound.Tone).Scan(&id); err != nil {
 			return 0, fmt.Errorf("get pinyin sound id: %w", err)
 		}
 	}
