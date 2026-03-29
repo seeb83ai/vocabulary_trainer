@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"time"
 	"vocabulary_trainer/models"
 )
 
@@ -31,8 +32,12 @@ func (s *Store) InsertPinyinSound(ctx context.Context, sound models.PinyinSound)
 			return 0, fmt.Errorf("get pinyin sound id: %w", err)
 		}
 	}
+	// Assign a random past due_date so that when many sounds are imported at
+	// once they don't all share the same timestamp and end up in insertion
+	// (alphabetical) order. Spread over the last hour.
+	dueDate := time.Now().UTC().Add(-time.Duration(rand.Intn(3600)) * time.Second).Format("2006-01-02 15:04:05")
 	_, err = s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO pinyin_progress (sound_id) VALUES (?)`, id)
+		`INSERT OR IGNORE INTO pinyin_progress (sound_id, due_date) VALUES (?, ?)`, id, dueDate)
 	if err != nil {
 		return 0, fmt.Errorf("init pinyin progress: %w", err)
 	}
