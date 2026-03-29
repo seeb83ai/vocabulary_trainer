@@ -15,10 +15,9 @@ function applyModeButtons() {
       ? 'mode-btn px-3 py-1 rounded-full text-sm font-medium transition bg-blue-600 text-white'
       : 'mode-btn px-3 py-1 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
   });
-  // Mobile: update the single visible label from the active desktop button's text
-  const activeBtn = document.querySelector(`.mode-btn[data-mode="${selectedMode}"]`);
+  // Mobile: update the single visible label
   const mobileLabel = document.getElementById('mode-mobile-label');
-  if (mobileLabel && activeBtn) mobileLabel.textContent = activeBtn.textContent;
+  if (mobileLabel) mobileLabel.textContent = t('mode.' + selectedMode);
   // Overlay: apply same active/inactive styling
   document.querySelectorAll('.overlay-mode-btn').forEach(btn => {
     const active = btn.dataset.mode === selectedMode;
@@ -42,10 +41,10 @@ function applyTierPills() {
   if (levelLabel) {
     const tier = TIERS.find(t => t.key === selectedBucket);
     if (tier) {
-      levelLabel.textContent = tier.label;
+      levelLabel.textContent = t('tier.' + tier.label.toLowerCase());
       levelLabel.className = 'px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white';
     } else {
-      levelLabel.textContent = 'All';
+      levelLabel.textContent = t('tier.all');
       levelLabel.className = 'px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600';
     }
   }
@@ -82,7 +81,7 @@ async function loadNextCard() {
   hide('streak-info');
   $('answer-input').value = '';
   const reviewBtn = $('needs-review-btn');
-  reviewBtn.textContent = 'Flag for Review';
+  reviewBtn.textContent = t('result.flagReview');
   reviewBtn.disabled = false;
   reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
   reviewBtn.onclick = null;
@@ -100,7 +99,7 @@ async function loadNextCard() {
     }
     if (latestStats.due_today === 0 && (!latestStats.new_available || skipNewWords)) {
       skipNewWords = false;
-      setText('success-stats', `${latestStats.today_attempts} attempts · ${latestStats.today_mistakes} mistakes`);
+      setText('success-stats', t('stats.attemptsAndMistakes', { attempts: latestStats.today_attempts, mistakes: latestStats.today_mistakes }));
       document.querySelectorAll('.advance-btn').forEach(btn => {
         btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);
       });
@@ -131,7 +130,7 @@ async function loadNextCard() {
       if (!stats || stats.total === 0) {
         show('empty-state');
       } else {
-        setText('success-stats', `${stats.today_attempts} attempts · ${stats.today_mistakes} mistakes`);
+        setText('success-stats', t('stats.attemptsAndMistakes', { attempts: stats.today_attempts, mistakes: stats.today_mistakes }));
         document.querySelectorAll('.advance-btn').forEach(btn => {
           btn.disabled = stats.available_to_advance < parseInt(btn.dataset.advance);
         });
@@ -163,7 +162,7 @@ async function loadNextCard() {
 
 function showCard() {
   show('card-area');
-  setText('mode-label', MODE_LABELS[currentCard.mode] || currentCard.mode);
+  setText('mode-label', getModeLabel(currentCard.mode));
   setText('prompt-word', currentCard.prompt);
 
   // Show play button only when the prompt is Chinese
@@ -216,10 +215,10 @@ async function submitAnswer(e) {
 
     const icon = $('result-icon');
     if (result.correct) {
-      icon.textContent = '✓ Correct!';
+      icon.textContent = t('result.correct');
       icon.className = 'text-3xl font-bold text-green-600 mb-4';
     } else {
-      icon.textContent = '✗ Wrong';
+      icon.textContent = t('result.wrong');
       icon.className = 'text-3xl font-bold text-red-600 mb-4';
     }
 
@@ -228,7 +227,7 @@ async function submitAnswer(e) {
     const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
     const correctBox = `
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
-        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">Correct</div>
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('result.correctLabel'))}</div>
         <div class="flex items-center gap-2">
           <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
           <button class="btn-breakdown-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
@@ -241,12 +240,12 @@ async function submitAnswer(e) {
       const cw = result.confused_with;
       const yourAnswerHtml = isEmpty ? '' : `
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
-            <div class="text-xs text-red-400 uppercase tracking-wide mb-1">Your answer</div>
+            <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
             <div class="text-lg font-medium text-red-700">${escHtml(answer)}</div>
           </div>`;
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
-            <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">Your answer belongs to</div>
+            <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
             <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
             <div class="text-gray-500 text-sm mt-0.5">${(cw.confused_with_en_texts || []).map(escHtml).join(' · ')}</div>
           </div>` : '';
@@ -261,7 +260,7 @@ async function submitAnswer(e) {
 
       if (!isEmpty) {
         const addBtn = $('add-translation-btn');
-        addBtn.textContent = `Add "${answer}" as correct answer`;
+        addBtn.textContent = t('result.addTranslation', { answer });
         addBtn.disabled = false;
         addBtn.className = 'mt-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
         show('add-translation-btn');
@@ -273,7 +272,7 @@ async function submitAnswer(e) {
               method: 'POST',
               body: JSON.stringify({ en_text: answer }),
             });
-            addBtn.textContent = '✓ Added';
+            addBtn.textContent = t('result.added');
             addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
           } catch (err) {
             addBtn.disabled = false;
@@ -300,7 +299,7 @@ async function submitAnswer(e) {
       }
 
       if (!result.learning_new_word && result.repetitions > 1) {
-        $('streak-info').textContent = `Streak: ${result.repetitions}`;
+        $('streak-info').textContent = t('result.streak', { n: result.repetitions });
         show('streak-info');
       } else {
         hide('streak-info');
@@ -308,32 +307,32 @@ async function submitAnswer(e) {
     }
 
     if (result.graduated) {
-      setText('next-due-info', 'Graduated! Word is now in the regular review queue.');
+      setText('next-due-info', t('result.graduated'));
     } else if (result.learning_new_word) {
-      setText('next-due-info', `Learning — get ${result.graduate_reps} correct in a row to graduate`);
+      setText('next-due-info', t('result.learning', { n: result.graduate_reps }));
     } else {
-      setText('next-due-info', `Next review in ${result.interval_days} day(s)`);
+      setText('next-due-info', t('result.nextReview', { n: result.interval_days }));
     }
     if (result.graduated) {
       setText('attempt-stats', ``);
     } else if (result.learning_new_word) {
-      setText('attempt-stats', `Streak: ${result.repetitions} / ${result.graduate_reps}`);
+      setText('attempt-stats', t('result.streakProgress', { n: result.repetitions, total: result.graduate_reps }));
     } else {
       const eff = result.total_correct + (result.streak_bonus || 0);
       setText('attempt-stats',
-        `Correct: ${eff} / ${result.total_attempts}` +
-        (result.streak_bonus > 0 ? ` (+${result.streak_bonus} streak bonus)` : ''));
+        t('result.correctStats', { eff, total: result.total_attempts }) +
+        (result.streak_bonus > 0 ? ` (${t('result.streakBonus', { n: result.streak_bonus })})` : ''));
     }
 
     const reviewBtn = $('needs-review-btn');
-    reviewBtn.textContent = 'Flag for Review';
+    reviewBtn.textContent = t('result.flagReview');
     reviewBtn.disabled = false;
     reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
     reviewBtn.onclick = async () => {
       reviewBtn.disabled = true;
       try {
         await apiFetch(`/api/words/${currentCard.word_id}/review`, { method: 'POST' });
-        reviewBtn.textContent = '✓ Flagged';
+        reviewBtn.textContent = t('result.flagged');
         reviewBtn.className = 'w-full mb-3 border border-orange-200 text-orange-400 font-medium py-2 rounded-xl text-sm';
       } catch (err) {
         reviewBtn.disabled = false;
@@ -354,7 +353,7 @@ async function submitAnswer(e) {
       } else {
         // Correct answer: collapsed toggle
         hmmEl.innerHTML = `
-          <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; Show mnemonic</button>
+          <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
           <div id="hmm-toggle-content" class="hidden mt-2"></div>
         `;
         show('result-hmm');
@@ -363,15 +362,15 @@ async function submitAnswer(e) {
           if (content.classList.contains('hidden')) {
             renderHMMSceneReadOnly('hmm-toggle-content', result.scene_text);
             content.classList.remove('hidden');
-            $('hmm-toggle-btn').innerHTML = '&#9660; Hide mnemonic';
+            $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
           } else {
             content.classList.add('hidden');
-            $('hmm-toggle-btn').innerHTML = '&#9654; Show mnemonic';
+            $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
           }
         });
       }
     } else if (isSingleChar && !result.scene_text) {
-      hmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ Create mnemonic scene</a>`;
+      hmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
       show('result-hmm');
     } else {
       hmmEl.innerHTML = '';
@@ -391,7 +390,7 @@ function renderCharDecomposition(charData) {
   html += `<div class="flex items-baseline gap-2 mb-1">`;
   html += `<span class="text-2xl font-bold">${escHtml(charData.character)}</span>`;
   if (charData.radical) {
-    html += `<span class="text-sm text-gray-400">radical: ${escHtml(charData.radical)}</span>`;
+    html += `<span class="text-sm text-gray-400">${escHtml(t('decompose.radical', { r: charData.radical }))}</span>`;
   }
   if (charData.definition) {
     html += `<span class="text-sm text-gray-500">${escHtml(charData.definition)}</span>`;
@@ -430,13 +429,14 @@ async function loadDecomposition(zhText, containerId, toggleId) {
 
     content.innerHTML = data.map(renderCharDecomposition).join('');
 
+    toggle.innerHTML = `&#9654; ${escHtml(t('result.charBreakdown'))}`;
     toggle.onclick = () => {
       if (content.classList.contains('hidden')) {
         content.classList.remove('hidden');
-        toggle.innerHTML = '&#9660; Character breakdown';
+        toggle.innerHTML = `&#9660; ${escHtml(t('result.charBreakdown'))}`;
       } else {
         content.classList.add('hidden');
-        toggle.innerHTML = '&#9654; Character breakdown';
+        toggle.innerHTML = `&#9654; ${escHtml(t('result.charBreakdown'))}`;
       }
     };
   } catch (_) {}
@@ -603,6 +603,12 @@ document.addEventListener('DOMContentLoaded', () => {
       hide('success-state');
       loadNextCard();
     });
+  });
+
+  // Re-render dynamic text when language changes
+  document.addEventListener('langchange', () => {
+    applyModeButtons();
+    applyTierPills();
   });
 
   loadNextCard();

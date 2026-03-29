@@ -39,7 +39,7 @@ async function loadTags() {
     // "All" button
     const allBtn = document.createElement('button');
     allBtn.className = 'tag-btn px-2.5 py-0.5 rounded-full text-xs font-medium transition';
-    allBtn.textContent = 'All';
+    allBtn.textContent = t('pinyin.all');
     allBtn.dataset.tag = '';
     container.appendChild(allBtn);
 
@@ -98,7 +98,7 @@ async function loadNextCard() {
 function showCard() {
   if (!currentCard) return;
 
-  setText('mode-label', currentCard.mode === 'multiple_choice' ? 'Listen & Choose' : 'Listen & Type');
+  setText('mode-label', t(currentCard.mode === 'multiple_choice' ? 'pinyin.listenChoose' : 'pinyin.listenType'));
 
   // Setup play button
   $('play-btn').onclick = () => playPinyinAudio(currentCard.audio_file);
@@ -162,10 +162,10 @@ function showResult(resp) {
 
   // Icon
   if (resp.correct) {
-    setText('result-icon', '✅ Correct!');
+    setText('result-icon', t('pinyin.correct'));
     $('result-icon').className = 'text-3xl font-bold mb-4 text-green-600';
   } else {
-    setText('result-icon', '❌ Wrong');
+    setText('result-icon', t('pinyin.wrong'));
     $('result-icon').className = 'text-3xl font-bold mb-4 text-red-500';
   }
 
@@ -194,7 +194,7 @@ function showResult(resp) {
 
   // Your answer (type mode only)
   if (resp.your_answer) {
-    $('result-your-answer').innerHTML = `Your answer: <strong>${escHtml(resp.your_answer)}</strong>`;
+    $('result-your-answer').innerHTML = `${t('pinyin.yourAnswer')}: <strong>${escHtml(resp.your_answer)}</strong>`;
     show('result-your-answer');
   } else {
     hide('result-your-answer');
@@ -202,8 +202,9 @@ function showResult(resp) {
 
   // Confusion info
   if (resp.confused_with) {
-    setText('result-confusion',
-      `Confused with ${resp.confused_with.confused_with_label} (${resp.confused_with.count} time${resp.confused_with.count > 1 ? 's' : ''})`);
+    const count = resp.confused_with.count;
+    const key = count > 1 ? 'pinyin.confusedWith' : 'pinyin.confusedWithOnce';
+    setText('result-confusion', t(key, { label: resp.confused_with.confused_with_label, n: count }));
     show('result-confusion');
   } else {
     hide('result-confusion');
@@ -211,12 +212,12 @@ function showResult(resp) {
 
   // Progress info
   if (resp.learning) {
-    setText('next-due-info', `Learning — get ${resp.graduate_reps} correct`);
+    setText('next-due-info', t('pinyin.learning', { n: resp.graduate_reps }));
   } else if (resp.interval_days > 0) {
     const days = resp.interval_days;
-    setText('next-due-info', `Next review in ${days} day${days !== 1 ? 's' : ''}`);
+    setText('next-due-info', t('pinyin.nextReview', { n: days }));
   } else {
-    setText('next-due-info', 'Due again soon');
+    setText('next-due-info', t('pinyin.dueSoon'));
   }
 
   // Tier transition

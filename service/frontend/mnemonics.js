@@ -1,18 +1,18 @@
 // Mnemonics settings page — HMM library management
 
 const CATEGORY_STYLES = {
-  male:       { label: 'Male',       border: 'border-l-blue-500',   bg: 'bg-blue-50',   text: 'text-blue-700'   },
-  female:     { label: 'Female',     border: 'border-l-pink-500',   bg: 'bg-pink-50',   text: 'text-pink-700'   },
-  fictional:  { label: 'Fictional',  border: 'border-l-green-500',  bg: 'bg-green-50',  text: 'text-green-700'  },
-  wildcard:   { label: 'Wildcard',   border: 'border-l-purple-500', bg: 'bg-purple-50', text: 'text-purple-700' },
+  male:       { i18nKey: 'mnemonics.cat.male',       border: 'border-l-blue-500',   bg: 'bg-blue-50',   text: 'text-blue-700'   },
+  female:     { i18nKey: 'mnemonics.cat.female',     border: 'border-l-pink-500',   bg: 'bg-pink-50',   text: 'text-pink-700'   },
+  fictional:  { i18nKey: 'mnemonics.cat.fictional',  border: 'border-l-green-500',  bg: 'bg-green-50',  text: 'text-green-700'  },
+  wildcard:   { i18nKey: 'mnemonics.cat.wildcard',   border: 'border-l-purple-500', bg: 'bg-purple-50', text: 'text-purple-700' },
 };
 
-const TONE_LABELS = {
-  1: '1st tone (ā) — high level',
-  2: '2nd tone (á) — rising',
-  3: '3rd tone (ǎ) — dipping',
-  4: '4th tone (à) — falling',
-  5: '5th tone · neutral',
+const TONE_LABEL_KEYS = {
+  1: 'mnemonics.tone1',
+  2: 'mnemonics.tone2',
+  3: 'mnemonics.tone3',
+  4: 'mnemonics.tone4',
+  5: 'mnemonics.tone5',
 };
 
 // ── Auto-save helper ────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ const TONE_LABELS = {
 function flashSaved(el) {
   const indicator = el.parentElement.querySelector('.save-indicator');
   if (indicator) {
-    indicator.textContent = 'Saved';
+    indicator.textContent = t('mnemonics.saved');
     indicator.classList.remove('hidden');
     setTimeout(() => indicator.classList.add('hidden'), 1200);
   }
@@ -54,7 +54,7 @@ async function loadActors() {
 
     const section = document.createElement('div');
     section.className = `border-l-4 ${style.border} pl-4 mb-4`;
-    section.innerHTML = `<div class="text-sm font-semibold ${style.text} mb-2">${style.label} <span class="font-normal text-gray-400">(${items.length})</span></div>`;
+    section.innerHTML = `<div class="text-sm font-semibold ${style.text} mb-2">${t(style.i18nKey)} <span class="font-normal text-gray-400">(${items.length})</span></div>`;
 
     const grid = document.createElement('div');
     grid.className = 'grid grid-cols-1 sm:grid-cols-2 gap-2';
@@ -67,7 +67,7 @@ async function loadActors() {
         <input type="text" value="${escHtml(actor.actor_name)}" placeholder="${escHtml(actor.hint)}"
           class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           data-initial="${escHtml(actor.initial)}">
-        <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0">Saved</span>
+        <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
       `;
       const input = row.querySelector('input');
       autoSaveInput(input, async (el) => {
@@ -77,7 +77,7 @@ async function loadActors() {
             body: JSON.stringify({ actor_name: el.value }),
           });
           flashSaved(el);
-        } catch (e) { alert('Save failed: ' + e.message); }
+        } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
       });
       grid.appendChild(row);
     }
@@ -103,7 +103,7 @@ async function loadLocations() {
       <input type="text" value="${escHtml(loc.location_name)}" placeholder="${escHtml(placeholder)}"
         class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         data-final="${escHtml(loc.final_key)}">
-      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0">Saved</span>
+      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
     `;
     const input = row.querySelector('input');
     autoSaveInput(input, async (el) => {
@@ -113,7 +113,7 @@ async function loadLocations() {
           body: JSON.stringify({ location_name: el.value }),
         });
         flashSaved(el);
-      } catch (e) { alert('Save failed: ' + e.message); }
+      } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
     });
     container.appendChild(row);
   }
@@ -130,11 +130,11 @@ async function loadToneRooms() {
     const row = document.createElement('div');
     row.className = 'flex items-center gap-2';
     row.innerHTML = `
-      <span class="w-48 text-sm text-gray-600 shrink-0">${escHtml(TONE_LABELS[room.tone] || 'Tone ' + room.tone)}</span>
+      <span class="w-48 text-sm text-gray-600 shrink-0">${escHtml(TONE_LABEL_KEYS[room.tone] ? t(TONE_LABEL_KEYS[room.tone]) : t('hmm.tone', {n: room.tone}))}</span>
       <input type="text" value="${escHtml(room.room_name)}" placeholder="Room or area..."
         class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         data-tone="${room.tone}">
-      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0">Saved</span>
+      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
     `;
     const input = row.querySelector('input');
     autoSaveInput(input, async (el) => {
@@ -144,7 +144,7 @@ async function loadToneRooms() {
           body: JSON.stringify({ room_name: el.value }),
         });
         flashSaved(el);
-      } catch (e) { alert('Save failed: ' + e.message); }
+      } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
     });
     container.appendChild(row);
   }
@@ -169,7 +169,7 @@ function renderProps(props) {
       <input type="text" value="${escHtml(prop.prop_name)}" placeholder="3D object..."
         class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         data-radical="${escHtml(prop.radical)}">
-      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0">Saved</span>
+      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
       <button class="text-gray-300 hover:text-red-500 text-sm transition shrink-0" data-radical="${escHtml(prop.radical)}" title="Delete">&times;</button>
     `;
     const input = row.querySelector('input');
@@ -180,15 +180,15 @@ function renderProps(props) {
           body: JSON.stringify({ radical: el.dataset.radical, prop_name: el.value }),
         });
         flashSaved(el);
-      } catch (e) { alert('Save failed: ' + e.message); }
+      } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
     });
     row.querySelector('button').addEventListener('click', async (e) => {
       const radical = e.target.dataset.radical;
-      if (!confirm(`Delete prop for "${radical}"?`)) return;
+      if (!confirm(t('mnemonics.deleteProp', { radical }))) return;
       try {
         await apiFetch(`/api/hmm/props/${encodeURIComponent(radical)}`, { method: 'DELETE' });
         row.remove();
-      } catch (err) { alert('Delete failed: ' + err.message); }
+      } catch (err) { alert(t('mnemonics.deleteFailed') + ': ' + err.message); }
     });
     container.appendChild(row);
   }
@@ -198,7 +198,7 @@ function setupAddProp() {
   $('add-prop-btn').addEventListener('click', async () => {
     const radical = $('new-prop-radical').value.trim();
     const name = $('new-prop-name').value.trim();
-    if (!radical) { alert('Radical is required'); return; }
+    if (!radical) { alert(t('mnemonics.propRequired')); return; }
     try {
       await apiFetch('/api/hmm/props', {
         method: 'PUT',
@@ -207,7 +207,7 @@ function setupAddProp() {
       $('new-prop-radical').value = '';
       $('new-prop-name').value = '';
       await loadProps();
-    } catch (e) { alert('Failed to add prop: ' + e.message); }
+    } catch (e) { alert(t('mnemonics.addFailed') + ': ' + e.message); }
   });
 }
 
@@ -223,3 +223,6 @@ async function init() {
 }
 
 init();
+
+// Re-render when UI language changes
+document.addEventListener('langchange', () => init());

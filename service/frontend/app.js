@@ -2,11 +2,11 @@
 
 // Accuracy/attempt tier definitions — mirrors the progressive mode ladder.
 const TIERS = [
-  { key: 'new',    label: 'New',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700' },
-  { key: '0-49',   label: 'Struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700'    },
-  { key: '50-69',  label: 'Learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700' },
-  { key: '70-84',  label: 'Practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700'   },
-  { key: '85-100', label: 'Mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700' },
+  { key: 'new',    label: 'New',        i18nKey: 'tier.new',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700' },
+  { key: '0-49',   label: 'Struggling', i18nKey: 'tier.struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700'    },
+  { key: '50-69',  label: 'Learning',   i18nKey: 'tier.learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700' },
+  { key: '70-84',  label: 'Practicing', i18nKey: 'tier.practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700'   },
+  { key: '85-100', label: 'Mastered',   i18nKey: 'tier.mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700' },
 ];
 
 // Returns the TIERS entry for a word, or null for brand-new words (0 attempts).
@@ -26,6 +26,11 @@ function wordTier(totalCorrect, totalAttempts, learningNewWord, streakBonus) {
   return TIERS[1];
 }
 
+function getModeLabel(mode) {
+  return t('modeLabel.' + mode) || mode;
+}
+
+// Legacy constant kept for backward-compat in mismatches.js
 const MODE_LABELS = {
   'en_to_zh': 'English → Chinese',
   'zh_to_en': 'Chinese → English',
@@ -60,7 +65,21 @@ async function logout() {
 }
 
 // Show the logout button only when auth is enabled.
+// Initialize language selector and apply translations.
 document.addEventListener('DOMContentLoaded', async () => {
+  // Language selector
+  const langSelect = document.getElementById('lang-select');
+  if (langSelect) {
+    langSelect.value = getUILang();
+    applyTranslations();
+    langSelect.addEventListener('change', () => {
+      setUILang(langSelect.value);
+      applyTranslations();
+      // Fire a custom event so page-specific JS can re-render dynamic content
+      document.dispatchEvent(new Event('langchange'));
+    });
+  }
+
   try {
     const res = await fetch('/api/auth/status');
     if (res.ok) {

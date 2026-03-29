@@ -11,15 +11,19 @@
   <!-- Navigation -->
   <nav class="bg-white shadow-sm border-b border-gray-200">
     <div class="max-w-4xl mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-      <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
+      <span class="text-xl font-bold text-gray-800" data-i18n="nav.title">词汇训练 · Vocab Trainer</span>
       <div class="flex gap-4 items-center">
-        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium">Train</a>
-        <a href="/pinyin" class="text-gray-500 hover:text-gray-800 font-medium">Pinyin</a>
-        <a href="/vocab" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5">Vocabulary</a>
-        <a href="/mnemonics" class="text-gray-500 hover:text-gray-800 font-medium">Mnemonics</a>
-        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium">Mismatches</a>
-        <a href="/stats" class="text-gray-500 hover:text-gray-800 font-medium">Stats</a>
-        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition">Sign out</button>
+        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.train">Train</a>
+        <a href="/pinyin" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.pinyin">Pinyin</a>
+        <a href="/vocab" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5" data-i18n="nav.vocabulary">Vocabulary</a>
+        <a href="/mnemonics" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mnemonics">Mnemonics</a>
+        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mismatches">Mismatches</a>
+        <a href="/stats" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.stats">Stats</a>
+        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="en">🇬🇧</option>
+          <option value="zh">🇨🇳</option>
+        </select>
+        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition" data-i18n="nav.signOut">Sign out</button>
       </div>
     </div>
   </nav>
@@ -28,17 +32,17 @@
 
     <!-- Add / Edit form -->
     <div id="word-form-panel" class="bg-white rounded-2xl shadow p-6">
-      <h2 id="form-title" class="text-lg font-semibold text-gray-800 mb-4">Add Word</h2>
+      <h2 id="form-title" class="text-lg font-semibold text-gray-800 mb-4" data-i18n="vocab.addWord">Add Word</h2>
       <form id="word-form" class="space-y-4">
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Chinese</label>
-            <input id="form-zh" type="text" placeholder="e.g. 你好"
+            <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.chinese">Chinese</label>
+            <input id="form-zh" type="text" placeholder="e.g. 你好" data-i18n-placeholder="vocab.zhPlaceholder"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Pinyin</label>
-            <input id="form-pinyin" type="text" placeholder="e.g. nǐ hǎo"
+            <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.pinyin">Pinyin</label>
+            <input id="form-pinyin" type="text" placeholder="e.g. nǐ hǎo" data-i18n-placeholder="vocab.pinyinPlaceholder"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
         </div>
@@ -46,24 +50,24 @@
         <div>
           <button type="button" id="translate-btn"
             class="hidden text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1 rounded-lg border border-blue-200 hover:border-blue-400 transition">
-            Auto-translate
+            <span data-i18n="vocab.autoTranslate">Auto-translate</span>
           </button>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">English Translation(s)</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.englishTranslations">English Translation(s)</label>
           <div id="en-inputs-container" class="space-y-2"></div>
           <button type="button" id="add-en-btn"
             class="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
-            + Add translation
+            <span data-i18n="vocab.addTranslation">+ Add translation</span>
           </button>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.tags">Tags</label>
           <div id="form-tags" class="flex flex-wrap gap-1 mb-2"></div>
           <div class="relative">
-            <input id="form-tag-input" type="text" placeholder="Add tag…"
+            <input id="form-tag-input" type="text" placeholder="Add tag…" data-i18n-placeholder="vocab.addTag"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               autocomplete="off">
             <div id="tag-autocomplete" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto"></div>
@@ -73,16 +77,18 @@
         <div id="start-training-row" class="flex items-center gap-2">
           <input type="checkbox" id="form-start-training"
             class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-          <label for="form-start-training" class="text-sm text-gray-700">Start training immediately</label>
+          <label for="form-start-training" class="text-sm text-gray-700" data-i18n="vocab.startTraining">Start training immediately</label>
         </div>
 
         <div class="flex gap-3 pt-2">
           <button type="submit"
-            class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition">
+            class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition"
+            data-i18n="vocab.save">
             Save
           </button>
           <button type="button" id="form-cancel-btn"
-            class="hidden text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition">
+            class="hidden text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+            data-i18n="vocab.cancel">
             Cancel
           </button>
         </div>
@@ -94,8 +100,8 @@
     <div class="bg-white rounded-2xl shadow overflow-hidden">
       <div class="px-4 sm:px-6 py-4 border-b border-gray-200 space-y-3">
         <div class="flex items-center gap-3">
-          <h2 class="text-lg font-semibold text-gray-800 flex-1">Vocabulary List</h2>
-          <input id="search-input" type="search" placeholder="Search…"
+          <h2 class="text-lg font-semibold text-gray-800 flex-1" data-i18n="vocab.listTitle">Vocabulary List</h2>
+          <input id="search-input" type="search" placeholder="Search…" data-i18n-placeholder="vocab.search"
             class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-36 sm:w-52">
           <button id="download-btn" title="Download vocabulary"
             class="p-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition flex-none">
@@ -108,40 +114,44 @@
         </div>
         <div class="flex flex-wrap gap-2">
           <button id="hide-unseen-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-blue-400 bg-blue-50 text-blue-600">
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-blue-400 bg-blue-50 text-blue-600"
+            data-i18n="vocab.hideUnseen">
             Hide Unseen
           </button>
           <button id="review-filter-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
+            data-i18n="vocab.needsReview">
             Needs Review
           </button>
           <button id="due-today-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
+            data-i18n="vocab.dueToday">
             Due Today
           </button>
           <button id="due-tomorrow-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100">
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
+            data-i18n="vocab.dueTomorrow">
             Due Tomorrow
           </button>
         </div>
       </div>
       <div id="filter-tier-bar" class="px-4 sm:px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
-        <span class="text-xs text-gray-500 font-medium mr-1">Level:</span>
+        <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.level">Level:</span>
       </div>
       <div id="filter-tags-bar" class="hidden px-4 sm:px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
-        <span class="text-xs text-gray-500 font-medium mr-1">Tags:</span>
+        <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.tags">Tags:</span>
       </div>
 
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
             <tr>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="zh">Chinese <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="pinyin">Pinyin <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="en">English <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="accuracy">Level <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="due_date">Due <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left">Actions</th>
+              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="zh"><span data-i18n="vocab.chinese">Chinese</span> <span class="sort-indicator"></span></th>
+              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="pinyin"><span data-i18n="vocab.pinyin">Pinyin</span> <span class="sort-indicator"></span></th>
+              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="en"><span data-i18n="vocab.english">English</span> <span class="sort-indicator"></span></th>
+              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="accuracy"><span data-i18n="vocab.level">Level</span> <span class="sort-indicator"></span></th>
+              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="due_date"><span data-i18n="vocab.due">Due</span> <span class="sort-indicator"></span></th>
+              <th class="py-3 px-4 text-left" data-i18n="vocab.actions">Actions</th>
             </tr>
           </thead>
           <tbody id="words-tbody"></tbody>
@@ -164,9 +174,9 @@
         <div class="flex items-center gap-3 flex-none">
           <span id="page-total" class="text-gray-500"></span>
           <select id="per-page-select" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="20">20 / page</option>
-            <option value="50">50 / page</option>
-            <option value="100">100 / page</option>
+            <option value="20" data-i18n-after="vocab.perPage">20 / page</option>
+            <option value="50" data-i18n-after="vocab.perPage">50 / page</option>
+            <option value="100" data-i18n-after="vocab.perPage">100 / page</option>
           </select>
         </div>
       </div>
@@ -177,38 +187,38 @@
   <!-- Download modal -->
   <div id="download-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
     <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-5">
-      <h3 class="text-lg font-semibold text-gray-800">Download Vocabulary</h3>
+      <h3 class="text-lg font-semibold text-gray-800" data-i18n="download.title">Download Vocabulary</h3>
       <div>
-        <p class="text-sm font-medium text-gray-700 mb-2">Columns</p>
+        <p class="text-sm font-medium text-gray-700 mb-2" data-i18n="download.columns">Columns</p>
         <div class="grid grid-cols-2 gap-y-2 gap-x-4">
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="dl-col-zh" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Chinese
+            <input type="checkbox" id="dl-col-zh" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> <span data-i18n="vocab.chinese">Chinese</span>
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="dl-col-pinyin" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Pinyin
+            <input type="checkbox" id="dl-col-pinyin" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> <span data-i18n="vocab.pinyin">Pinyin</span>
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="dl-col-en" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Translations
+            <input type="checkbox" id="dl-col-en" checked class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> <span data-i18n="download.translations">Translations</span>
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="dl-col-tags" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Tags
+            <input type="checkbox" id="dl-col-tags" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> <span data-i18n="vocab.tags">Tags</span>
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="dl-col-tier" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Level
+            <input type="checkbox" id="dl-col-tier" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> <span data-i18n="vocab.level">Level</span>
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="dl-col-accuracy" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Accuracy
+            <input type="checkbox" id="dl-col-accuracy" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> <span data-i18n="download.accuracy">Accuracy</span>
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="dl-col-attempts" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Attempts
+            <input type="checkbox" id="dl-col-attempts" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> <span data-i18n="download.attempts">Attempts</span>
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" id="dl-col-due" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> Due Date
+            <input type="checkbox" id="dl-col-due" class="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"> <span data-i18n="download.dueDate">Due Date</span>
           </label>
         </div>
       </div>
       <div>
-        <p class="text-sm font-medium text-gray-700 mb-2">Format</p>
+        <p class="text-sm font-medium text-gray-700 mb-2" data-i18n="download.format">Format</p>
         <div class="flex flex-wrap gap-x-5 gap-y-2">
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
             <input type="radio" name="dl-format" value="csv" checked class="w-4 h-4 text-blue-600 focus:ring-blue-500"> CSV
@@ -220,23 +230,26 @@
             <input type="radio" name="dl-format" value="json" class="w-4 h-4 text-blue-600 focus:ring-blue-500"> JSON
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="radio" name="dl-format" value="txt" class="w-4 h-4 text-blue-600 focus:ring-blue-500"> Plain text
+            <input type="radio" name="dl-format" value="txt" class="w-4 h-4 text-blue-600 focus:ring-blue-500"> <span data-i18n="download.plainText">Plain text</span>
           </label>
         </div>
       </div>
       <div class="flex gap-3 pt-1">
         <button id="dl-confirm-btn"
-          class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition">
+          class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition"
+          data-i18n="download.download">
           Download
         </button>
         <button id="dl-cancel-btn"
-          class="text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition">
+          class="text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+          data-i18n="vocab.cancel">
           Cancel
         </button>
       </div>
     </div>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
   <script src="hmm-builder.js"></script>
   <script src="vocab.js"></script>

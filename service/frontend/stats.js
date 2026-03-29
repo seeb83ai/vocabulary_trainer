@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     data = await apiFetch('/api/quiz/daily-stats');
   } catch (e) {
     $('stats-table-body').innerHTML =
-      '<tr><td colspan="11" class="py-8 text-center text-red-500">Failed to load stats.</td></tr>';
+      `<tr><td colspan="11" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
     return;
   }
 
@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('stats-chart').style.display = 'none';
     show('chart-empty');
     $('stats-table-body').innerHTML =
-      '<tr><td colspan="11" class="py-8 text-center text-gray-400">No training data yet.</td></tr>';
+      `<tr><td colspan="11" class="py-8 text-center text-gray-400">${escHtml(t('stats.noTrainingDataShort'))}</td></tr>`;
   } else {
     renderChart(days);
     renderBucketChart(days);
@@ -43,19 +43,19 @@ function renderChart(days) {
       labels,
       datasets: [
         {
-          label: 'Correct',
+          label: t('chart.correct'),
           data: days.map(d => d.attempts - d.mistakes),
           backgroundColor: 'rgba(34, 197, 94, 0.7)',
           stack: 'answers',
         },
         {
-          label: 'Mistakes',
+          label: t('chart.mistakes'),
           data: days.map(d => d.mistakes),
           backgroundColor: 'rgba(239, 68, 68, 0.7)',
           stack: 'answers',
         },
         {
-          label: 'Words Seen',
+          label: t('chart.wordsSeen'),
           data: days.map(d => d.words_seen),
           type: 'line',
           borderColor: 'rgba(168, 85, 247, 0.9)',
@@ -72,11 +72,11 @@ function renderChart(days) {
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
-        y: { beginAtZero: true, title: { display: true, text: 'Answers' }, stacked: true },
+        y: { beginAtZero: true, title: { display: true, text: t('stats.answers') }, stacked: true },
         y1: {
           beginAtZero: true,
           position: 'right',
-          title: { display: true, text: 'Words' },
+          title: { display: true, text: t('stats.words') },
           grid: { drawOnChartArea: false },
         },
       },
@@ -109,7 +109,7 @@ function renderBucketChart(days) {
   const toggle = $('bucket-stack-toggle');
   toggle.addEventListener('click', () => {
     _bucketStacked = !_bucketStacked;
-    toggle.textContent = _bucketStacked ? 'Unstacked' : 'Stacked';
+    toggle.textContent = _bucketStacked ? t('stats.unstacked') : t('stats.stacked');
     drawBucketChart(days);
   });
 
@@ -129,11 +129,11 @@ function drawBucketChart(days) {
     data: {
       labels,
       datasets: [
-        { label: 'Mastered',   data: days.map(d => d.bucket_mastered   || 0), backgroundColor: '#22c55eb3', borderColor: '#22c55e', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
-        { label: 'Practicing', data: days.map(d => d.bucket_practicing || 0), backgroundColor: '#3b82f6b3', borderColor: '#3b82f6', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
-        { label: 'Learning',   data: days.map(d => d.bucket_learning   || 0), backgroundColor: '#f59e0bb3', borderColor: '#f59e0b', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
-        { label: 'Struggling', data: days.map(d => d.bucket_struggling || 0), backgroundColor: '#ef4444b3', borderColor: '#ef4444', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
-        { label: 'New',        data: days.map(d => d.bucket_new        || 0), backgroundColor: '#8b5cf6b3', borderColor: '#8b5cf6', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: t('tier.mastered'),   data: days.map(d => d.bucket_mastered   || 0), backgroundColor: '#22c55eb3', borderColor: '#22c55e', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: t('tier.practicing'), data: days.map(d => d.bucket_practicing || 0), backgroundColor: '#3b82f6b3', borderColor: '#3b82f6', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: t('tier.learning'),   data: days.map(d => d.bucket_learning   || 0), backgroundColor: '#f59e0bb3', borderColor: '#f59e0b', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: t('tier.struggling'), data: days.map(d => d.bucket_struggling || 0), backgroundColor: '#ef4444b3', borderColor: '#ef4444', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
+        { label: t('tier.new'),        data: days.map(d => d.bucket_new        || 0), backgroundColor: '#8b5cf6b3', borderColor: '#8b5cf6', fill: _bucketStacked, tension: 0.3, pointRadius: 2 },
       ],
     },
     options: {
@@ -148,7 +148,7 @@ function drawBucketChart(days) {
           callbacks: {
             footer(items) {
               const total = items.reduce((s, i) => s + i.raw, 0);
-              return `Total: ${total}`;
+              return t('stats.total', { n: total });
             },
           },
         },
@@ -162,7 +162,7 @@ function renderTable(days) {
   const recent = days.slice(-14).reverse();
   const tbody = $('stats-table-body');
   if (recent.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="11" class="py-8 text-center text-gray-400">No data in the last 14 days.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-400">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
     return;
   }
   tbody.innerHTML = recent.map(d => {
@@ -192,7 +192,7 @@ function renderWordStats(ws) {
   new Chart(aCtx, {
     type: 'doughnut',
     data: {
-      labels: TIERS.map(t => t.label),
+      labels: TIERS.map(tier => t('tier.' + tier.label.toLowerCase())),
       datasets: [{
         data: aData,
         backgroundColor: TIERS.map(t => t.color + 'b3'),
@@ -207,7 +207,7 @@ function renderWordStats(ws) {
             label(ctx) {
               const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
               const pct = total > 0 ? Math.round(ctx.raw / total * 100) : 0;
-              return `${ctx.label}: ${ctx.raw} words (${pct}%)`;
+              return `${ctx.label}: ${t('stats.wordsCount', { count: ctx.raw, pct })}`;
             },
           },
         },
@@ -218,14 +218,14 @@ function renderWordStats(ws) {
   // Tier legend
   const legend = $('tier-legend');
   const total = aData.reduce((a, b) => a + b, 0);
-  legend.innerHTML = TIERS.map((t, i) => {
+  legend.innerHTML = TIERS.map((tier, i) => {
     const count = aData[i];
     const pct = total > 0 ? Math.round(count / total * 100) : 0;
     return `<div class="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
       <div class="flex items-center gap-2">
-        <span class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${t.color}"></span>
-        <span class="font-medium text-gray-700">${t.label}</span>
-        <span class="text-gray-400 text-xs">${t.desc}</span>
+        <span class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${tier.color}"></span>
+        <span class="font-medium text-gray-700">${escHtml(t('tier.' + tier.label.toLowerCase()))}</span>
+        <span class="text-gray-400 text-xs">${escHtml(tier.desc)}</span>
       </div>
       <span class="text-gray-600 tabular-nums">${count} <span class="text-gray-400">(${pct}%)</span></span>
     </div>`;
@@ -240,7 +240,7 @@ function renderWordStats(ws) {
 function renderWordTable(tbodyId, words, cols) {
   const tbody = $(tbodyId);
   if (!words || words.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-gray-400">Not enough data yet.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-400">${escHtml(t('stats.notEnoughData'))}</td></tr>`;
     return;
   }
   tbody.innerHTML = words.map(w => {
@@ -329,7 +329,7 @@ async function loadDueDateChart() {
 
 function renderDueDateChart(dates) {
   const today = new Date().toISOString().slice(0, 10);
-  const labels = dates.map(d => d.date === today ? 'Today' : formatDateLabel(d.date));
+  const labels = dates.map(d => d.date === today ? t('stats.today') : formatDateLabel(d.date));
   const colors = dates.map(d => {
     if (d.date <= today) return 'rgba(239, 68, 68, 0.7)';   // overdue/today = red
     return 'rgba(59, 130, 246, 0.7)';                        // future = blue
@@ -341,7 +341,7 @@ function renderDueDateChart(dates) {
     data: {
       labels,
       datasets: [{
-        label: 'Words',
+        label: t('stats.words'),
         data: dates.map(d => d.count),
         backgroundColor: colors,
       }],
