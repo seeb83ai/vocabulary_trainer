@@ -251,8 +251,70 @@ type HMMSaveSceneRequest struct {
 	LocationName string    `json:"location_name"`
 	RoomName     string    `json:"room_name"`
 	Props        []HMMProp `json:"props"`
-	// Pinyin listening training models
 }
+
+// HMM quiz models
+
+const (
+	HMMEntityActor    = "actor"
+	HMMEntityLocation = "location"
+	HMMEntityToneRoom = "tone_room"
+	HMMEntityProp     = "prop"
+)
+
+type HMMProgress struct {
+	EntityType    string
+	EntityKey     string
+	Repetitions   int
+	Easiness      float64
+	IntervalDays  int
+	DueDate       time.Time
+	TotalCorrect  int
+	TotalAttempts int
+	Learning      bool
+	StreakBonus   int
+	FirstSeenDate string // raw date string, "" if NULL
+}
+
+type HMMQuizCard struct {
+	EntityType   string    `json:"entity_type"`
+	EntityKey    string    `json:"entity_key"`
+	Prompt       string    `json:"prompt"`
+	Category     string    `json:"category,omitempty"`
+	Hint         string    `json:"hint,omitempty"`
+	DueDate      time.Time `json:"due_date"`
+	IntervalDays int       `json:"interval_days"`
+	Learning     bool      `json:"learning"`
+}
+
+type HMMAnswerRequest struct {
+	EntityType string `json:"entity_type"`
+	EntityKey  string `json:"entity_key"`
+	Answer     string `json:"answer"`
+}
+
+type HMMAnswerResponse struct {
+	Correct       bool      `json:"correct"`
+	CorrectAnswer string    `json:"correct_answer"`
+	YourAnswer    string    `json:"your_answer,omitempty"`
+	NextDue       time.Time `json:"next_due"`
+	IntervalDays  int       `json:"interval_days"`
+	TotalCorrect  int       `json:"total_correct"`
+	TotalAttempts int       `json:"total_attempts"`
+	StreakBonus   int       `json:"streak_bonus"`
+	Repetitions   int       `json:"repetitions"`
+	Learning      bool      `json:"learning"`
+	Graduated     bool      `json:"graduated,omitempty"`
+	Tier          string    `json:"tier,omitempty"`
+	PrevTier      string    `json:"prev_tier,omitempty"`
+}
+
+type HMMQuizStats struct {
+	DueToday int `json:"due_today"`
+	Total    int `json:"total"`
+}
+
+// Pinyin listening training models
 
 const (
 	PinyinModeMultipleChoice = "multiple_choice"
