@@ -67,6 +67,22 @@ async function logout() {
 // Show the logout button only when auth is enabled.
 // Initialize language selector and apply translations.
 document.addEventListener('DOMContentLoaded', async () => {
+  // Mobile hamburger menu toggle
+  const navBtn = document.getElementById('nav-menu-btn');
+  const navMenu = document.getElementById('nav-menu');
+  if (navBtn && navMenu) {
+    navBtn.addEventListener('click', () => {
+      const isHidden = navMenu.classList.contains('hidden');
+      if (isHidden) {
+        navMenu.classList.remove('hidden');
+        navMenu.classList.add('flex', 'flex-col', 'gap-3', 'w-full', 'pt-3', 'mt-1', 'border-t', 'border-gray-100');
+      } else {
+        navMenu.classList.add('hidden');
+        navMenu.classList.remove('flex', 'flex-col', 'gap-3', 'w-full', 'pt-3', 'mt-1', 'border-t', 'border-gray-100');
+      }
+    });
+  }
+
   // Language selector
   const langSelect = document.getElementById('lang-select');
   if (langSelect) {
