@@ -98,15 +98,23 @@ function renderEditableBuilder(container, wordId, ctx) {
   const propMap = {};
   for (const p of (ctx.props || [])) propMap[p.radical] = p.prop_name;
 
-  let propsHtml = '';
+  // Track which props existed on load so we can DELETE removed ones
+  const originalPropRadicals = new Set((ctx.props || []).map(p => p.radical));
+  const deletedRadicals = new Set();
+
+  const propRowClass = 'flex items-center gap-2 hmm-prop-row';
+  const propInputClass = 'hmm-prop-input flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400';
+  const removeBtnClass = 'hmm-remove-prop text-gray-300 hover:text-red-400 text-xl leading-none px-1 transition shrink-0';
+
+  let propsRowsHtml = '';
   for (const rad of allRadicals) {
     const pName = propMap[rad] || '';
-    propsHtml += `
-      <div class="flex items-center gap-2">
+    propsRowsHtml += `
+      <div class="${propRowClass}" data-radical="${escHtml(rad)}">
         <span class="w-8 text-center text-lg shrink-0">${escHtml(rad)}</span>
         <input type="text" value="${escHtml(pName)}" placeholder="${escHtml(t('hmm.propPlaceholder', {rad}))}"
-          class="hmm-prop-input flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
-          data-radical="${escHtml(rad)}">
+          class="${propInputClass}">
+        <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
       </div>`;
   }
 
@@ -140,7 +148,7 @@ function renderEditableBuilder(container, wordId, ctx) {
         <p><span class="inline-block w-2 h-2 rounded-full ${dotClass}"></span> ${escHtml(t('hmm.helpActor', { cat: catLabel.toLowerCase(), initial: initialDisplay }))}</p>
         <p>${escHtml(t('hmm.helpLocation', { final: finalDisplay }))}</p>
         <p>${escHtml(t('hmm.helpRoom', { tone: ctx.tone || '?' }))}</p>
-        ${allRadicals.length ? `<p>${escHtml(t('hmm.helpProps'))}</p>` : ''}
+        <p>${escHtml(t('hmm.helpProps'))}</p>
         <p class="text-gray-400 mt-1">${escHtml(t('hmm.helpTip'))}</p>
       </div>
 
@@ -172,7 +180,13 @@ function renderEditableBuilder(container, wordId, ctx) {
         </div>
       </div>
 
-      ${propsHtml ? `<div class="space-y-1"><div class="text-xs text-gray-400">${t('hmm.props')} <span class="text-gray-300">(${t('hmm.propsDesc')})</span></div>${propsHtml}</div>` : ''}
+      <div class="space-y-1">
+        <div class="flex items-center justify-between">
+          <div class="text-xs text-gray-400">${t('hmm.props')} <span class="text-gray-300">(${t('hmm.propsDesc')})</span></div>
+          <button id="hmm-add-prop" class="text-xs text-purple-500 hover:text-purple-700 transition">${t('hmm.addProp')}</button>
+        </div>
+        <div id="hmm-props-list" class="space-y-1">${propsRowsHtml}</div>
+      </div>
 
       <div id="hmm-prompt-line" class="text-xs text-gray-500 italic"></div>
 
@@ -203,15 +217,53 @@ function renderEditableBuilder(container, wordId, ctx) {
   container.querySelectorAll('input').forEach(el => el.addEventListener('input', updatePrompt));
   updatePrompt();
 
+  // Remove prop row (delegated)
+  container.querySelector('#hmm-props-list').addEventListener('click', e => {
+    if (!e.target.classList.contains('hmm-remove-prop')) return;
+    const row = e.target.closest('.hmm-prop-row');
+    if (!row) return;
+    const rad = row.dataset.radical;
+    if (rad && originalPropRadicals.has(rad)) deletedRadicals.add(rad);
+    row.remove();
+    updatePrompt();
+  });
+
+  // Add new prop row
+  document.getElementById('hmm-add-prop').addEventListener('click', () => {
+    const list = document.getElementById('hmm-props-list');
+    const row = document.createElement('div');
+    row.className = propRowClass;
+    row.innerHTML = `
+      <input type="text" placeholder="${escHtml(t('hmm.propRadicalPlaceholder'))}"
+        class="hmm-prop-radical w-10 text-center text-lg border border-gray-200 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 shrink-0">
+      <input type="text" placeholder="${escHtml(t('hmm.propPlaceholderNew'))}"
+        class="${propInputClass}">
+      <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
+    `;
+    list.appendChild(row);
+    row.querySelectorAll('input').forEach(el => el.addEventListener('input', updatePrompt));
+    row.querySelector('.hmm-prop-radical').focus();
+  });
+
   // Save handler
   document.getElementById('hmm-save-btn').addEventListener('click', async () => {
     const btn = document.getElementById('hmm-save-btn');
     btn.disabled = true;
     try {
-      const props = [...container.querySelectorAll('.hmm-prop-input')].map(el => ({
-        radical: el.dataset.radical,
-        prop_name: el.value.trim(),
-      }));
+      // Delete removed props
+      for (const rad of deletedRadicals) {
+        await apiFetch(`/api/hmm/props/${encodeURIComponent(rad)}`, { method: 'DELETE' });
+      }
+      deletedRadicals.clear();
+
+      // Collect remaining props (decomposition rows use data-radical; new rows use the radical input)
+      const props = [...container.querySelectorAll('.hmm-prop-row')].map(row => {
+        const radInput = row.querySelector('.hmm-prop-radical');
+        const radical = radInput ? radInput.value.trim() : row.dataset.radical;
+        const prop_name = row.querySelector('.hmm-prop-input')?.value.trim() || '';
+        return { radical, prop_name };
+      }).filter(p => p.radical);
+
       await apiFetch(`/api/words/${wordId}/hmm`, {
         method: 'PUT',
         body: JSON.stringify({
