@@ -128,13 +128,15 @@ async function loadToneRooms() {
 
   for (const room of rooms) {
     const row = document.createElement('div');
-    row.className = 'flex items-center gap-2';
+    row.className = 'flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2';
     row.innerHTML = `
-      <span class="w-48 text-sm text-gray-600 shrink-0">${escHtml(TONE_LABEL_KEYS[room.tone] ? t(TONE_LABEL_KEYS[room.tone]) : t('hmm.tone', {n: room.tone}))}</span>
-      <input type="text" value="${escHtml(room.room_name)}" placeholder="Room or area..."
-        class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        data-tone="${room.tone}">
-      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
+      <span class="text-xs text-gray-500 sm:w-48 sm:shrink-0">${escHtml(TONE_LABEL_KEYS[room.tone] ? t(TONE_LABEL_KEYS[room.tone]) : t('hmm.tone', {n: room.tone}))}</span>
+      <div class="flex items-center gap-2 w-full">
+        <input type="text" value="${escHtml(room.room_name)}" placeholder="Room or area..."
+          class="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          data-tone="${room.tone}">
+        <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
+      </div>
     `;
     const input = row.querySelector('input');
     autoSaveInput(input, async (el) => {

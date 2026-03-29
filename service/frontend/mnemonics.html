@@ -60,10 +60,12 @@
       <details class="mb-6">
         <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.propsSection">Props</span> <span class="text-sm font-normal text-gray-400">(radicals &amp; components)</span></summary>
         <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.propsDesc">Each radical maps to a 3D object (prop). Defaults are provided; override or add new ones below.</p>
-        <div class="flex gap-2 mb-3">
-          <input id="new-prop-radical" type="text" placeholder="Radical" data-i18n-placeholder="mnemonics.propRadicalPlaceholder" class="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <input id="new-prop-name" type="text" placeholder="Prop name" data-i18n-placeholder="mnemonics.propNamePlaceholder" class="flex-1 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <button id="add-prop-btn" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition" data-i18n="mnemonics.addProp">Add</button>
+        <div class="flex flex-col sm:flex-row gap-2 mb-3">
+          <div class="flex gap-2">
+            <input id="new-prop-radical" type="text" placeholder="Radical" data-i18n-placeholder="mnemonics.propRadicalPlaceholder" class="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input id="new-prop-name" type="text" placeholder="Prop name" data-i18n-placeholder="mnemonics.propNamePlaceholder" class="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <button id="add-prop-btn" class="w-full sm:w-auto px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition" data-i18n="mnemonics.addProp">Add</button>
         </div>
         <div id="props-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       </details>
