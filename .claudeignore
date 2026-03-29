@@ -1,0 +1,20 @@
+# Hanzi decomposition dataset — 2.5 MB, only used by import-hanzi CLI
+dictionary.txt
+
+# Sample vocabulary data — not needed for code tasks
+chinese_a1.txt
+
+# npm lockfile — not useful to agents
+package-lock.json
+
+# Images (binary)
+images/
+
+# Deployment config — rarely needed
+deploy/
+
+# Environment example
+.env.example
+
+# Shell scripts
+*.sh

@@ -106,3 +106,11 @@ Never rename or drop tables.
 | `deploy/nginx.conf` | Sample nginx reverse-proxy config |
 | `deploy/vocab-trainer.service` | systemd unit (auto-restarts on binary change via `WatchPaths`) |
 | `.github/workflows/test.yml` | CI: runs Go + JS tests on every push/PR |
+
+## Large files — do not read proactively
+
+| File | Why to skip |
+|---|---|
+| `dictionary.txt` | 2.5 MB hanzi dataset; only needed by `service/cmd/import-hanzi` |
+| `package-lock.json` | npm lockfile; never needed for code tasks |
+| `chinese_a1.txt` | Sample vocabulary import data; not needed for code tasks |
