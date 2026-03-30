@@ -5,6 +5,33 @@
 //   loadHMMBuilder('container-id', wordId, {readOnly:true}) — read-only display
 //   renderHMMSceneReadOnly('container-id', sceneText)  — static scene text display
 
+// IDS operators: symbol → [label-key, arity]
+const IDS_OPERATORS = [
+  { op: '⿰', key: 'hmm.ids.lr',   arity: 2 },
+  { op: '⿱', key: 'hmm.ids.tb',   arity: 2 },
+  { op: '⿸', key: 'hmm.ids.ulFrame', arity: 2 },
+  { op: '⿺', key: 'hmm.ids.llFrame', arity: 2 },
+  { op: '⿹', key: 'hmm.ids.rFrame',  arity: 2 },
+  { op: '⿴', key: 'hmm.ids.encl',    arity: 2 },
+  { op: '⿵', key: 'hmm.ids.enclB',   arity: 2 },
+  { op: '⿶', key: 'hmm.ids.enclT',   arity: 2 },
+  { op: '⿷', key: 'hmm.ids.enclR',   arity: 2 },
+  { op: '⿻', key: 'hmm.ids.over',    arity: 2 },
+  { op: '⿲', key: 'hmm.ids.lrr',     arity: 3 },
+  { op: '⿳', key: 'hmm.ids.tbb',     arity: 3 },
+];
+
+function buildIDSPicker(selectedOp) {
+  const btnBase = 'hmm-ids-btn inline-flex flex-col items-center px-1.5 py-0.5 rounded text-xs border transition';
+  const btnOff  = 'border-gray-200 text-gray-500 hover:border-purple-300 hover:text-purple-600 bg-white';
+  const btnOn   = 'border-purple-500 text-purple-700 bg-purple-50';
+  const buttons = IDS_OPERATORS.map(({ op, key }) => {
+    const sel = op === selectedOp ? btnOn : btnOff;
+    return `<button type="button" class="${btnBase} ${sel}" data-op="${escHtml(op)}" title="${escHtml(t(key))}">${escHtml(op)}<span class="text-gray-400 text-[9px] leading-tight">${escHtml(t(key))}</span></button>`;
+  }).join('');
+  return `<div class="hmm-ids-picker flex flex-wrap gap-1">${buttons}</div>`;
+}
+
 const HMM_CATEGORY_DOTS = {
   male:      'bg-blue-500',
   female:    'bg-pink-500',
@@ -228,19 +255,36 @@ function renderEditableBuilder(container, wordId, ctx) {
     updatePrompt();
   });
 
-  // Add new prop row
+  // Add new prop row (with IDS operator picker)
   document.getElementById('hmm-add-prop').addEventListener('click', () => {
     const list = document.getElementById('hmm-props-list');
     const row = document.createElement('div');
-    row.className = propRowClass;
+    row.className = 'hmm-prop-row space-y-1';
     row.innerHTML = `
-      <input type="text" placeholder="${escHtml(t('hmm.propRadicalPlaceholder'))}"
-        class="hmm-prop-radical w-10 text-center text-lg border border-gray-200 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 shrink-0">
-      <input type="text" placeholder="${escHtml(t('hmm.propPlaceholderNew'))}"
-        class="${propInputClass}">
-      <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
+      <div class="flex items-center gap-2">
+        <input type="text" placeholder="${escHtml(t('hmm.propRadicalPlaceholder'))}"
+          class="hmm-prop-radical w-10 text-center text-lg border border-gray-200 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 shrink-0">
+        <input type="text" placeholder="${escHtml(t('hmm.propPlaceholderNew'))}"
+          class="${propInputClass}">
+        <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
+      </div>
+      <div class="pl-12">
+        <div class="text-xs text-gray-400 mb-1">${escHtml(t('hmm.idsPickerLabel'))}</div>
+        ${buildIDSPicker('⿰')}
+      </div>
     `;
     list.appendChild(row);
+    // IDS button toggle
+    row.querySelectorAll('.hmm-ids-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        row.querySelectorAll('.hmm-ids-btn').forEach(b => {
+          b.classList.remove('border-purple-500', 'text-purple-700', 'bg-purple-50');
+          b.classList.add('border-gray-200', 'text-gray-500', 'bg-white');
+        });
+        btn.classList.remove('border-gray-200', 'text-gray-500', 'bg-white');
+        btn.classList.add('border-purple-500', 'text-purple-700', 'bg-purple-50');
+      });
+    });
     row.querySelectorAll('input').forEach(el => el.addEventListener('input', updatePrompt));
     row.querySelector('.hmm-prop-radical').focus();
   });
@@ -261,7 +305,9 @@ function renderEditableBuilder(container, wordId, ctx) {
         const radInput = row.querySelector('.hmm-prop-radical');
         const radical = radInput ? radInput.value.trim() : row.dataset.radical;
         const prop_name = row.querySelector('.hmm-prop-input')?.value.trim() || '';
-        return { radical, prop_name };
+        const activeIdsBtn = row.querySelector('.hmm-ids-btn.border-purple-500');
+        const ids_op = activeIdsBtn ? activeIdsBtn.dataset.op : '';
+        return { radical, prop_name, ids_op };
       }).filter(p => p.radical);
 
       await apiFetch(`/api/words/${wordId}/hmm`, {

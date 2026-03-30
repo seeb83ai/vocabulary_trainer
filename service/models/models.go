@@ -226,6 +226,7 @@ type HMMToneRoom struct {
 type HMMProp struct {
 	Radical  string `json:"radical"`
 	PropName string `json:"prop_name"`
+	IDSOp    string `json:"ids_op,omitempty"` // IDS operator for new props (write-only, not stored in hmm_props)
 }
 
 type HMMScene struct {
