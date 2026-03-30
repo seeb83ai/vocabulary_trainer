@@ -44,6 +44,12 @@ type QuizCard struct {
 	DueDate         time.Time `json:"due_date"`
 	IntervalDays    int       `json:"interval_days"`
 	LearningNewWord bool      `json:"learning_new_word"`
+	// HMM mnemonic card fields (card_type="hmm"); zero-value for word cards.
+	CardType   string `json:"card_type,omitempty"`
+	EntityType string `json:"entity_type,omitempty"`
+	EntityKey  string `json:"entity_key,omitempty"`
+	Category   string `json:"category,omitempty"`
+	Hint       string `json:"hint,omitempty"`
 }
 
 type AnswerRequest struct {

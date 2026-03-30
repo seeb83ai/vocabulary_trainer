@@ -150,9 +150,7 @@ func main() {
 		r.Get("/pinyin-quiz/stats", pinyinQuizH.Stats)
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
-		r.Get("/hmm-quiz/next", hmmQuizH.Next)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
-		r.Get("/hmm-quiz/stats", hmmQuizH.Stats)
 		r.Get("/config", handlers.Config(translateH != nil))
 		if translateH != nil {
 			r.Post("/translate", translateH.Translate)
@@ -187,9 +185,6 @@ func main() {
 	})
 	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "pinyin.html")
-	})
-	r.Get("/hmm-quiz", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "hmm-quiz.html")
 	})
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)

@@ -304,6 +304,13 @@ const I18N = {
     'pinyin.dueSoon': 'Due again soon',
     'pinyin.all': 'All',
 
+    // HMM mnemonic cards in word training
+    'hmm.modeLabel': 'Mnemonic',
+    'hmm.type.actor': 'Actor',
+    'hmm.type.location': 'Location',
+    'hmm.type.tone_room': 'Tone Room',
+    'hmm.type.prop': 'Prop',
+
     // HMM mnemonic quiz page
     'hmm.dueToday': 'Due today:',
     'hmm.totalEntries': 'Total entries:',
@@ -618,6 +625,13 @@ const I18N = {
     'pinyin.nextReview': '{n} 天后复习',
     'pinyin.dueSoon': '即将再次到期',
     'pinyin.all': '全部',
+
+    // HMM mnemonic cards in word training
+    'hmm.modeLabel': '记忆法',
+    'hmm.type.actor': '演员',
+    'hmm.type.location': '场所',
+    'hmm.type.tone_room': '声调房间',
+    'hmm.type.prop': '道具',
 
     // HMM mnemonic quiz page
     'hmm.dueToday': '今日待复习：',
