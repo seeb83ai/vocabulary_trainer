@@ -1,5 +1,12 @@
 // Training page logic
 
+const HMM_TYPE_COLORS = {
+  actor:     'bg-purple-100 text-purple-700',
+  location:  'bg-blue-100 text-blue-700',
+  tone_room: 'bg-amber-100 text-amber-700',
+  prop:      'bg-emerald-100 text-emerald-700',
+};
+
 let currentCard = null;
 let isSubmitted = false;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
@@ -59,7 +66,7 @@ async function loadStats() {
     const statsUrl = qs ? `/api/quiz/stats?${qs}` : '/api/quiz/stats';
     const stats = await apiFetch(statsUrl);
     latestStats = stats;
-    setText('stats-due', stats.due_today);
+    setText('stats-due', stats.due_today + (stats.hmm_due_today || 0));
     setText('stats-total', stats.total);
     setText('stats-new', `${stats.new_today} / ${stats.max_new_per_day}`);
   } catch (_) {}
@@ -97,7 +104,7 @@ async function loadNextCard() {
       show('empty-state');
       return;
     }
-    if (latestStats.due_today === 0 && (!latestStats.new_available || skipNewWords)) {
+    if (latestStats.due_today === 0 && (latestStats.hmm_due_today || 0) === 0 && (!latestStats.new_available || skipNewWords)) {
       skipNewWords = false;
       setText('success-stats', t('stats.attemptsAndMistakes', { attempts: latestStats.today_attempts, mistakes: latestStats.today_mistakes }));
       document.querySelectorAll('.advance-btn').forEach(btn => {
@@ -162,32 +169,60 @@ async function loadNextCard() {
 
 function showCard() {
   show('card-area');
-  setText('mode-label', getModeLabel(currentCard.mode));
-  setText('prompt-word', currentCard.prompt);
 
-  // Show play button only when the prompt is Chinese
-  const isZhPrompt = currentCard.mode === 'zh_to_en' || currentCard.mode === 'zh_pinyin_to_en';
-  const playBtn = $('play-btn');
-  if (isZhPrompt) {
-    playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
-    show('play-btn');
-  } else {
+  if (currentCard.card_type === 'hmm') {
+    setText('mode-label', t('hmm.modeLabel'));
+    setText('prompt-word', currentCard.prompt);
     hide('play-btn');
-  }
-
-  if (currentCard.pinyin) {
-    setText('pinyin-hint', currentCard.pinyin);
-    show('pinyin-hint');
-  } else {
     hide('pinyin-hint');
-  }
-
-  if (currentCard.mode === 'en_to_zh' && currentCard.en_texts && currentCard.en_texts.length > 1) {
-    const others = currentCard.en_texts.filter(t => t !== currentCard.prompt);
-    $('translations-hint').innerHTML = others.map(escHtml).join(' · ');
-    show('translations-hint');
-  } else {
     hide('translations-hint');
+
+    const badge = $('hmm-type-badge');
+    badge.className = 'inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2 ' +
+      (HMM_TYPE_COLORS[currentCard.entity_type] || 'bg-gray-100 text-gray-700');
+    badge.textContent = t('hmm.type.' + currentCard.entity_type);
+    show('hmm-type-badge');
+
+    if (currentCard.entity_type === 'actor' && (currentCard.category || currentCard.hint)) {
+      const parts = [];
+      if (currentCard.category) parts.push(currentCard.category);
+      if (currentCard.hint) parts.push(currentCard.hint);
+      setText('hmm-actor-hint', parts.join(' · '));
+      show('hmm-actor-hint');
+    } else {
+      hide('hmm-actor-hint');
+    }
+  } else {
+    hide('hmm-type-badge');
+    hide('hmm-actor-hint');
+
+    setText('mode-label', getModeLabel(currentCard.mode));
+    setText('prompt-word', currentCard.prompt);
+
+    // Show play button only when the prompt is Chinese
+    const isZhPrompt = currentCard.mode === 'zh_to_en' || currentCard.mode === 'zh_pinyin_to_en';
+    const playBtn = $('play-btn');
+    if (isZhPrompt) {
+      playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+      show('play-btn');
+    } else {
+      hide('play-btn');
+    }
+
+    if (currentCard.pinyin) {
+      setText('pinyin-hint', currentCard.pinyin);
+      show('pinyin-hint');
+    } else {
+      hide('pinyin-hint');
+    }
+
+    if (currentCard.mode === 'en_to_zh' && currentCard.en_texts && currentCard.en_texts.length > 1) {
+      const others = currentCard.en_texts.filter(t => t !== currentCard.prompt);
+      $('translations-hint').innerHTML = others.map(escHtml).join(' · ');
+      show('translations-hint');
+    } else {
+      hide('translations-hint');
+    }
   }
 
   $('answer-input').focus();
@@ -201,6 +236,19 @@ async function submitAnswer(e) {
   const answer = $('answer-input').value;
 
   try {
+    if (currentCard.card_type === 'hmm') {
+      const result = await apiFetch('/api/hmm-quiz/answer', {
+        method: 'POST',
+        body: JSON.stringify({
+          entity_type: currentCard.entity_type,
+          entity_key: currentCard.entity_key,
+          answer: answer,
+        }),
+      });
+      showHMMResult(result);
+      return;
+    }
+
     const result = await apiFetch('/api/quiz/answer', {
       method: 'POST',
       body: JSON.stringify({
@@ -383,6 +431,66 @@ async function submitAnswer(e) {
     isSubmitted = false;
     alert('Error: ' + err.message);
   }
+}
+
+function showHMMResult(resp) {
+  hide('card-area');
+  show('result-area');
+
+  const icon = $('result-icon');
+  if (resp.correct) {
+    icon.textContent = t('result.correct');
+    icon.className = 'text-3xl font-bold text-green-600 mb-4';
+  } else {
+    icon.textContent = t('result.wrong');
+    icon.className = 'text-3xl font-bold text-red-600 mb-4';
+  }
+
+  // Reuse word-breakdown for the answer display
+  const badgeClass = HMM_TYPE_COLORS[currentCard.entity_type] || 'bg-gray-100 text-gray-700';
+  const badgeHtml = `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${escHtml(badgeClass)}">${escHtml(t('hmm.type.' + currentCard.entity_type))}</span>`;
+  const yourAnswerHtml = (!resp.correct && resp.your_answer) ? `
+    <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
+      <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
+      <div class="text-lg font-medium text-red-700">${escHtml(resp.your_answer)}</div>
+    </div>` : '';
+  $('word-breakdown').innerHTML = `
+    <div class="mt-4 space-y-2 text-left">
+      ${yourAnswerHtml}
+      <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${badgeHtml} ${escHtml(currentCard.prompt)}</div>
+        <div class="text-xl font-bold text-gray-800">${escHtml(resp.correct_answer)}</div>
+      </div>
+    </div>`;
+  show('word-breakdown');
+
+  hide('add-translation-btn');
+  hide('result-hmm');
+  hide('result-decompose');
+  hide('result-decompose-content');
+  hide('needs-review-btn');
+
+  if (resp.learning) {
+    setText('next-due-info', t('pinyin.learning', { n: 3 }));
+  } else {
+    setText('next-due-info', t('result.nextReview', { n: resp.interval_days }));
+  }
+
+  if (resp.tier) {
+    $('bucket-info').textContent = resp.prev_tier ? `${resp.prev_tier} → ${resp.tier}` : resp.tier;
+    show('bucket-info');
+  } else {
+    hide('bucket-info');
+  }
+
+  const eff = resp.total_correct + (resp.streak_bonus || 0);
+  setText('attempt-stats',
+    t('result.correctStats', { eff, total: resp.total_attempts }) +
+    (resp.streak_bonus > 0 ? ` (${t('result.streakBonus', { n: resp.streak_bonus })})` : ''));
+  hide('streak-info');
+
+  $('next-btn').focus();
+  loadStats();
 }
 
 function renderCharDecomposition(charData) {

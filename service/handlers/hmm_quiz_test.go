@@ -1,0 +1,186 @@
+package handlers_test
+
+import (
+	"context"
+	"net/http"
+	"testing"
+	"vocabulary_trainer/handlers"
+	"vocabulary_trainer/models"
+
+	"github.com/go-chi/chi/v5"
+)
+
+func hmmQuizRouter(t *testing.T) (http.Handler, *handlers.HMMQuizHandler) {
+	t.Helper()
+	store := openTestDB(t)
+	h := &handlers.HMMQuizHandler{Store: store}
+	r := chi.NewRouter()
+	r.Get("/api/hmm-quiz/next", h.Next)
+	r.Post("/api/hmm-quiz/answer", h.Answer)
+	r.Get("/api/hmm-quiz/stats", h.Stats)
+	return r, h
+}
+
+// clearAllHMMNames blanks every library entry so no entries qualify as named.
+// Migration v13 seeds actor "null" (Jackie Chan), 5 tone rooms, and 2 props
+// with non-empty names; this resets everything to a blank state.
+func clearAllHMMNames(t *testing.T, h *handlers.HMMQuizHandler) {
+	t.Helper()
+	ctx := context.Background()
+	// Blank all actors that have names (migration seeds "null" → "Jackie Chan")
+	actors, err := h.Store.GetHMMActors(ctx)
+	if err != nil {
+		t.Fatalf("clearAllHMMNames GetHMMActors: %v", err)
+	}
+	for _, a := range actors {
+		if a.ActorName != "" {
+			if err := h.Store.UpdateHMMActor(ctx, a.Initial, ""); err != nil {
+				t.Fatalf("clearAllHMMNames UpdateHMMActor %s: %v", a.Initial, err)
+			}
+		}
+	}
+	for tone := 1; tone <= 5; tone++ {
+		if err := h.Store.UpdateHMMToneRoom(ctx, tone, ""); err != nil {
+			t.Fatalf("clearAllHMMNames tone %d: %v", tone, err)
+		}
+	}
+	for _, radical := range []string{"一", "二"} {
+		_ = h.Store.UpsertHMMProp(ctx, radical, "")
+	}
+}
+
+// seedHMMActorEntry uses public Store methods to add a named actor and ensure
+// a progress row exists. It also clears tone room names to avoid interference.
+func seedHMMActorEntry(t *testing.T, h *handlers.HMMQuizHandler, initial, name string) {
+	t.Helper()
+	ctx := context.Background()
+	clearAllHMMNames(t, h)
+	if err := h.Store.UpdateHMMActor(ctx, initial, name); err != nil {
+		t.Fatalf("UpdateHMMActor: %v", err)
+	}
+	if err := h.Store.EnsureHMMProgress(ctx); err != nil {
+		t.Fatalf("EnsureHMMProgress: %v", err)
+	}
+}
+
+func TestHMMQuizNext_NoCards(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	// Clear all pre-seeded tone room names so there are no named entries
+	clearAllHMMNames(t, h)
+	rec := do(t, router, "GET", "/api/hmm-quiz/next", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
+	}
+}
+
+func TestHMMQuizNext_ReturnsCard(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+
+	rec := do(t, router, "GET", "/api/hmm-quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var card models.HMMQuizCard
+	decodeJSON(t, rec, &card)
+	if card.EntityType != models.HMMEntityActor {
+		t.Errorf("entity_type = %q, want %q", card.EntityType, models.HMMEntityActor)
+	}
+	if card.EntityKey != "b" {
+		t.Errorf("entity_key = %q, want 'b'", card.EntityKey)
+	}
+	if card.Prompt == "" {
+		t.Error("prompt is empty")
+	}
+}
+
+func TestHMMQuizAnswer_Correct(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityActor,
+		EntityKey:  "b",
+		Answer:     "Bruce Lee",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("expected correct = true")
+	}
+	if resp.CorrectAnswer != "Bruce Lee" {
+		t.Errorf("correct_answer = %q, want 'Bruce Lee'", resp.CorrectAnswer)
+	}
+	if resp.YourAnswer != "" {
+		t.Errorf("your_answer should be empty on correct answer, got %q", resp.YourAnswer)
+	}
+}
+
+func TestHMMQuizAnswer_Wrong(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityActor,
+		EntityKey:  "b",
+		Answer:     "Jackie Chan",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Error("expected correct = false")
+	}
+	if resp.YourAnswer != "Jackie Chan" {
+		t.Errorf("your_answer = %q, want 'Jackie Chan'", resp.YourAnswer)
+	}
+	if resp.CorrectAnswer != "Bruce Lee" {
+		t.Errorf("correct_answer = %q, want 'Bruce Lee'", resp.CorrectAnswer)
+	}
+}
+
+func TestHMMQuizAnswer_CaseInsensitive(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityActor,
+		EntityKey:  "b",
+		Answer:     "bruce lee",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("expected case-insensitive match to be correct")
+	}
+}
+
+func TestHMMQuizStats(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	// clearAllHMMNames is called inside seedHMMActorEntry
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+	if err := h.Store.UpsertHMMProp(context.Background(), "一", "razor blade"); err != nil {
+		t.Fatalf("UpsertHMMProp: %v", err)
+	}
+	if err := h.Store.EnsureHMMProgress(context.Background()); err != nil {
+		t.Fatalf("EnsureHMMProgress: %v", err)
+	}
+
+	rec := do(t, router, "GET", "/api/hmm-quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var stats models.HMMQuizStats
+	decodeJSON(t, rec, &stats)
+	if stats.Total != 2 {
+		t.Errorf("total = %d, want 2", stats.Total)
+	}
+}
