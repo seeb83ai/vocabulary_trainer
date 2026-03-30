@@ -249,21 +249,9 @@ func TestGetHMMStats(t *testing.T) {
 	if stats.Total != 4 {
 		t.Errorf("Total = %d, want 4", stats.Total)
 	}
-	// None acknowledged yet, so due_today = 0
-	if stats.DueToday != 0 {
-		t.Errorf("DueToday = %d, want 0 (not yet acknowledged)", stats.DueToday)
-	}
-
-	// Acknowledge one entry and check due_today increases
-	if err := store.AcknowledgeHMMEntry(context.Background(), "actor", "b"); err != nil {
-		t.Fatalf("AcknowledgeHMMEntry: %v", err)
-	}
-	stats, err = store.GetHMMStats(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("GetHMMStats after acknowledge: %v", err)
-	}
-	if stats.DueToday != 1 {
-		t.Errorf("DueToday = %d, want 1 after acknowledging one entry", stats.DueToday)
+	// All entries have due_date = CURRENT_TIMESTAMP, so all 4 are due
+	if stats.DueToday != 4 {
+		t.Errorf("DueToday = %d, want 4", stats.DueToday)
 	}
 
 	// Type filter: only actors

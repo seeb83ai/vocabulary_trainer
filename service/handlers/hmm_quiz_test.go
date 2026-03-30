@@ -163,6 +163,46 @@ func TestHMMQuizAnswer_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestHMMQuizAnswer_OptionalParensPrefix(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	// Stored name has a bracketed prefix; user omits it.
+	seedHMMActorEntry(t, h, "r", "(人) Arnold Schwarzenegger")
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityActor,
+		EntityKey:  "r",
+		Answer:     "Arnold Schwarzenegger",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("expected answer without bracketed prefix to be correct")
+	}
+}
+
+func TestHMMQuizAnswer_OptionalParensInline(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	// Stored name has bracketed segments inline; user omits them.
+	seedHMMActorEntry(t, h, "r", "Kreuz (十) und Rasiermesser (一)")
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityActor,
+		EntityKey:  "r",
+		Answer:     "Kreuz und Rasiermesser",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("expected answer without inline bracketed segments to be correct")
+	}
+}
+
 func TestHMMQuizStats(t *testing.T) {
 	router, h := hmmQuizRouter(t)
 	// clearAllHMMNames is called inside seedHMMActorEntry

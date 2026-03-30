@@ -110,7 +110,7 @@ SELECT p.entity_type, p.entity_key,
        p.total_correct, p.total_attempts, p.learning, p.streak_bonus,
        COALESCE(p.first_seen_date, '')
 FROM hmm_progress p` + hmmBaseJoins + `
-WHERE ` + hmmNameFilter + ` AND p.first_seen_date IS NOT NULL` + typeFilter + ` %s
+WHERE ` + hmmNameFilter + typeFilter + ` %s
 ORDER BY p.due_date ASC
 LIMIT 1`
 
@@ -319,7 +319,7 @@ WHERE ` + hmmNameFilter + typeFilter
 
 	dueArgs := append([]any{}, typeArgs...)
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) `+baseQuery+` AND p.due_date <= CURRENT_TIMESTAMP AND p.first_seen_date IS NOT NULL`,
+		`SELECT COUNT(*) `+baseQuery+` AND p.due_date <= CURRENT_TIMESTAMP`,
 		dueArgs...).Scan(&stats.DueToday); err != nil {
 		return stats, fmt.Errorf("count hmm due: %w", err)
 	}
