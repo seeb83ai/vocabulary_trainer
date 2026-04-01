@@ -1643,6 +1643,38 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 	return ordered, nil
 }
 
+// GetHanziDecompositionString returns the raw decomposition string for a single character,
+// or an empty string if none exists.
+func (s *Store) GetHanziDecompositionString(ctx context.Context, char string) (string, error) {
+	var decomp sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT decomposition FROM hanzi_decomposition WHERE character = ?`, char,
+	).Scan(&decomp)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get hanzi decomposition string: %w", err)
+	}
+	if decomp.Valid {
+		return decomp.String, nil
+	}
+	return "", nil
+}
+
+// UpsertHanziDecomposition inserts or updates the decomposition string for a character.
+func (s *Store) UpsertHanziDecomposition(ctx context.Context, char, decomp string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition (character, decomposition)
+		 VALUES (?, ?)
+		 ON CONFLICT(character) DO UPDATE SET decomposition = excluded.decomposition`,
+		char, decomp)
+	if err != nil {
+		return fmt.Errorf("upsert hanzi decomposition: %w", err)
+	}
+	return nil
+}
+
 func appendComponent(parent *models.HanziDecomposition, comp models.HanziDecomposition) {
 	comp.Components = nil
 	comp.Decomposition = ""

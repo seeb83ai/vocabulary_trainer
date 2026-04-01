@@ -187,12 +187,18 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+	var decompositionStr string
+	if len(decomps) > 0 {
+		decompositionStr = decomps[0].Decomposition
+	}
+
 	resp := models.HMMSceneContext{
-		Initial:     initial,
-		Final:       final,
-		Tone:        tone,
-		Radicals:    radicals,
-		RadicalDefs: radicalDefs,
+		Initial:       initial,
+		Final:         final,
+		Tone:          tone,
+		Decomposition: decompositionStr,
+		Radicals:      radicals,
+		RadicalDefs:   radicalDefs,
 	}
 
 	if initial != "" {
@@ -249,6 +255,11 @@ func (h *HMMHandler) SaveScene(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to save scene")
 		return
 	}
+
+	if req.Decomposition != "" {
+		_ = h.Store.UpsertHanziDecomposition(r.Context(), word.ZhText, req.Decomposition)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

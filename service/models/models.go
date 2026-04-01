@@ -278,24 +278,26 @@ type HMMScene struct {
 }
 
 type HMMSceneContext struct {
-	Initial     string            `json:"initial"`
-	Final       string            `json:"final"`
-	Tone        int               `json:"tone"`
-	Radicals    []string          `json:"radicals"`
-	RadicalDefs map[string]string `json:"radical_defs"`
-	Actor       *HMMActor         `json:"actor"`
-	Location    *HMMLocation      `json:"location"`
-	ToneRoom    *HMMToneRoom      `json:"tone_room"`
-	Props       []HMMProp         `json:"props"`
-	Scene       *HMMScene         `json:"scene,omitempty"`
+	Initial       string            `json:"initial"`
+	Final         string            `json:"final"`
+	Tone          int               `json:"tone"`
+	Decomposition string            `json:"decomposition,omitempty"`
+	Radicals      []string          `json:"radicals"`
+	RadicalDefs   map[string]string `json:"radical_defs"`
+	Actor         *HMMActor         `json:"actor"`
+	Location      *HMMLocation      `json:"location"`
+	ToneRoom      *HMMToneRoom      `json:"tone_room"`
+	Props         []HMMProp         `json:"props"`
+	Scene         *HMMScene         `json:"scene,omitempty"`
 }
 
 type HMMSaveSceneRequest struct {
-	SceneText    string    `json:"scene_text"`
-	ActorName    string    `json:"actor_name"`
-	LocationName string    `json:"location_name"`
-	RoomName     string    `json:"room_name"`
-	Props        []HMMProp `json:"props"`
+	SceneText     string    `json:"scene_text"`
+	ActorName     string    `json:"actor_name"`
+	LocationName  string    `json:"location_name"`
+	RoomName      string    `json:"room_name"`
+	Props         []HMMProp `json:"props"`
+	Decomposition string    `json:"decomposition,omitempty"`
 }
 
 // HMM quiz models
