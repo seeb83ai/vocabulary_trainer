@@ -161,7 +161,10 @@
 
       <!-- Tone Accuracy Chart -->
       <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Accuracy per Tone</h2>
+        <div class="flex items-baseline gap-3 mb-4">
+          <h2 class="text-lg font-semibold text-gray-800">Accuracy per Tone</h2>
+          <span id="pinyin-tone-chart-range" class="text-sm text-gray-400"></span>
+        </div>
         <div id="pinyin-tone-chart-empty" class="hidden text-center text-gray-400 py-12">No tone data yet.</div>
         <div style="min-height:250px"><canvas id="pinyin-tone-chart" height="200"></canvas></div>
       </div>

@@ -449,6 +449,14 @@ function renderPinyinToneChart(days) {
     show('pinyin-tone-chart-empty');
     return;
   }
+
+  // Show the date range covered by the aggregated data
+  const rangeEl = $('pinyin-tone-chart-range');
+  if (rangeEl && days.length > 0) {
+    const first = formatDateLabel(days[0].date);
+    const last  = formatDateLabel(days[days.length - 1].date);
+    rangeEl.textContent = first === last ? first : `${first} – ${last}`;
+  }
   const ctx = $('pinyin-tone-chart').getContext('2d');
   new Chart(ctx, {
     type: 'bar',
