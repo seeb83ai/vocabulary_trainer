@@ -240,15 +240,16 @@ type HMMScene struct {
 }
 
 type HMMSceneContext struct {
-	Initial  string       `json:"initial"`
-	Final    string       `json:"final"`
-	Tone     int          `json:"tone"`
-	Radicals []string     `json:"radicals"`
-	Actor    *HMMActor    `json:"actor"`
-	Location *HMMLocation `json:"location"`
-	ToneRoom *HMMToneRoom `json:"tone_room"`
-	Props    []HMMProp    `json:"props"`
-	Scene    *HMMScene    `json:"scene,omitempty"`
+	Initial     string            `json:"initial"`
+	Final       string            `json:"final"`
+	Tone        int               `json:"tone"`
+	Radicals    []string          `json:"radicals"`
+	RadicalDefs map[string]string `json:"radical_defs"`
+	Actor       *HMMActor         `json:"actor"`
+	Location    *HMMLocation      `json:"location"`
+	ToneRoom    *HMMToneRoom      `json:"tone_room"`
+	Props       []HMMProp         `json:"props"`
+	Scene       *HMMScene         `json:"scene,omitempty"`
 }
 
 type HMMSaveSceneRequest struct {

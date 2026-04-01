@@ -180,16 +180,19 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 	runes := []rune(word.ZhText)
 	decomps, _ := h.Store.GetHanziDecomposition(r.Context(), runes)
 	var radicals []string
+	radicalDefs := map[string]string{}
 	if len(decomps) > 0 {
 		radicals = collectRadicals(decomps[0])
+		radicalDefs = collectRadicalDefs(decomps[0])
 	}
 
 	ctx := r.Context()
 	resp := models.HMMSceneContext{
-		Initial:  initial,
-		Final:    final,
-		Tone:     tone,
-		Radicals: radicals,
+		Initial:     initial,
+		Final:       final,
+		Tone:        tone,
+		Radicals:    radicals,
+		RadicalDefs: radicalDefs,
 	}
 
 	if initial != "" {
@@ -400,4 +403,22 @@ func collectRadicals(d models.HanziDecomposition) []string {
 	}
 	walk(d)
 	return result
+}
+
+// collectRadicalDefs returns a map of radical character → definition from a decomposition tree.
+func collectRadicalDefs(d models.HanziDecomposition) map[string]string {
+	defs := map[string]string{}
+	var walk func(d models.HanziDecomposition)
+	walk = func(d models.HanziDecomposition) {
+		for _, c := range d.Components {
+			if c.Character != "" && utf8.RuneCountInString(c.Character) == 1 && c.Definition != "" {
+				if _, exists := defs[c.Character]; !exists {
+					defs[c.Character] = c.Definition
+				}
+			}
+			walk(c)
+		}
+	}
+	walk(d)
+	return defs
 }
