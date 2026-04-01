@@ -98,13 +98,16 @@ function renderEditableBuilder(container, wordId, ctx) {
   const propMap = {};
   for (const p of (ctx.props || [])) propMap[p.radical] = p.prop_name;
 
+  const radicalDefs = ctx.radical_defs || {};
   let propsHtml = '';
   for (const rad of allRadicals) {
     const pName = propMap[rad] || '';
+    const def = radicalDefs[rad] || '';
+    const placeholder = def ? def : t('hmm.propPlaceholder', {rad});
     propsHtml += `
       <div class="flex items-center gap-2">
         <span class="w-8 text-center text-lg shrink-0">${escHtml(rad)}</span>
-        <input type="text" value="${escHtml(pName)}" placeholder="${escHtml(t('hmm.propPlaceholder', {rad}))}"
+        <input type="text" value="${escHtml(pName)}" placeholder="${escHtml(placeholder)}"
           class="hmm-prop-input flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
           data-radical="${escHtml(rad)}">
       </div>`;
