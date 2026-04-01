@@ -433,10 +433,11 @@ const TONE_LABELS = ['Tone 1 (ā)', 'Tone 2 (á)', 'Tone 3 (ǎ)', 'Tone 4 (à)',
 const TONE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 function renderPinyinToneChart(days) {
-  // Aggregate correct/wrong per tone across all days
+  // Aggregate correct/wrong per tone across the last 14 days only
+  const recent = days.slice(-14);
   const correct = [0, 0, 0, 0, 0];
   const wrong   = [0, 0, 0, 0, 0];
-  for (const d of days) {
+  for (const d of recent) {
     correct[0] += d.tone1_correct || 0; wrong[0] += d.tone1_wrong || 0;
     correct[1] += d.tone2_correct || 0; wrong[1] += d.tone2_wrong || 0;
     correct[2] += d.tone3_correct || 0; wrong[2] += d.tone3_wrong || 0;
@@ -452,9 +453,9 @@ function renderPinyinToneChart(days) {
 
   // Show the date range covered by the aggregated data
   const rangeEl = $('pinyin-tone-chart-range');
-  if (rangeEl && days.length > 0) {
-    const first = formatDateLabel(days[0].date);
-    const last  = formatDateLabel(days[days.length - 1].date);
+  if (rangeEl && recent.length > 0) {
+    const first = formatDateLabel(recent[0].date);
+    const last  = formatDateLabel(recent[recent.length - 1].date);
     rangeEl.textContent = first === last ? first : `${first} – ${last}`;
   }
   const ctx = $('pinyin-tone-chart').getContext('2d');
