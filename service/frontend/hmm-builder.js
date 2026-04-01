@@ -27,7 +27,8 @@ function buildIDSPicker(selectedOp) {
   const btnOn   = 'border-purple-500 text-purple-700 bg-purple-50';
   const buttons = IDS_OPERATORS.map(({ op, key }) => {
     const sel = op === selectedOp ? btnOn : btnOff;
-    return `<button type="button" class="${btnBase} ${sel}" data-op="${escHtml(op)}" title="${escHtml(t(key))}">${escHtml(op)}<span class="text-gray-400 text-[9px] leading-tight">${escHtml(t(key))}</span></button>`;
+    const isSelected = op === selectedOp ? 'true' : 'false';
+    return `<button type="button" class="${btnBase} ${sel}" data-op="${escHtml(op)}" data-ids-selected="${isSelected}" title="${escHtml(t(key))}">${escHtml(op)}<span class="text-gray-400 text-[9px] leading-tight">${escHtml(t(key))}</span></button>`;
   }).join('');
   return `<div class="hmm-ids-picker flex flex-wrap gap-1">${buttons}</div>`;
 }
@@ -279,10 +280,12 @@ function renderEditableBuilder(container, wordId, ctx) {
       btn.addEventListener('click', () => {
         row.querySelectorAll('.hmm-ids-btn').forEach(b => {
           b.classList.remove('border-purple-500', 'text-purple-700', 'bg-purple-50');
-          b.classList.add('border-gray-200', 'text-gray-500', 'bg-white');
+          b.classList.add('border-gray-200', 'text-gray-500', 'hover:border-purple-300', 'hover:text-purple-600', 'bg-white');
+          b.dataset.idsSelected = 'false';
         });
-        btn.classList.remove('border-gray-200', 'text-gray-500', 'bg-white');
+        btn.classList.remove('border-gray-200', 'text-gray-500', 'hover:border-purple-300', 'hover:text-purple-600', 'bg-white');
         btn.classList.add('border-purple-500', 'text-purple-700', 'bg-purple-50');
+        btn.dataset.idsSelected = 'true';
       });
     });
     row.querySelectorAll('input').forEach(el => el.addEventListener('input', updatePrompt));
@@ -305,7 +308,7 @@ function renderEditableBuilder(container, wordId, ctx) {
         const radInput = row.querySelector('.hmm-prop-radical');
         const radical = radInput ? radInput.value.trim() : row.dataset.radical;
         const prop_name = row.querySelector('.hmm-prop-input')?.value.trim() || '';
-        const activeIdsBtn = row.querySelector('.hmm-ids-btn.border-purple-500');
+        const activeIdsBtn = row.querySelector('.hmm-ids-btn[data-ids-selected="true"]');
         const ids_op = activeIdsBtn ? activeIdsBtn.dataset.op : '';
         return { radical, prop_name, ids_op };
       }).filter(p => p.radical);
