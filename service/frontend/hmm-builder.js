@@ -289,7 +289,7 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
     row.className = propRowClass;
     row.innerHTML = `
       <input type="text" placeholder="${escHtml(t('hmm.propRadicalPlaceholder'))}"
-        class="hmm-prop-radical w-10 text-center text-lg border border-gray-200 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 shrink-0">
+        class="hmm-prop-radical w-12 text-center text-lg border border-gray-200 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 shrink-0">
       <input type="text" placeholder="${escHtml(t('hmm.propPlaceholderNew'))}"
         class="${propInputClass}">
       <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
@@ -304,6 +304,9 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
     let lastAutofill = null;
 
     radInput.addEventListener('input', () => {
+      // Trim to the first Unicode character so pasting e.g. "丿stroke" just gives "丿".
+      const runes = [...radInput.value.trim()];
+      if (runes.length > 1) radInput.value = runes[0];
       const rad = radInput.value.trim();
       const canOverwrite = nameInput.value === (lastAutofill ?? '');
       if (rad.length === 1 && propsLookup[rad]) {
