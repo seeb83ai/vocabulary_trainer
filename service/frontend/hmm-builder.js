@@ -141,13 +141,18 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
   const propInputClass = 'hmm-prop-input flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-purple-400';
   const removeBtnClass = 'hmm-remove-prop text-gray-300 hover:text-red-400 text-xl leading-none px-1 transition shrink-0';
 
+  // radical_defs from hanzi_decomposition are used as placeholder fallback when no prop is saved.
+  const radicalDefs = ctx.radical_defs || {};
+
   let propsRowsHtml = '';
   for (const rad of allRadicals) {
     const pName = propMap[rad] || '';
+    // Priority: saved prop value (pName, shown as input value) > hanzi def (placeholder) > generic hint
+    const placeholder = radicalDefs[rad] || t('hmm.propPlaceholder', {rad});
     propsRowsHtml += `
       <div class="${propRowClass}" data-radical="${escHtml(rad)}">
         <span class="w-8 text-center text-lg shrink-0">${escHtml(rad)}</span>
-        <input type="text" value="${escHtml(pName)}" placeholder="${escHtml(t('hmm.propPlaceholder', {rad}))}"
+        <input type="text" value="${escHtml(pName)}" placeholder="${escHtml(placeholder)}"
           class="${propInputClass}">
         <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
       </div>`;

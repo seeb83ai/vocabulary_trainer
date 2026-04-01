@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
@@ -100,7 +101,12 @@ func (h *PinyinQuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 				Tone:     d.Tone,
 			})
 		}
-		db.ShufflePinyinOptions(options)
+		sort.Slice(options, func(i, j int) bool {
+			if options[i].Syllable != options[j].Syllable {
+				return options[i].Syllable < options[j].Syllable
+			}
+			return options[i].Tone < options[j].Tone
+		})
 		card.Options = options
 	}
 
@@ -204,6 +210,7 @@ func (h *PinyinQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = h.Store.RecordPinyinDailyStat(r.Context(), correct, sound.Tone)
 
 	resp := models.PinyinAnswerResponse{
 		Correct:       correct,
@@ -278,6 +285,34 @@ func (h *PinyinQuizHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		tags = []string{}
 	}
 	writeJSON(w, http.StatusOK, tags)
+}
+
+func (h *PinyinQuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.Store.GetPinyinDailyStatsHistory(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp := models.PinyinDailyStatsResponse{Days: make([]models.PinyinDailyStatEntry, len(stats))}
+	for i, s := range stats {
+		resp.Days[i] = models.PinyinDailyStatEntry{
+			Date:         s.Date,
+			Attempts:     s.Attempts,
+			Mistakes:     s.Mistakes,
+			SoundsSeen:   s.SoundsSeen,
+			Tone1Correct: s.Tone1Correct,
+			Tone1Wrong:   s.Tone1Wrong,
+			Tone2Correct: s.Tone2Correct,
+			Tone2Wrong:   s.Tone2Wrong,
+			Tone3Correct: s.Tone3Correct,
+			Tone3Wrong:   s.Tone3Wrong,
+			Tone4Correct: s.Tone4Correct,
+			Tone4Wrong:   s.Tone4Wrong,
+			Tone5Correct: s.Tone5Correct,
+			Tone5Wrong:   s.Tone5Wrong,
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *PinyinQuizHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {

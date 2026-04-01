@@ -1,6 +1,9 @@
 # Build output
 vocab-trainer
+vocabulary_trainer
 import-hsk 
+import-pinyin
+import-hanzi
 
 # Database
 data/
@@ -17,7 +20,7 @@ data/
 
 # Env
 .env
+ideas.md
 
 # Node
-
 /node_modules/

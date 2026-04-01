@@ -44,6 +44,12 @@ type QuizCard struct {
 	DueDate         time.Time `json:"due_date"`
 	IntervalDays    int       `json:"interval_days"`
 	LearningNewWord bool      `json:"learning_new_word"`
+	// HMM mnemonic card fields (card_type="hmm"); zero-value for word cards.
+	CardType   string `json:"card_type,omitempty"`
+	EntityType string `json:"entity_type,omitempty"`
+	EntityKey  string `json:"entity_key,omitempty"`
+	Category   string `json:"category,omitempty"`
+	Hint       string `json:"hint,omitempty"`
 }
 
 type AnswerRequest struct {
@@ -166,6 +172,44 @@ type WordStatDetail struct {
 	Easiness    float64  `json:"easiness"`
 }
 
+type PinyinDailyStat struct {
+	Date         string
+	Attempts     int
+	Mistakes     int
+	SoundsSeen   int
+	Tone1Correct int
+	Tone1Wrong   int
+	Tone2Correct int
+	Tone2Wrong   int
+	Tone3Correct int
+	Tone3Wrong   int
+	Tone4Correct int
+	Tone4Wrong   int
+	Tone5Correct int
+	Tone5Wrong   int
+}
+
+type PinyinDailyStatEntry struct {
+	Date         string `json:"date"`
+	Attempts     int    `json:"attempts"`
+	Mistakes     int    `json:"mistakes"`
+	SoundsSeen   int    `json:"sounds_seen"`
+	Tone1Correct int    `json:"tone1_correct"`
+	Tone1Wrong   int    `json:"tone1_wrong"`
+	Tone2Correct int    `json:"tone2_correct"`
+	Tone2Wrong   int    `json:"tone2_wrong"`
+	Tone3Correct int    `json:"tone3_correct"`
+	Tone3Wrong   int    `json:"tone3_wrong"`
+	Tone4Correct int    `json:"tone4_correct"`
+	Tone4Wrong   int    `json:"tone4_wrong"`
+	Tone5Correct int    `json:"tone5_correct"`
+	Tone5Wrong   int    `json:"tone5_wrong"`
+}
+
+type PinyinDailyStatsResponse struct {
+	Days []PinyinDailyStatEntry `json:"days"`
+}
+
 type DueDateCount struct {
 	Date  string `json:"date"`
 	Count int    `json:"count"`
@@ -234,16 +278,17 @@ type HMMScene struct {
 }
 
 type HMMSceneContext struct {
-	Initial       string       `json:"initial"`
-	Final         string       `json:"final"`
-	Tone          int          `json:"tone"`
-	Decomposition string       `json:"decomposition,omitempty"`
-	Radicals      []string     `json:"radicals"`
-	Actor         *HMMActor    `json:"actor"`
-	Location      *HMMLocation `json:"location"`
-	ToneRoom      *HMMToneRoom `json:"tone_room"`
-	Props         []HMMProp    `json:"props"`
-	Scene         *HMMScene    `json:"scene,omitempty"`
+	Initial       string            `json:"initial"`
+	Final         string            `json:"final"`
+	Tone          int               `json:"tone"`
+	Decomposition string            `json:"decomposition,omitempty"`
+	Radicals      []string          `json:"radicals"`
+	RadicalDefs   map[string]string `json:"radical_defs"`
+	Actor         *HMMActor         `json:"actor"`
+	Location      *HMMLocation      `json:"location"`
+	ToneRoom      *HMMToneRoom      `json:"tone_room"`
+	Props         []HMMProp         `json:"props"`
+	Scene         *HMMScene         `json:"scene,omitempty"`
 }
 
 type HMMSaveSceneRequest struct {
@@ -253,8 +298,70 @@ type HMMSaveSceneRequest struct {
 	RoomName      string    `json:"room_name"`
 	Props         []HMMProp `json:"props"`
 	Decomposition string    `json:"decomposition,omitempty"`
-	// Pinyin listening training models
 }
+
+// HMM quiz models
+
+const (
+	HMMEntityActor    = "actor"
+	HMMEntityLocation = "location"
+	HMMEntityToneRoom = "tone_room"
+	HMMEntityProp     = "prop"
+)
+
+type HMMProgress struct {
+	EntityType    string
+	EntityKey     string
+	Repetitions   int
+	Easiness      float64
+	IntervalDays  int
+	DueDate       time.Time
+	TotalCorrect  int
+	TotalAttempts int
+	Learning      bool
+	StreakBonus   int
+	FirstSeenDate string // raw date string, "" if NULL
+}
+
+type HMMQuizCard struct {
+	EntityType   string    `json:"entity_type"`
+	EntityKey    string    `json:"entity_key"`
+	Prompt       string    `json:"prompt"`
+	Category     string    `json:"category,omitempty"`
+	Hint         string    `json:"hint,omitempty"`
+	DueDate      time.Time `json:"due_date"`
+	IntervalDays int       `json:"interval_days"`
+	Learning     bool      `json:"learning"`
+}
+
+type HMMAnswerRequest struct {
+	EntityType string `json:"entity_type"`
+	EntityKey  string `json:"entity_key"`
+	Answer     string `json:"answer"`
+}
+
+type HMMAnswerResponse struct {
+	Correct       bool      `json:"correct"`
+	CorrectAnswer string    `json:"correct_answer"`
+	YourAnswer    string    `json:"your_answer,omitempty"`
+	NextDue       time.Time `json:"next_due"`
+	IntervalDays  int       `json:"interval_days"`
+	TotalCorrect  int       `json:"total_correct"`
+	TotalAttempts int       `json:"total_attempts"`
+	StreakBonus   int       `json:"streak_bonus"`
+	Repetitions   int       `json:"repetitions"`
+	Learning      bool      `json:"learning"`
+	Graduated     bool      `json:"graduated,omitempty"`
+	Tier          string    `json:"tier,omitempty"`
+	PrevTier      string    `json:"prev_tier,omitempty"`
+}
+
+type HMMQuizStats struct {
+	DueToday int `json:"due_today"`
+	Total    int `json:"total"`
+}
+
+// Pinyin listening training models
 
 const (
 	PinyinModeMultipleChoice = "multiple_choice"

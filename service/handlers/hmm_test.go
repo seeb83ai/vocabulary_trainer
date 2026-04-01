@@ -1,6 +1,94 @@
 package handlers
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+
+	"vocabulary_trainer/models"
+)
+
+func TestCollectRadicalDefs(t *testing.T) {
+	tests := []struct {
+		name  string
+		input models.HanziDecomposition
+		want  map[string]string
+	}{
+		{
+			name:  "empty decomposition returns empty map",
+			input: models.HanziDecomposition{Character: "日"},
+			want:  map[string]string{},
+		},
+		{
+			name: "single component with definition",
+			input: models.HanziDecomposition{
+				Character: "明",
+				Components: []models.HanziDecomposition{
+					{Character: "日", Definition: "sun, day"},
+					{Character: "月", Definition: "moon, month"},
+				},
+			},
+			want: map[string]string{"日": "sun, day", "月": "moon, month"},
+		},
+		{
+			name: "component without definition is skipped",
+			input: models.HanziDecomposition{
+				Character: "明",
+				Components: []models.HanziDecomposition{
+					{Character: "日", Definition: "sun, day"},
+					{Character: "月"},
+				},
+			},
+			want: map[string]string{"日": "sun, day"},
+		},
+		{
+			name: "nested components are collected",
+			input: models.HanziDecomposition{
+				Character: "森",
+				Components: []models.HanziDecomposition{
+					{
+						Character:  "木",
+						Definition: "tree, wood",
+						Components: []models.HanziDecomposition{
+							{Character: "十", Definition: "ten"},
+						},
+					},
+				},
+			},
+			want: map[string]string{"木": "tree, wood", "十": "ten"},
+		},
+		{
+			name: "first occurrence wins for duplicate characters",
+			input: models.HanziDecomposition{
+				Character: "森",
+				Components: []models.HanziDecomposition{
+					{Character: "木", Definition: "tree, wood"},
+					{Character: "木", Definition: "different definition"},
+				},
+			},
+			want: map[string]string{"木": "tree, wood"},
+		},
+		{
+			name: "multi-rune characters are excluded",
+			input: models.HanziDecomposition{
+				Character: "X",
+				Components: []models.HanziDecomposition{
+					{Character: "ab", Definition: "multi-rune"},
+					{Character: "木", Definition: "tree, wood"},
+				},
+			},
+			want: map[string]string{"木": "tree, wood"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := collectRadicalDefs(tt.input)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("collectRadicalDefs() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
 
 func TestParsePinyin(t *testing.T) {
 	tests := []struct {

@@ -8,6 +8,7 @@ const I18N = {
     'nav.pinyin': 'Pinyin',
     'nav.vocabulary': 'Vocabulary',
     'nav.mnemonics': 'Mnemonics',
+    'nav.hmmQuiz': 'Mnemonics Quiz',
     'nav.mismatches': 'Mismatches',
     'nav.stats': 'Stats',
     'nav.signOut': 'Sign out',
@@ -321,6 +322,24 @@ const I18N = {
     'pinyin.nextReview': 'Next review in {n} day(s)',
     'pinyin.dueSoon': 'Due again soon',
     'pinyin.all': 'All',
+
+    // HMM mnemonic cards in word training
+    'hmm.modeLabel': 'Mnemonic',
+    'hmm.type.actor': 'Actor',
+    'hmm.type.location': 'Location',
+    'hmm.type.tone_room': 'Tone Room',
+    'hmm.type.prop': 'Prop',
+
+    // HMM mnemonic quiz page
+    'hmm.dueToday': 'Due today:',
+    'hmm.totalEntries': 'Total entries:',
+    'hmm.empty': 'No mnemonics configured',
+    'hmm.emptyMsg': 'Fill in your actors, locations, tone rooms, and props in the Mnemonics page.',
+    'hmm.allDone': 'All done for now!',
+    'hmm.allDoneMsg': 'No more mnemonic entries due. Come back later for review.',
+    'hmm.placeholder': 'Type your mnemonic name…',
+    'hmm.submit': 'Submit',
+    'hmm.next': 'Next →',
   },
 
   zh: {
@@ -330,6 +349,7 @@ const I18N = {
     'nav.pinyin': '拼音',
     'nav.vocabulary': '词汇',
     'nav.mnemonics': '记忆法',
+    'nav.hmmQuiz': '记忆测验',
     'nav.mismatches': '混淆',
     'nav.stats': '统计',
     'nav.signOut': '退出',
@@ -643,6 +663,24 @@ const I18N = {
     'pinyin.nextReview': '{n} 天后复习',
     'pinyin.dueSoon': '即将再次到期',
     'pinyin.all': '全部',
+
+    // HMM mnemonic cards in word training
+    'hmm.modeLabel': '记忆法',
+    'hmm.type.actor': '演员',
+    'hmm.type.location': '场所',
+    'hmm.type.tone_room': '声调房间',
+    'hmm.type.prop': '道具',
+
+    // HMM mnemonic quiz page
+    'hmm.dueToday': '今日待复习：',
+    'hmm.totalEntries': '总条目数：',
+    'hmm.empty': '未配置记忆法条目',
+    'hmm.emptyMsg': '在记忆法页面填写你的演员、地点、声调房间和道具。',
+    'hmm.allDone': '暂时全部完成！',
+    'hmm.allDoneMsg': '没有更多记忆法条目到期。稍后再来复习。',
+    'hmm.placeholder': '输入记忆法名称…',
+    'hmm.submit': '提交',
+    'hmm.next': '下一个 →',
   },
 };
 
