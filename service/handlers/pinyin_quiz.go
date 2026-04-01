@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
@@ -100,7 +101,12 @@ func (h *PinyinQuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 				Tone:     d.Tone,
 			})
 		}
-		db.ShufflePinyinOptions(options)
+		sort.Slice(options, func(i, j int) bool {
+			if options[i].Syllable != options[j].Syllable {
+				return options[i].Syllable < options[j].Syllable
+			}
+			return options[i].Tone < options[j].Tone
+		})
 		card.Options = options
 	}
 
