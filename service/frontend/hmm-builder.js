@@ -71,10 +71,19 @@ async function loadHMMBuilder(containerId, wordId, opts = {}) {
     return;
   }
 
+  // Build a global radical→prop_name lookup for autofill on new rows.
+  const propsLookup = {};
+  try {
+    const allProps = await apiFetch('/api/hmm/props');
+    for (const p of allProps) {
+      if (p.radical && p.prop_name) propsLookup[p.radical] = p.prop_name;
+    }
+  } catch (e) { /* non-fatal */ }
+
   if (readOnly) {
     renderReadOnlyBuilder(container, ctx);
   } else {
-    renderEditableBuilder(container, wordId, ctx);
+    renderEditableBuilder(container, wordId, ctx, propsLookup);
   }
 }
 
@@ -107,7 +116,7 @@ function renderReadOnlyBuilder(container, ctx) {
   `;
 }
 
-function renderEditableBuilder(container, wordId, ctx) {
+function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
   const actorName = ctx.actor?.actor_name || '';
   const actorHint = ctx.actor?.hint || '';
   const actorCat = ctx.actor?.category || 'male';
@@ -273,7 +282,7 @@ function renderEditableBuilder(container, wordId, ctx) {
     updatePrompt();
   });
 
-  // Add new prop row (radical + name only — no IDS picker)
+  // Add new prop row (radical + name only — autofills name from global library)
   document.getElementById('hmm-add-prop').addEventListener('click', () => {
     const list = document.getElementById('hmm-props-list');
     const row = document.createElement('div');
@@ -286,8 +295,39 @@ function renderEditableBuilder(container, wordId, ctx) {
       <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
     `;
     list.appendChild(row);
-    row.querySelectorAll('input').forEach(el => el.addEventListener('input', updatePrompt));
-    row.querySelector('.hmm-prop-radical').focus();
+
+    const radInput  = row.querySelector('.hmm-prop-radical');
+    const nameInput = row.querySelector('.hmm-prop-input');
+
+    // lastAutofill: the value we last wrote via autofill (null = user has taken over).
+    // We only overwrite the name input if its current value still matches lastAutofill.
+    let lastAutofill = null;
+
+    radInput.addEventListener('input', () => {
+      const rad = radInput.value.trim();
+      const canOverwrite = nameInput.value === (lastAutofill ?? '');
+      if (rad.length === 1 && propsLookup[rad]) {
+        if (canOverwrite) {
+          lastAutofill = propsLookup[rad];
+          nameInput.value = lastAutofill;
+          nameInput.classList.add('text-gray-400');
+        }
+      } else if (canOverwrite && lastAutofill !== null) {
+        lastAutofill = '';
+        nameInput.value = '';
+        nameInput.classList.remove('text-gray-400');
+      }
+      updatePrompt();
+    });
+
+    nameInput.addEventListener('input', () => {
+      // User is editing manually — stop autofilling.
+      lastAutofill = null;
+      nameInput.classList.remove('text-gray-400');
+      updatePrompt();
+    });
+
+    radInput.focus();
   });
 
   // Save handler
