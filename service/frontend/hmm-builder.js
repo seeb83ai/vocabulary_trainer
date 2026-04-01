@@ -5,10 +5,10 @@
 //   loadHMMBuilder('container-id', wordId, {readOnly:true}) — read-only display
 //   renderHMMSceneReadOnly('container-id', sceneText)  — static scene text display
 
-// IDS operators: symbol → [label-key, arity]
+// IDS operators with label keys (U+2FF0–U+2FFB)
 const IDS_OPERATORS = [
-  { op: '⿰', key: 'hmm.ids.lr',   arity: 2 },
-  { op: '⿱', key: 'hmm.ids.tb',   arity: 2 },
+  { op: '⿰', key: 'hmm.ids.lr',      arity: 2 },
+  { op: '⿱', key: 'hmm.ids.tb',      arity: 2 },
   { op: '⿸', key: 'hmm.ids.ulFrame', arity: 2 },
   { op: '⿺', key: 'hmm.ids.llFrame', arity: 2 },
   { op: '⿹', key: 'hmm.ids.rFrame',  arity: 2 },
@@ -21,16 +21,14 @@ const IDS_OPERATORS = [
   { op: '⿳', key: 'hmm.ids.tbb',     arity: 3 },
 ];
 
-function buildIDSPicker(selectedOp) {
-  const btnBase = 'hmm-ids-btn inline-flex flex-col items-center px-1.5 py-0.5 rounded text-xs border transition';
-  const btnOff  = 'border-gray-200 text-gray-500 hover:border-purple-300 hover:text-purple-600 bg-white';
-  const btnOn   = 'border-purple-500 text-purple-700 bg-purple-50';
-  const buttons = IDS_OPERATORS.map(({ op, key }) => {
-    const sel = op === selectedOp ? btnOn : btnOff;
-    const isSelected = op === selectedOp ? 'true' : 'false';
-    return `<button type="button" class="${btnBase} ${sel}" data-op="${escHtml(op)}" data-ids-selected="${isSelected}" title="${escHtml(t(key))}">${escHtml(op)}<span class="text-gray-400 text-[9px] leading-tight">${escHtml(t(key))}</span></button>`;
-  }).join('');
-  return `<div class="hmm-ids-picker flex flex-wrap gap-1">${buttons}</div>`;
+// Renders insert-only IDS operator buttons (no selection state).
+// Clicking a button inserts the operator into the target input at the cursor.
+function buildIDSInsertButtons(targetInputId) {
+  const btnClass = 'hmm-ids-insert inline-flex flex-col items-center px-1.5 py-0.5 rounded text-xs border border-gray-200 bg-white text-gray-500 hover:border-purple-300 hover:text-purple-600 transition';
+  const buttons = IDS_OPERATORS.map(({ op, key }) =>
+    `<button type="button" class="${btnClass}" data-op="${escHtml(op)}" data-target="${escHtml(targetInputId)}" title="${escHtml(t(key))}">${escHtml(op)}<span class="text-gray-400 text-[9px] leading-tight">${escHtml(t(key))}</span></button>`
+  ).join('');
+  return `<div class="flex flex-wrap gap-1">${buttons}</div>`;
 }
 
 const HMM_CATEGORY_DOTS = {
@@ -90,7 +88,6 @@ function renderReadOnlyBuilder(container, ctx) {
   const actorName = ctx.actor?.actor_name || '';
   const locName = ctx.location?.location_name || '';
   const roomName = ctx.tone_room?.room_name || '';
-  const propNames = (ctx.props || []).filter(p => p.prop_name).map(p => p.prop_name);
 
   let breakdownHtml = '';
   const parts = [];
@@ -118,6 +115,7 @@ function renderEditableBuilder(container, wordId, ctx) {
   const roomName = ctx.tone_room?.room_name || '';
   const sceneText = ctx.scene?.scene_text || '';
   const dotClass = HMM_CATEGORY_DOTS[actorCat] || 'bg-gray-400';
+  const decomposition = ctx.decomposition || '';
 
   const catLabel = t('hmm.cat.' + actorCat) || actorCat;
 
@@ -149,17 +147,14 @@ function renderEditableBuilder(container, wordId, ctx) {
   const initialDisplay = ctx.initial === 'null' ? 'Ø' : (ctx.initial || '?');
   const finalDisplay = ctx.final === 'null' ? 'Ø' : (ctx.final || '?');
 
-  // Build actor placeholder with category hint
   const actorPlaceholder = actorHint
     ? t('hmm.actorPlaceholderHint', { cat: catLabel, hint: actorHint })
     : t('hmm.actorPlaceholder', { cat: catLabel });
 
-  // Build location placeholder
   const locPlaceholder = ctx.final === 'null'
     ? t('hmm.locPlaceholderNull')
     : t('hmm.locPlaceholder', { final: finalDisplay });
 
-  // Build room placeholder from default if room is pre-filled
   const roomPlaceholder = roomName
     ? ''
     : t('hmm.roomPlaceholder', { tone: ctx.tone || '?' });
@@ -208,6 +203,14 @@ function renderEditableBuilder(container, wordId, ctx) {
         </div>
       </div>
 
+      <div class="space-y-1.5">
+        <div class="text-xs text-gray-400">${t('hmm.decompLabel')} <span class="text-gray-300">(${t('hmm.decompDesc')})</span></div>
+        <input id="hmm-decomp" type="text" value="${escHtml(decomposition)}"
+          placeholder="${escHtml(t('hmm.decompPlaceholder'))}"
+          class="w-full border border-gray-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-purple-400">
+        ${buildIDSInsertButtons('hmm-decomp')}
+      </div>
+
       <div class="space-y-1">
         <div class="flex items-center justify-between">
           <div class="text-xs text-gray-400">${t('hmm.props')} <span class="text-gray-300">(${t('hmm.propsDesc')})</span></div>
@@ -233,6 +236,20 @@ function renderEditableBuilder(container, wordId, ctx) {
     document.getElementById('hmm-help-box').classList.toggle('hidden');
   });
 
+  // IDS insert buttons — insert operator at cursor position in the target input
+  container.querySelectorAll('.hmm-ids-insert').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? input.value.length;
+      input.value = input.value.slice(0, start) + btn.dataset.op + input.value.slice(end);
+      const pos = start + btn.dataset.op.length;
+      input.setSelectionRange(pos, pos);
+      input.focus();
+    });
+  });
+
   // Update prompt line dynamically
   function updatePrompt() {
     const actor = document.getElementById('hmm-actor').value.trim();
@@ -256,38 +273,19 @@ function renderEditableBuilder(container, wordId, ctx) {
     updatePrompt();
   });
 
-  // Add new prop row (with IDS operator picker)
+  // Add new prop row (radical + name only — no IDS picker)
   document.getElementById('hmm-add-prop').addEventListener('click', () => {
     const list = document.getElementById('hmm-props-list');
     const row = document.createElement('div');
-    row.className = 'hmm-prop-row space-y-1';
+    row.className = propRowClass;
     row.innerHTML = `
-      <div class="flex items-center gap-2">
-        <input type="text" placeholder="${escHtml(t('hmm.propRadicalPlaceholder'))}"
-          class="hmm-prop-radical w-10 text-center text-lg border border-gray-200 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 shrink-0">
-        <input type="text" placeholder="${escHtml(t('hmm.propPlaceholderNew'))}"
-          class="${propInputClass}">
-        <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
-      </div>
-      <div class="pl-12">
-        <div class="text-xs text-gray-400 mb-1">${escHtml(t('hmm.idsPickerLabel'))}</div>
-        ${buildIDSPicker('⿰')}
-      </div>
+      <input type="text" placeholder="${escHtml(t('hmm.propRadicalPlaceholder'))}"
+        class="hmm-prop-radical w-10 text-center text-lg border border-gray-200 rounded px-1 py-1 focus:outline-none focus:ring-1 focus:ring-purple-400 shrink-0">
+      <input type="text" placeholder="${escHtml(t('hmm.propPlaceholderNew'))}"
+        class="${propInputClass}">
+      <button class="${removeBtnClass}" title="${escHtml(t('hmm.removeProp'))}">×</button>
     `;
     list.appendChild(row);
-    // IDS button toggle
-    row.querySelectorAll('.hmm-ids-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        row.querySelectorAll('.hmm-ids-btn').forEach(b => {
-          b.classList.remove('border-purple-500', 'text-purple-700', 'bg-purple-50');
-          b.classList.add('border-gray-200', 'text-gray-500', 'hover:border-purple-300', 'hover:text-purple-600', 'bg-white');
-          b.dataset.idsSelected = 'false';
-        });
-        btn.classList.remove('border-gray-200', 'text-gray-500', 'hover:border-purple-300', 'hover:text-purple-600', 'bg-white');
-        btn.classList.add('border-purple-500', 'text-purple-700', 'bg-purple-50');
-        btn.dataset.idsSelected = 'true';
-      });
-    });
     row.querySelectorAll('input').forEach(el => el.addEventListener('input', updatePrompt));
     row.querySelector('.hmm-prop-radical').focus();
   });
@@ -308,9 +306,7 @@ function renderEditableBuilder(container, wordId, ctx) {
         const radInput = row.querySelector('.hmm-prop-radical');
         const radical = radInput ? radInput.value.trim() : row.dataset.radical;
         const prop_name = row.querySelector('.hmm-prop-input')?.value.trim() || '';
-        const activeIdsBtn = row.querySelector('.hmm-ids-btn[data-ids-selected="true"]');
-        const ids_op = activeIdsBtn ? activeIdsBtn.dataset.op : '';
-        return { radical, prop_name, ids_op };
+        return { radical, prop_name };
       }).filter(p => p.radical);
 
       await apiFetch(`/api/words/${wordId}/hmm`, {
@@ -321,6 +317,7 @@ function renderEditableBuilder(container, wordId, ctx) {
           location_name: document.getElementById('hmm-location').value.trim(),
           room_name: document.getElementById('hmm-room').value.trim(),
           props,
+          decomposition: document.getElementById('hmm-decomp').value.trim(),
         }),
       });
       const status = document.getElementById('hmm-save-status');

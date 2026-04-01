@@ -185,11 +185,17 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
+	var decompositionStr string
+	if len(decomps) > 0 {
+		decompositionStr = decomps[0].Decomposition
+	}
+
 	resp := models.HMMSceneContext{
-		Initial:  initial,
-		Final:    final,
-		Tone:     tone,
-		Radicals: radicals,
+		Initial:       initial,
+		Final:         final,
+		Tone:          tone,
+		Decomposition: decompositionStr,
+		Radicals:      radicals,
 	}
 
 	if initial != "" {
@@ -247,27 +253,8 @@ func (h *HMMHandler) SaveScene(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For any new prop that carries an IDS operator, extend the character's decomposition
-	// so the radical appears in future GetHanziDecomposition calls.
-	char := word.ZhText
-	for _, p := range req.Props {
-		if p.IDSOp == "" || utf8.RuneCountInString(p.IDSOp) != 1 || !idsOperatorRune([]rune(p.IDSOp)[0]) {
-			continue
-		}
-		if utf8.RuneCountInString(p.Radical) != 1 {
-			continue
-		}
-		existing, err := h.Store.GetHanziDecompositionString(r.Context(), char)
-		if err != nil {
-			continue
-		}
-		var newDecomp string
-		if existing == "" {
-			newDecomp = p.IDSOp + p.Radical + "？"
-		} else {
-			newDecomp = p.IDSOp + existing + p.Radical
-		}
-		_ = h.Store.UpsertHanziDecomposition(r.Context(), char, newDecomp)
+	if req.Decomposition != "" {
+		_ = h.Store.UpsertHanziDecomposition(r.Context(), word.ZhText, req.Decomposition)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -406,11 +393,6 @@ func isVowel(r rune) bool {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
-
-// idsOperatorRune returns true for IDS operator runes (U+2FF0–U+2FFB).
-func idsOperatorRune(r rune) bool {
-	return r >= 0x2FF0 && r <= 0x2FFB
-}
 
 // collectRadicals extracts unique component characters from a decomposition tree.
 func collectRadicals(d models.HanziDecomposition) []string {
