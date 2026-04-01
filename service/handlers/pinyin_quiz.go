@@ -204,7 +204,7 @@ func (h *PinyinQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = h.Store.RecordPinyinDailyStat(r.Context(), correct)
+	_ = h.Store.RecordPinyinDailyStat(r.Context(), correct, sound.Tone)
 
 	resp := models.PinyinAnswerResponse{
 		Correct:       correct,
@@ -290,10 +290,20 @@ func (h *PinyinQuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
 	resp := models.PinyinDailyStatsResponse{Days: make([]models.PinyinDailyStatEntry, len(stats))}
 	for i, s := range stats {
 		resp.Days[i] = models.PinyinDailyStatEntry{
-			Date:       s.Date,
-			Attempts:   s.Attempts,
-			Mistakes:   s.Mistakes,
-			SoundsSeen: s.SoundsSeen,
+			Date:         s.Date,
+			Attempts:     s.Attempts,
+			Mistakes:     s.Mistakes,
+			SoundsSeen:   s.SoundsSeen,
+			Tone1Correct: s.Tone1Correct,
+			Tone1Wrong:   s.Tone1Wrong,
+			Tone2Correct: s.Tone2Correct,
+			Tone2Wrong:   s.Tone2Wrong,
+			Tone3Correct: s.Tone3Correct,
+			Tone3Wrong:   s.Tone3Wrong,
+			Tone4Correct: s.Tone4Correct,
+			Tone4Wrong:   s.Tone4Wrong,
+			Tone5Correct: s.Tone5Correct,
+			Tone5Wrong:   s.Tone5Wrong,
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)

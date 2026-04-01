@@ -413,7 +413,8 @@ func ShufflePinyinOptions(opts []models.PinyinOption) {
 }
 
 // RecordPinyinDailyStat upserts today's pinyin_daily_stats row after an answer.
-func (s *Store) RecordPinyinDailyStat(ctx context.Context, correct bool) error {
+// tone must be 1–5.
+func (s *Store) RecordPinyinDailyStat(ctx context.Context, correct bool, tone int) error {
 	var soundsSeen int
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM pinyin_progress WHERE first_seen_date IS NOT NULL`).Scan(&soundsSeen); err != nil {
@@ -423,16 +424,29 @@ func (s *Store) RecordPinyinDailyStat(ctx context.Context, correct bool) error {
 	if !correct {
 		mistakeInc = 1
 	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO pinyin_daily_stats (date, attempts, mistakes, sounds_seen)
-		VALUES (date('now'), 1, ?, ?)
+
+	// Build the tone-specific column name to increment.
+	suffix := "correct"
+	if !correct {
+		suffix = "wrong"
+	}
+	// tone is validated (1-5) by the DB CHECK constraint; guard anyway.
+	if tone < 1 || tone > 5 {
+		tone = 1
+	}
+	toneCol := fmt.Sprintf("tone%d_%s", tone, suffix)
+
+	query := fmt.Sprintf(`
+		INSERT INTO pinyin_daily_stats (date, attempts, mistakes, sounds_seen, %s)
+		VALUES (date('now'), 1, ?, ?, 1)
 		ON CONFLICT(date) DO UPDATE SET
 			attempts    = attempts + 1,
 			mistakes    = mistakes + ?,
-			sounds_seen = ?`,
-		mistakeInc, soundsSeen,
-		mistakeInc, soundsSeen,
-	)
+			sounds_seen = ?,
+			%s          = %s + 1`,
+		toneCol, toneCol, toneCol)
+
+	_, err := s.db.ExecContext(ctx, query, mistakeInc, soundsSeen, mistakeInc, soundsSeen)
 	if err != nil {
 		return fmt.Errorf("upsert pinyin daily stat: %w", err)
 	}
@@ -441,19 +455,32 @@ func (s *Store) RecordPinyinDailyStat(ctx context.Context, correct bool) error {
 
 // GetPinyinDailyStatsHistory returns all pinyin daily stats ordered by date ascending.
 func (s *Store) GetPinyinDailyStatsHistory(ctx context.Context) ([]models.PinyinDailyStat, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT date, attempts, mistakes, sounds_seen FROM pinyin_daily_stats ORDER BY date ASC`)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT date, attempts, mistakes, sounds_seen,
+		       tone1_correct, tone1_wrong,
+		       tone2_correct, tone2_wrong,
+		       tone3_correct, tone3_wrong,
+		       tone4_correct, tone4_wrong,
+		       tone5_correct, tone5_wrong
+		FROM pinyin_daily_stats ORDER BY date ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("get pinyin daily stats: %w", err)
 	}
 	defer rows.Close()
 	var stats []models.PinyinDailyStat
 	for rows.Next() {
-		var s models.PinyinDailyStat
-		if err := rows.Scan(&s.Date, &s.Attempts, &s.Mistakes, &s.SoundsSeen); err != nil {
+		var st models.PinyinDailyStat
+		if err := rows.Scan(
+			&st.Date, &st.Attempts, &st.Mistakes, &st.SoundsSeen,
+			&st.Tone1Correct, &st.Tone1Wrong,
+			&st.Tone2Correct, &st.Tone2Wrong,
+			&st.Tone3Correct, &st.Tone3Wrong,
+			&st.Tone4Correct, &st.Tone4Wrong,
+			&st.Tone5Correct, &st.Tone5Wrong,
+		); err != nil {
 			return nil, fmt.Errorf("scan pinyin daily stat: %w", err)
 		}
-		stats = append(stats, s)
+		stats = append(stats, st)
 	}
 	return stats, rows.Err()
 }

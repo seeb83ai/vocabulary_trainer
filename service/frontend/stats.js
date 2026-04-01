@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         `<tr><td colspan="5" class="py-8 text-center text-gray-400">No pinyin training data yet.</td></tr>`;
     } else {
       renderPinyinChart(pdays);
+      renderPinyinToneChart(pdays);
       renderPinyinTable(pdays);
     }
   }
@@ -419,6 +420,70 @@ function renderPinyinChart(days) {
               const d = days[idx];
               const acc = d.attempts > 0 ? Math.round(((d.attempts - d.mistakes) / d.attempts) * 100) : 0;
               return `Accuracy: ${acc}%\nSounds seen: ${d.sounds_seen}`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+// Tone labels with superscript tone marks for display
+const TONE_LABELS = ['Tone 1 (ā)', 'Tone 2 (á)', 'Tone 3 (ǎ)', 'Tone 4 (à)', 'Tone 5 (a·)'];
+const TONE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+function renderPinyinToneChart(days) {
+  // Aggregate correct/wrong per tone across all days
+  const correct = [0, 0, 0, 0, 0];
+  const wrong   = [0, 0, 0, 0, 0];
+  for (const d of days) {
+    correct[0] += d.tone1_correct || 0; wrong[0] += d.tone1_wrong || 0;
+    correct[1] += d.tone2_correct || 0; wrong[1] += d.tone2_wrong || 0;
+    correct[2] += d.tone3_correct || 0; wrong[2] += d.tone3_wrong || 0;
+    correct[3] += d.tone4_correct || 0; wrong[3] += d.tone4_wrong || 0;
+    correct[4] += d.tone5_correct || 0; wrong[4] += d.tone5_wrong || 0;
+  }
+  const hasData = correct.some(v => v > 0) || wrong.some(v => v > 0);
+  if (!hasData) {
+    $('pinyin-tone-chart').style.display = 'none';
+    show('pinyin-tone-chart-empty');
+    return;
+  }
+  const ctx = $('pinyin-tone-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: TONE_LABELS,
+      datasets: [
+        {
+          label: 'Correct',
+          data: correct,
+          backgroundColor: 'rgba(34, 197, 94, 0.7)',
+          stack: 'tone',
+        },
+        {
+          label: 'Wrong',
+          data: wrong,
+          backgroundColor: 'rgba(239, 68, 68, 0.7)',
+          stack: 'tone',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {},
+        y: { beginAtZero: true, stacked: true, title: { display: true, text: 'Answers' }, ticks: { precision: 0 } },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            afterBody(items) {
+              const idx = items[0].dataIndex;
+              const total = correct[idx] + wrong[idx];
+              const acc = total > 0 ? Math.round(correct[idx] / total * 100) : 0;
+              return `Accuracy: ${acc}%  (${correct[idx]}/${total})`;
             },
           },
         },
