@@ -172,6 +172,24 @@ type WordStatDetail struct {
 	Easiness    float64  `json:"easiness"`
 }
 
+type PinyinDailyStat struct {
+	Date       string
+	Attempts   int
+	Mistakes   int
+	SoundsSeen int
+}
+
+type PinyinDailyStatEntry struct {
+	Date       string `json:"date"`
+	Attempts   int    `json:"attempts"`
+	Mistakes   int    `json:"mistakes"`
+	SoundsSeen int    `json:"sounds_seen"`
+}
+
+type PinyinDailyStatsResponse struct {
+	Days []PinyinDailyStatEntry `json:"days"`
+}
+
 type DueDateCount struct {
 	Date  string `json:"date"`
 	Count int    `json:"count"`

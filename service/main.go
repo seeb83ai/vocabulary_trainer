@@ -148,6 +148,7 @@ func main() {
 		r.Get("/pinyin-quiz/next", pinyinQuizH.Next)
 		r.Post("/pinyin-quiz/answer", pinyinQuizH.Answer)
 		r.Get("/pinyin-quiz/stats", pinyinQuizH.Stats)
+		r.Get("/pinyin-quiz/daily-stats", pinyinQuizH.DailyStats)
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)

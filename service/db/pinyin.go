@@ -411,3 +411,49 @@ func ShufflePinyinOptions(opts []models.PinyinOption) {
 		opts[i], opts[j] = opts[j], opts[i]
 	})
 }
+
+// RecordPinyinDailyStat upserts today's pinyin_daily_stats row after an answer.
+func (s *Store) RecordPinyinDailyStat(ctx context.Context, correct bool) error {
+	var soundsSeen int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pinyin_progress WHERE first_seen_date IS NOT NULL`).Scan(&soundsSeen); err != nil {
+		return fmt.Errorf("count pinyin sounds seen: %w", err)
+	}
+	mistakeInc := 0
+	if !correct {
+		mistakeInc = 1
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO pinyin_daily_stats (date, attempts, mistakes, sounds_seen)
+		VALUES (date('now'), 1, ?, ?)
+		ON CONFLICT(date) DO UPDATE SET
+			attempts    = attempts + 1,
+			mistakes    = mistakes + ?,
+			sounds_seen = ?`,
+		mistakeInc, soundsSeen,
+		mistakeInc, soundsSeen,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert pinyin daily stat: %w", err)
+	}
+	return nil
+}
+
+// GetPinyinDailyStatsHistory returns all pinyin daily stats ordered by date ascending.
+func (s *Store) GetPinyinDailyStatsHistory(ctx context.Context) ([]models.PinyinDailyStat, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT date, attempts, mistakes, sounds_seen FROM pinyin_daily_stats ORDER BY date ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("get pinyin daily stats: %w", err)
+	}
+	defer rows.Close()
+	var stats []models.PinyinDailyStat
+	for rows.Next() {
+		var s models.PinyinDailyStat
+		if err := rows.Scan(&s.Date, &s.Attempts, &s.Mistakes, &s.SoundsSeen); err != nil {
+			return nil, fmt.Errorf("scan pinyin daily stat: %w", err)
+		}
+		stats = append(stats, s)
+	}
+	return stats, rows.Err()
+}

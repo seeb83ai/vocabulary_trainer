@@ -204,6 +204,7 @@ func (h *PinyinQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = h.Store.RecordPinyinDailyStat(r.Context(), correct)
 
 	resp := models.PinyinAnswerResponse{
 		Correct:       correct,
@@ -278,6 +279,24 @@ func (h *PinyinQuizHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		tags = []string{}
 	}
 	writeJSON(w, http.StatusOK, tags)
+}
+
+func (h *PinyinQuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.Store.GetPinyinDailyStatsHistory(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	resp := models.PinyinDailyStatsResponse{Days: make([]models.PinyinDailyStatEntry, len(stats))}
+	for i, s := range stats {
+		resp.Days[i] = models.PinyinDailyStatEntry{
+			Date:       s.Date,
+			Attempts:   s.Attempts,
+			Mistakes:   s.Mistakes,
+			SoundsSeen: s.SoundsSeen,
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *PinyinQuizHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
