@@ -217,13 +217,14 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
         </div>
       </div>
 
+      ${!ctx.multi_char ? `
       <div class="space-y-1.5">
         <div class="text-xs text-gray-400">${t('hmm.decompLabel')} <span class="text-gray-300">(${t('hmm.decompDesc')})</span></div>
         <input id="hmm-decomp" type="text" value="${escHtml(decomposition)}"
           placeholder="${escHtml(t('hmm.decompPlaceholder'))}"
           class="w-full border border-gray-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-purple-400">
         ${buildIDSInsertButtons('hmm-decomp')}
-      </div>
+      </div>` : ''}
 
       <div class="space-y-1">
         <div class="flex items-center justify-between">
@@ -365,7 +366,7 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
           location_name: document.getElementById('hmm-location').value.trim(),
           room_name: document.getElementById('hmm-room').value.trim(),
           props,
-          decomposition: document.getElementById('hmm-decomp').value.trim(),
+          decomposition: document.getElementById('hmm-decomp')?.value.trim() || '',
         }),
       });
       const status = document.getElementById('hmm-save-status');

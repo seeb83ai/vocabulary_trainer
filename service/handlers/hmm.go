@@ -163,34 +163,36 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only works for single-character words
-	if utf8.RuneCountInString(word.ZhText) != 1 {
-		writeError(w, http.StatusBadRequest, "HMM only supports single-character words")
-		return
-	}
-
-	// Parse pinyin
+	// Parse pinyin (parsePinyin already handles multi-syllable by taking the first)
 	var initial, final string
 	var tone int
 	if word.Pinyin != nil && *word.Pinyin != "" {
 		initial, final, tone = parsePinyin(*word.Pinyin)
 	}
 
-	// Decompose character to find radicals
 	runes := []rune(word.ZhText)
-	decomps, _ := h.Store.GetHanziDecomposition(r.Context(), runes)
+	isMultiChar := len(runes) > 1
+
 	var radicals []string
 	radicalDefs := map[string]string{}
-	if len(decomps) > 0 {
-		radicals = collectRadicals(decomps[0])
-		radicalDefs = collectRadicalDefs(decomps[0])
+	var decompositionStr string
+
+	if isMultiChar {
+		// For multi-character words each character becomes a prop.
+		for _, ru := range runes {
+			radicals = append(radicals, string(ru))
+		}
+	} else {
+		// Single character: decompose into components.
+		decomps, _ := h.Store.GetHanziDecomposition(r.Context(), runes)
+		if len(decomps) > 0 {
+			radicals = collectRadicals(decomps[0])
+			radicalDefs = collectRadicalDefs(decomps[0])
+			decompositionStr = decomps[0].Decomposition
+		}
 	}
 
 	ctx := r.Context()
-	var decompositionStr string
-	if len(decomps) > 0 {
-		decompositionStr = decomps[0].Decomposition
-	}
 
 	resp := models.HMMSceneContext{
 		Initial:       initial,
@@ -199,6 +201,7 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 		Decomposition: decompositionStr,
 		Radicals:      radicals,
 		RadicalDefs:   radicalDefs,
+		MultiChar:     isMultiChar,
 	}
 
 	if initial != "" {

@@ -289,6 +289,7 @@ type HMMSceneContext struct {
 	ToneRoom      *HMMToneRoom      `json:"tone_room"`
 	Props         []HMMProp         `json:"props"`
 	Scene         *HMMScene         `json:"scene,omitempty"`
+	MultiChar     bool              `json:"multi_char,omitempty"`
 }
 
 type HMMSaveSceneRequest struct {
