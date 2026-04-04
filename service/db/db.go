@@ -1927,6 +1927,43 @@ func (s *Store) GetHMMToneRoom(ctx context.Context, tone int) (*models.HMMToneRo
 	return &tr, nil
 }
 
+// GetEnTranslationsByZhTexts returns the first English translation for each
+// zh_text in the supplied slice, keyed by zh_text. Characters not found in
+// the words table are silently omitted.
+func (s *Store) GetEnTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
+	if len(zhTexts) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(zhTexts))
+	args := make([]any, len(zhTexts))
+	for i, t := range zhTexts {
+		placeholders[i] = "?"
+		args[i] = t
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.text, MIN(e.text)
+		 FROM words w
+		 JOIN translations t ON t.zh_word_id = w.id
+		 JOIN words e ON e.id = t.en_word_id
+		 WHERE w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
+		 GROUP BY w.text`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("get en translations by zh texts: %w", err)
+	}
+	result := make(map[string]string)
+	for rows.Next() {
+		var zh, en string
+		if err := rows.Scan(&zh, &en); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan en translation: %w", err)
+		}
+		result[zh] = en
+	}
+	rows.Close()
+	return result, rows.Err()
+}
+
 func (s *Store) GetHMMPropsByRadicals(ctx context.Context, radicals []string) ([]models.HMMProp, error) {
 	if len(radicals) == 0 {
 		return nil, nil

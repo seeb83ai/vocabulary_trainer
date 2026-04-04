@@ -182,6 +182,11 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 		for _, ru := range runes {
 			radicals = append(radicals, string(ru))
 		}
+		// Use English translations from the words table as placeholder hints.
+		radicalDefs, _ = h.Store.GetEnTranslationsByZhTexts(r.Context(), radicals)
+		if radicalDefs == nil {
+			radicalDefs = map[string]string{}
+		}
 	} else {
 		// Single character: decompose into components.
 		decomps, _ := h.Store.GetHanziDecomposition(r.Context(), runes)
