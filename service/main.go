@@ -87,7 +87,11 @@ func main() {
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 	hanziH := &handlers.HanziHandler{Store: store}
-	hmmH := &handlers.HMMHandler{Store: store}
+	hmmDeepLKey := ""
+	if translateH != nil {
+		hmmDeepLKey = translateH.APIKey
+	}
+	hmmH := &handlers.HMMHandler{Store: store, DeepLAPIKey: hmmDeepLKey}
 	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
 	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDir: pinyinAudioDir}
 

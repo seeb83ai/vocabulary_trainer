@@ -195,9 +195,9 @@ function openEditForm(word) {
     hide('start-training-row');
   }
 
-  // HMM scene builder for single-character words
+  // HMM scene builder
   const hmmContainer = $('hmm-builder-container');
-  if ([...word.zh_text].length === 1 && word.id) {
+  if (word.id) {
     hmmContainer.classList.remove('hidden');
     loadHMMBuilder('hmm-builder-container', word.id);
   } else {

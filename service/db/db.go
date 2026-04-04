@@ -1927,6 +1927,113 @@ func (s *Store) GetHMMToneRoom(ctx context.Context, tone int) (*models.HMMToneRo
 	return &tr, nil
 }
 
+// getTranslationsByZhTexts returns the first translation in the given language for each
+// zh_text in the supplied slice, keyed by zh_text. Both EN and DE translations share
+// the translations table; language is distinguished via words.language.
+func (s *Store) getTranslationsByZhTexts(ctx context.Context, zhTexts []string, lang string) (map[string]string, error) {
+	if len(zhTexts) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(zhTexts))
+	args := make([]any, len(zhTexts)+1)
+	args[0] = lang
+	for i, t := range zhTexts {
+		placeholders[i] = "?"
+		args[i+1] = t
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.text, MIN(e.text)
+		 FROM words w
+		 JOIN translations t ON t.zh_word_id = w.id
+		 JOIN words e ON e.id = t.en_word_id AND e.language = ?
+		 WHERE w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
+		 GROUP BY w.text`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("get %s translations by zh texts: %w", lang, err)
+	}
+	result := make(map[string]string)
+	for rows.Next() {
+		var zh, trans string
+		if err := rows.Scan(&zh, &trans); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan %s translation: %w", lang, err)
+		}
+		result[zh] = trans
+	}
+	rows.Close()
+	return result, rows.Err()
+}
+
+// GetEnTranslationsByZhTexts returns the first English translation for each
+// zh_text in the supplied slice, keyed by zh_text.
+func (s *Store) GetEnTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
+	return s.getTranslationsByZhTexts(ctx, zhTexts, "en")
+}
+
+// GetDeTranslationsByZhTexts returns the first German translation for each
+// zh_text in the supplied slice, keyed by zh_text.
+func (s *Store) GetDeTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
+	return s.getTranslationsByZhTexts(ctx, zhTexts, "de")
+}
+
+// StoreTranslationForZhChar stores an EN or DE translation for a Chinese character.
+// Both languages use the translations table; words.language distinguishes them.
+// If the zh character does not yet exist in the words table it is created with the
+// supplied pinyin (which may be empty). No SM-2 progress row is initialised because
+// the character is stored only as a reference, not as a quiz word.
+func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, transText, lang string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var zhID int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
+	).Scan(&zhID); err != nil {
+		if err != sql.ErrNoRows {
+			return fmt.Errorf("find zh word: %w", err)
+		}
+		// zh word doesn't exist yet — create it so the translation can be linked.
+		var py *string
+		if pinyin != "" {
+			py = &pinyin
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO words (text, language, pinyin) VALUES (?, 'zh', ?)`, zhText, py,
+		); err != nil {
+			return fmt.Errorf("insert zh word: %w", err)
+		}
+		if err := tx.QueryRowContext(ctx,
+			`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
+		).Scan(&zhID); err != nil {
+			return fmt.Errorf("get new zh word id: %w", err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO words (text, language) VALUES (?, ?)`, transText, lang,
+	); err != nil {
+		return fmt.Errorf("upsert %s word: %w", lang, err)
+	}
+	var transID int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE text = ? AND language = ?`, transText, lang,
+	).Scan(&transID); err != nil {
+		return fmt.Errorf("get %s word id: %w", lang, err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`, transID, zhID,
+	); err != nil {
+		return fmt.Errorf("link %s translation: %w", lang, err)
+	}
+
+	return tx.Commit()
+}
+
 func (s *Store) GetHMMPropsByRadicals(ctx context.Context, radicals []string) ([]models.HMMProp, error) {
 	if len(radicals) == 0 {
 		return nil, nil
