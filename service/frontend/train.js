@@ -392,8 +392,7 @@ async function submitAnswer(e) {
 
     // HMM mnemonic scene display
     const hmmEl = $('result-hmm');
-    const isSingleChar = [...result.zh_text].length === 1;
-    if (isSingleChar && result.scene_text) {
+    if (result.scene_text) {
       if (!result.correct) {
         // Wrong answer: auto-show scene
         renderHMMSceneReadOnly('result-hmm', result.scene_text);
@@ -417,12 +416,9 @@ async function submitAnswer(e) {
           }
         });
       }
-    } else if (isSingleChar && !result.scene_text) {
+    } else {
       hmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
       show('result-hmm');
-    } else {
-      hmmEl.innerHTML = '';
-      hide('result-hmm');
     }
 
     $('next-btn').focus();
