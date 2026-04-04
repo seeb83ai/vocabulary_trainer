@@ -2012,7 +2012,6 @@ func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, t
 			return fmt.Errorf("get new zh word id: %w", err)
 		}
 	}
-	}
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT OR IGNORE INTO words (text, language) VALUES (?, ?)`, transText, lang,
