@@ -185,43 +185,68 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 		for _, ru := range runes {
 			radicals = append(radicals, string(ru))
 		}
-		// Load cached EN and DE translations from the DB.
-		radicalDefs, _ = h.Store.GetEnTranslationsByZhTexts(r.Context(), radicals)
-		if radicalDefs == nil {
-			radicalDefs = map[string]string{}
-		}
-		radicalDeDefs, _ = h.Store.GetDeTranslationsByZhTexts(r.Context(), radicals)
-		if radicalDeDefs == nil {
-			radicalDeDefs = map[string]string{}
-		}
 
-		// If DeepL is configured, fetch and persist any missing translations.
-		if h.DeepLAPIKey != "" {
-			var missingEN, missingDE []string
-			for _, ch := range radicals {
-				if radicalDefs[ch] == "" {
-					missingEN = append(missingEN, ch)
-				}
-				if radicalDeDefs[ch] == "" {
-					missingDE = append(missingDE, ch)
+		// 1. Use hanzi_decomposition definitions where available — no word storage
+		//    or DeepL call needed for these characters.
+		hanziDefs := map[string]string{}
+		if decomps, _ := h.Store.GetHanziDecomposition(r.Context(), runes); len(decomps) > 0 {
+			for _, d := range decomps {
+				if d.Character != "" && d.Definition != "" {
+					hanziDefs[d.Character] = d.Definition
 				}
 			}
-			if len(missingEN) > 0 {
-				if translated, err := deeplTranslate(missingEN, "EN", "ZH", h.DeepLAPIKey, nil); err == nil {
-					for i, ch := range missingEN {
-						if translated[i] != "" {
-							radicalDefs[ch] = translated[i]
-							_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, toPinyin(ch), translated[i], "en")
+		}
+
+		// Split radicals into those covered by hanzi_decomposition and those that need
+		// translation lookup / DeepL.
+		var needTranslation []string
+		for _, ch := range radicals {
+			if def := hanziDefs[ch]; def != "" {
+				radicalDefs[ch] = def
+			} else {
+				needTranslation = append(needTranslation, ch)
+			}
+		}
+
+		// 2. For the remainder, load cached EN and DE translations from the DB.
+		if len(needTranslation) > 0 {
+			if enDefs, _ := h.Store.GetEnTranslationsByZhTexts(r.Context(), needTranslation); enDefs != nil {
+				for ch, v := range enDefs {
+					radicalDefs[ch] = v
+				}
+			}
+			if deDefs, _ := h.Store.GetDeTranslationsByZhTexts(r.Context(), needTranslation); deDefs != nil {
+				radicalDeDefs = deDefs
+			}
+
+			// 3. Fetch from DeepL for any still-missing translations.
+			if h.DeepLAPIKey != "" {
+				var missingEN, missingDE []string
+				for _, ch := range needTranslation {
+					if radicalDefs[ch] == "" {
+						missingEN = append(missingEN, ch)
+					}
+					if radicalDeDefs[ch] == "" {
+						missingDE = append(missingDE, ch)
+					}
+				}
+				if len(missingEN) > 0 {
+					if translated, err := deeplTranslate(missingEN, "EN", "ZH", h.DeepLAPIKey, nil); err == nil {
+						for i, ch := range missingEN {
+							if translated[i] != "" {
+								radicalDefs[ch] = translated[i]
+								_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, toPinyin(ch), translated[i], "en")
+							}
 						}
 					}
 				}
-			}
-			if len(missingDE) > 0 {
-				if translated, err := deeplTranslate(missingDE, "DE", "ZH", h.DeepLAPIKey, nil); err == nil {
-					for i, ch := range missingDE {
-						if translated[i] != "" {
-							radicalDeDefs[ch] = translated[i]
-							_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, toPinyin(ch), translated[i], "de")
+				if len(missingDE) > 0 {
+					if translated, err := deeplTranslate(missingDE, "DE", "ZH", h.DeepLAPIKey, nil); err == nil {
+						for i, ch := range missingDE {
+							if translated[i] != "" {
+								radicalDeDefs[ch] = translated[i]
+								_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, toPinyin(ch), translated[i], "de")
+							}
 						}
 					}
 				}
