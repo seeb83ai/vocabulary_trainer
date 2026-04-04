@@ -1927,82 +1927,58 @@ func (s *Store) GetHMMToneRoom(ctx context.Context, tone int) (*models.HMMToneRo
 	return &tr, nil
 }
 
-// GetEnTranslationsByZhTexts returns the first English translation for each
-// zh_text in the supplied slice, keyed by zh_text. Characters not found in
-// the words table are silently omitted.
-func (s *Store) GetEnTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
+// getTranslationsByZhTexts returns the first translation in the given language for each
+// zh_text in the supplied slice, keyed by zh_text. Both EN and DE translations share
+// the translations table; language is distinguished via words.language.
+func (s *Store) getTranslationsByZhTexts(ctx context.Context, zhTexts []string, lang string) (map[string]string, error) {
 	if len(zhTexts) == 0 {
 		return nil, nil
 	}
 	placeholders := make([]string, len(zhTexts))
-	args := make([]any, len(zhTexts))
+	args := make([]any, len(zhTexts)+1)
+	args[0] = lang
 	for i, t := range zhTexts {
 		placeholders[i] = "?"
-		args[i] = t
+		args[i+1] = t
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text, MIN(e.text)
 		 FROM words w
 		 JOIN translations t ON t.zh_word_id = w.id
-		 JOIN words e ON e.id = t.en_word_id
+		 JOIN words e ON e.id = t.en_word_id AND e.language = ?
 		 WHERE w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
 		 GROUP BY w.text`,
 		args...)
 	if err != nil {
-		return nil, fmt.Errorf("get en translations by zh texts: %w", err)
+		return nil, fmt.Errorf("get %s translations by zh texts: %w", lang, err)
 	}
 	result := make(map[string]string)
 	for rows.Next() {
-		var zh, en string
-		if err := rows.Scan(&zh, &en); err != nil {
+		var zh, trans string
+		if err := rows.Scan(&zh, &trans); err != nil {
 			rows.Close()
-			return nil, fmt.Errorf("scan en translation: %w", err)
+			return nil, fmt.Errorf("scan %s translation: %w", lang, err)
 		}
-		result[zh] = en
+		result[zh] = trans
 	}
 	rows.Close()
 	return result, rows.Err()
+}
+
+// GetEnTranslationsByZhTexts returns the first English translation for each
+// zh_text in the supplied slice, keyed by zh_text.
+func (s *Store) GetEnTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
+	return s.getTranslationsByZhTexts(ctx, zhTexts, "en")
 }
 
 // GetDeTranslationsByZhTexts returns the first German translation for each
 // zh_text in the supplied slice, keyed by zh_text.
 func (s *Store) GetDeTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
-	if len(zhTexts) == 0 {
-		return nil, nil
-	}
-	placeholders := make([]string, len(zhTexts))
-	args := make([]any, len(zhTexts))
-	for i, t := range zhTexts {
-		placeholders[i] = "?"
-		args[i] = t
-	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT w.text, MIN(d.text)
-		 FROM words w
-		 JOIN de_translations dt ON dt.zh_word_id = w.id
-		 JOIN words d ON d.id = dt.de_word_id
-		 WHERE w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
-		 GROUP BY w.text`,
-		args...)
-	if err != nil {
-		return nil, fmt.Errorf("get de translations by zh texts: %w", err)
-	}
-	result := make(map[string]string)
-	for rows.Next() {
-		var zh, de string
-		if err := rows.Scan(&zh, &de); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("scan de translation: %w", err)
-		}
-		result[zh] = de
-	}
-	rows.Close()
-	return result, rows.Err()
+	return s.getTranslationsByZhTexts(ctx, zhTexts, "de")
 }
 
 // StoreTranslationForZhChar stores an EN or DE translation for a Chinese character.
-// It looks up the existing zh word record, upserts the translation word, and links them
-// via the translations (EN) or de_translations (DE) table.
+// Both languages use the translations table; words.language distinguishes them.
 // If the zh character is not found in the words table the call is a no-op.
 func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, transText, lang string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -2033,16 +2009,9 @@ func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, transText
 		return fmt.Errorf("get %s word id: %w", lang, err)
 	}
 
-	var linkSQL string
-	switch lang {
-	case "en":
-		linkSQL = `INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`
-	case "de":
-		linkSQL = `INSERT OR IGNORE INTO de_translations (de_word_id, zh_word_id) VALUES (?, ?)`
-	default:
-		return fmt.Errorf("unsupported language: %s", lang)
-	}
-	if _, err := tx.ExecContext(ctx, linkSQL, transID, zhID); err != nil {
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`, transID, zhID,
+	); err != nil {
 		return fmt.Errorf("link %s translation: %w", lang, err)
 	}
 
