@@ -270,6 +270,7 @@ CREATE INDEX IF NOT EXISTS idx_pinyin_sounds_syllable ON pinyin_sounds(syllable)
 		// SQLite doesn't support ALTER CONSTRAINT, so rebuild the table.
 		version: 12,
 		sql: `
+PRAGMA foreign_keys = OFF;
 CREATE TABLE IF NOT EXISTS pinyin_sounds_new (
 	id        INTEGER PRIMARY KEY AUTOINCREMENT,
 	initial   TEXT NOT NULL DEFAULT '',
@@ -286,6 +287,7 @@ DROP TABLE IF EXISTS pinyin_sounds;
 ALTER TABLE pinyin_sounds_new RENAME TO pinyin_sounds;
 CREATE INDEX IF NOT EXISTS idx_pinyin_sounds_tag ON pinyin_sounds(tag);
 CREATE INDEX IF NOT EXISTS idx_pinyin_sounds_syllable ON pinyin_sounds(syllable);
+PRAGMA foreign_keys = ON;
 `,
 	},
 	{
@@ -579,6 +581,12 @@ CREATE TABLE IF NOT EXISTS pinyin_daily_stats (
 				return fmt.Errorf("read words schema: %w", err)
 			}
 			if !strings.Contains(wordsSql, "'de'") {
+				// Disable FK enforcement so DROP TABLE words doesn't cascade-delete
+				// translations, sm2_progress, word_tags, confusion_pairs, hmm_scenes.
+				if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+					return fmt.Errorf("disable foreign keys: %w", err)
+				}
+				defer db.Exec(`PRAGMA foreign_keys = ON`)
 				for _, stmt := range []string{
 					`CREATE TABLE words_new (
 					  id           INTEGER PRIMARY KEY AUTOINCREMENT,
