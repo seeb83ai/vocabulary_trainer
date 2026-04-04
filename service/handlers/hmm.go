@@ -13,7 +13,8 @@ import (
 )
 
 type HMMHandler struct {
-	Store *db.Store
+	Store       *db.Store
+	DeepLAPIKey string // optional; when set, missing translations are fetched and cached
 }
 
 // ── Library endpoints ───────────────────────────────────────────────────
@@ -177,15 +178,54 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 	radicalDefs := map[string]string{}
 	var decompositionStr string
 
+	radicalDeDefs := map[string]string{}
+
 	if isMultiChar {
 		// For multi-character words each character becomes a prop.
 		for _, ru := range runes {
 			radicals = append(radicals, string(ru))
 		}
-		// Use English translations from the words table as placeholder hints.
+		// Load cached EN and DE translations from the DB.
 		radicalDefs, _ = h.Store.GetEnTranslationsByZhTexts(r.Context(), radicals)
 		if radicalDefs == nil {
 			radicalDefs = map[string]string{}
+		}
+		radicalDeDefs, _ = h.Store.GetDeTranslationsByZhTexts(r.Context(), radicals)
+		if radicalDeDefs == nil {
+			radicalDeDefs = map[string]string{}
+		}
+
+		// If DeepL is configured, fetch and persist any missing translations.
+		if h.DeepLAPIKey != "" {
+			var missingEN, missingDE []string
+			for _, ch := range radicals {
+				if radicalDefs[ch] == "" {
+					missingEN = append(missingEN, ch)
+				}
+				if radicalDeDefs[ch] == "" {
+					missingDE = append(missingDE, ch)
+				}
+			}
+			if len(missingEN) > 0 {
+				if translated, err := deeplTranslate(missingEN, "EN", "ZH", h.DeepLAPIKey, nil); err == nil {
+					for i, ch := range missingEN {
+						if translated[i] != "" {
+							radicalDefs[ch] = translated[i]
+							_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, translated[i], "en")
+						}
+					}
+				}
+			}
+			if len(missingDE) > 0 {
+				if translated, err := deeplTranslate(missingDE, "DE", "ZH", h.DeepLAPIKey, nil); err == nil {
+					for i, ch := range missingDE {
+						if translated[i] != "" {
+							radicalDeDefs[ch] = translated[i]
+							_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, translated[i], "de")
+						}
+					}
+				}
+			}
 		}
 	} else {
 		// Single character: decompose into components.
@@ -206,6 +246,7 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 		Decomposition: decompositionStr,
 		Radicals:      radicals,
 		RadicalDefs:   radicalDefs,
+		RadicalDeDefs: radicalDeDefs,
 		MultiChar:     isMultiChar,
 	}
 

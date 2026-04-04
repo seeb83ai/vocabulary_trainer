@@ -1964,6 +1964,91 @@ func (s *Store) GetEnTranslationsByZhTexts(ctx context.Context, zhTexts []string
 	return result, rows.Err()
 }
 
+// GetDeTranslationsByZhTexts returns the first German translation for each
+// zh_text in the supplied slice, keyed by zh_text.
+func (s *Store) GetDeTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
+	if len(zhTexts) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(zhTexts))
+	args := make([]any, len(zhTexts))
+	for i, t := range zhTexts {
+		placeholders[i] = "?"
+		args[i] = t
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.text, MIN(d.text)
+		 FROM words w
+		 JOIN de_translations dt ON dt.zh_word_id = w.id
+		 JOIN words d ON d.id = dt.de_word_id
+		 WHERE w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
+		 GROUP BY w.text`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("get de translations by zh texts: %w", err)
+	}
+	result := make(map[string]string)
+	for rows.Next() {
+		var zh, de string
+		if err := rows.Scan(&zh, &de); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan de translation: %w", err)
+		}
+		result[zh] = de
+	}
+	rows.Close()
+	return result, rows.Err()
+}
+
+// StoreTranslationForZhChar stores an EN or DE translation for a Chinese character.
+// It looks up the existing zh word record, upserts the translation word, and links them
+// via the translations (EN) or de_translations (DE) table.
+// If the zh character is not found in the words table the call is a no-op.
+func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, transText, lang string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var zhID int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
+	).Scan(&zhID); err != nil {
+		if err == sql.ErrNoRows {
+			return nil // character not in words table — skip silently
+		}
+		return fmt.Errorf("find zh word: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO words (text, language) VALUES (?, ?)`, transText, lang,
+	); err != nil {
+		return fmt.Errorf("upsert %s word: %w", lang, err)
+	}
+	var transID int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE text = ? AND language = ?`, transText, lang,
+	).Scan(&transID); err != nil {
+		return fmt.Errorf("get %s word id: %w", lang, err)
+	}
+
+	var linkSQL string
+	switch lang {
+	case "en":
+		linkSQL = `INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`
+	case "de":
+		linkSQL = `INSERT OR IGNORE INTO de_translations (de_word_id, zh_word_id) VALUES (?, ?)`
+	default:
+		return fmt.Errorf("unsupported language: %s", lang)
+	}
+	if _, err := tx.ExecContext(ctx, linkSQL, transID, zhID); err != nil {
+		return fmt.Errorf("link %s translation: %w", lang, err)
+	}
+
+	return tx.Commit()
+}
+
 func (s *Store) GetHMMPropsByRadicals(ctx context.Context, radicals []string) ([]models.HMMProp, error) {
 	if len(radicals) == 0 {
 		return nil, nil
