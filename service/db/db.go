@@ -1979,8 +1979,10 @@ func (s *Store) GetDeTranslationsByZhTexts(ctx context.Context, zhTexts []string
 
 // StoreTranslationForZhChar stores an EN or DE translation for a Chinese character.
 // Both languages use the translations table; words.language distinguishes them.
-// If the zh character is not found in the words table the call is a no-op.
-func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, transText, lang string) error {
+// If the zh character does not yet exist in the words table it is created with the
+// supplied pinyin (which may be empty). No SM-2 progress row is initialised because
+// the character is stored only as a reference, not as a quiz word.
+func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, transText, lang string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -1991,10 +1993,25 @@ func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, transText
 	if err := tx.QueryRowContext(ctx,
 		`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
 	).Scan(&zhID); err != nil {
-		if err == sql.ErrNoRows {
-			return nil // character not in words table — skip silently
+		if err != sql.ErrNoRows {
+			return fmt.Errorf("find zh word: %w", err)
 		}
-		return fmt.Errorf("find zh word: %w", err)
+		// zh word doesn't exist yet — create it so the translation can be linked.
+		var py *string
+		if pinyin != "" {
+			py = &pinyin
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO words (text, language, pinyin) VALUES (?, 'zh', ?)`, zhText, py,
+		); err != nil {
+			return fmt.Errorf("insert zh word: %w", err)
+		}
+		if err := tx.QueryRowContext(ctx,
+			`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
+		).Scan(&zhID); err != nil {
+			return fmt.Errorf("get new zh word id: %w", err)
+		}
+	}
 	}
 
 	if _, err := tx.ExecContext(ctx,

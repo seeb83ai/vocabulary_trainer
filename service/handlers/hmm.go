@@ -211,7 +211,7 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 					for i, ch := range missingEN {
 						if translated[i] != "" {
 							radicalDefs[ch] = translated[i]
-							_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, translated[i], "en")
+							_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, toPinyin(ch), translated[i], "en")
 						}
 					}
 				}
@@ -221,7 +221,7 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 					for i, ch := range missingDE {
 						if translated[i] != "" {
 							radicalDeDefs[ch] = translated[i]
-							_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, translated[i], "de")
+							_ = h.Store.StoreTranslationForZhChar(r.Context(), ch, toPinyin(ch), translated[i], "de")
 						}
 					}
 				}
