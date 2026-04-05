@@ -183,8 +183,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	}
 	rows.Close()
 
-	// Batch-load English texts and tags for all page results in two queries
-	// instead of 2×N per-word queries.
+	// Batch-load translations and tags for all page results.
 	if len(words) > 0 {
 		ids := make([]int64, len(words))
 		idIndex := make(map[int64]int, len(words))
@@ -192,8 +191,25 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 			ids[i] = w.ID
 			idIndex[w.ID] = i
 		}
-		if err := s.batchLoadEnTexts(ctx, words, ids, idIndex); err != nil {
+		enMap, err := s.batchLoadTranslationTexts(ctx, ids, "en")
+		if err != nil {
 			return nil, 0, err
+		}
+		deMap, err := s.batchLoadTranslationTexts(ctx, ids, "de")
+		if err != nil {
+			return nil, 0, err
+		}
+		for i, w := range words {
+			if t := enMap[w.ID]; t != nil {
+				words[i].EnTexts = t
+			} else {
+				words[i].EnTexts = []string{}
+			}
+			if t := deMap[w.ID]; t != nil {
+				words[i].DeTexts = t
+			} else {
+				words[i].DeTexts = []string{}
+			}
 		}
 		if err := s.batchLoadTags(ctx, words, ids, idIndex); err != nil {
 			return nil, 0, err
@@ -205,40 +221,36 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	return words, total, nil
 }
 
-func (s *Store) batchLoadEnTexts(ctx context.Context, words []models.WordDetail, ids []int64, idIndex map[int64]int) error {
+// batchLoadTranslationTexts loads all translation texts for the given zh word IDs
+// filtered by the given language ('en' or 'de'), returning a map of zhID → texts.
+func (s *Store) batchLoadTranslationTexts(ctx context.Context, ids []int64, lang string) (map[int64][]string, error) {
 	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids))
+	args := make([]any, len(ids)+1)
+	args[0] = lang
 	for i, id := range ids {
 		placeholders[i] = "?"
-		args[i] = id
+		args[i+1] = id
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT t.zh_word_id, w.text FROM words w
 		 JOIN translations t ON t.en_word_id = w.id
-		 WHERE t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
+		 WHERE w.language = ?
+		   AND t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
 		 ORDER BY w.text`, args...)
 	if err != nil {
-		return fmt.Errorf("batch en texts: %w", err)
+		return nil, fmt.Errorf("batch %s texts: %w", lang, err)
 	}
 	defer rows.Close()
+	result := make(map[int64][]string)
 	for rows.Next() {
 		var zhID int64
 		var text string
 		if err := rows.Scan(&zhID, &text); err != nil {
-			return err
+			return nil, err
 		}
-		idx := idIndex[zhID]
-		words[idx].EnTexts = append(words[idx].EnTexts, text)
+		result[zhID] = append(result[zhID], text)
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for i := range words {
-		if words[i].EnTexts == nil {
-			words[i].EnTexts = []string{}
-		}
-	}
-	return nil
+	return result, rows.Err()
 }
 
 func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, ids []int64, idIndex map[int64]int) error {
@@ -277,23 +289,23 @@ func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, id
 	return nil
 }
 
-func (s *Store) getEnTextsForZhWord(ctx context.Context, zhID int64) ([]string, error) {
+func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, lang string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text FROM words w
 		 JOIN translations t ON t.en_word_id = w.id
-		 WHERE t.zh_word_id = ?
-		 ORDER BY w.text`, zhID)
+		 WHERE t.zh_word_id = ? AND w.language = ?
+		 ORDER BY w.text`, zhID, lang)
 	if err != nil {
-		return nil, fmt.Errorf("get en texts: %w", err)
+		return nil, fmt.Errorf("get %s texts: %w", lang, err)
 	}
 	defer rows.Close()
 	var texts []string
 	for rows.Next() {
-		var t string
-		if err := rows.Scan(&t); err != nil {
+		var txt string
+		if err := rows.Scan(&txt); err != nil {
 			return nil, err
 		}
-		texts = append(texts, t)
+		texts = append(texts, txt)
 	}
 	if texts == nil {
 		texts = []string{}
@@ -330,11 +342,16 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 	if err != nil {
 		return nil, fmt.Errorf("get word by id: %w", err)
 	}
-	enTexts, err := s.getEnTextsForZhWord(ctx, id)
+	enTexts, err := s.getTranslationTextsForZhWord(ctx, id, "en")
 	if err != nil {
 		return nil, err
 	}
 	wd.EnTexts = enTexts
+	deTexts, err := s.getTranslationTextsForZhWord(ctx, id, "de")
+	if err != nil {
+		return nil, err
+	}
+	wd.DeTexts = deTexts
 	wd.Tags, err = s.getTagsForWord(ctx, id)
 	if err != nil {
 		return nil, err
@@ -375,7 +392,26 @@ func (s *Store) CreateWord(ctx context.Context, req models.CreateWordRequest) (i
 		if _, err := tx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
 			enID, zhID); err != nil {
-			return 0, fmt.Errorf("link translation: %w", err)
+			return 0, fmt.Errorf("link en translation: %w", err)
+		}
+	}
+
+	for _, deText := range req.DeTexts {
+		deText = strings.TrimSpace(deText)
+		if deText == "" {
+			continue
+		}
+		deID, err := upsertWord(ctx, tx, deText, "de", nil)
+		if err != nil {
+			return 0, err
+		}
+		if err := initSM2(ctx, tx, deID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
+			deID, zhID); err != nil {
+			return 0, fmt.Errorf("link de translation: %w", err)
 		}
 	}
 
@@ -430,7 +466,26 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 		if _, err := tx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
 			enID, id); err != nil {
-			return fmt.Errorf("link translation: %w", err)
+			return fmt.Errorf("link en translation: %w", err)
+		}
+	}
+
+	for _, deText := range req.DeTexts {
+		deText = strings.TrimSpace(deText)
+		if deText == "" {
+			continue
+		}
+		deID, err := upsertWord(ctx, tx, deText, "de", nil)
+		if err != nil {
+			return err
+		}
+		if err := initSM2(ctx, tx, deID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
+			deID, id); err != nil {
+			return fmt.Errorf("link de translation: %w", err)
 		}
 	}
 

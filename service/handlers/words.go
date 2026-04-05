@@ -75,6 +75,13 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.EnTexts = filtered
+	var filteredDe []string
+	for _, t := range req.DeTexts {
+		if s := strings.TrimSpace(t); s != "" {
+			filteredDe = append(filteredDe, s)
+		}
+	}
+	req.DeTexts = filteredDe
 
 	id, err := h.Store.CreateWord(r.Context(), req)
 	if err != nil {
@@ -139,6 +146,13 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.EnTexts = filtered
+	var filteredDe []string
+	for _, t := range req.DeTexts {
+		if s := strings.TrimSpace(t); s != "" {
+			filteredDe = append(filteredDe, s)
+		}
+	}
+	req.DeTexts = filteredDe
 
 	if err := h.Store.UpdateWord(r.Context(), id, req); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

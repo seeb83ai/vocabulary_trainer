@@ -66,7 +66,7 @@ function renderTable(words) {
   tbody.innerHTML = '';
   if (!words || words.length === 0) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="6" class="text-center py-8 text-gray-500">${escHtml(t('vocab.noEntries'))}</td>`;
+    tr.innerHTML = `<td colspan="7" class="text-center py-8 text-gray-500">${escHtml(t('vocab.noEntries'))}</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -83,6 +83,9 @@ function renderTable(words) {
       <td class="py-3 px-4">
         ${word.en_texts.map(escHtml).join(', ')}
         ${(word.tags || []).map(t => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1">${escHtml(t)}</span>`).join('')}
+      </td>
+      <td class="py-3 px-4 text-gray-600">
+        ${(word.de_texts && word.de_texts.length) ? word.de_texts.map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
       </td>
       <td class="py-3 px-4 whitespace-nowrap">${renderTierBadge(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderDue(word)}</td>
@@ -185,6 +188,12 @@ function openEditForm(word) {
     addEnInput(t);
   }
 
+  const deContainer = $('de-inputs-container');
+  deContainer.innerHTML = '';
+  for (const t of ((word.de_texts && word.de_texts.length) ? word.de_texts : [''])) {
+    addDeInput(t);
+  }
+
   formTags = [...(word.tags || [])];
   renderFormTags();
 
@@ -217,6 +226,8 @@ function resetForm() {
   hide('form-cancel-btn');
   $('en-inputs-container').innerHTML = '';
   addEnInput('');
+  $('de-inputs-container').innerHTML = '';
+  addDeInput('');
   formTags = [];
   renderFormTags();
   $('form-tag-input').value = '';
@@ -242,12 +253,29 @@ function addEnInput(value = '') {
   container.appendChild(wrapper);
 }
 
+function addDeInput(value = '') {
+  const container = $('de-inputs-container');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'flex items-center gap-2 mb-2';
+  wrapper.innerHTML = `
+    <input type="text" class="de-input flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+           placeholder="${escHtml(t('vocab.germanPlaceholder'))}" value="${escHtml(value)}">
+    <button type="button" class="btn-remove-de text-gray-400 hover:text-red-500 text-xl leading-none" title="Remove">×</button>`;
+  wrapper.querySelector('.btn-remove-de').addEventListener('click', () => {
+    if (container.children.length > 1) wrapper.remove();
+  });
+  container.appendChild(wrapper);
+}
+
 function buildFormPayload() {
   const pinyin = $('form-pinyin').value.trim();
   return {
     zh_text: $('form-zh').value.trim(),
     pinyin: pinyin,
     en_texts: Array.from(document.querySelectorAll('.en-input'))
+      .map(i => i.value.trim())
+      .filter(Boolean),
+    de_texts: Array.from(document.querySelectorAll('.de-input'))
       .map(i => i.value.trim())
       .filter(Boolean),
     tags: [...formTags],
@@ -723,6 +751,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('add-en-btn').addEventListener('click', () => addEnInput(''));
+  $('add-de-btn').addEventListener('click', () => addDeInput(''));
   $('translate-btn').addEventListener('click', handleTranslate);
 
   $('form-cancel-btn').addEventListener('click', () => {

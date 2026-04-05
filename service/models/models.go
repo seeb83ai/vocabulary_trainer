@@ -84,6 +84,7 @@ type CreateWordRequest struct {
 	ZhText        string   `json:"zh_text"`
 	Pinyin        string   `json:"pinyin"`
 	EnTexts       []string `json:"en_texts"`
+	DeTexts       []string `json:"de_texts"`
 	Tags          []string `json:"tags"`
 	StartTraining bool     `json:"start_training"`
 }
@@ -92,6 +93,7 @@ type UpdateWordRequest struct {
 	ZhText        string   `json:"zh_text"`
 	Pinyin        string   `json:"pinyin"`
 	EnTexts       []string `json:"en_texts"`
+	DeTexts       []string `json:"de_texts"`
 	Tags          []string `json:"tags"`
 	StartTraining bool     `json:"start_training"`
 }
@@ -101,6 +103,7 @@ type WordDetail struct {
 	ZhText          string    `json:"zh_text"`
 	Pinyin          *string   `json:"pinyin"`
 	EnTexts         []string  `json:"en_texts"`
+	DeTexts         []string  `json:"de_texts"`
 	CreatedAt       time.Time `json:"created_at"`
 	Repetitions     int       `json:"repetitions"`
 	Easiness        float64   `json:"easiness"`
