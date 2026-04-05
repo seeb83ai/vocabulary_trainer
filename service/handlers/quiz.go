@@ -41,6 +41,27 @@ func wordTier(p models.SM2Progress) string {
 	}
 }
 
+// Langs returns the distinct translation languages available in the database.
+func (h *QuizHandler) Langs(w http.ResponseWriter, r *http.Request) {
+	langs, err := h.Store.GetTranslationLanguages(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if langs == nil {
+		langs = []string{}
+	}
+	writeJSON(w, http.StatusOK, langs)
+}
+
+// parseLangs extracts the "langs" query param (comma-separated) or returns ["en"].
+func parseLangs(r *http.Request) []string {
+	if l := r.URL.Query().Get("langs"); l != "" {
+		return strings.Split(l, ",")
+	}
+	return []string{"en"}
+}
+
 // Next returns the next card to study.
 func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	var tags []string
@@ -101,23 +122,31 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	// Progressive mode: new words (total_attempts==0) are shown as introductions
 	if progress.TotalAttempts == 0 {
-		enWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, "en")
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		enTexts := make([]string, len(enWords))
-		for i, ew := range enWords {
-			enTexts[i] = ew.Text
-		}
+		langs := parseLangs(r)
 		card := models.QuizCard{
 			WordID:       word.ID,
 			Mode:         models.ModeNewWord,
 			Prompt:       word.Text,
 			Pinyin:       word.Pinyin,
-			EnTexts:      enTexts,
 			DueDate:      progress.DueDate,
 			IntervalDays: progress.IntervalDays,
+		}
+		for _, lang := range langs {
+			transWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			texts := make([]string, len(transWords))
+			for i, tw := range transWords {
+				texts[i] = tw.Text
+			}
+			switch lang {
+			case "en":
+				card.EnTexts = texts
+			case "de":
+				card.DeTexts = texts
+			}
 		}
 		writeJSON(w, http.StatusOK, card)
 		return
@@ -148,14 +177,27 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	switch mode {
 	case models.ModeEnToZh:
-		enWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, "en")
-		if err != nil || len(enWords) == 0 {
+		langs := parseLangs(r)
+		// Find the first selected lang that has translations; use it as prompt.
+		var promptWords []models.Word
+		for _, lang := range langs {
+			words, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if len(words) > 0 {
+				promptWords = words
+				break
+			}
+		}
+		if len(promptWords) == 0 {
 			card.Mode = models.ModeZhToEn
 			card.Prompt = word.Text
 		} else {
-			card.Prompt = enWords[0].Text
-			for _, ew := range enWords {
-				card.EnTexts = append(card.EnTexts, ew.Text)
+			card.Prompt = promptWords[0].Text
+			for _, pw := range promptWords {
+				card.EnTexts = append(card.EnTexts, pw.Text)
 			}
 			// For learning words, send a masked pinyin hint based on progress
 			if progress.LearningNewWord && word.Pinyin != nil {
@@ -207,18 +249,24 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	langs := req.Langs
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
 	var correctTexts []string
 	switch req.Mode {
 	case models.ModeEnToZh:
 		correctTexts = []string{zhWord.ZhText}
 	case models.ModeZhToEn, models.ModeZhPinyinToEn:
-		enWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, "en")
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		for _, ew := range enWords {
-			correctTexts = append(correctTexts, ew.Text)
+		for _, lang := range langs {
+			transWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, lang)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			for _, tw := range transWords {
+				correctTexts = append(correctTexts, tw.Text)
+			}
 		}
 	}
 
@@ -275,6 +323,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		ZhText:          zhWord.ZhText,
 		Pinyin:          zhWord.Pinyin,
 		EnTexts:         zhWord.EnTexts,
+		DeTexts:         zhWord.DeTexts,
 		NextDue:         updated.DueDate,
 		IntervalDays:    updated.IntervalDays,
 		TotalCorrect:    updated.TotalCorrect,

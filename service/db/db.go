@@ -680,23 +680,36 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 	return tryQuery(todayBound)
 }
 
+// GetTranslationLanguages returns the distinct non-zh languages that have at
+// least one translation row in the database.
+func (s *Store) GetTranslationLanguages(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT w.language FROM words w
+		 JOIN translations t ON t.en_word_id = w.id
+		 WHERE w.language != 'zh'
+		 ORDER BY w.language`)
+	if err != nil {
+		return nil, fmt.Errorf("get translation languages: %w", err)
+	}
+	defer rows.Close()
+	var langs []string
+	for rows.Next() {
+		var lang string
+		if err := rows.Scan(&lang); err != nil {
+			return nil, err
+		}
+		langs = append(langs, lang)
+	}
+	return langs, rows.Err()
+}
+
 // GetTranslationsForWord returns all words in targetLang linked to wordID.
 func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error) {
-	var rows *sql.Rows
-	var err error
-	if targetLang == "en" {
-		rows, err = s.db.QueryContext(ctx,
-			`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
-			 FROM words w
-			 JOIN translations t ON t.en_word_id = w.id
-			 WHERE t.zh_word_id = ?`, wordID)
-	} else {
-		rows, err = s.db.QueryContext(ctx,
-			`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
-			 FROM words w
-			 JOIN translations t ON t.zh_word_id = w.id
-			 WHERE t.en_word_id = ?`, wordID)
-	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
+		 FROM words w
+		 JOIN translations t ON t.en_word_id = w.id
+		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
 	if err != nil {
 		return nil, fmt.Errorf("get translations: %w", err)
 	}
