@@ -78,11 +78,11 @@ function renderTable(words) {
         <span class="mr-1">${escHtml(word.zh_text)}</span>
         <button class="btn-play text-base text-gray-400 hover:text-blue-500 transition leading-none align-middle" data-id="${word.id}" data-zh="${escHtml(word.zh_text)}" title="Read aloud">🔊</button>
         ${word.needs_review ? `<span class="inline-block bg-orange-100 text-orange-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(t('vocab.review'))}</span>` : ''}
+        ${(word.tags || []).map(tag => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(tag)}</span>`).join('')}
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
-      <td class="py-3 px-4">
-        ${word.en_texts.map(escHtml).join(', ')}
-        ${(word.tags || []).map(t => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1">${escHtml(t)}</span>`).join('')}
+      <td class="py-3 px-4 text-gray-600">
+        ${(word.en_texts && word.en_texts.length) ? word.en_texts.map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
       </td>
       <td class="py-3 px-4 text-gray-600">
         ${(word.de_texts && word.de_texts.length) ? word.de_texts.map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
