@@ -61,8 +61,12 @@ func main() {
 	apiKey := os.Getenv("DEEPL_API_KEY")
 	translate := targetLang != "EN" && apiKey != ""
 
+	// effectiveLang is the actual language stored in the DB. If translation is
+	// requested but no API key is available, the text stays English.
+	effectiveLang := strings.ToLower(targetLang)
 	if targetLang != "EN" && apiKey == "" {
 		fmt.Println("[WARN]  DEEPL_API_KEY not set — importing with original English translations")
+		effectiveLang = "en"
 	}
 
 	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", *dbPath)
@@ -108,7 +112,7 @@ func main() {
 			}
 		}
 
-		ins, skip, fail := importEntries(db, entries, tag, *dryRun)
+		ins, skip, fail := importEntries(db, entries, tag, effectiveLang, *dryRun)
 		totalInserted += ins
 		totalSkipped += skip
 		totalFailed += fail
@@ -121,9 +125,9 @@ func main() {
 }
 
 // importEntries inserts all entries for one HSK level and returns counts.
-func importEntries(db *sql.DB, entries []entry, tag string, dryRun bool) (inserted, skipped, failed int) {
+func importEntries(db *sql.DB, entries []entry, tag string, lang string, dryRun bool) (inserted, skipped, failed int) {
 	for _, e := range entries {
-		zhID, dup, err := isDuplicate(db, e)
+		zhID, dup, err := isDuplicate(db, e, lang)
 		if err != nil {
 			fmt.Printf("  [ERROR] duplicate check %q: %v\n", e.hanzi, err)
 			failed++
@@ -148,7 +152,7 @@ func importEntries(db *sql.DB, entries []entry, tag string, dryRun bool) (insert
 			continue
 		}
 
-		zhID, err = insert(db, e)
+		zhID, err = insert(db, e, lang)
 		if err != nil {
 			fmt.Printf("  [ERROR] insert %q: %v\n", e.hanzi, err)
 			failed++
@@ -388,9 +392,10 @@ func normalizeSpace(s string) string {
 }
 
 // isDuplicate checks whether the zh word exists and whether the specific
-// zh+translation pair is already stored. Returns (zhWordID, isDup, err).
-// zhWordID is non-zero whenever the zh word exists (even if the pair is new).
-func isDuplicate(db *sql.DB, e entry) (zhID int64, dup bool, err error) {
+// zh+translation pair (for the given language) is already stored.
+// Returns (zhWordID, isDup, err). zhWordID is non-zero whenever the zh word
+// exists (even if the pair is new).
+func isDuplicate(db *sql.DB, e entry, lang string) (zhID int64, dup bool, err error) {
 	err = db.QueryRow(
 		`SELECT id FROM words WHERE language = 'zh' AND lower(trim(text)) = lower(trim(?))`,
 		e.hanzi,
@@ -402,15 +407,16 @@ func isDuplicate(db *sql.DB, e entry) (zhID int64, dup bool, err error) {
 		return 0, false, err
 	}
 
-	// zh word exists — check if this exact translation is already linked.
+	// zh word exists — check if this exact translation (in the same language) is already linked.
 	var count int
 	err = db.QueryRow(`
 		SELECT COUNT(*)
 		FROM translations t
-		JOIN words en ON t.en_word_id = en.id
+		JOIN words w ON t.en_word_id = w.id
 		WHERE t.zh_word_id = ?
-		  AND lower(trim(en.text)) = lower(trim(?))`,
-		zhID, e.translation,
+		  AND w.language = ?
+		  AND lower(trim(w.text)) = lower(trim(?))`,
+		zhID, lang, e.translation,
 	).Scan(&count)
 	if err != nil {
 		return zhID, false, err
@@ -419,7 +425,7 @@ func isDuplicate(db *sql.DB, e entry) (zhID int64, dup bool, err error) {
 }
 
 // insert adds a vocabulary entry in a transaction and returns the zh word ID.
-func insert(db *sql.DB, e entry) (int64, error) {
+func insert(db *sql.DB, e entry, lang string) (int64, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, err
@@ -447,25 +453,25 @@ func insert(db *sql.DB, e entry) (int64, error) {
 		return 0, fmt.Errorf("init zh sm2: %w", err)
 	}
 
-	// Upsert translation word (stored as language='en' regardless of actual language).
+	// Upsert translation word using the actual target language.
 	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO words (text, language) VALUES (?, 'en')`, e.translation); err != nil {
+		`INSERT OR IGNORE INTO words (text, language) VALUES (?, ?)`, e.translation, lang); err != nil {
 		return 0, fmt.Errorf("insert translation: %w", err)
 	}
-	var enID int64
+	var transID int64
 	if err := tx.QueryRow(
-		`SELECT id FROM words WHERE text = ? AND language = 'en'`, e.translation).Scan(&enID); err != nil {
+		`SELECT id FROM words WHERE text = ? AND language = ?`, e.translation, lang).Scan(&transID); err != nil {
 		return 0, fmt.Errorf("get translation id: %w", err)
 	}
 	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO sm2_progress (word_id) VALUES (?)`, enID); err != nil {
+		`INSERT OR IGNORE INTO sm2_progress (word_id) VALUES (?)`, transID); err != nil {
 		return 0, fmt.Errorf("init translation sm2: %w", err)
 	}
 
 	// Link zh ↔ translation.
 	if _, err := tx.Exec(
 		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
-		enID, zhID); err != nil {
+		transID, zhID); err != nil {
 		return 0, fmt.Errorf("link translation: %w", err)
 	}
 

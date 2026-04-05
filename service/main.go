@@ -111,6 +111,7 @@ func main() {
 		}
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
+		r.Get("/quiz/langs", quizH.Langs)
 		r.Post("/quiz/skip", quizH.Skip)
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)
 		r.Post("/quiz/advance", quizH.Advance)

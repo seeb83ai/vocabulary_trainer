@@ -41,6 +41,7 @@ type QuizCard struct {
 	Prompt          string    `json:"prompt"`
 	Pinyin          *string   `json:"pinyin"`
 	EnTexts         []string  `json:"en_texts,omitempty"`
+	DeTexts         []string  `json:"de_texts,omitempty"`
 	DueDate         time.Time `json:"due_date"`
 	IntervalDays    int       `json:"interval_days"`
 	LearningNewWord bool      `json:"learning_new_word"`
@@ -53,9 +54,10 @@ type QuizCard struct {
 }
 
 type AnswerRequest struct {
-	WordID int64  `json:"word_id"`
-	Mode   string `json:"mode"`
-	Answer string `json:"answer"`
+	WordID int64    `json:"word_id"`
+	Mode   string   `json:"mode"`
+	Answer string   `json:"answer"`
+	Langs  []string `json:"langs,omitempty"`
 }
 
 type AnswerResponse struct {
@@ -64,6 +66,7 @@ type AnswerResponse struct {
 	ZhText          string           `json:"zh_text"`
 	Pinyin          *string          `json:"pinyin"`
 	EnTexts         []string         `json:"en_texts"`
+	DeTexts         []string         `json:"de_texts,omitempty"`
 	NextDue         time.Time        `json:"next_due"`
 	IntervalDays    int              `json:"interval_days"`
 	TotalCorrect    int              `json:"total_correct"`
@@ -84,6 +87,7 @@ type CreateWordRequest struct {
 	ZhText        string   `json:"zh_text"`
 	Pinyin        string   `json:"pinyin"`
 	EnTexts       []string `json:"en_texts"`
+	DeTexts       []string `json:"de_texts"`
 	Tags          []string `json:"tags"`
 	StartTraining bool     `json:"start_training"`
 }
@@ -92,6 +96,7 @@ type UpdateWordRequest struct {
 	ZhText        string   `json:"zh_text"`
 	Pinyin        string   `json:"pinyin"`
 	EnTexts       []string `json:"en_texts"`
+	DeTexts       []string `json:"de_texts"`
 	Tags          []string `json:"tags"`
 	StartTraining bool     `json:"start_training"`
 }
@@ -101,6 +106,7 @@ type WordDetail struct {
 	ZhText          string    `json:"zh_text"`
 	Pinyin          *string   `json:"pinyin"`
 	EnTexts         []string  `json:"en_texts"`
+	DeTexts         []string  `json:"de_texts"`
 	CreatedAt       time.Time `json:"created_at"`
 	Repetitions     int       `json:"repetitions"`
 	Easiness        float64   `json:"easiness"`

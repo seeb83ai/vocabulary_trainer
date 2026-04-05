@@ -12,6 +12,7 @@ let isSubmitted = false;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
 let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 let selectedBucket = localStorage.getItem('quizBucket') || '';
+let selectedLangs = JSON.parse(localStorage.getItem('quizLangs') || '["en"]');
 let latestStats = null;
 let skipNewWords = false;
 
@@ -120,6 +121,7 @@ async function loadNextCard() {
     if (selectedMode !== 'random') params.set('mode', selectedMode);
     if (selectedTags.length) params.set('tags', selectedTags.join(','));
     if (selectedBucket) params.set('bucket', selectedBucket);
+    if (selectedLangs.length) params.set('langs', selectedLangs.join(','));
     if (skipNewWords) params.set('skip_new', 'true');
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
@@ -156,7 +158,10 @@ async function loadNextCard() {
     show('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
-    setText('new-word-en', (currentCard.en_texts || []).join(' · '));
+    const transLines = [];
+    if (currentCard.en_texts && currentCard.en_texts.length) transLines.push(currentCard.en_texts.map(escHtml).join(' · '));
+    if (currentCard.de_texts && currentCard.de_texts.length) transLines.push(currentCard.de_texts.map(escHtml).join(' · '));
+    $('new-word-en').innerHTML = transLines.join('<br>') || '—';
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
     await loadStats();
@@ -255,6 +260,7 @@ async function submitAnswer(e) {
         word_id: currentCard.word_id,
         mode: currentCard.mode,
         answer: answer,
+        langs: selectedLangs,
       }),
     });
 
@@ -273,6 +279,10 @@ async function submitAnswer(e) {
     // Build breakdown for both correct and wrong answers
     const breakdown = $('word-breakdown');
     const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
+    const allTransTexts = [
+      ...(selectedLangs.includes('en') ? (result.en_texts || []) : []),
+      ...(selectedLangs.includes('de') ? (result.de_texts || []) : []),
+    ];
     const correctBox = `
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('result.correctLabel'))}</div>
@@ -280,7 +290,7 @@ async function submitAnswer(e) {
           <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
           <button class="btn-breakdown-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
         </div>
-        <div class="text-gray-600 text-sm mt-0.5">${result.en_texts.map(escHtml).join(' · ')}</div>
+        <div class="text-gray-600 text-sm mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
       </div>`;
 
     if (!result.correct) {
@@ -546,6 +556,68 @@ async function loadDecomposition(zhText, containerId, toggleId) {
   } catch (_) {}
 }
 
+function applyLangChips(allLangs) {
+  const bar = $('lang-filter-bar');
+  const desktopContainer = $('lang-chips-desktop');
+  desktopContainer.querySelectorAll('.lang-pill').forEach(p => p.remove());
+  const overlayContainer = $('overlay-lang-chips');
+  overlayContainer.innerHTML = '';
+
+  if (allLangs.length < 2) {
+    bar.classList.add('hidden');
+    $('overlay-langs-section').classList.add('hidden');
+    return;
+  }
+
+  bar.classList.remove('hidden');
+  $('overlay-langs-section').classList.remove('hidden');
+
+  for (const lang of allLangs) {
+    const active = selectedLangs.includes(lang);
+
+    // Desktop chip
+    const pill = document.createElement('button');
+    pill.className = `lang-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    pill.textContent = lang.toUpperCase();
+    pill.addEventListener('click', () => toggleLang(lang, allLangs));
+    desktopContainer.appendChild(pill);
+
+    // Overlay chip
+    const overlayPill = document.createElement('button');
+    overlayPill.className = `overlay-lang-btn px-3 py-1.5 rounded-full text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    overlayPill.textContent = lang.toUpperCase();
+    overlayPill.addEventListener('click', () => toggleLang(lang, allLangs));
+    overlayContainer.appendChild(overlayPill);
+  }
+}
+
+function toggleLang(lang, allLangs) {
+  if (selectedLangs.includes(lang)) {
+    // Don't allow deselecting the last lang
+    if (selectedLangs.length <= 1) return;
+    selectedLangs = selectedLangs.filter(l => l !== lang);
+  } else {
+    selectedLangs.push(lang);
+  }
+  localStorage.setItem('quizLangs', JSON.stringify(selectedLangs));
+  applyLangChips(allLangs);
+  loadNextCard();
+}
+
+async function loadLangs() {
+  let allLangs = [];
+  try {
+    allLangs = await apiFetch('/api/quiz/langs');
+  } catch (_) {}
+  // Prune stale selections
+  selectedLangs = selectedLangs.filter(l => allLangs.includes(l));
+  if (selectedLangs.length === 0) {
+    selectedLangs = allLangs.length > 0 ? [allLangs[0]] : ['en'];
+  }
+  localStorage.setItem('quizLangs', JSON.stringify(selectedLangs));
+  applyLangChips(allLangs);
+}
+
 async function loadTrainTags() {
   let allTags = [];
   try {
@@ -609,6 +681,7 @@ async function loadTrainTags() {
 document.addEventListener('DOMContentLoaded', () => {
   applyModeButtons();
   applyTierPills();
+  loadLangs();
   loadTrainTags();
 
   document.querySelectorAll('.tier-pill').forEach(btn => {
