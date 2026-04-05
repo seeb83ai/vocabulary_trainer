@@ -63,7 +63,13 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Interleave due HMM mnemonic cards (already-seen entries only).
+	// Ensure progress rows exist for any newly-named library entries.
+	if err := h.Store.EnsureHMMProgress(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Interleave due HMM mnemonic cards.
 	hmmCard, _, hmmErr := h.Store.GetNextDueHMMCard(r.Context(), nil)
 	if hmmErr != nil {
 		writeError(w, http.StatusInternalServerError, hmmErr.Error())
