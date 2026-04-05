@@ -39,7 +39,8 @@ func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
 	hideUnseen := r.URL.Query().Get("hide_unseen") == "1"
 	bucket := r.URL.Query().Get("bucket")
 	dueFilter := r.URL.Query().Get("due")
-	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter)
+	missingLang := r.URL.Query().Get("missing_lang")
+	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter, missingLang)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -254,7 +255,7 @@ func (h *WordsHandler) Export(w http.ResponseWriter, r *http.Request) {
 	hideUnseen := r.URL.Query().Get("hide_unseen") == "1"
 	bucket := r.URL.Query().Get("bucket")
 	dueFilter := r.URL.Query().Get("due")
-	words, _, err := h.Store.GetWords(r.Context(), q, 1, 0, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter)
+	words, _, err := h.Store.GetWords(r.Context(), q, 1, 0, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

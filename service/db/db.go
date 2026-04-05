@@ -43,7 +43,8 @@ func (s *Store) Close() error {
 var validSortExprs = map[string]string{
 	"zh":          "w.text",
 	"pinyin":      "w.pinyin",
-	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id)",
+	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'en')",
+	"de":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'de')",
 	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
 	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
 	"accuracy":    "CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
@@ -53,7 +54,7 @@ var validSortExprs = map[string]string{
 // If reviewOnly is true, only words with needs_review = 1 are returned.
 // If hideUnseen is true, only words with at least one quiz attempt are returned.
 // bucket filters by accuracy tier (same rules as tierFilter / wordTier in app.js).
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string) ([]models.WordDetail, int, error) {
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string, missingLang string) ([]models.WordDetail, int, error) {
 	exportAll := perPage <= 0
 	if exportAll {
 		page = 1
@@ -104,6 +105,17 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 
 	bucketFilter := tierFilter(bucket)
 
+	missingLangFilter := ""
+	var missingLangArgs []any
+	if missingLang == "en" || missingLang == "de" {
+		missingLangFilter = ` AND NOT EXISTS (
+			SELECT 1 FROM translations t
+			JOIN words tw ON t.en_word_id = tw.id
+			WHERE t.zh_word_id = w.id AND tw.language = ?
+		)`
+		missingLangArgs = []any{missingLang}
+	}
+
 	orderExpr, ok := validSortExprs[sortBy]
 	if !ok {
 		orderExpr = "w.created_at"
@@ -144,10 +156,11 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + `
+		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + missingLangFilter + `
 		ORDER BY ` + orderClause + limitClause
 	listArgs := []any{q, q, q, q}
 	listArgs = append(listArgs, tagArgs...)
+	listArgs = append(listArgs, missingLangArgs...)
 	if !exportAll {
 		listArgs = append(listArgs, perPage, offset)
 	}
@@ -435,9 +448,30 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 		pinyin = &p
 	}
 
-	res, err := tx.ExecContext(ctx,
-		`UPDATE words SET text = ?, pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
-		strings.TrimSpace(req.ZhText), pinyin, id)
+	newText := strings.TrimSpace(req.ZhText)
+
+	// Read current text so we can skip updating it when unchanged — avoids
+	// a spurious UNIQUE constraint violation caused by duplicate zh rows in
+	// the database (e.g. after manual migrations) or by the form's trim().
+	var currentText string
+	err = tx.QueryRowContext(ctx,
+		`SELECT text FROM words WHERE id = ? AND language = 'zh'`, id).Scan(&currentText)
+	if err == sql.ErrNoRows {
+		return sql.ErrNoRows
+	} else if err != nil {
+		return fmt.Errorf("get current word: %w", err)
+	}
+
+	var res sql.Result
+	if currentText == newText {
+		res, err = tx.ExecContext(ctx,
+			`UPDATE words SET pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
+			pinyin, id)
+	} else {
+		res, err = tx.ExecContext(ctx,
+			`UPDATE words SET text = ?, pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
+			newText, pinyin, id)
+	}
 	if err != nil {
 		return fmt.Errorf("update word: %w", err)
 	}
