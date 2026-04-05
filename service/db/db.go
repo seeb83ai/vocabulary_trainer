@@ -1028,11 +1028,11 @@ func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID
 	}
 	d.LastSeen = parseDateTime(lastSeen)
 	var ferr error
-	d.ZhEnTexts, ferr = s.getEnTextsForZhWord(ctx, zhWordID)
+	d.ZhEnTexts, ferr = s.getTranslationTextsForZhWord(ctx, zhWordID, "en")
 	if ferr != nil {
 		return nil, ferr
 	}
-	d.ConfusedWithEnTexts, ferr = s.getEnTextsForZhWord(ctx, confusedWithID)
+	d.ConfusedWithEnTexts, ferr = s.getTranslationTextsForZhWord(ctx, confusedWithID, "en")
 	if ferr != nil {
 		return nil, ferr
 	}
@@ -1074,11 +1074,11 @@ func (s *Store) GetConfusions(ctx context.Context) ([]models.ConfusionDetail, er
 	rows.Close() // release before per-row queries
 
 	for i := range items {
-		items[i].ZhEnTexts, err = s.getEnTextsForZhWord(ctx, items[i].ZhWordID)
+		items[i].ZhEnTexts, err = s.getTranslationTextsForZhWord(ctx, items[i].ZhWordID, "en")
 		if err != nil {
 			return nil, err
 		}
-		items[i].ConfusedWithEnTexts, err = s.getEnTextsForZhWord(ctx, items[i].ConfusedWithID)
+		items[i].ConfusedWithEnTexts, err = s.getTranslationTextsForZhWord(ctx, items[i].ConfusedWithID, "en")
 		if err != nil {
 			return nil, err
 		}
