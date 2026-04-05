@@ -70,7 +70,6 @@ func main() {
 	}
 
 	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", *dbPath)
-	fmt.Printf("Using database: %s\n", *dbPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
@@ -421,12 +420,6 @@ func isDuplicate(db *sql.DB, e entry, lang string) (zhID int64, dup bool, err er
 	).Scan(&count)
 	if err != nil {
 		return zhID, false, err
-	}
-	if count > 0 {
-		var storedText string
-		_ = db.QueryRow(`SELECT text FROM words WHERE id = ?`, zhID).Scan(&storedText)
-		fmt.Printf("  [DEBUG] dup found: hanzi=%q zhID=%d storedText=%q lang=%q translation=%q count=%d\n",
-			e.hanzi, zhID, storedText, lang, e.translation, count)
 	}
 	return zhID, count > 0, nil
 }
