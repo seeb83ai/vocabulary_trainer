@@ -421,6 +421,10 @@ func isDuplicate(db *sql.DB, e entry, lang string) (zhID int64, dup bool, err er
 	if err != nil {
 		return zhID, false, err
 	}
+	if count > 0 {
+		fmt.Printf("  [DEBUG] dup found: hanzi=%q zhID=%d lang=%q translation=%q count=%d\n",
+			e.hanzi, zhID, lang, e.translation, count)
+	}
 	return zhID, count > 0, nil
 }
 
