@@ -280,8 +280,8 @@ async function submitAnswer(e) {
     const breakdown = $('word-breakdown');
     const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
     const allTransTexts = [
-      ...(result.en_texts || []),
-      ...(result.de_texts || []),
+      ...(selectedLangs.includes('en') ? (result.en_texts || []) : []),
+      ...(selectedLangs.includes('de') ? (result.de_texts || []) : []),
     ];
     const correctBox = `
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
