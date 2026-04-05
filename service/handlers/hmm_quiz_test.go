@@ -15,9 +15,7 @@ func hmmQuizRouter(t *testing.T) (http.Handler, *handlers.HMMQuizHandler) {
 	store := openTestDB(t)
 	h := &handlers.HMMQuizHandler{Store: store}
 	r := chi.NewRouter()
-	r.Get("/api/hmm-quiz/next", h.Next)
 	r.Post("/api/hmm-quiz/answer", h.Answer)
-	r.Get("/api/hmm-quiz/stats", h.Stats)
 	return r, h
 }
 
@@ -60,37 +58,6 @@ func seedHMMActorEntry(t *testing.T, h *handlers.HMMQuizHandler, initial, name s
 	}
 	if err := h.Store.EnsureHMMProgress(ctx); err != nil {
 		t.Fatalf("EnsureHMMProgress: %v", err)
-	}
-}
-
-func TestHMMQuizNext_NoCards(t *testing.T) {
-	router, h := hmmQuizRouter(t)
-	// Clear all pre-seeded tone room names so there are no named entries
-	clearAllHMMNames(t, h)
-	rec := do(t, router, "GET", "/api/hmm-quiz/next", nil)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want 404", rec.Code)
-	}
-}
-
-func TestHMMQuizNext_ReturnsCard(t *testing.T) {
-	router, h := hmmQuizRouter(t)
-	seedHMMActorEntry(t, h, "b", "Bruce Lee")
-
-	rec := do(t, router, "GET", "/api/hmm-quiz/next", nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
-	}
-	var card models.HMMQuizCard
-	decodeJSON(t, rec, &card)
-	if card.EntityType != models.HMMEntityActor {
-		t.Errorf("entity_type = %q, want %q", card.EntityType, models.HMMEntityActor)
-	}
-	if card.EntityKey != "b" {
-		t.Errorf("entity_key = %q, want 'b'", card.EntityKey)
-	}
-	if card.Prompt == "" {
-		t.Error("prompt is empty")
 	}
 }
 
@@ -203,24 +170,3 @@ func TestHMMQuizAnswer_OptionalParensInline(t *testing.T) {
 	}
 }
 
-func TestHMMQuizStats(t *testing.T) {
-	router, h := hmmQuizRouter(t)
-	// clearAllHMMNames is called inside seedHMMActorEntry
-	seedHMMActorEntry(t, h, "b", "Bruce Lee")
-	if err := h.Store.UpsertHMMProp(context.Background(), "一", "razor blade"); err != nil {
-		t.Fatalf("UpsertHMMProp: %v", err)
-	}
-	if err := h.Store.EnsureHMMProgress(context.Background()); err != nil {
-		t.Fatalf("EnsureHMMProgress: %v", err)
-	}
-
-	rec := do(t, router, "GET", "/api/hmm-quiz/stats", nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
-	}
-	var stats models.HMMQuizStats
-	decodeJSON(t, rec, &stats)
-	if stats.Total != 2 {
-		t.Errorf("total = %d, want 2", stats.Total)
-	}
-}
