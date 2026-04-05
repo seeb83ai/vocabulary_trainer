@@ -78,7 +78,7 @@ func (s *Store) EnsureHMMProgress(ctx context.Context) error {
 		}
 		for _, key := range keys {
 			if _, err := s.db.ExecContext(ctx,
-				`INSERT OR IGNORE INTO hmm_progress (entity_type, entity_key) VALUES (?, ?)`,
+				`INSERT OR IGNORE INTO hmm_progress (entity_type, entity_key, first_seen_date) VALUES (?, ?, date('now'))`,
 				s2.typ, key); err != nil {
 				return fmt.Errorf("insert hmm_progress %s/%s: %w", s2.typ, key, err)
 			}
@@ -87,9 +87,8 @@ func (s *Store) EnsureHMMProgress(ctx context.Context) error {
 	return nil
 }
 
-// GetNextDueHMMCard is like GetNextHMMCard but only returns entries that have
-// already been introduced (first_seen_date IS NOT NULL). Used by the word
-// training page to interleave due HMM reviews without introducing new ones.
+// GetNextDueHMMCard returns the next mnemonic library entry to review.
+// Used by the word training page to interleave HMM reviews.
 func (s *Store) GetNextDueHMMCard(ctx context.Context, types []string) (*models.HMMQuizCard, *models.HMMProgress, error) {
 	typeFilter := ""
 	var typeArgs []any
@@ -134,78 +133,6 @@ LIMIT 1`
 		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("get next due hmm card: %w", err)
-		}
-		card.Prompt = hmmPrompt(card.EntityType, card.EntityKey)
-		card.DueDate = parseDateTime(dueDate)
-		card.IntervalDays = prog.IntervalDays
-		card.Learning = learningInt == 1
-		prog.EntityType = card.EntityType
-		prog.EntityKey = card.EntityKey
-		prog.DueDate = card.DueDate
-		prog.Learning = card.Learning
-		return &card, &prog, nil
-	}
-
-	todayBound := "AND p.due_date < date('now', '+1 day')"
-
-	card, prog, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP")
-	if err != nil || card != nil {
-		return card, prog, err
-	}
-	card, prog, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds') %s", 180, todayBound))
-	if err != nil || card != nil {
-		return card, prog, err
-	}
-	return tryQuery(todayBound)
-}
-
-// GetNextHMMCard returns the next mnemonic library entry to review, using the
-// same 3-tier priority as GetNextPinyinCard.  If types is non-empty only those
-// entity types are considered.
-func (s *Store) GetNextHMMCard(ctx context.Context, types []string) (*models.HMMQuizCard, *models.HMMProgress, error) {
-	typeFilter := ""
-	var typeArgs []any
-	if len(types) > 0 {
-		placeholders := make([]string, len(types))
-		for i, t := range types {
-			placeholders[i] = "?"
-			typeArgs = append(typeArgs, t)
-		}
-		typeFilter = " AND p.entity_type IN (" + strings.Join(placeholders, ",") + ")"
-	}
-
-	query := `
-SELECT p.entity_type, p.entity_key,
-       COALESCE(a.actor_name, l.location_name, tr.room_name, pr.prop_name, '') AS current_name,
-       COALESCE(a.category, ''), COALESCE(a.hint, ''),
-       p.repetitions, p.easiness, p.interval_days, p.due_date,
-       p.total_correct, p.total_attempts, p.learning, p.streak_bonus,
-       COALESCE(p.first_seen_date, '')
-FROM hmm_progress p` + hmmBaseJoins + `
-WHERE ` + hmmNameFilter + typeFilter + ` %s
-ORDER BY p.due_date ASC
-LIMIT 1`
-
-	tryQuery := func(extra string) (*models.HMMQuizCard, *models.HMMProgress, error) {
-		args := append([]any{}, typeArgs...)
-		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, extra), args...)
-		var card models.HMMQuizCard
-		var prog models.HMMProgress
-		var dueDate string
-		var learningInt int
-		err := row.Scan(
-			&card.EntityType, &card.EntityKey,
-			new(string), // current_name is only needed to confirm name != ''
-			&card.Category, &card.Hint,
-			&prog.Repetitions, &prog.Easiness, &prog.IntervalDays, &dueDate,
-			&prog.TotalCorrect, &prog.TotalAttempts, &learningInt, &prog.StreakBonus,
-			&prog.FirstSeenDate,
-		)
-		if err == sql.ErrNoRows {
-			return nil, nil, nil
-		}
-		if err != nil {
-			return nil, nil, fmt.Errorf("get next hmm card: %w", err)
 		}
 		card.Prompt = hmmPrompt(card.EntityType, card.EntityKey)
 		card.DueDate = parseDateTime(dueDate)
@@ -276,18 +203,6 @@ func (s *Store) UpdateHMMProgress(ctx context.Context, p models.HMMProgress) err
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return sql.ErrNoRows
-	}
-	return nil
-}
-
-// AcknowledgeHMMEntry marks an HMM entry as first seen today.
-func (s *Store) AcknowledgeHMMEntry(ctx context.Context, entityType, entityKey string) error {
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE hmm_progress SET first_seen_date = date('now')
-		 WHERE entity_type = ? AND entity_key = ? AND first_seen_date IS NULL`,
-		entityType, entityKey)
-	if err != nil {
-		return fmt.Errorf("acknowledge hmm entry: %w", err)
 	}
 	return nil
 }

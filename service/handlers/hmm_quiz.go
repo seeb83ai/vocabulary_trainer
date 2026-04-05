@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -72,56 +71,6 @@ func sm2ToHMM(src models.SM2Progress, entityType, entityKey string) models.HMMPr
 		StreakBonus:   src.StreakBonus,
 		Learning:      src.LearningNewWord,
 	}
-}
-
-// parseHMMTypes parses and validates the ?types= query param.
-func parseHMMTypes(raw string) ([]string, bool) {
-	if raw == "" {
-		return nil, true
-	}
-	valid := map[string]bool{
-		models.HMMEntityActor:    true,
-		models.HMMEntityLocation: true,
-		models.HMMEntityToneRoom: true,
-		models.HMMEntityProp:     true,
-	}
-	parts := strings.Split(raw, ",")
-	for _, p := range parts {
-		if !valid[p] {
-			return nil, false
-		}
-	}
-	return parts, true
-}
-
-func (h *HMMQuizHandler) Next(w http.ResponseWriter, r *http.Request) {
-	types, ok := parseHMMTypes(r.URL.Query().Get("types"))
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid entity type in types param")
-		return
-	}
-
-	if err := h.Store.EnsureHMMProgress(r.Context()); err != nil {
-		log.Printf("EnsureHMMProgress: %v", err)
-	}
-
-	card, progress, err := h.Store.GetNextHMMCard(r.Context(), types)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if card == nil {
-		writeError(w, http.StatusNotFound, "no HMM entries available")
-		return
-	}
-
-	if progress.TotalAttempts == 0 {
-		if err := h.Store.AcknowledgeHMMEntry(r.Context(), card.EntityType, card.EntityKey); err != nil {
-			log.Printf("AcknowledgeHMMEntry: %v", err)
-		}
-	}
-
-	writeJSON(w, http.StatusOK, card)
 }
 
 func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
@@ -274,17 +223,3 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (h *HMMQuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
-	types, ok := parseHMMTypes(r.URL.Query().Get("types"))
-	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid entity type in types param")
-		return
-	}
-
-	stats, err := h.Store.GetHMMStats(r.Context(), types)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, stats)
-}

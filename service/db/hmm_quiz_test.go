@@ -67,8 +67,17 @@ func TestEnsureHMMProgress(t *testing.T) {
 		}
 	}
 
+	// Named entries should have first_seen_date set
+	prog, err := store.GetHMMProgress(context.Background(), "actor", "b")
+	if err != nil {
+		t.Fatalf("GetHMMProgress actor/b: %v", err)
+	}
+	if prog.FirstSeenDate == "" {
+		t.Error("expected first_seen_date to be set for named entry")
+	}
+
 	// Unnamed entries (e.g. initial 'p' with empty actor_name) should have no row
-	prog, err := store.GetHMMProgress(context.Background(), "actor", "p")
+	prog, err = store.GetHMMProgress(context.Background(), "actor", "p")
 	if err != nil {
 		t.Fatalf("GetHMMProgress actor/p: %v", err)
 	}
@@ -76,81 +85,9 @@ func TestEnsureHMMProgress(t *testing.T) {
 		t.Error("expected nil progress for unnamed actor 'p'")
 	}
 
-	// Calling EnsureHMMProgress again is safe (INSERT OR IGNORE)
+	// Calling EnsureHMMProgress again is safe (INSERT OR IGNORE keeps existing rows)
 	if err := store.EnsureHMMProgress(context.Background()); err != nil {
 		t.Fatalf("EnsureHMMProgress second call: %v", err)
-	}
-}
-
-func TestGetNextHMMCard_NoRows(t *testing.T) {
-	store := openTestDB(t)
-	clearAllHMMNames(t, store.db)
-
-	card, prog, err := store.GetNextHMMCard(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("GetNextHMMCard: %v", err)
-	}
-	if card != nil || prog != nil {
-		t.Error("expected nil card/prog when no named entries exist")
-	}
-}
-
-func TestGetNextHMMCard_ReturnsCard(t *testing.T) {
-	store := openTestDB(t)
-	seedHMMLibrary(t, store.db)
-
-	if err := store.EnsureHMMProgress(context.Background()); err != nil {
-		t.Fatalf("EnsureHMMProgress: %v", err)
-	}
-
-	card, prog, err := store.GetNextHMMCard(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("GetNextHMMCard: %v", err)
-	}
-	if card == nil {
-		t.Fatal("expected a card, got nil")
-	}
-	if prog == nil {
-		t.Fatal("expected progress, got nil")
-	}
-	if card.EntityType == "" || card.EntityKey == "" {
-		t.Errorf("card has empty entity_type or entity_key: %+v", card)
-	}
-	if card.Prompt == "" {
-		t.Error("card.Prompt is empty")
-	}
-}
-
-func TestGetNextHMMCard_TypeFilter(t *testing.T) {
-	store := openTestDB(t)
-	seedHMMLibrary(t, store.db)
-
-	if err := store.EnsureHMMProgress(context.Background()); err != nil {
-		t.Fatalf("EnsureHMMProgress: %v", err)
-	}
-
-	// Request only actors
-	card, _, err := store.GetNextHMMCard(context.Background(), []string{models.HMMEntityActor})
-	if err != nil {
-		t.Fatalf("GetNextHMMCard actor filter: %v", err)
-	}
-	if card == nil {
-		t.Fatal("expected actor card, got nil")
-	}
-	if card.EntityType != models.HMMEntityActor {
-		t.Errorf("got entity_type %q, want %q", card.EntityType, models.HMMEntityActor)
-	}
-
-	// Request only props — should get the prop
-	card, _, err = store.GetNextHMMCard(context.Background(), []string{models.HMMEntityProp})
-	if err != nil {
-		t.Fatalf("GetNextHMMCard prop filter: %v", err)
-	}
-	if card == nil {
-		t.Fatal("expected prop card, got nil")
-	}
-	if card.EntityType != models.HMMEntityProp {
-		t.Errorf("got entity_type %q, want %q", card.EntityType, models.HMMEntityProp)
 	}
 }
 
@@ -194,41 +131,6 @@ func TestGetHMMProgress_RoundTrip(t *testing.T) {
 	}
 	if got.Learning {
 		t.Error("Learning should be false")
-	}
-}
-
-func TestAcknowledgeHMMEntry(t *testing.T) {
-	store := openTestDB(t)
-	seedHMMLibrary(t, store.db)
-
-	if err := store.EnsureHMMProgress(context.Background()); err != nil {
-		t.Fatalf("EnsureHMMProgress: %v", err)
-	}
-
-	// Before acknowledge: first_seen_date is NULL
-	prog, _ := store.GetHMMProgress(context.Background(), "actor", "b")
-	if prog.FirstSeenDate != "" {
-		t.Errorf("expected empty first_seen_date, got %q", prog.FirstSeenDate)
-	}
-
-	if err := store.AcknowledgeHMMEntry(context.Background(), "actor", "b"); err != nil {
-		t.Fatalf("AcknowledgeHMMEntry: %v", err)
-	}
-
-	// After acknowledge: first_seen_date is set
-	prog, _ = store.GetHMMProgress(context.Background(), "actor", "b")
-	if prog.FirstSeenDate == "" {
-		t.Error("expected first_seen_date to be set after acknowledge")
-	}
-
-	// Calling again is a no-op (stays the same)
-	original := prog.FirstSeenDate
-	if err := store.AcknowledgeHMMEntry(context.Background(), "actor", "b"); err != nil {
-		t.Fatalf("AcknowledgeHMMEntry second call: %v", err)
-	}
-	prog, _ = store.GetHMMProgress(context.Background(), "actor", "b")
-	if prog.FirstSeenDate != original {
-		t.Errorf("first_seen_date changed on second acknowledge: %q -> %q", original, prog.FirstSeenDate)
 	}
 }
 
