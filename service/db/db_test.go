@@ -1375,3 +1375,261 @@ func TestAdvanceDueDates_FewerThanN(t *testing.T) {
 		t.Errorf("expected 0, got %d", nowDue)
 	}
 }
+
+// ── GetTranslationLanguages ───────────────────────────────────────────────────
+
+func TestGetTranslationLanguages_EmptyDB(t *testing.T) {
+	s := openTestDB(t)
+	langs, err := s.GetTranslationLanguages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(langs) != 0 {
+		t.Errorf("expected empty slice, got %v", langs)
+	}
+}
+
+func TestGetTranslationLanguages_OnlyEN(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	langs, err := s.GetTranslationLanguages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(langs) != 1 || langs[0] != "en" {
+		t.Errorf("expected [en], got %v", langs)
+	}
+}
+
+func TestGetTranslationLanguages_ENandDE(t *testing.T) {
+	s := openTestDB(t)
+	// Create a word with both EN and DE translations.
+	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil || id <= 0 {
+		t.Fatalf("CreateWord: %v / id=%d", err, id)
+	}
+	langs, err := s.GetTranslationLanguages(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(langs) != 2 {
+		t.Fatalf("expected 2 languages, got %v", langs)
+	}
+	// Results are ORDER BY language, so "de" < "en".
+	if langs[0] != "de" || langs[1] != "en" {
+		t.Errorf("expected [de en], got %v", langs)
+	}
+}
+
+// ── GetTranslationsForWord (DE) ───────────────────────────────────────────────
+
+func TestGetTranslationsForWord_DE(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  "再见",
+		Pinyin:  "zàijiàn",
+		EnTexts: []string{"goodbye"},
+		DeTexts: []string{"auf Wiedersehen", "tschüss"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	words, err := s.GetTranslationsForWord(context.Background(), id, "de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 2 {
+		t.Errorf("expected 2 DE translations, got %d: %v", len(words), words)
+	}
+	for _, w := range words {
+		if w.Language != "de" {
+			t.Errorf("expected language=de, got %q", w.Language)
+		}
+	}
+}
+
+func TestGetTranslationsForWord_DEvsEN_NoMix(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  "吃",
+		Pinyin:  "chī",
+		EnTexts: []string{"eat"},
+		DeTexts: []string{"essen"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enWords, err := s.GetTranslationsForWord(context.Background(), id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(enWords) != 1 || enWords[0].Text != "eat" {
+		t.Errorf("EN: expected [eat], got %v", enWords)
+	}
+	deWords, err := s.GetTranslationsForWord(context.Background(), id, "de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deWords) != 1 || deWords[0].Text != "essen" {
+		t.Errorf("DE: expected [essen], got %v", deWords)
+	}
+}
+
+// ── GetWords with missingLang filter ─────────────────────────────────────────
+
+func TestGetWords_MissingLangEN(t *testing.T) {
+	s := openTestDB(t)
+	// Word with EN only (no DE).
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	// Word with both EN and DE.
+	_, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  "再见",
+		Pinyin:  "zàijiàn",
+		EnTexts: []string{"goodbye"},
+		DeTexts: []string{"auf Wiedersehen"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Filter words missing DE — should return only 你好.
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "", "", "de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(words) != 1 {
+		t.Errorf("missing_lang=de: want 1 result, got total=%d len=%d", total, len(words))
+	}
+	if words[0].ZhText != "你好" {
+		t.Errorf("expected 你好, got %q", words[0].ZhText)
+	}
+}
+
+func TestGetWords_MissingLangDE(t *testing.T) {
+	s := openTestDB(t)
+	// Word missing EN (raw insert to bypass CreateWord EN requirement).
+	s.db.Exec(`INSERT INTO words (text, language) VALUES ('孤独', 'zh')`)
+	var zhID int64
+	s.db.QueryRow(`SELECT id FROM words WHERE text = '孤独'`).Scan(&zhID)
+	s.db.Exec(`INSERT INTO sm2_progress (word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus) VALUES (?, 0, 2.5, 1, CURRENT_TIMESTAMP, 0, 0, 0)`, zhID)
+	// DE word linked to it.
+	s.db.Exec(`INSERT INTO words (text, language) VALUES ('Einsamkeit', 'de')`)
+	var deID int64
+	s.db.QueryRow(`SELECT id FROM words WHERE text = 'Einsamkeit'`).Scan(&deID)
+	s.db.Exec(`INSERT INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`, deID, zhID)
+
+	// Word with both EN and DE.
+	s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+
+	// Filter missing EN — should return only 孤独.
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "", "", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(words) != 1 {
+		t.Errorf("missing_lang=en: want 1 result, got total=%d len=%d", total, len(words))
+	}
+	if words[0].ZhText != "孤独" {
+		t.Errorf("expected 孤独, got %q", words[0].ZhText)
+	}
+}
+
+func TestGetWords_MissingLangEmpty_ReturnsAll(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "", []string{"hello"})
+	seedWord(t, s, "再见", "", []string{"goodbye"})
+	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(words) != 2 {
+		t.Errorf("empty missingLang: want 2 results, got total=%d len=%d", total, len(words))
+	}
+}
+
+// ── UpdateWord with unchanged zh_text ────────────────────────────────────────
+
+func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	// Save with the exact same ZhText — should not cause a UNIQUE constraint error.
+	err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello", "hi"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateWord with unchanged ZhText should not fail: %v", err)
+	}
+	wd, _ := s.GetWordByID(context.Background(), id)
+	if wd.ZhText != "你好" {
+		t.Errorf("ZhText should be unchanged, got %q", wd.ZhText)
+	}
+	if len(wd.EnTexts) != 2 {
+		t.Errorf("expected 2 EnTexts after update, got %d: %v", len(wd.EnTexts), wd.EnTexts)
+	}
+}
+
+// ── CreateWord and UpdateWord with DeTexts ────────────────────────────────────
+
+func TestCreateWord_WithDeTexts(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo", "guten tag"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd, err := s.GetWordByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wd.DeTexts) != 2 {
+		t.Errorf("expected 2 DeTexts, got %d: %v", len(wd.DeTexts), wd.DeTexts)
+	}
+}
+
+func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  "再见",
+		Pinyin:  "zàijiàn",
+		EnTexts: []string{"goodbye"},
+		DeTexts: []string{"auf Wiedersehen"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+		ZhText:  "再见",
+		Pinyin:  "zàijiàn",
+		EnTexts: []string{"goodbye"},
+		DeTexts: []string{"tschüss", "ciao"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := s.GetWordByID(context.Background(), id)
+	if len(wd.DeTexts) != 2 {
+		t.Errorf("expected 2 DeTexts after update, got %d: %v", len(wd.DeTexts), wd.DeTexts)
+	}
+	for _, dt := range wd.DeTexts {
+		if dt == "auf Wiedersehen" {
+			t.Error("old DE translation should have been removed")
+		}
+	}
+}
