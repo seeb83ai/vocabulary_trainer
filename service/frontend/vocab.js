@@ -14,6 +14,7 @@ let reviewFilterActive = false;
 let hideUnseenActive = true;
 let selectedTierFilter = '';
 let dueFilter = '';
+let missingLangFilter = '';
 
 async function loadWords() {
   const params = new URLSearchParams({
@@ -39,6 +40,9 @@ async function loadWords() {
   }
   if (dueFilter) {
     params.set('due', dueFilter);
+  }
+  if (missingLangFilter) {
+    params.set('missing_lang', missingLangFilter);
   }
   try {
     const data = await apiFetch(`/api/words?${params}`);
@@ -482,9 +486,11 @@ async function handleTranslate() {
   const btn = $('translate-btn');
   const zh = $('form-zh').value.trim();
   const enInputs = document.querySelectorAll('.en-input');
+  const deInputs = document.querySelectorAll('.de-input');
   const en = enInputs.length > 0 ? enInputs[0].value.trim() : '';
+  const de = deInputs.length > 0 ? deInputs[0].value.trim() : '';
 
-  if (!zh && !en) {
+  if (!zh && !en && !de) {
     alert(t('vocab.enterTextFirst'));
     return;
   }
@@ -494,21 +500,56 @@ async function handleTranslate() {
   btn.disabled = true;
 
   try {
-    const result = await apiFetch('/api/translate', {
-      method: 'POST',
-      body: JSON.stringify({ zh_text: zh, en_text: en }),
-    });
+    // Translate zh → EN if en field is empty
+    const enPromise = (zh && !en)
+      ? apiFetch('/api/translate', {
+          method: 'POST',
+          body: JSON.stringify({ zh_text: zh, target_lang: 'EN' }),
+        }).catch(() => null)
+      : Promise.resolve(null);
 
-    if (result.zh_text && !zh) {
-      $('form-zh').value = result.zh_text;
+    // Translate zh → DE if de field is empty
+    const dePromise = (zh && !de)
+      ? apiFetch('/api/translate', {
+          method: 'POST',
+          body: JSON.stringify({ zh_text: zh, target_lang: 'DE' }),
+        }).catch(() => null)
+      : Promise.resolve(null);
+
+    // Translate en/de → zh if zh field is empty
+    const zhPromise = (!zh && (en || de))
+      ? apiFetch('/api/translate', {
+          method: 'POST',
+          body: JSON.stringify({ en_text: en || de }),
+        }).catch(() => null)
+      : Promise.resolve(null);
+
+    const [enResult, deResult, zhResult] = await Promise.all([enPromise, dePromise, zhPromise]);
+
+    if (zhResult) {
+      if (zhResult.zh_text) $('form-zh').value = zhResult.zh_text;
+      await applyPinyin(zhResult.pinyin);
+    } else if (enResult) {
+      await applyPinyin(enResult.pinyin);
+    } else if (deResult) {
+      await applyPinyin(deResult.pinyin);
     }
-    await applyPinyin(result.pinyin);
-    const translations = result.en_texts || (result.en_text ? [result.en_text] : []);
-    if (translations.length > 0 && !en) {
-      const container = $('en-inputs-container');
-      container.innerHTML = '';
-      for (const t of translations) {
-        addEnInput(t);
+
+    if (enResult) {
+      const translations = enResult.en_texts || (enResult.en_text ? [enResult.en_text] : []);
+      if (translations.length > 0) {
+        const container = $('en-inputs-container');
+        container.innerHTML = '';
+        for (const tr of translations) addEnInput(tr);
+      }
+    }
+
+    if (deResult) {
+      const translations = deResult.en_texts || (deResult.en_text ? [deResult.en_text] : []);
+      if (translations.length > 0) {
+        const container = $('de-inputs-container');
+        container.innerHTML = '';
+        for (const tr of translations) addDeInput(tr);
       }
     }
   } catch (e) {
@@ -719,6 +760,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('per-page-select').addEventListener('change', (e) => {
     perPage = parseInt(e.target.value);
     localStorage.setItem('vocabPerPage', perPage);
+    currentPage = 1;
+    loadWords();
+  });
+
+  $('missing-lang-select').addEventListener('change', (e) => {
+    missingLangFilter = e.target.value;
     currentPage = 1;
     loadWords();
   });

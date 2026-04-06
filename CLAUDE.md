@@ -16,18 +16,35 @@ the scope of the current task.
 
 ## Testing rules
 
+**Mandatory:** Every code change that adds or modifies a function, DB query, or HTTP endpoint **must** include
+corresponding test additions or updates in the same commit. Do not consider a task done until new tests cover
+the changed behaviour.
+
 ### Go tests
 - Use the **standard library only** (`testing` package). Do not add testify or any other assertion library.
 - Use **in-memory SQLite** (`db.Open(":memory:")`) for all DB tests — never touch `data/vocab.db`.
 - When you change a function, update or add tests in the same package (`_test.go` alongside the source file).
 - When you add or change an HTTP endpoint, update `service/handlers/handlers_test.go`.
+  - Also register any new route in the `newRouter()` helper inside that file.
 - Run `cd service && go test ./... -count=1` before considering a task done.
 
 ### JS tests (Vitest)
 - Add or update tests **only for pure/utility functions** (e.g. `escHtml`, `renderProgress`, `buildFormPayload`,
   `normalize`, answer-checking helpers). Skip DOM event handlers and async fetch flows.
+- Inline the function under test directly in the test file (do not import from source) so tests stay
+  self-contained and do not depend on module bundling.
 - Test files live in `service/frontend/` as `*.test.js`.
 - Run `npm test` to verify.
+
+### What must be tested
+| Change type | Required test |
+|---|---|
+| New DB query / Store method | Unit test in `service/db/db_test.go` |
+| Changed DB query | Update existing test or add regression test |
+| New HTTP endpoint | Integration test in `service/handlers/handlers_test.go` + register route in `newRouter()` |
+| Changed HTTP endpoint behaviour | Update or extend existing handler test |
+| New pure JS utility function | Unit test in the relevant `*.test.js` file |
+| Changed pure JS utility function | Update or extend existing JS test |
 
 ## README
 

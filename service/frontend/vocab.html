@@ -143,6 +143,12 @@
             data-i18n="vocab.dueTomorrow">
             Due Tomorrow
           </button>
+          <select id="missing-lang-select"
+            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="" data-i18n="vocab.missingLangAll">Missing: —</option>
+            <option value="en" data-i18n="vocab.missingLangEn">Missing EN</option>
+            <option value="de" data-i18n="vocab.missingLangDe">Missing DE</option>
+          </select>
         </div>
       </div>
       <div id="filter-tier-bar" class="px-4 sm:px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
@@ -159,7 +165,7 @@
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="zh"><span data-i18n="vocab.chinese">Chinese</span> <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="pinyin"><span data-i18n="vocab.pinyin">Pinyin</span> <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="en"><span data-i18n="vocab.english">English</span> <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left"><span data-i18n="vocab.german">German</span></th>
+              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="de"><span data-i18n="vocab.german">German</span> <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="accuracy"><span data-i18n="vocab.level">Level</span> <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="due_date"><span data-i18n="vocab.due">Due</span> <span class="sort-indicator"></span></th>
               <th class="py-3 px-4 text-left" data-i18n="vocab.actions">Actions</th>
