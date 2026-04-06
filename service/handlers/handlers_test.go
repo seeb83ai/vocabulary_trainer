@@ -74,6 +74,7 @@ func newRouter(s *db.Store) http.Handler {
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
 	r.Post("/api/quiz/advance", quizH.Advance)
 	r.Get("/api/quiz/stats", quizH.Stats)
+	r.Get("/api/quiz/langs", quizH.Langs)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
@@ -1888,5 +1889,270 @@ func TestPinyinQuizTags(t *testing.T) {
 	decodeJSON(t, rec, &tags)
 	if len(tags) != 1 || tags[0] != "b_p_m_f" {
 		t.Errorf("expected [b_p_m_f], got %v", tags)
+	}
+}
+
+// ── GET /api/quiz/langs ───────────────────────────────────────────────────────
+
+func TestQuizLangs_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/quiz/langs", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var langs []string
+	decodeJSON(t, rec, &langs)
+	if len(langs) != 0 {
+		t.Errorf("expected empty langs, got %v", langs)
+	}
+}
+
+func TestQuizLangs_AfterInsertEN(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/langs", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var langs []string
+	decodeJSON(t, rec, &langs)
+	if len(langs) != 1 || langs[0] != "en" {
+		t.Errorf("expected [en], got %v", langs)
+	}
+}
+
+func TestQuizLangs_ENandDE(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/langs", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var langs []string
+	decodeJSON(t, rec, &langs)
+	if len(langs) != 2 {
+		t.Fatalf("expected 2 langs, got %v", langs)
+	}
+	// Sorted: de, en
+	if langs[0] != "de" || langs[1] != "en" {
+		t.Errorf("expected [de en], got %v", langs)
+	}
+}
+
+// ── POST /api/quiz/answer — multi-lang ───────────────────────────────────────
+
+func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	// Answer with German when langs includes "de" — should be correct.
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToEn,
+		Answer: "hallo",
+		Langs:  []string{"en", "de"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("German answer 'hallo' should be accepted when de is in langs")
+	}
+}
+
+func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "再见",
+		Pinyin:  "zàijiàn",
+		EnTexts: []string{"goodbye"},
+		DeTexts: []string{"auf Wiedersehen"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToEn,
+		Answer: "wrong",
+		Langs:  []string{"en", "de"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.DeTexts) == 0 {
+		t.Error("DeTexts should be populated in response when word has DE translations")
+	}
+	if resp.DeTexts[0] != "auf Wiedersehen" {
+		t.Errorf("DeTexts[0]: want 'auf Wiedersehen', got %q", resp.DeTexts[0])
+	}
+}
+
+func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	// Answer with German when langs not specified (defaults to ["en"]) — should be wrong.
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToEn,
+		Answer: "hallo",
+		// Langs omitted → defaults to ["en"]
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Error("German answer 'hallo' should NOT be accepted when langs defaults to [en]")
+	}
+}
+
+// ── GET /api/quiz/next — new_word with langs ──────────────────────────────────
+
+func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?langs=en,de", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeNewWord {
+		t.Skipf("card is not new_word (mode=%s); test only applies to first introduction", card.Mode)
+	}
+	if len(card.EnTexts) == 0 {
+		t.Error("EnTexts should be set on new_word card when langs includes en")
+	}
+	if len(card.DeTexts) == 0 {
+		t.Error("DeTexts should be set on new_word card when langs includes de")
+	}
+}
+
+// ── PUT /api/words/{id} — unchanged zh_text ───────────────────────────────────
+
+func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	// Re-save with the exact same zh_text — should not return 500.
+	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello", "hi"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var wd models.WordDetail
+	decodeJSON(t, rec, &wd)
+	if wd.ZhText != "你好" {
+		t.Errorf("ZhText: want 你好, got %q", wd.ZhText)
+	}
+}
+
+// ── GET /api/words?missing_lang= ─────────────────────────────────────────────
+
+func TestWordsList_MissingLangDE(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Word with EN only.
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Word with both EN and DE.
+	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "再见",
+		Pinyin:  "zàijiàn",
+		EnTexts: []string{"goodbye"},
+		DeTexts: []string{"auf Wiedersehen"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/words?page=1&per_page=20&missing_lang=de", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.WordListResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 1 {
+		t.Errorf("missing_lang=de: want 1 result, got %d", resp.Total)
+	}
+	if len(resp.Words) != 1 || resp.Words[0].ZhText != "你好" {
+		t.Errorf("unexpected words: %v", resp.Words)
+	}
+}
+
+func TestWordsList_MissingLangEmpty_ReturnsAll(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "", []string{"hello"})
+	seedWord(t, s, "再见", "", []string{"goodbye"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/words?page=1&per_page=20", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.WordListResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 2 {
+		t.Errorf("no missing_lang filter: want 2 results, got %d", resp.Total)
 	}
 }

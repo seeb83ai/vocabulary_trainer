@@ -208,3 +208,71 @@ describe('buildFormPayload', () => {
     expect(p.start_training).toBe(true);
   });
 });
+
+// ── renderDue ─────────────────────────────────────────────────────────────────
+// Inlined from vocab.js (without i18n calls, using fixed strings for logic).
+
+function renderDue(word) {
+  if (word.total_attempts === 0) return 'unseen';
+  const due = new Date(word.due_date);
+  const diffDays = Math.round((due - new Date()) / 86400000);
+  if (diffDays <= 0) return 'due';
+  return `in ${diffDays}d`;
+}
+
+describe('renderDue', () => {
+  it('returns "unseen" when no attempts', () => {
+    expect(renderDue({ total_attempts: 0 })).toBe('unseen');
+  });
+
+  it('returns "due" when due_date is in the past', () => {
+    const word = {
+      total_attempts: 5,
+      due_date: new Date(Date.now() - 86400000 * 2).toISOString(),
+    };
+    expect(renderDue(word)).toBe('due');
+  });
+
+  it('returns "due" when due_date is now (diff rounds to 0)', () => {
+    const word = {
+      total_attempts: 3,
+      due_date: new Date().toISOString(),
+    };
+    expect(renderDue(word)).toBe('due');
+  });
+
+  it('returns future days when not yet due', () => {
+    const word = {
+      total_attempts: 5,
+      due_date: new Date(Date.now() + 86400000 * 7).toISOString(),
+    };
+    expect(renderDue(word)).toBe('in 7d');
+  });
+});
+
+// ── missingLangFilter state logic ────────────────────────────────────────────
+// The filter state is a simple string that controls query param sent to API.
+
+function buildMissingLangParam(missingLangFilter) {
+  if (!missingLangFilter) return null;
+  if (missingLangFilter === 'en' || missingLangFilter === 'de') return missingLangFilter;
+  return null;
+}
+
+describe('missingLangFilter state', () => {
+  it('returns null for empty string (no filter)', () => {
+    expect(buildMissingLangParam('')).toBeNull();
+  });
+
+  it('returns "en" for en filter', () => {
+    expect(buildMissingLangParam('en')).toBe('en');
+  });
+
+  it('returns "de" for de filter', () => {
+    expect(buildMissingLangParam('de')).toBe('de');
+  });
+
+  it('returns null for unknown filter value', () => {
+    expect(buildMissingLangParam('fr')).toBeNull();
+  });
+});
