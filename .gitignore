@@ -4,6 +4,7 @@ vocabulary_trainer
 import-hsk 
 import-pinyin
 import-hanzi
+fill-translations
 
 # Database
 data/

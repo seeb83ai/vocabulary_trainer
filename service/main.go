@@ -79,9 +79,20 @@ func main() {
 	log.Printf("Daily new-word cap: %d (set MAX_NEW_WORDS to change)", maxNewWords)
 
 	pinyinAudioDir := os.Getenv("PINYIN_AUDIO_DIR")
-	if pinyinAudioDir == "" {
-		pinyinAudioDir = filepath.Join(filepath.Dir(dbPath), "pinyin-audio")
+
+	pinyinAudioDirs := []string{}
+	if extra := os.Getenv("PINYIN_AUDIO_DIRS"); extra != "" {
+		for _, d := range strings.Split(extra, ":") {
+			if d = strings.TrimSpace(d); d != "" {
+				pinyinAudioDirs = append(pinyinAudioDirs, d)
+			}
+		}
+	} else if pinyinAudioDir == "" {
+		pinyinAudioDirs = append(pinyinAudioDirs, filepath.Join(filepath.Dir(dbPath), "pinyin-audio"))
+	} else {
+		pinyinAudioDirs = append(pinyinAudioDirs, pinyinAudioDir)
 	}
+	log.Printf("Pinyin audio dirs: %v", pinyinAudioDirs)
 
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
@@ -93,7 +104,7 @@ func main() {
 	}
 	hmmH := &handlers.HMMHandler{Store: store, DeepLAPIKey: hmmDeepLKey}
 	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
-	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDir: pinyinAudioDir}
+	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDirs: pinyinAudioDirs}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,8 +19,8 @@ import (
 )
 
 type PinyinQuizHandler struct {
-	Store          *db.Store
-	PinyinAudioDir string
+	Store           *db.Store
+	PinyinAudioDirs []string
 }
 
 // pinyinTier returns the accuracy bucket label for a pinyin progress record.
@@ -321,11 +323,21 @@ func (h *PinyinQuizHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid filename")
 		return
 	}
-	path := filepath.Join(h.PinyinAudioDir, filename)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		writeError(w, http.StatusNotFound, "audio not found")
-		return
+
+	// Shuffle dirs so each request picks a random voice when multiple are configured.
+	dirs := make([]string, len(h.PinyinAudioDirs))
+	copy(dirs, h.PinyinAudioDirs)
+	rand.Shuffle(len(dirs), func(i, j int) { dirs[i], dirs[j] = dirs[j], dirs[i] })
+
+	for _, dir := range dirs {
+		path := filepath.Join(dir, filename)
+		if _, err := os.Stat(path); err == nil {
+			w.Header().Set("Cache-Control", "no-cache")
+			http.ServeFile(w, r, path)
+
+			log.Printf("play: %s", path)
+			return
+		}
 	}
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	http.ServeFile(w, r, path)
+	writeError(w, http.StatusNotFound, "audio not found")
 }

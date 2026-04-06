@@ -1727,7 +1727,7 @@ func TestDueDateDistribution_TagFilter(t *testing.T) {
 
 func newPinyinRouter(t *testing.T, s *db.Store) http.Handler {
 	t.Helper()
-	pinyinH := &handlers.PinyinQuizHandler{Store: s, PinyinAudioDir: t.TempDir()}
+	pinyinH := &handlers.PinyinQuizHandler{Store: s, PinyinAudioDirs: []string{t.TempDir()}}
 	r := chi.NewRouter()
 	r.Get("/api/pinyin-quiz/next", pinyinH.Next)
 	r.Post("/api/pinyin-quiz/answer", pinyinH.Answer)
