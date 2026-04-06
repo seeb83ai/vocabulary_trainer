@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin backup release test test-go test-js
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup release test test-go test-js
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -55,6 +55,11 @@ import-hsk:
 import-pinyin:
 	mkdir -p data
 	cd service && go run ./cmd/import-pinyin -db $(or $(DB),../data/vocab.db) -source ../$(or $(SOURCE),mp3) -audio-dir ../$(or $(PINYIN_AUDIO_DIR),data/pinyin-audio)
+
+## fill-translations: fill missing EN/DE translations via DeepL (DEEPL_API_KEY required, DB=data/vocab.db)
+fill-translations:
+	mkdir -p data
+	cd service && go run ./cmd/fill-translations -db $(or $(DB),../data/vocab.db) $(if $(DRY_RUN),-dry-run)
 
 backup:
 	sqlite3 data/vocab.db ".backup data/vocab_backup$(EXT).sq3"

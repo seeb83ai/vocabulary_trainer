@@ -171,6 +171,9 @@ function openEditForm(word) {
   setText('form-title', t('vocab.editWord'));
   $('form-zh').value = word.zh_text;
   $('form-pinyin').value = word.pinyin || '';
+  const hanziwayLink = $('hanziway-link');
+  hanziwayLink.href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(word.zh_text);
+  show('hanziway-link');
   show('form-cancel-btn');
 
   let notice = $('review-notice');
@@ -228,6 +231,7 @@ function resetForm() {
   $('form-zh').value = '';
   $('form-pinyin').value = '';
   hide('form-cancel-btn');
+  hide('hanziway-link');
   $('en-inputs-container').innerHTML = '';
   addEnInput('');
   $('de-inputs-container').innerHTML = '';
@@ -795,6 +799,13 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(pinyinTimer);
     const zh = $('form-zh').value.trim();
     pinyinTimer = setTimeout(() => fetchAndFillPinyin(zh), 500);
+    const hanziwayLink = $('hanziway-link');
+    if (zh) {
+      hanziwayLink.href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(zh);
+      show('hanziway-link');
+    } else {
+      hide('hanziway-link');
+    }
   });
 
   $('add-en-btn').addEventListener('click', () => addEnInput(''));
