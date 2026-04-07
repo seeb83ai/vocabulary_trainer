@@ -325,36 +325,21 @@ Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${lo
     generateBtn.classList.remove('hidden');
 
     generateBtn.addEventListener('click', async () => {
-      const actor    = document.getElementById('hmm-actor').value.trim()    || '???';
-      const loc      = document.getElementById('hmm-location').value.trim() || '???';
-      const room     = document.getElementById('hmm-room').value.trim()     || '???';
-      const propNames = [...container.querySelectorAll('.hmm-prop-input')]
-        .map(el => el.value.trim()).filter(Boolean);
-      const zhWord   = opts.zh  || '';
-      const enTexts  = (opts.en || []).join(', ') || '???';
-      const propsStr = propNames.length ? propNames.join(', ') : '(none)';
-      const initial  = ctx.initial === 'null' ? 'Ø' : (ctx.initial || '?');
-      const final    = ctx.final   === 'null' ? 'Ø' : (ctx.final   || '?');
-
-      const prompt =
-`I'm building a Hanzi Movie Method mnemonic for the Chinese word "${zhWord}".
-
-My mnemonic setup:
-- Actor: ${actor} (initial consonant: ${initial})
-- Location: ${loc} (final sound: ${final})
-- Room: ${room} (tone ${ctx.tone || '?'})
-- Props: ${propsStr}
-
-Write exactly one vivid, memorable movie scene (in German) where ${actor} is in ${loc}, in the ${room}, interacting with ${propsStr} in a way that encodes the meaning "${enTexts}". Be concrete, visual, and strange enough to be memorable. Just the scene description, no preamble or numbering.`;
-
       const label = document.getElementById('hmm-llm-generate-label');
       generateBtn.disabled = true;
       label.textContent = 'Generating…';
       try {
-        const result = await apiFetch('/api/llm/scene', {
+        // Send only structured data — the backend builds the prompt server-side.
+        const result = await apiFetch(`/api/words/${wordId}/hmm/generate-scene`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt }),
+          body: JSON.stringify({
+            actor:    document.getElementById('hmm-actor').value.trim(),
+            location: document.getElementById('hmm-location').value.trim(),
+            room:     document.getElementById('hmm-room').value.trim(),
+            props:    [...container.querySelectorAll('.hmm-prop-input')]
+                        .map(el => el.value.trim()).filter(Boolean),
+          }),
         });
         if (result && result.text) {
           document.getElementById('hmm-scene-text').value = result.text.trim();

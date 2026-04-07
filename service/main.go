@@ -110,7 +110,7 @@ func main() {
 	llmClient := llm.NewClientFromEnv()
 	var llmH *handlers.LLMHandler
 	if llmClient != nil {
-		llmH = &handlers.LLMHandler{Client: llmClient}
+		llmH = &handlers.LLMHandler{Client: llmClient, Store: store}
 		log.Printf("LLM enabled: provider=%s", llmClient.Name())
 	}
 
@@ -151,6 +151,9 @@ func main() {
 				r.Get("/hmm/context", hmmH.GetSceneContext)
 				r.Put("/hmm", hmmH.SaveScene)
 				r.Delete("/hmm", hmmH.DeleteScene)
+				if llmH != nil {
+					r.Post("/hmm/generate-scene", llmH.GenerateScene)
+				}
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
@@ -179,9 +182,6 @@ func main() {
 		r.Get("/config", handlers.Config(translateH != nil, llmH != nil))
 		if translateH != nil {
 			r.Post("/translate", translateH.Translate)
-		}
-		if llmH != nil {
-			r.Post("/llm/scene", llmH.GenerateScene)
 		}
 	})
 
