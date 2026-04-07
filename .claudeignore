@@ -8,6 +8,7 @@ deploy/
 data/
 node_modules/
 
+.env
 .env.example
 
 *.sh

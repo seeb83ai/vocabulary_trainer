@@ -83,7 +83,7 @@ async function loadHMMBuilder(containerId, wordId, opts = {}) {
   if (readOnly) {
     renderReadOnlyBuilder(container, ctx);
   } else {
-    renderEditableBuilder(container, wordId, ctx, propsLookup);
+    renderEditableBuilder(container, wordId, ctx, propsLookup, opts);
   }
 }
 
@@ -116,7 +116,7 @@ function renderReadOnlyBuilder(container, ctx) {
   `;
 }
 
-function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
+function renderEditableBuilder(container, wordId, ctx, propsLookup = {}, opts = {}) {
   const actorName = ctx.actor?.actor_name || '';
   const actorHint = ctx.actor?.hint || '';
   const actorCat = ctx.actor?.category || 'male';
@@ -236,6 +236,17 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
 
       <div id="hmm-prompt-line" class="text-xs text-gray-500 italic"></div>
 
+      <div class="flex items-center gap-2">
+        <button id="hmm-llm-prompt-btn" title="Copy LLM prompt for scene ideas"
+          class="flex items-center gap-1.5 text-xs text-amber-500 hover:text-amber-600 transition px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-200">
+          💡 <span>Copy scene prompt for AI</span>
+        </button>
+        <button id="hmm-llm-generate-btn" title="Generate scene with AI"
+          class="hidden flex items-center gap-1.5 text-xs text-violet-500 hover:text-violet-700 transition px-2 py-1 rounded-lg bg-violet-50 hover:bg-violet-100 border border-violet-200">
+          ✨ <span id="hmm-llm-generate-label">Generate scene</span>
+        </button>
+      </div>
+
       <textarea id="hmm-scene-text" rows="3" placeholder="${escHtml(t('hmm.scenePlaceholder'))}"
         class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-y">${escHtml(sceneText)}</textarea>
 
@@ -276,6 +287,73 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}) {
   }
   container.querySelectorAll('input').forEach(el => el.addEventListener('input', updatePrompt));
   updatePrompt();
+
+  // LLM prompt copy button
+  document.getElementById('hmm-llm-prompt-btn').addEventListener('click', () => {
+    const actor    = document.getElementById('hmm-actor').value.trim()    || '???';
+    const loc      = document.getElementById('hmm-location').value.trim() || '???';
+    const room     = document.getElementById('hmm-room').value.trim()     || '???';
+    const propNames = [...container.querySelectorAll('.hmm-prop-input')]
+      .map(el => el.value.trim()).filter(Boolean);
+    const zhWord   = opts.zh  || '';
+    const enTexts  = (opts.en || []).join(', ') || '???';
+    const propsStr = propNames.length ? propNames.join(', ') : '(none)';
+
+    const prompt =
+`I'm building a Hanzi Movie Method mnemonic for the Chinese word "${zhWord}".
+
+My mnemonic setup:
+- Actor: ${actor} (initial consonant: ${ctx.initial === 'null' ? 'Ø' : (ctx.initial || '?')})
+- Location: ${loc} (final sound: ${ctx.final === 'null' ? 'Ø' : (ctx.final || '?')})
+- Room: ${room} (tone ${ctx.tone || '?'})
+- Props: ${propsStr}
+
+Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${loc}, in the ${room}, interacting with ${propsStr} in a way that encodes the meaning "${enTexts}". Each scene should be concrete, visual, and strange enough to be memorable.`;
+
+    navigator.clipboard.writeText(prompt).then(() => {
+      const btn = document.getElementById('hmm-llm-prompt-btn');
+      const span = btn.querySelector('span');
+      span.textContent = 'Copied!';
+      setTimeout(() => { span.textContent = 'Copy scene prompt for AI'; }, 2000);
+    });
+  });
+
+  // Show ✨ button if LLM is configured, and wire click handler.
+  apiFetch('/api/config').then(cfg => {
+    if (!cfg || !cfg.llm_enabled) return;
+    const generateBtn = document.getElementById('hmm-llm-generate-btn');
+    generateBtn.classList.remove('hidden');
+
+    generateBtn.addEventListener('click', async () => {
+      const label = document.getElementById('hmm-llm-generate-label');
+      generateBtn.disabled = true;
+      label.textContent = 'Generating…';
+      try {
+        // Send only structured data — the backend builds the prompt server-side.
+        const result = await apiFetch(`/api/words/${wordId}/hmm/generate-scene`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            actor:    document.getElementById('hmm-actor').value.trim(),
+            location: document.getElementById('hmm-location').value.trim(),
+            room:     document.getElementById('hmm-room').value.trim(),
+            props:    [...container.querySelectorAll('.hmm-prop-input')]
+                        .map(el => el.value.trim()).filter(Boolean),
+          }),
+        });
+        if (result && result.text) {
+          document.getElementById('hmm-scene-text').value = result.text.trim();
+        }
+        label.textContent = 'Done!';
+        setTimeout(() => { label.textContent = 'Generate scene'; }, 2000);
+      } catch (_) {
+        label.textContent = 'Error';
+        setTimeout(() => { label.textContent = 'Generate scene'; }, 2000);
+      } finally {
+        generateBtn.disabled = false;
+      }
+    });
+  }).catch(() => {/* non-fatal — LLM button stays hidden */});
 
   // Remove prop row (delegated)
   container.querySelector('#hmm-props-list').addEventListener('click', e => {

@@ -215,7 +215,7 @@ function openEditForm(word) {
   const hmmContainer = $('hmm-builder-container');
   if (word.id) {
     hmmContainer.classList.remove('hidden');
-    loadHMMBuilder('hmm-builder-container', word.id);
+    loadHMMBuilder('hmm-builder-container', word.id, { zh: word.zh_text, en: word.en_texts || [] });
   } else {
     hmmContainer.classList.add('hidden');
     hmmContainer.innerHTML = '';
