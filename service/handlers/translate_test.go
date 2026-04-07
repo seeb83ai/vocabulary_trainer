@@ -28,27 +28,32 @@ func TestToPinyin(t *testing.T) {
 
 func TestConfigEndpoint(t *testing.T) {
 	tests := []struct {
-		enabled bool
-		want    bool
+		deepl bool
+		llm   bool
 	}{
 		{true, true},
 		{false, false},
+		{true, false},
+		{false, true},
 	}
 	for _, tt := range tests {
-		handler := Config(tt.enabled)
+		handler := Config(tt.deepl, tt.llm)
 		req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 		rec := httptest.NewRecorder()
 		handler(rec, req)
 
 		if rec.Code != http.StatusOK {
-			t.Fatalf("Config(%v): status = %d, want 200", tt.enabled, rec.Code)
+			t.Fatalf("Config(%v,%v): status = %d, want 200", tt.deepl, tt.llm, rec.Code)
 		}
 		var resp map[string]bool
 		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-			t.Fatalf("Config(%v): decode error: %v", tt.enabled, err)
+			t.Fatalf("Config(%v,%v): decode error: %v", tt.deepl, tt.llm, err)
 		}
-		if resp["deepl_enabled"] != tt.want {
-			t.Errorf("Config(%v): deepl_enabled = %v, want %v", tt.enabled, resp["deepl_enabled"], tt.want)
+		if resp["deepl_enabled"] != tt.deepl {
+			t.Errorf("Config(%v,%v): deepl_enabled = %v, want %v", tt.deepl, tt.llm, resp["deepl_enabled"], tt.deepl)
+		}
+		if resp["llm_enabled"] != tt.llm {
+			t.Errorf("Config(%v,%v): llm_enabled = %v, want %v", tt.deepl, tt.llm, resp["llm_enabled"], tt.llm)
 		}
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
+	"vocabulary_trainer/llm"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -106,6 +107,13 @@ func main() {
 	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
 	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDirs: pinyinAudioDirs}
 
+	llmClient := llm.NewClientFromEnv()
+	var llmH *handlers.LLMHandler
+	if llmClient != nil {
+		llmH = &handlers.LLMHandler{Client: llmClient}
+		log.Printf("LLM enabled: provider=%s", llmClient.Name())
+	}
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -168,9 +176,12 @@ func main() {
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
-		r.Get("/config", handlers.Config(translateH != nil))
+		r.Get("/config", handlers.Config(translateH != nil, llmH != nil))
 		if translateH != nil {
 			r.Post("/translate", translateH.Translate)
+		}
+		if llmH != nil {
+			r.Post("/llm/scene", llmH.GenerateScene)
 		}
 	})
 
