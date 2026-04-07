@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"vocabulary_trainer/llm"
@@ -22,6 +23,7 @@ type llmSceneResponse struct {
 func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 	var req llmSceneRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Fatalf("Failed to decode llm response: %v", err)
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
@@ -32,6 +34,7 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := h.Client.Generate(r.Context(), req.Prompt)
 	if err != nil {
+		log.Fatalf("Failed to generate llm response: %v", err)
 		writeError(w, http.StatusInternalServerError, "LLM request failed")
 		return
 	}

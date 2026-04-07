@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 )
@@ -49,13 +50,10 @@ func (c *openAIClient) Generate(ctx context.Context, prompt string) (string, err
 		base = "https://api.openai.com"
 	}
 	body, _ := json.Marshal(map[string]any{
-		"model": "gpt-4o-mini",
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
-		"max_tokens": 500,
+		"model": "gpt-5.4-nano",
+		"input": prompt,
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/responses", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -72,20 +70,24 @@ func (c *openAIClient) Generate(ctx context.Context, prompt string) (string, err
 		return "", fmt.Errorf("openai: status %d: %s", resp.StatusCode, raw)
 	}
 
+	log.Printf("openai raw response: %s", raw)
+
 	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		Output []struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"output"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return "", fmt.Errorf("openai: decode: %w", err)
 	}
-	if len(result.Choices) == 0 {
+	log.Printf("openai response: %v", result)
+	if len(result.Output) == 0 {
 		return "", fmt.Errorf("openai: no choices in response")
 	}
-	return result.Choices[0].Message.Content, nil
+	return result.Output[0].Content[0].Text, nil
 }
 
 // ── Anthropic ─────────────────────────────────────────────────────────────────
@@ -105,7 +107,7 @@ func (c *anthropicClient) Generate(ctx context.Context, prompt string) (string, 
 	}
 	body, _ := json.Marshal(map[string]any{
 		"model":      "claude-haiku-4-5-20251001",
-		"max_tokens": 500,
+		"max_tokens": 2000,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},

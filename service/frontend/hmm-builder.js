@@ -345,7 +345,7 @@ My mnemonic setup:
 - Room: ${room} (tone ${ctx.tone || '?'})
 - Props: ${propsStr}
 
-Write exactly one vivid, memorable movie scene where ${actor} is in ${loc}, in the ${room}, interacting with ${propsStr} in a way that encodes the meaning "${enTexts}". Be concrete, visual, and strange enough to be memorable. Just the scene description, no preamble or numbering.`;
+Write exactly one vivid, memorable movie scene (in German) where ${actor} is in ${loc}, in the ${room}, interacting with ${propsStr} in a way that encodes the meaning "${enTexts}". Be concrete, visual, and strange enough to be memorable. Just the scene description, no preamble or numbering.`;
 
       const label = document.getElementById('hmm-llm-generate-label');
       generateBtn.disabled = true;
