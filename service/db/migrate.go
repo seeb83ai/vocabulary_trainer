@@ -6,6 +6,8 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // migration describes a single schema migration step.
@@ -647,6 +649,627 @@ CREATE TABLE IF NOT EXISTS pinyin_daily_stats (
 						s.typ, key); err != nil {
 						return fmt.Errorf("insert hmm_progress %s/%s: %w", s.typ, key, err)
 					}
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v20: create users table and seed the initial user.
+		version: 20,
+		sql: `
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  email         TEXT    NOT NULL UNIQUE,
+  password_hash TEXT    NOT NULL,
+  created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+`,
+		fn: func(db *sql.DB) error {
+			hash, err := bcrypt.GenerateFromPassword([]byte("I learn zh"), bcrypt.DefaultCost)
+			if err != nil {
+				return fmt.Errorf("hash initial user password: %w", err)
+			}
+			if _, err := db.Exec(
+				`INSERT OR IGNORE INTO users (email, password_hash) VALUES (?, ?)`,
+				"me@elygor.de", string(hash),
+			); err != nil {
+				return fmt.Errorf("seed initial user: %w", err)
+			}
+			return nil
+		},
+	},
+	{
+		// v21: add user_id to words and change UNIQUE(text, language) →
+		// UNIQUE(text, language, user_id) so the same word can exist independently
+		// for different users. Existing rows are first copied with user_id=NULL then
+		// reassigned to the initial user; the fn also seeds template rows (user_id=NULL)
+		// by copying the initial user's vocabulary (without progress).
+		version: 21,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS words_new (
+				  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+				  text         TEXT    NOT NULL,
+				  language     TEXT    NOT NULL CHECK(language IN ('en', 'zh', 'de')),
+				  pinyin       TEXT,
+				  created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+				  needs_review INTEGER NOT NULL DEFAULT 0,
+				  user_id      INTEGER REFERENCES users(id) ON DELETE CASCADE,
+				  UNIQUE(text, language, user_id)
+				)`,
+				`INSERT OR IGNORE INTO words_new (id, text, language, pinyin, created_at, needs_review, user_id)
+				 SELECT id, text, language, pinyin, created_at, COALESCE(needs_review, 0), NULL FROM words`,
+				`DROP TABLE words`,
+				`ALTER TABLE words_new RENAME TO words`,
+				`CREATE INDEX IF NOT EXISTS idx_words_text_lang ON words(text, language, user_id)`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild words table: %w", err)
+				}
+			}
+
+			// Assign all existing words to the initial user.
+			if _, err := db.Exec(
+				`UPDATE words SET user_id = (SELECT id FROM users WHERE email = 'me@elygor.de') WHERE user_id IS NULL`,
+			); err != nil {
+				return fmt.Errorf("assign words to initial user: %w", err)
+			}
+
+			// Seed template words (user_id = NULL) by copying the initial user's
+			// vocabulary without progress data.
+			var userID int64
+			if err := db.QueryRow(`SELECT id FROM users WHERE email = 'me@elygor.de'`).Scan(&userID); err != nil {
+				return fmt.Errorf("get initial user id: %w", err)
+			}
+
+			// Copy non-zh words first (translations reference both sides).
+			enRows, err := db.Query(
+				`SELECT id, text, language FROM words WHERE user_id = ? AND language != 'zh'`, userID)
+			if err != nil {
+				return fmt.Errorf("query non-zh words: %w", err)
+			}
+			type wordRow struct {
+				id   int64
+				text string
+				lang string
+			}
+			var nonZhWords []wordRow
+			for enRows.Next() {
+				var w wordRow
+				if err := enRows.Scan(&w.id, &w.text, &w.lang); err != nil {
+					enRows.Close()
+					return fmt.Errorf("scan non-zh word: %w", err)
+				}
+				nonZhWords = append(nonZhWords, w)
+			}
+			enRows.Close()
+			if err := enRows.Err(); err != nil {
+				return fmt.Errorf("iterate non-zh words: %w", err)
+			}
+
+			// oldID → newTemplateID mapping for non-zh words.
+			tmplNonZh := make(map[int64]int64, len(nonZhWords))
+			for _, w := range nonZhWords {
+				res, err := db.Exec(
+					`INSERT OR IGNORE INTO words (text, language, user_id) VALUES (?, ?, NULL)`,
+					w.text, w.lang)
+				if err != nil {
+					return fmt.Errorf("insert template non-zh word: %w", err)
+				}
+				newID, err := res.LastInsertId()
+				if err != nil || newID == 0 {
+					// Row already existed (INSERT OR IGNORE skipped it); look it up.
+					if err2 := db.QueryRow(
+						`SELECT id FROM words WHERE text = ? AND language = ? AND user_id IS NULL`,
+						w.text, w.lang,
+					).Scan(&newID); err2 != nil {
+						return fmt.Errorf("lookup template non-zh word %q: %w", w.text, err2)
+					}
+				}
+				tmplNonZh[w.id] = newID
+			}
+
+			// Copy zh words.
+			zhRows, err := db.Query(
+				`SELECT id, text, pinyin FROM words WHERE user_id = ? AND language = 'zh'`, userID)
+			if err != nil {
+				return fmt.Errorf("query zh words: %w", err)
+			}
+			type zhWordRow struct {
+				id     int64
+				text   string
+				pinyin *string
+			}
+			var zhWords []zhWordRow
+			for zhRows.Next() {
+				var w zhWordRow
+				if err := zhRows.Scan(&w.id, &w.text, &w.pinyin); err != nil {
+					zhRows.Close()
+					return fmt.Errorf("scan zh word: %w", err)
+				}
+				zhWords = append(zhWords, w)
+			}
+			zhRows.Close()
+			if err := zhRows.Err(); err != nil {
+				return fmt.Errorf("iterate zh words: %w", err)
+			}
+
+			// oldID → newTemplateID mapping for zh words.
+			tmplZh := make(map[int64]int64, len(zhWords))
+			for _, w := range zhWords {
+				res, err := db.Exec(
+					`INSERT OR IGNORE INTO words (text, language, pinyin, user_id) VALUES (?, 'zh', ?, NULL)`,
+					w.text, w.pinyin)
+				if err != nil {
+					return fmt.Errorf("insert template zh word: %w", err)
+				}
+				newID, err := res.LastInsertId()
+				if err != nil || newID == 0 {
+					if err2 := db.QueryRow(
+						`SELECT id FROM words WHERE text = ? AND language = 'zh' AND user_id IS NULL`,
+						w.text,
+					).Scan(&newID); err2 != nil {
+						return fmt.Errorf("lookup template zh word %q: %w", w.text, err2)
+					}
+				}
+				tmplZh[w.id] = newID
+			}
+
+			// Copy translations: re-link using template IDs.
+			tRows, err := db.Query(
+				`SELECT en_word_id, zh_word_id FROM translations
+				 WHERE zh_word_id IN (SELECT id FROM words WHERE user_id = ?)`, userID)
+			if err != nil {
+				return fmt.Errorf("query translations: %w", err)
+			}
+			type translationRow struct{ enID, zhID int64 }
+			var translations []translationRow
+			for tRows.Next() {
+				var tr translationRow
+				if err := tRows.Scan(&tr.enID, &tr.zhID); err != nil {
+					tRows.Close()
+					return fmt.Errorf("scan translation: %w", err)
+				}
+				translations = append(translations, tr)
+			}
+			tRows.Close()
+			if err := tRows.Err(); err != nil {
+				return fmt.Errorf("iterate translations: %w", err)
+			}
+			for _, tr := range translations {
+				newEnID, okEn := tmplNonZh[tr.enID]
+				newZhID, okZh := tmplZh[tr.zhID]
+				if !okEn || !okZh {
+					continue
+				}
+				if _, err := db.Exec(
+					`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
+					newEnID, newZhID,
+				); err != nil {
+					return fmt.Errorf("insert template translation: %w", err)
+				}
+			}
+
+			// Copy word_tags: reuse global tag IDs, apply to template word IDs.
+			wtRows, err := db.Query(
+				`SELECT word_id, tag_id FROM word_tags
+				 WHERE word_id IN (SELECT id FROM words WHERE user_id = ?)`, userID)
+			if err != nil {
+				return fmt.Errorf("query word_tags: %w", err)
+			}
+			type wordTagRow struct{ wordID, tagID int64 }
+			var wordTags []wordTagRow
+			for wtRows.Next() {
+				var wt wordTagRow
+				if err := wtRows.Scan(&wt.wordID, &wt.tagID); err != nil {
+					wtRows.Close()
+					return fmt.Errorf("scan word_tag: %w", err)
+				}
+				wordTags = append(wordTags, wt)
+			}
+			wtRows.Close()
+			if err := wtRows.Err(); err != nil {
+				return fmt.Errorf("iterate word_tags: %w", err)
+			}
+			for _, wt := range wordTags {
+				newID, ok := tmplZh[wt.wordID]
+				if !ok {
+					newID, ok = tmplNonZh[wt.wordID]
+				}
+				if !ok {
+					continue
+				}
+				if _, err := db.Exec(
+					`INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`,
+					newID, wt.tagID,
+				); err != nil {
+					return fmt.Errorf("insert template word_tag: %w", err)
+				}
+			}
+
+			return nil
+		},
+	},
+	{
+		// v22: add user_id to tags and change UNIQUE(name) → UNIQUE(name, user_id).
+		// Existing tags stay user_id = NULL (global/shared labels).
+		version: 22,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS tags_new (
+				  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+				  name    TEXT    NOT NULL,
+				  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+				  UNIQUE(name, user_id)
+				)`,
+				`INSERT OR IGNORE INTO tags_new (id, name, user_id)
+				 SELECT id, name, NULL FROM tags`,
+				`DROP TABLE tags`,
+				`ALTER TABLE tags_new RENAME TO tags`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild tags table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v23: add user_id to daily_stats; PK changes from (date) → (user_id, date).
+		// Existing rows are assigned to the initial user.
+		version: 23,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS daily_stats_new (
+				  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  date            TEXT    NOT NULL,
+				  attempts        INTEGER NOT NULL DEFAULT 0,
+				  mistakes        INTEGER NOT NULL DEFAULT 0,
+				  words_seen      INTEGER NOT NULL DEFAULT 0,
+				  correct_streak  INTEGER NOT NULL DEFAULT 0,
+				  current_streak  INTEGER NOT NULL DEFAULT 0,
+				  bucket_new      INTEGER NOT NULL DEFAULT 0,
+				  bucket_struggling INTEGER NOT NULL DEFAULT 0,
+				  bucket_learning INTEGER NOT NULL DEFAULT 0,
+				  bucket_practicing INTEGER NOT NULL DEFAULT 0,
+				  bucket_mastered INTEGER NOT NULL DEFAULT 0,
+				  PRIMARY KEY (user_id, date)
+				)`,
+				`INSERT OR IGNORE INTO daily_stats_new
+				   (user_id, date, attempts, mistakes, words_seen, correct_streak, current_streak,
+				    bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
+				 SELECT
+				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   date, attempts, mistakes,
+				   COALESCE(words_seen, 0), COALESCE(correct_streak, 0), COALESCE(current_streak, 0),
+				   COALESCE(bucket_new, 0), COALESCE(bucket_struggling, 0), COALESCE(bucket_learning, 0),
+				   COALESCE(bucket_practicing, 0), COALESCE(bucket_mastered, 0)
+				 FROM daily_stats`,
+				`DROP TABLE daily_stats`,
+				`ALTER TABLE daily_stats_new RENAME TO daily_stats`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild daily_stats table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v24: add user_id to pinyin_progress; PK changes from (sound_id) → (user_id, sound_id).
+		// pinyin_sounds remains shared content. Existing rows → initial user.
+		version: 24,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS pinyin_progress_new (
+				  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  sound_id        INTEGER NOT NULL REFERENCES pinyin_sounds(id) ON DELETE CASCADE,
+				  repetitions     INTEGER NOT NULL DEFAULT 0,
+				  easiness        REAL    NOT NULL DEFAULT 2.5,
+				  interval_days   INTEGER NOT NULL DEFAULT 1,
+				  due_date        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				  total_correct   INTEGER NOT NULL DEFAULT 0,
+				  total_attempts  INTEGER NOT NULL DEFAULT 0,
+				  learning        INTEGER NOT NULL DEFAULT 1,
+				  streak_bonus    INTEGER NOT NULL DEFAULT 0,
+				  first_seen_date TEXT DEFAULT NULL,
+				  PRIMARY KEY (user_id, sound_id)
+				)`,
+				`INSERT OR IGNORE INTO pinyin_progress_new
+				   (user_id, sound_id, repetitions, easiness, interval_days, due_date,
+				    total_correct, total_attempts, learning, streak_bonus, first_seen_date)
+				 SELECT
+				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   sound_id, repetitions, easiness, interval_days, due_date,
+				   total_correct, total_attempts, learning, streak_bonus, first_seen_date
+				 FROM pinyin_progress`,
+				`DROP TABLE pinyin_progress`,
+				`ALTER TABLE pinyin_progress_new RENAME TO pinyin_progress`,
+				`CREATE INDEX IF NOT EXISTS idx_pinyin_progress_due ON pinyin_progress(user_id, due_date)`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild pinyin_progress table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v25: add user_id to pinyin_confusions; PK changes to (user_id, sound_id, confused_with_id).
+		version: 25,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS pinyin_confusions_new (
+				  user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  sound_id         INTEGER NOT NULL REFERENCES pinyin_sounds(id) ON DELETE CASCADE,
+				  confused_with_id INTEGER NOT NULL REFERENCES pinyin_sounds(id) ON DELETE CASCADE,
+				  count            INTEGER NOT NULL DEFAULT 1,
+				  last_seen        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				  PRIMARY KEY (user_id, sound_id, confused_with_id)
+				)`,
+				`INSERT OR IGNORE INTO pinyin_confusions_new
+				   (user_id, sound_id, confused_with_id, count, last_seen)
+				 SELECT
+				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   sound_id, confused_with_id, count, last_seen
+				 FROM pinyin_confusions`,
+				`DROP TABLE pinyin_confusions`,
+				`ALTER TABLE pinyin_confusions_new RENAME TO pinyin_confusions`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild pinyin_confusions table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v26: add user_id to pinyin_daily_stats; PK changes from (date) → (user_id, date).
+		version: 26,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS pinyin_daily_stats_new (
+				  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  date          TEXT    NOT NULL,
+				  attempts      INTEGER NOT NULL DEFAULT 0,
+				  mistakes      INTEGER NOT NULL DEFAULT 0,
+				  sounds_seen   INTEGER NOT NULL DEFAULT 0,
+				  tone1_correct INTEGER NOT NULL DEFAULT 0,
+				  tone1_wrong   INTEGER NOT NULL DEFAULT 0,
+				  tone2_correct INTEGER NOT NULL DEFAULT 0,
+				  tone2_wrong   INTEGER NOT NULL DEFAULT 0,
+				  tone3_correct INTEGER NOT NULL DEFAULT 0,
+				  tone3_wrong   INTEGER NOT NULL DEFAULT 0,
+				  tone4_correct INTEGER NOT NULL DEFAULT 0,
+				  tone4_wrong   INTEGER NOT NULL DEFAULT 0,
+				  tone5_correct INTEGER NOT NULL DEFAULT 0,
+				  tone5_wrong   INTEGER NOT NULL DEFAULT 0,
+				  PRIMARY KEY (user_id, date)
+				)`,
+				`INSERT OR IGNORE INTO pinyin_daily_stats_new
+				   (user_id, date, attempts, mistakes, sounds_seen,
+				    tone1_correct, tone1_wrong, tone2_correct, tone2_wrong,
+				    tone3_correct, tone3_wrong, tone4_correct, tone4_wrong,
+				    tone5_correct, tone5_wrong)
+				 SELECT
+				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   date, attempts, mistakes, COALESCE(sounds_seen, 0),
+				   COALESCE(tone1_correct, 0), COALESCE(tone1_wrong, 0),
+				   COALESCE(tone2_correct, 0), COALESCE(tone2_wrong, 0),
+				   COALESCE(tone3_correct, 0), COALESCE(tone3_wrong, 0),
+				   COALESCE(tone4_correct, 0), COALESCE(tone4_wrong, 0),
+				   COALESCE(tone5_correct, 0), COALESCE(tone5_wrong, 0)
+				 FROM pinyin_daily_stats`,
+				`DROP TABLE pinyin_daily_stats`,
+				`ALTER TABLE pinyin_daily_stats_new RENAME TO pinyin_daily_stats`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild pinyin_daily_stats table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v27: add user_id to hmm_actors; PK changes from (initial) → (user_id, initial).
+		version: 27,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS hmm_actors_new (
+				  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  initial    TEXT    NOT NULL,
+				  category   TEXT    NOT NULL,
+				  actor_name TEXT    NOT NULL DEFAULT '',
+				  hint       TEXT    NOT NULL DEFAULT '',
+				  PRIMARY KEY (user_id, initial)
+				)`,
+				`INSERT OR IGNORE INTO hmm_actors_new (user_id, initial, category, actor_name, hint)
+				 SELECT (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				        initial, category, actor_name, hint FROM hmm_actors`,
+				`DROP TABLE hmm_actors`,
+				`ALTER TABLE hmm_actors_new RENAME TO hmm_actors`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild hmm_actors table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v28: add user_id to hmm_locations; PK changes from (final_key) → (user_id, final_key).
+		version: 28,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS hmm_locations_new (
+				  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  final_key     TEXT    NOT NULL,
+				  location_name TEXT    NOT NULL DEFAULT '',
+				  PRIMARY KEY (user_id, final_key)
+				)`,
+				`INSERT OR IGNORE INTO hmm_locations_new (user_id, final_key, location_name)
+				 SELECT (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				        final_key, location_name FROM hmm_locations`,
+				`DROP TABLE hmm_locations`,
+				`ALTER TABLE hmm_locations_new RENAME TO hmm_locations`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild hmm_locations table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v29: add user_id to hmm_tone_rooms; PK changes from (tone) → (user_id, tone).
+		version: 29,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS hmm_tone_rooms_new (
+				  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  tone      INTEGER NOT NULL,
+				  room_name TEXT    NOT NULL DEFAULT '',
+				  PRIMARY KEY (user_id, tone)
+				)`,
+				`INSERT OR IGNORE INTO hmm_tone_rooms_new (user_id, tone, room_name)
+				 SELECT (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				        tone, room_name FROM hmm_tone_rooms`,
+				`DROP TABLE hmm_tone_rooms`,
+				`ALTER TABLE hmm_tone_rooms_new RENAME TO hmm_tone_rooms`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild hmm_tone_rooms table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v30: add user_id to hmm_props; PK changes from (radical) → (user_id, radical).
+		version: 30,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS hmm_props_new (
+				  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  radical   TEXT    NOT NULL,
+				  prop_name TEXT    NOT NULL DEFAULT '',
+				  PRIMARY KEY (user_id, radical)
+				)`,
+				`INSERT OR IGNORE INTO hmm_props_new (user_id, radical, prop_name)
+				 SELECT (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				        radical, prop_name FROM hmm_props`,
+				`DROP TABLE hmm_props`,
+				`ALTER TABLE hmm_props_new RENAME TO hmm_props`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild hmm_props table: %w", err)
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// v31: add user_id to hmm_progress; PK changes from (entity_type, entity_key)
+		// → (user_id, entity_type, entity_key). Existing rows → initial user.
+		version: 31,
+		fn: func(db *sql.DB) error {
+			if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+				return fmt.Errorf("disable foreign keys: %w", err)
+			}
+			defer db.Exec(`PRAGMA foreign_keys = ON`)
+
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS hmm_progress_new (
+				  user_id         INTEGER  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				  entity_type     TEXT     NOT NULL,
+				  entity_key      TEXT     NOT NULL,
+				  repetitions     INTEGER  NOT NULL DEFAULT 0,
+				  easiness        REAL     NOT NULL DEFAULT 2.5,
+				  interval_days   INTEGER  NOT NULL DEFAULT 1,
+				  due_date        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				  total_correct   INTEGER  NOT NULL DEFAULT 0,
+				  total_attempts  INTEGER  NOT NULL DEFAULT 0,
+				  learning        INTEGER  NOT NULL DEFAULT 1,
+				  streak_bonus    INTEGER  NOT NULL DEFAULT 0,
+				  first_seen_date TEXT     DEFAULT NULL,
+				  PRIMARY KEY (user_id, entity_type, entity_key)
+				)`,
+				`INSERT OR IGNORE INTO hmm_progress_new
+				   (user_id, entity_type, entity_key, repetitions, easiness, interval_days,
+				    due_date, total_correct, total_attempts, learning, streak_bonus, first_seen_date)
+				 SELECT
+				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   entity_type, entity_key, repetitions, easiness, interval_days,
+				   due_date, total_correct, total_attempts, learning, streak_bonus, first_seen_date
+				 FROM hmm_progress`,
+				`DROP TABLE hmm_progress`,
+				`ALTER TABLE hmm_progress_new RENAME TO hmm_progress`,
+				`CREATE INDEX IF NOT EXISTS idx_hmm_progress_due ON hmm_progress(user_id, due_date)`,
+			}
+			for _, s := range stmts {
+				if _, err := db.Exec(s); err != nil {
+					return fmt.Errorf("rebuild hmm_progress table: %w", err)
 				}
 			}
 			return nil

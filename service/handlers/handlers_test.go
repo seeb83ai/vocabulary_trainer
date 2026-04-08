@@ -1746,7 +1746,7 @@ func seedPinyinSounds(t *testing.T, store *db.Store) {
 		{Initial: "p", Final: "a", Tone: 1, Syllable: "pa", Filename: "pa1.mp3", Tag: "b_p_m_f"},
 	}
 	for _, snd := range sounds {
-		if _, err := store.InsertPinyinSound(context.Background(), snd); err != nil {
+		if _, err := store.InsertPinyinSound(context.Background(), 1, snd); err != nil {
 			t.Fatalf("seedPinyinSounds: %v", err)
 		}
 	}

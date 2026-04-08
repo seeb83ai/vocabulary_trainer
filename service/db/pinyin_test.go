@@ -6,6 +6,8 @@ import (
 	"vocabulary_trainer/models"
 )
 
+const pinyinTestUserID = int64(1)
+
 func seedPinyinSounds(t *testing.T, store *Store) []models.PinyinSound {
 	t.Helper()
 	sounds := []models.PinyinSound{
@@ -19,7 +21,7 @@ func seedPinyinSounds(t *testing.T, store *Store) []models.PinyinSound {
 		{Initial: "", Final: "a", Tone: 1, Syllable: "a", Filename: "a1.mp3", Tag: "vowels"},
 	}
 	for i, s := range sounds {
-		id, err := store.InsertPinyinSound(context.Background(), s)
+		id, err := store.InsertPinyinSound(context.Background(), pinyinTestUserID, s)
 		if err != nil {
 			t.Fatalf("InsertPinyinSound %s: %v", s.Filename, err)
 		}
@@ -37,7 +39,7 @@ func TestInsertPinyinSound(t *testing.T) {
 	}
 
 	// Duplicate insert should return existing ID
-	id, err := store.InsertPinyinSound(context.Background(), models.PinyinSound{
+	id, err := store.InsertPinyinSound(context.Background(), pinyinTestUserID, models.PinyinSound{
 		Initial: "b", Final: "a", Tone: 1, Syllable: "ba", Filename: "ba1.mp3", Tag: "b_p_m_f",
 	})
 	if err != nil {
@@ -94,7 +96,7 @@ func TestGetNextPinyinCard(t *testing.T) {
 	seedPinyinSounds(t, store)
 
 	// Should return a card (all are due immediately)
-	sound, prog, err := store.GetNextPinyinCard(context.Background(), nil, false)
+	sound, prog, err := store.GetNextPinyinCard(context.Background(), pinyinTestUserID, nil, false)
 	if err != nil {
 		t.Fatalf("GetNextPinyinCard: %v", err)
 	}
@@ -114,7 +116,7 @@ func TestGetNextPinyinCardWithTags(t *testing.T) {
 	seedPinyinSounds(t, store)
 
 	// Filter by tag
-	sound, _, err := store.GetNextPinyinCard(context.Background(), []string{"vowels"}, false)
+	sound, _, err := store.GetNextPinyinCard(context.Background(), pinyinTestUserID, []string{"vowels"}, false)
 	if err != nil {
 		t.Fatalf("GetNextPinyinCard with tags: %v", err)
 	}
@@ -149,7 +151,7 @@ func TestGetPinyinProgress(t *testing.T) {
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
-	prog, err := store.GetPinyinProgress(context.Background(), sounds[0].ID)
+	prog, err := store.GetPinyinProgress(context.Background(), pinyinTestUserID, sounds[0].ID)
 	if err != nil {
 		t.Fatalf("GetPinyinProgress: %v", err)
 	}
@@ -165,16 +167,16 @@ func TestUpdatePinyinProgress(t *testing.T) {
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
-	prog, _ := store.GetPinyinProgress(context.Background(), sounds[0].ID)
+	prog, _ := store.GetPinyinProgress(context.Background(), pinyinTestUserID, sounds[0].ID)
 	prog.TotalAttempts = 5
 	prog.TotalCorrect = 3
 
-	err := store.UpdatePinyinProgress(context.Background(), *prog)
+	err := store.UpdatePinyinProgress(context.Background(), pinyinTestUserID, *prog)
 	if err != nil {
 		t.Fatalf("UpdatePinyinProgress: %v", err)
 	}
 
-	updated, _ := store.GetPinyinProgress(context.Background(), sounds[0].ID)
+	updated, _ := store.GetPinyinProgress(context.Background(), pinyinTestUserID, sounds[0].ID)
 	if updated.TotalAttempts != 5 || updated.TotalCorrect != 3 {
 		t.Errorf("progress not updated: attempts=%d correct=%d", updated.TotalAttempts, updated.TotalCorrect)
 	}
@@ -184,7 +186,7 @@ func TestPinyinStats(t *testing.T) {
 	store := openTestDB(t)
 	seedPinyinSounds(t, store)
 
-	due, total, err := store.GetPinyinStats(context.Background(), nil)
+	due, total, err := store.GetPinyinStats(context.Background(), pinyinTestUserID, nil)
 	if err != nil {
 		t.Fatalf("GetPinyinStats: %v", err)
 	}
@@ -215,13 +217,13 @@ func TestPinyinConfusions(t *testing.T) {
 	sounds := seedPinyinSounds(t, store)
 
 	// Upsert confusion
-	err := store.UpsertPinyinConfusion(context.Background(), sounds[0].ID, sounds[1].ID)
+	err := store.UpsertPinyinConfusion(context.Background(), pinyinTestUserID, sounds[0].ID, sounds[1].ID)
 	if err != nil {
 		t.Fatalf("UpsertPinyinConfusion: %v", err)
 	}
 
 	// Upsert again to increment
-	err = store.UpsertPinyinConfusion(context.Background(), sounds[0].ID, sounds[1].ID)
+	err = store.UpsertPinyinConfusion(context.Background(), pinyinTestUserID, sounds[0].ID, sounds[1].ID)
 	if err != nil {
 		t.Fatalf("UpsertPinyinConfusion second: %v", err)
 	}
@@ -242,13 +244,13 @@ func TestAcknowledgePinyinSound(t *testing.T) {
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
-	err := store.AcknowledgePinyinSound(context.Background(), sounds[0].ID)
+	err := store.AcknowledgePinyinSound(context.Background(), pinyinTestUserID, sounds[0].ID)
 	if err != nil {
 		t.Fatalf("AcknowledgePinyinSound: %v", err)
 	}
 
 	// After acknowledging, the sound should be counted in due stats
-	due, _, err := store.GetPinyinStats(context.Background(), nil)
+	due, _, err := store.GetPinyinStats(context.Background(), pinyinTestUserID, nil)
 	if err != nil {
 		t.Fatalf("GetPinyinStats after acknowledge: %v", err)
 	}

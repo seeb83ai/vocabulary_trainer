@@ -1154,15 +1154,26 @@ func parseDateTime(s string) time.Time {
 // upsertWord inserts a word if it doesn't exist and returns its ID.
 func upsertWord(ctx context.Context, tx *sql.Tx, text, lang string, pinyin *string) (int64, error) {
 	text = strings.TrimSpace(text)
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO words (text, language, pinyin) VALUES (?, ?, ?)`,
-		text, lang, pinyin); err != nil {
-		return 0, fmt.Errorf("upsert word: %w", err)
-	}
+	// SQLite treats NULL as distinct from NULL in UNIQUE constraints, so
+	// INSERT OR IGNORE would not prevent duplicates when user_id IS NULL.
+	// Use a check-then-insert pattern instead.
 	var id int64
-	if err := tx.QueryRowContext(ctx,
-		`SELECT id FROM words WHERE text = ? AND language = ?`, text, lang).Scan(&id); err != nil {
-		return 0, fmt.Errorf("get word id: %w", err)
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE text = ? AND language = ? AND user_id IS NULL`, text, lang).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, fmt.Errorf("lookup word: %w", err)
+	}
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO words (text, language, pinyin, user_id) VALUES (?, ?, ?, NULL)`, text, lang, pinyin)
+	if err != nil {
+		return 0, fmt.Errorf("insert word: %w", err)
+	}
+	id, err = res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("get word id after insert: %w", err)
 	}
 	return id, nil
 }
@@ -1268,7 +1279,7 @@ func (s *Store) GetAllTags(ctx context.Context) ([]string, error) {
 
 // RecordDailyStat upserts today's daily_stats row after an answer submission.
 // It returns the updated session streak (consecutive correct answers today).
-func (s *Store) RecordDailyStat(ctx context.Context, correct bool) (int, error) {
+func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool) (int, error) {
 	var wordsSeen int
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
@@ -1315,12 +1326,12 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) (int, error) 
 	}
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO daily_stats (date, attempts, mistakes, words_seen,
+		INSERT INTO daily_stats (user_id, date, attempts, mistakes, words_seen,
 			correct_streak, current_streak,
 			bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
-		VALUES (date('now'), 1, ?, ?, ?, ?,
+		VALUES (?, date('now'), 1, ?, ?, ?, ?,
 			?, ?, ?, ?, ?)
-		ON CONFLICT(date) DO UPDATE SET
+		ON CONFLICT(user_id, date) DO UPDATE SET
 			attempts         = attempts + 1,
 			mistakes         = mistakes + ?,
 			words_seen       = ?,
@@ -1332,6 +1343,7 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) (int, error) 
 			bucket_practicing = ?,
 			bucket_mastered  = ?`,
 		// INSERT values
+		userID,
 		mistakeInc, wordsSeen, streakInit, streakInit,
 		bNew, bStruggling, bLearning, bPracticing, bMastered,
 		// UPDATE values
@@ -1342,16 +1354,16 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) (int, error) 
 		return 0, fmt.Errorf("upsert daily stat: %w", err)
 	}
 	var streak int
-	_ = s.db.QueryRowContext(ctx, `SELECT current_streak FROM daily_stats WHERE date = date('now')`).Scan(&streak)
+	_ = s.db.QueryRowContext(ctx, `SELECT current_streak FROM daily_stats WHERE user_id = ? AND date = date('now')`, userID).Scan(&streak)
 	return streak, nil
 }
 
-// GetDailyStatsHistory returns all daily stats ordered by date ascending.
-func (s *Store) GetDailyStatsHistory(ctx context.Context) ([]models.DailyStat, error) {
+// GetDailyStatsHistory returns all daily stats for the given user ordered by date ascending.
+func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]models.DailyStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT date, attempts, mistakes, words_seen, correct_streak,
 		       bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered
-		FROM daily_stats ORDER BY date ASC`)
+		FROM daily_stats WHERE user_id = ? ORDER BY date ASC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get daily stats: %w", err)
 	}
@@ -1543,9 +1555,9 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 
 // GetTodaySessionInfo returns today's attempt and mistake counts from daily_stats,
 // and the number of seen zh words whose due date is still in the future.
-func (s *Store) GetTodaySessionInfo(ctx context.Context) (attempts, mistakes, availableToAdvance int, err error) {
+func (s *Store) GetTodaySessionInfo(ctx context.Context, userID int64) (attempts, mistakes, availableToAdvance int, err error) {
 	err = s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(attempts, 0), COALESCE(mistakes, 0) FROM daily_stats WHERE date = date('now')`).
+		`SELECT COALESCE(attempts, 0), COALESCE(mistakes, 0) FROM daily_stats WHERE user_id = ? AND date = date('now')`, userID).
 		Scan(&attempts, &mistakes)
 	if err == sql.ErrNoRows {
 		err = nil
@@ -2209,6 +2221,191 @@ func (s *Store) SaveHMMSceneWithLibrary(ctx context.Context, wordID int64, initi
 			 ON CONFLICT(radical) DO UPDATE SET prop_name = excluded.prop_name`,
 			p.Radical, p.PropName); err != nil {
 			return fmt.Errorf("upsert prop %s: %w", p.Radical, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// ImportTemplateWords copies all template words (user_id IS NULL) to the given
+// user, creating fresh sm2_progress rows. Translations and word_tags are
+// re-created using the new word IDs; global tags (user_id=NULL) are reused as-is.
+// If the user already owns a word with the same text+language it is skipped.
+// This is a single transaction.
+func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Load all template non-zh words.
+	enRows, err := tx.QueryContext(ctx,
+		`SELECT id, text, language FROM words WHERE user_id IS NULL AND language != 'zh'`)
+	if err != nil {
+		return fmt.Errorf("query template non-zh words: %w", err)
+	}
+	type wordRow struct {
+		id   int64
+		text string
+		lang string
+	}
+	var nonZhWords []wordRow
+	for enRows.Next() {
+		var w wordRow
+		if err := enRows.Scan(&w.id, &w.text, &w.lang); err != nil {
+			enRows.Close()
+			return fmt.Errorf("scan template non-zh word: %w", err)
+		}
+		nonZhWords = append(nonZhWords, w)
+	}
+	enRows.Close()
+	if err := enRows.Err(); err != nil {
+		return fmt.Errorf("iterate template non-zh words: %w", err)
+	}
+
+	// Copy non-zh words; build oldID → newID map.
+	tmplNonZh := make(map[int64]int64, len(nonZhWords))
+	for _, w := range nonZhWords {
+		res, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO words (text, language, user_id) VALUES (?, ?, ?)`,
+			w.text, w.lang, userID)
+		if err != nil {
+			return fmt.Errorf("insert user non-zh word: %w", err)
+		}
+		newID, err := res.LastInsertId()
+		if err != nil || newID == 0 {
+			if err2 := tx.QueryRowContext(ctx,
+				`SELECT id FROM words WHERE text = ? AND language = ? AND user_id = ?`,
+				w.text, w.lang, userID,
+			).Scan(&newID); err2 != nil {
+				return fmt.Errorf("lookup user non-zh word %q: %w", w.text, err2)
+			}
+		}
+		if err := initSM2(ctx, tx, newID); err != nil {
+			return err
+		}
+		tmplNonZh[w.id] = newID
+	}
+
+	// Load all template zh words.
+	zhRows, err := tx.QueryContext(ctx,
+		`SELECT id, text, pinyin FROM words WHERE user_id IS NULL AND language = 'zh'`)
+	if err != nil {
+		return fmt.Errorf("query template zh words: %w", err)
+	}
+	type zhWordRow struct {
+		id     int64
+		text   string
+		pinyin *string
+	}
+	var zhWords []zhWordRow
+	for zhRows.Next() {
+		var w zhWordRow
+		if err := zhRows.Scan(&w.id, &w.text, &w.pinyin); err != nil {
+			zhRows.Close()
+			return fmt.Errorf("scan template zh word: %w", err)
+		}
+		zhWords = append(zhWords, w)
+	}
+	zhRows.Close()
+	if err := zhRows.Err(); err != nil {
+		return fmt.Errorf("iterate template zh words: %w", err)
+	}
+
+	// Copy zh words; build oldID → newID map.
+	tmplZh := make(map[int64]int64, len(zhWords))
+	for _, w := range zhWords {
+		res, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO words (text, language, pinyin, user_id) VALUES (?, 'zh', ?, ?)`,
+			w.text, w.pinyin, userID)
+		if err != nil {
+			return fmt.Errorf("insert user zh word: %w", err)
+		}
+		newID, err := res.LastInsertId()
+		if err != nil || newID == 0 {
+			if err2 := tx.QueryRowContext(ctx,
+				`SELECT id FROM words WHERE text = ? AND language = 'zh' AND user_id = ?`,
+				w.text, userID,
+			).Scan(&newID); err2 != nil {
+				return fmt.Errorf("lookup user zh word %q: %w", w.text, err2)
+			}
+		}
+		if err := initSM2(ctx, tx, newID); err != nil {
+			return err
+		}
+		tmplZh[w.id] = newID
+	}
+
+	// Copy translations.
+	tRows, err := tx.QueryContext(ctx,
+		`SELECT en_word_id, zh_word_id FROM translations
+		 WHERE zh_word_id IN (SELECT id FROM words WHERE user_id IS NULL)`)
+	if err != nil {
+		return fmt.Errorf("query template translations: %w", err)
+	}
+	type translationRow struct{ enID, zhID int64 }
+	var translations []translationRow
+	for tRows.Next() {
+		var tr translationRow
+		if err := tRows.Scan(&tr.enID, &tr.zhID); err != nil {
+			tRows.Close()
+			return fmt.Errorf("scan template translation: %w", err)
+		}
+		translations = append(translations, tr)
+	}
+	tRows.Close()
+	if err := tRows.Err(); err != nil {
+		return fmt.Errorf("iterate template translations: %w", err)
+	}
+	for _, tr := range translations {
+		newEnID, okEn := tmplNonZh[tr.enID]
+		newZhID, okZh := tmplZh[tr.zhID]
+		if !okEn || !okZh {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
+			newEnID, newZhID,
+		); err != nil {
+			return fmt.Errorf("insert user translation: %w", err)
+		}
+	}
+
+	// Copy word_tags (global tags are reused by ID).
+	wtRows, err := tx.QueryContext(ctx,
+		`SELECT word_id, tag_id FROM word_tags
+		 WHERE word_id IN (SELECT id FROM words WHERE user_id IS NULL)`)
+	if err != nil {
+		return fmt.Errorf("query template word_tags: %w", err)
+	}
+	type wordTagRow struct{ wordID, tagID int64 }
+	var wordTags []wordTagRow
+	for wtRows.Next() {
+		var wt wordTagRow
+		if err := wtRows.Scan(&wt.wordID, &wt.tagID); err != nil {
+			wtRows.Close()
+			return fmt.Errorf("scan template word_tag: %w", err)
+		}
+		wordTags = append(wordTags, wt)
+	}
+	wtRows.Close()
+	if err := wtRows.Err(); err != nil {
+		return fmt.Errorf("iterate template word_tags: %w", err)
+	}
+	for _, wt := range wordTags {
+		newID, ok := tmplZh[wt.wordID]
+		if !ok {
+			newID, ok = tmplNonZh[wt.wordID]
+		}
+		if !ok {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`,
+			newID, wt.tagID,
+		); err != nil {
+			return fmt.Errorf("insert user word_tag: %w", err)
 		}
 	}
 

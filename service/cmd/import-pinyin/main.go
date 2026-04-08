@@ -200,7 +200,7 @@ func main() {
 			Tag:      tag,
 		}
 
-		id, err := store.InsertPinyinSound(context.Background(), ps)
+		id, err := store.InsertPinyinSound(context.Background(), int64(1), ps)
 		if err != nil {
 			log.Printf("[ERROR] %s: %v", s.filename, err)
 			continue

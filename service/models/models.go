@@ -318,6 +318,7 @@ const (
 )
 
 type HMMProgress struct {
+	UserID        int64
 	EntityType    string
 	EntityKey     string
 	Repetitions   int

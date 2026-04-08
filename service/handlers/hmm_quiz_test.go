@@ -56,7 +56,7 @@ func seedHMMActorEntry(t *testing.T, h *handlers.HMMQuizHandler, initial, name s
 	if err := h.Store.UpdateHMMActor(ctx, initial, name); err != nil {
 		t.Fatalf("UpdateHMMActor: %v", err)
 	}
-	if err := h.Store.EnsureHMMProgress(ctx); err != nil {
+	if err := h.Store.EnsureHMMProgress(ctx, int64(1)); err != nil {
 		t.Fatalf("EnsureHMMProgress: %v", err)
 	}
 }

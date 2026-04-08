@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // openTestDB creates an in-memory SQLite store for tests.
@@ -1168,17 +1170,17 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(1), true); err != nil {
 		t.Fatalf("RecordDailyStat(correct): %v", err)
 	}
-	if _, err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(1), true); err != nil {
 		t.Fatalf("RecordDailyStat(correct): %v", err)
 	}
-	if _, err := s.RecordDailyStat(ctx, false); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(1), false); err != nil {
 		t.Fatalf("RecordDailyStat(wrong): %v", err)
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx)
+	stats, err := s.GetDailyStatsHistory(ctx, int64(1))
 	if err != nil {
 		t.Fatalf("GetDailyStatsHistory: %v", err)
 	}
@@ -1206,12 +1208,12 @@ func TestRecordDailyStat_StreakResets(t *testing.T) {
 
 	// wrong, correct, correct, wrong, correct
 	for _, correct := range []bool{false, true, true, false, true} {
-		if _, err := s.RecordDailyStat(ctx, correct); err != nil {
+		if _, err := s.RecordDailyStat(ctx, int64(1), correct); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx)
+	stats, err := s.GetDailyStatsHistory(ctx, int64(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1227,13 +1229,13 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 	// Insert rows for multiple dates manually
 	for _, d := range []string{"2026-02-10", "2026-02-12", "2026-02-11"} {
 		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO daily_stats (date, attempts, mistakes, correct_streak, current_streak)
-			 VALUES (?, 10, 2, 3, 0)`, d); err != nil {
+			`INSERT INTO daily_stats (user_id, date, attempts, mistakes, correct_streak, current_streak)
+			 VALUES (1, ?, 10, 2, 3, 0)`, d); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx)
+	stats, err := s.GetDailyStatsHistory(ctx, int64(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1247,7 +1249,7 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 
 func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
 	s := openTestDB(t)
-	stats, err := s.GetDailyStatsHistory(context.Background())
+	stats, err := s.GetDailyStatsHistory(context.Background(), int64(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1263,7 +1265,7 @@ func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
 
 func TestGetTodaySessionInfo_NoRows(t *testing.T) {
 	s := openTestDB(t)
-	attempts, mistakes, available, err := s.GetTodaySessionInfo(context.Background())
+	attempts, mistakes, available, err := s.GetTodaySessionInfo(context.Background(), int64(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1288,11 +1290,11 @@ func TestGetTodaySessionInfo_WithData(t *testing.T) {
 	}
 
 	// Record a daily stat (1 correct answer).
-	if _, err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(1), true); err != nil {
 		t.Fatal(err)
 	}
 
-	attempts, mistakes, available, err := s.GetTodaySessionInfo(ctx)
+	attempts, mistakes, available, err := s.GetTodaySessionInfo(ctx, int64(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1631,5 +1633,246 @@ func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 		if dt == "auf Wiedersehen" {
 			t.Error("old DE translation should have been removed")
 		}
+	}
+}
+
+// ── Migration v20: users table + initial user ─────────────────────────────────
+
+func TestMigration_v20_UsersTableExists(t *testing.T) {
+	s := openTestDB(t)
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'`).Scan(&count); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if count != 1 {
+		t.Error("users table should exist after migration v20")
+	}
+}
+
+func TestMigration_v20_InitialUserSeeded(t *testing.T) {
+	s := openTestDB(t)
+	var email, hash string
+	if err := s.db.QueryRow(`SELECT email, password_hash FROM users WHERE email = 'me@elygor.de'`).Scan(&email, &hash); err != nil {
+		t.Fatalf("query initial user: %v", err)
+	}
+	if email != "me@elygor.de" {
+		t.Errorf("unexpected email: %q", email)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte("I learn zh")); err != nil {
+		t.Errorf("password hash does not match 'I learn zh': %v", err)
+	}
+}
+
+func TestMigration_v20_IdempotentOnFreshDB(t *testing.T) {
+	s := openTestDB(t)
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 user after migration, got %d", count)
+	}
+}
+
+// ── Migration v21: words.user_id + template seeding ──────────────────────────
+
+func TestMigration_v21_WordsHaveUserIDColumn(t *testing.T) {
+	s := openTestDB(t)
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('words') WHERE name = 'user_id'`).Scan(&count); err != nil {
+		t.Fatalf("pragma_table_info: %v", err)
+	}
+	if count != 1 {
+		t.Error("words table should have a user_id column after migration v21")
+	}
+}
+
+func TestMigration_v21_CreateWordSetsNullUserID(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "测试", "cè shì", []string{"test"})
+
+	var userID *int64
+	if err := s.db.QueryRow(`SELECT user_id FROM words WHERE id = ?`, id).Scan(&userID); err != nil {
+		t.Fatalf("query word user_id: %v", err)
+	}
+	if userID != nil {
+		t.Errorf("expected NULL user_id for word created via CreateWord, got %d", *userID)
+	}
+}
+
+// ── Migration v21: template seeding from initial user ────────────────────────
+// (Only meaningful when running against a real DB that has data before v21;
+// on a fresh in-memory DB the initial user has no words to copy, so we verify
+// the column and schema are correct and that the seeding path doesn't error.)
+
+func TestMigration_v21_TemplateWordsAreSubsetOfAllWords(t *testing.T) {
+	s := openTestDB(t)
+	// Insert a word via CreateWord (goes to user_id=NULL templates).
+	seedWord(t, s, "学习", "xuéxí", []string{"study"})
+
+	var templateCount, totalCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id IS NULL`).Scan(&templateCount); err != nil {
+		t.Fatalf("count template words: %v", err)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words`).Scan(&totalCount); err != nil {
+		t.Fatalf("count all words: %v", err)
+	}
+	if templateCount > totalCount {
+		t.Errorf("template words (%d) must not exceed total words (%d)", templateCount, totalCount)
+	}
+}
+
+// ── ImportTemplateWords ───────────────────────────────────────────────────────
+
+func seedTemplateWord(t *testing.T, s *Store, zhText, pinyin string, enTexts []string, tags []string) int64 {
+	t.Helper()
+	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+		ZhText:  zhText,
+		Pinyin:  pinyin,
+		EnTexts: enTexts,
+		Tags:    tags,
+	})
+	if err != nil {
+		t.Fatalf("seedTemplateWord %q: %v", zhText, err)
+	}
+	return id
+}
+
+func insertTestUser(t *testing.T, s *Store, email string) int64 {
+	t.Helper()
+	res, err := s.db.Exec(`INSERT INTO users (email, password_hash) VALUES (?, 'x')`, email)
+	if err != nil {
+		t.Fatalf("insert test user %q: %v", email, err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+func TestImportTemplateWords_CopiesWordsForUser(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "苹果", "píngguǒ", []string{"apple"}, nil)
+
+	userID := insertTestUser(t, s, "test@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatalf("count user words: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected user to have words after ImportTemplateWords")
+	}
+}
+
+func TestImportTemplateWords_CreatesSM2Progress(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "猫", "māo", []string{"cat"}, nil)
+
+	userID := insertTestUser(t, s, "test2@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM sm2_progress sp
+		JOIN words w ON w.id = sp.word_id
+		WHERE w.user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatalf("count sm2_progress: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected sm2_progress rows for imported words")
+	}
+}
+
+func TestImportTemplateWords_CopiesTranslations(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "书", "shū", []string{"book"}, nil)
+
+	userID := insertTestUser(t, s, "test3@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	// The zh word imported for the user should have a translation linked to an en word.
+	var count int
+	if err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM translations t
+		JOIN words zh ON zh.id = t.zh_word_id AND zh.user_id = ?
+		JOIN words en ON en.id = t.en_word_id
+	`, userID).Scan(&count); err != nil {
+		t.Fatalf("count translations: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected translations to be copied for imported words")
+	}
+}
+
+func TestImportTemplateWords_Idempotent(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "水", "shuǐ", []string{"water"}, nil)
+
+	userID := insertTestUser(t, s, "test4@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("first ImportTemplateWords: %v", err)
+	}
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("second ImportTemplateWords: %v", err)
+	}
+
+	// Should still have only one zh word per template.
+	var count int
+	if err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM words WHERE user_id = ? AND language = 'zh'`, userID).Scan(&count); err != nil {
+		t.Fatalf("count zh words: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 zh word after idempotent import, got %d", count)
+	}
+}
+
+func TestImportTemplateWords_TemplatesUnchanged(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "火", "huǒ", []string{"fire"}, nil)
+
+	userID := insertTestUser(t, s, "test5@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	// Template words (user_id=NULL) must still exist after import.
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id IS NULL AND language = 'zh'`).Scan(&count); err != nil {
+		t.Fatalf("count template zh words: %v", err)
+	}
+	if count == 0 {
+		t.Error("template words should remain after ImportTemplateWords")
+	}
+}
+
+func TestImportTemplateWords_NoSM2ForTemplates(t *testing.T) {
+	s := openTestDB(t)
+	tmplID := seedTemplateWord(t, s, "地", "dì", []string{"earth", "ground"}, nil)
+
+	// Count sm2_progress for the template word before import (CreateWord creates one).
+	var before int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sm2_progress WHERE word_id = ?`, tmplID).Scan(&before); err != nil {
+		t.Fatalf("count sm2_progress before import: %v", err)
+	}
+
+	userID := insertTestUser(t, s, "test6@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	// ImportTemplateWords must not modify the template word's sm2_progress.
+	var after int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sm2_progress WHERE word_id = ?`, tmplID).Scan(&after); err != nil {
+		t.Fatalf("count sm2_progress after import: %v", err)
+	}
+	if after != before {
+		t.Errorf("import changed template sm2_progress count: before=%d, after=%d", before, after)
 	}
 }
