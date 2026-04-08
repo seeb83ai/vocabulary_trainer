@@ -35,28 +35,28 @@ func openTestDB(t *testing.T) *db.Store {
 func clearHMMLibrary(t *testing.T, s *db.Store) {
 	t.Helper()
 	ctx := context.Background()
-	actors, err := s.GetHMMActors(ctx)
+	actors, err := s.GetHMMActors(ctx, int64(1))
 	if err != nil {
 		t.Fatalf("clearHMMLibrary GetHMMActors: %v", err)
 	}
 	for _, a := range actors {
 		if a.ActorName != "" {
-			if err := s.UpdateHMMActor(ctx, a.Initial, ""); err != nil {
+			if err := s.UpdateHMMActor(ctx, int64(1), a.Initial, ""); err != nil {
 				t.Fatalf("clearHMMLibrary UpdateHMMActor %s: %v", a.Initial, err)
 			}
 		}
 	}
 	for tone := 1; tone <= 5; tone++ {
-		if err := s.UpdateHMMToneRoom(ctx, tone, ""); err != nil {
+		if err := s.UpdateHMMToneRoom(ctx, int64(1), tone, ""); err != nil {
 			t.Fatalf("clearHMMLibrary tone %d: %v", tone, err)
 		}
 	}
-	props, err := s.GetHMMProps(ctx)
+	props, err := s.GetHMMProps(ctx, int64(1))
 	if err != nil {
 		t.Fatalf("clearHMMLibrary GetHMMProps: %v", err)
 	}
 	for _, p := range props {
-		if err := s.DeleteHMMProp(ctx, p.Radical); err != nil {
+		if err := s.DeleteHMMProp(ctx, int64(1), p.Radical); err != nil {
 			t.Fatalf("clearHMMLibrary DeleteHMMProp %s: %v", p.Radical, err)
 		}
 	}

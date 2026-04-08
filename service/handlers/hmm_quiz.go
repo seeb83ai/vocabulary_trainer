@@ -97,7 +97,7 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	var correctName string
 	switch req.EntityType {
 	case models.HMMEntityActor:
-		actor, err := h.Store.GetHMMActorByInitial(r.Context(), req.EntityKey)
+		actor, err := h.Store.GetHMMActorByInitial(r.Context(), int64(1), req.EntityKey)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -108,7 +108,7 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 		correctName = actor.ActorName
 	case models.HMMEntityLocation:
-		loc, err := h.Store.GetHMMLocationByFinal(r.Context(), req.EntityKey)
+		loc, err := h.Store.GetHMMLocationByFinal(r.Context(), int64(1), req.EntityKey)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -124,7 +124,7 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "entity_key must be a tone number for tone_room")
 			return
 		}
-		room, err := h.Store.GetHMMToneRoom(r.Context(), tone)
+		room, err := h.Store.GetHMMToneRoom(r.Context(), int64(1), tone)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -135,7 +135,7 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 		correctName = room.RoomName
 	case models.HMMEntityProp:
-		props, err := h.Store.GetHMMPropsByRadicals(r.Context(), []string{req.EntityKey})
+		props, err := h.Store.GetHMMPropsByRadicals(r.Context(), int64(1), []string{req.EntityKey})
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
