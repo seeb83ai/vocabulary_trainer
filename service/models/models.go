@@ -13,6 +13,12 @@ const (
 
 // DB-layer structs
 
+type User struct {
+	ID           int64  `json:"id"`
+	Email        string `json:"email"`
+	PasswordHash string `json:"-"`
+}
+
 type Word struct {
 	ID        int64
 	Text      string

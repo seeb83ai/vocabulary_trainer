@@ -20,11 +20,11 @@
 
     <form id="login-form" class="flex flex-col gap-4">
       <input
-        id="username"
-        type="text"
-        autocomplete="username"
-        placeholder="Username"
-        data-i18n-placeholder="login.username"
+        id="email"
+        type="email"
+        autocomplete="email"
+        placeholder="Email"
+        data-i18n-placeholder="login.email"
         class="border border-gray-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         required
       >
@@ -63,13 +63,13 @@
       e.preventDefault();
       const errEl = document.getElementById('error-msg');
       errEl.classList.add('hidden');
-      const username = document.getElementById('username').value;
+      const email = document.getElementById('email').value;
       const password = document.getElementById('password').value;
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ email, password }),
         });
         if (res.ok) {
           window.location.href = '/';

@@ -9,19 +9,20 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// newAuthRouter builds a chi router with auth middleware + all auth endpoints
-// plus a protected sentinel endpoint GET /api/protected.
-func newAuthRouter(t *testing.T, authH *handlers.AuthHandler) http.Handler {
+// newAuthRouter builds a chi router with DB-backed auth middleware plus a
+// protected sentinel endpoint GET /api/protected.
+func newAuthRouter(t *testing.T) http.Handler {
 	t.Helper()
+	s := openTestDB(t)
+	authH, err := handlers.NewAuthHandler(s)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r := chi.NewRouter()
-	if authH != nil {
-		r.Use(authH.Middleware)
-	}
+	r.Use(authH.Middleware)
 	r.Get("/api/auth/status", handlers.AuthStatus(authH))
-	if authH != nil {
-		r.Post("/api/login", authH.Login)
-		r.Post("/api/logout", authH.Logout)
-	}
+	r.Post("/api/login", authH.Login)
+	r.Post("/api/logout", authH.Logout)
 	r.Get("/api/protected", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -31,11 +32,11 @@ func newAuthRouter(t *testing.T, authH *handlers.AuthHandler) http.Handler {
 	return r
 }
 
-// login performs POST /api/login and returns the response recorder.
-func loginReq(t *testing.T, r http.Handler, username, password string) *httptest.ResponseRecorder {
+// loginReq performs POST /api/login with the given email and password.
+func loginReq(t *testing.T, r http.Handler, email, password string) *httptest.ResponseRecorder {
 	t.Helper()
 	return do(t, r, "POST", "/api/login", map[string]string{
-		"username": username,
+		"email":    email,
 		"password": password,
 	})
 }
@@ -64,25 +65,8 @@ func doWithCookie(t *testing.T, r http.Handler, method, path string, cookie *htt
 
 // ── AuthStatus ────────────────────────────────────────────────────────────────
 
-func TestAuthStatus_AuthDisabled(t *testing.T) {
-	r := newAuthRouter(t, nil)
-	rec := do(t, r, "GET", "/api/auth/status", nil)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d", rec.Code)
-	}
-	var body map[string]bool
-	decodeJSON(t, rec, &body)
-	if body["auth"] {
-		t.Error("auth should be false when no credentials configured")
-	}
-}
-
-func TestAuthStatus_AuthEnabled(t *testing.T) {
-	authH, err := handlers.NewAuthHandler("user", "pass")
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := newAuthRouter(t, authH)
+func TestAuthStatus_ReturnsTrue(t *testing.T) {
+	r := newAuthRouter(t)
 	rec := do(t, r, "GET", "/api/auth/status", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rec.Code)
@@ -90,50 +74,14 @@ func TestAuthStatus_AuthEnabled(t *testing.T) {
 	var body map[string]bool
 	decodeJSON(t, rec, &body)
 	if !body["auth"] {
-		t.Error("auth should be true when credentials are configured")
+		t.Error("auth should be true with DB-backed handler")
 	}
 }
 
-// ── NewAuthHandler ────────────────────────────────────────────────────────────
-
-func TestNewAuthHandler_NilWhenNoCredentials(t *testing.T) {
-	cases := [][2]string{{"", ""}, {"user", ""}, {"", "pass"}}
-	for _, c := range cases {
-		h, err := handlers.NewAuthHandler(c[0], c[1])
-		if err != nil {
-			t.Fatalf("unexpected error for (%q, %q): %v", c[0], c[1], err)
-		}
-		if h != nil {
-			t.Errorf("expected nil handler for (%q, %q), got non-nil", c[0], c[1])
-		}
-	}
-}
-
-func TestNewAuthHandler_NonNilWhenCredentialsSet(t *testing.T) {
-	h, err := handlers.NewAuthHandler("admin", "secret")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if h == nil {
-		t.Error("expected non-nil handler when both credentials are set")
-	}
-}
-
-// ── Middleware: auth disabled ─────────────────────────────────────────────────
-
-func TestMiddleware_AuthDisabled_AllowsAnything(t *testing.T) {
-	r := newAuthRouter(t, nil)
-	rec := do(t, r, "GET", "/api/protected", nil)
-	if rec.Code != http.StatusOK {
-		t.Errorf("auth disabled: want 200 on protected route, got %d", rec.Code)
-	}
-}
-
-// ── Middleware: auth enabled, no session ──────────────────────────────────────
+// ── Middleware ────────────────────────────────────────────────────────────────
 
 func TestMiddleware_NoSession_APIReturns401(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
+	r := newAuthRouter(t)
 	rec := do(t, r, "GET", "/api/protected", nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("want 401 on protected API without session, got %d", rec.Code)
@@ -146,12 +94,11 @@ func TestMiddleware_NoSession_APIReturns401(t *testing.T) {
 }
 
 func TestMiddleware_NoSession_PageRedirectsToLogin(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
+	r := newAuthRouter(t)
 
 	req := httptest.NewRequest("GET", "/", nil)
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
+	r.(http.Handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusFound {
 		t.Errorf("want 302 redirect for unauthenticated page request, got %d", rec.Code)
@@ -162,8 +109,7 @@ func TestMiddleware_NoSession_PageRedirectsToLogin(t *testing.T) {
 }
 
 func TestMiddleware_LoginPageAccessibleWithoutSession(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
+	r := newAuthRouter(t)
 	rec := do(t, r, "GET", "/login", nil)
 	if rec.Code != http.StatusOK {
 		t.Errorf("want 200 on /login without session, got %d", rec.Code)
@@ -171,8 +117,7 @@ func TestMiddleware_LoginPageAccessibleWithoutSession(t *testing.T) {
 }
 
 func TestMiddleware_AuthStatusAccessibleWithoutSession(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
+	r := newAuthRouter(t)
 	rec := do(t, r, "GET", "/api/auth/status", nil)
 	if rec.Code != http.StatusOK {
 		t.Errorf("want 200 on /api/auth/status without session, got %d", rec.Code)
@@ -182,9 +127,8 @@ func TestMiddleware_AuthStatusAccessibleWithoutSession(t *testing.T) {
 // ── Login ─────────────────────────────────────────────────────────────────────
 
 func TestLogin_CorrectCredentials(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
-	rec := loginReq(t, r, "user", "pass")
+	r := newAuthRouter(t)
+	rec := loginReq(t, r, "me@elygor.de", "I learn zh")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
@@ -192,26 +136,32 @@ func TestLogin_CorrectCredentials(t *testing.T) {
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
-	rec := loginReq(t, r, "user", "wrong")
+	r := newAuthRouter(t)
+	rec := loginReq(t, r, "me@elygor.de", "wrong")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("want 401, got %d", rec.Code)
 	}
 }
 
-func TestLogin_WrongUsername(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
-	rec := loginReq(t, r, "admin", "pass")
+func TestLogin_UnknownEmail(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := loginReq(t, r, "nobody@example.com", "I learn zh")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("want 401, got %d", rec.Code)
 	}
+}
+
+func TestLogin_AdminCredentials(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := loginReq(t, r, "admin@elygor.de", "I am the admin")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for admin login, got %d: %s", rec.Code, rec.Body)
+	}
+	sessionCookie(t, rec)
 }
 
 func TestLogin_InvalidJSON(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
+	r := newAuthRouter(t)
 	req := httptest.NewRequest("POST", "/api/login", nil)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -224,10 +174,8 @@ func TestLogin_InvalidJSON(t *testing.T) {
 // ── Session access ────────────────────────────────────────────────────────────
 
 func TestSession_ValidCookieAllowsAccess(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
-
-	loginRec := loginReq(t, r, "user", "pass")
+	r := newAuthRouter(t)
+	loginRec := loginReq(t, r, "me@elygor.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
 
 	rec := doWithCookie(t, r, "GET", "/api/protected", cookie)
@@ -237,10 +185,8 @@ func TestSession_ValidCookieAllowsAccess(t *testing.T) {
 }
 
 func TestSession_TamperedCookieDenied(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
-
-	loginRec := loginReq(t, r, "user", "pass")
+	r := newAuthRouter(t)
+	loginRec := loginReq(t, r, "me@elygor.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
 
 	tampered := &http.Cookie{Name: cookie.Name, Value: cookie.Value + "x"}
@@ -251,9 +197,7 @@ func TestSession_TamperedCookieDenied(t *testing.T) {
 }
 
 func TestSession_GarbageCookieDenied(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
-
+	r := newAuthRouter(t)
 	rec := doWithCookie(t, r, "GET", "/api/protected", &http.Cookie{
 		Name: "vocab_session", Value: "notavalidtoken",
 	})
@@ -265,28 +209,21 @@ func TestSession_GarbageCookieDenied(t *testing.T) {
 // ── Logout ────────────────────────────────────────────────────────────────────
 
 func TestLogout_ClearsSession(t *testing.T) {
-	authH, _ := handlers.NewAuthHandler("user", "pass")
-	r := newAuthRouter(t, authH)
+	r := newAuthRouter(t)
 
-	// Login to get a session
-	loginRec := loginReq(t, r, "user", "pass")
+	loginRec := loginReq(t, r, "me@elygor.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
 
-	// Verify access works before logout
 	rec := doWithCookie(t, r, "GET", "/api/protected", cookie)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200 before logout, got %d", rec.Code)
 	}
 
-	// Logout
 	logoutRec := doWithCookie(t, r, "POST", "/api/logout", cookie)
 	if logoutRec.Code != http.StatusOK {
 		t.Fatalf("want 200 on logout, got %d", logoutRec.Code)
 	}
 
-	// The original cookie still has its value, but after logout the server
-	// cleared it. The client would discard the cookie; simulate that by using
-	// the cleared cookie from the logout response instead.
 	var clearedCookie *http.Cookie
 	for _, c := range logoutRec.Result().Cookies() {
 		if c.Name == "vocab_session" {

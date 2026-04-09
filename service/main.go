@@ -49,12 +49,9 @@ func main() {
 	}
 	log.Printf("TTS enabled: audio=%s", audioDir)
 
-	authH, err := handlers.NewAuthHandler(os.Getenv("AUTH_USER"), os.Getenv("AUTH_PASSWORD"))
+	authH, err := handlers.NewAuthHandler(store)
 	if err != nil {
 		log.Fatalf("Failed to initialise auth: %v", err)
-	}
-	if authH != nil {
-		log.Printf("Auth enabled: user=%s", os.Getenv("AUTH_USER"))
 	}
 
 	var translateH *handlers.TranslateHandler
@@ -109,17 +106,13 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	if authH != nil {
-		r.Use(authH.Middleware)
-	}
+	r.Use(authH.Middleware)
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/auth/status", handlers.AuthStatus(authH))
-		if authH != nil {
-			r.Post("/login", authH.Login)
-			r.Post("/logout", authH.Logout)
-		}
+		r.Post("/login", authH.Login)
+		r.Post("/logout", authH.Logout)
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
 		r.Get("/quiz/langs", quizH.Langs)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -36,6 +37,21 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// GetUserByEmail looks up a user by email address. Returns nil, nil if not found.
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+	var u models.User
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, email, password_hash FROM users WHERE email = ?`, email).
+		Scan(&u.ID, &u.Email, &u.PasswordHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
 }
 
 // validSortExprs maps allowed sort keys to their SQL ORDER BY expressions.

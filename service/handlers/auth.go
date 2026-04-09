@@ -10,29 +10,27 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"vocabulary_trainer/db"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const cookieName = "vocab_session"
 const sessionTTL = 24 * time.Hour
 
-// AuthHandler handles login/logout and provides middleware when auth is enabled.
+// AuthHandler handles login/logout and provides middleware.
 type AuthHandler struct {
-	username string
-	password string
-	secret   []byte // HMAC signing key, generated at startup
+	store  *db.Store
+	secret []byte // HMAC signing key, generated at startup
 }
 
-// NewAuthHandler returns an AuthHandler if both user and password are non-empty,
-// otherwise returns nil (auth disabled).
-func NewAuthHandler(username, password string) (*AuthHandler, error) {
-	if username == "" || password == "" {
-		return nil, nil
-	}
+// NewAuthHandler creates an AuthHandler backed by the given store.
+func NewAuthHandler(store *db.Store) (*AuthHandler, error) {
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
 		return nil, fmt.Errorf("generate auth secret: %w", err)
 	}
-	return &AuthHandler{username: username, password: password, secret: secret}, nil
+	return &AuthHandler{store: store, secret: secret}, nil
 }
 
 // Middleware rejects unauthenticated requests.
@@ -62,21 +60,29 @@ func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 // Login handles POST /api/login.
 func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Username string `json:"username"`
+		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid JSON"})
+		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if req.Username != a.username || req.Password != a.password {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid credentials"})
+	req.Email = strings.TrimSpace(req.Email)
+	if req.Email == "" || req.Password == "" {
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
+
+	user, err := a.store.GetUserByEmail(r.Context(), req.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if user == nil || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
 	token := a.mintToken()
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
@@ -86,17 +92,14 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // AuthStatus returns a handler for GET /api/auth/status.
 // Always responds 200; body indicates whether auth is enabled.
 func AuthStatus(a *AuthHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"auth": a != nil})
+		writeJSON(w, http.StatusOK, map[string]bool{"auth": a != nil})
 	}
 }
 
@@ -109,9 +112,7 @@ func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		MaxAge:   -1,
 	})
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // mintToken creates a signed token: "timestamp:hmac".
