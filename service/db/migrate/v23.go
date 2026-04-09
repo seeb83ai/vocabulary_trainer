@@ -36,7 +36,7 @@ func init() {
 				   (user_id, date, attempts, mistakes, words_seen, correct_streak, current_streak,
 				    bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
 				 SELECT
-				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   2,
 				   date, attempts, mistakes,
 				   COALESCE(words_seen, 0), COALESCE(correct_streak, 0), COALESCE(current_streak, 0),
 				   COALESCE(bucket_new, 0), COALESCE(bucket_struggling, 0), COALESCE(bucket_learning, 0),

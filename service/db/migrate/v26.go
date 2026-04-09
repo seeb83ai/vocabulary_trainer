@@ -40,7 +40,7 @@ func init() {
 				    tone3_correct, tone3_wrong, tone4_correct, tone4_wrong,
 				    tone5_correct, tone5_wrong)
 				 SELECT
-				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   2,
 				   date, attempts, mistakes, COALESCE(sounds_seen, 0),
 				   COALESCE(tone1_correct, 0), COALESCE(tone1_wrong, 0),
 				   COALESCE(tone2_correct, 0), COALESCE(tone2_wrong, 0),

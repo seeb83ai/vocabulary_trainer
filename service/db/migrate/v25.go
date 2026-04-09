@@ -27,7 +27,7 @@ func init() {
 				`INSERT OR IGNORE INTO pinyin_confusions_new
 				   (user_id, sound_id, confused_with_id, count, last_seen)
 				 SELECT
-				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   2,
 				   sound_id, confused_with_id, count, last_seen
 				 FROM pinyin_confusions`,
 				`DROP TABLE pinyin_confusions`,

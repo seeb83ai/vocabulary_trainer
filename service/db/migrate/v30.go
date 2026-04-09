@@ -23,7 +23,7 @@ func init() {
 				  PRIMARY KEY (user_id, radical)
 				)`,
 				`INSERT OR IGNORE INTO hmm_props_new (user_id, radical, prop_name)
-				 SELECT (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				 SELECT 2,
 				        radical, prop_name FROM hmm_props`,
 				`DROP TABLE hmm_props`,
 				`ALTER TABLE hmm_props_new RENAME TO hmm_props`,

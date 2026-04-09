@@ -35,7 +35,7 @@ func init() {
 				   (user_id, sound_id, repetitions, easiness, interval_days, due_date,
 				    total_correct, total_attempts, learning, streak_bonus, first_seen_date)
 				 SELECT
-				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   2,
 				   sound_id, repetitions, easiness, interval_days, due_date,
 				   total_correct, total_attempts, learning, streak_bonus, first_seen_date
 				 FROM pinyin_progress`,

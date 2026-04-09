@@ -23,7 +23,7 @@ func init() {
 				  PRIMARY KEY (user_id, final_key)
 				)`,
 				`INSERT OR IGNORE INTO hmm_locations_new (user_id, final_key, location_name)
-				 SELECT (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				 SELECT 2,
 				        final_key, location_name FROM hmm_locations`,
 				`DROP TABLE hmm_locations`,
 				`ALTER TABLE hmm_locations_new RENAME TO hmm_locations`,

@@ -36,7 +36,7 @@ func init() {
 				   (user_id, entity_type, entity_key, repetitions, easiness, interval_days,
 				    due_date, total_correct, total_attempts, learning, streak_bonus, first_seen_date)
 				 SELECT
-				   (SELECT id FROM users WHERE email = 'me@elygor.de'),
+				   2,
 				   entity_type, entity_key, repetitions, easiness, interval_days,
 				   due_date, total_correct, total_attempts, learning, streak_bonus, first_seen_date
 				 FROM hmm_progress`,

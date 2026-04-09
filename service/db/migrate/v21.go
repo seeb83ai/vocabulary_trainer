@@ -9,8 +9,8 @@ func init() {
 	register(migration{
 		// v21: add user_id to words and change UNIQUE(text, language) →
 		// UNIQUE(text, language, user_id). user_id is NOT NULL: template words
-		// belong to admin@elygor.de (id=1) and all pre-migration words are
-		// assigned to me@elygor.de (id=2). Because user_id is never NULL,
+		// belong to user_id=1 (admin) and all pre-migration words are
+		// assigned to user_id=2 (personal user). Because user_id is never NULL,
 		// INSERT OR IGNORE works correctly for all subsequent operations.
 		version: 21,
 		fn: func(db *sql.DB) error {
@@ -30,10 +30,9 @@ func init() {
 				  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				  UNIQUE(text, language, user_id)
 				)`,
-				// Temporarily assign all existing rows to me@elygor.de (id=2).
+				// Temporarily assign all existing rows to me (user_id=2).
 				`INSERT OR IGNORE INTO words_new (id, text, language, pinyin, created_at, needs_review, user_id)
-				 SELECT id, text, language, pinyin, created_at, COALESCE(needs_review, 0),
-				        (SELECT id FROM users WHERE email = 'me@elygor.de')
+				 SELECT id, text, language, pinyin, created_at, COALESCE(needs_review, 0), 2
 				 FROM words`,
 				`DROP TABLE words`,
 				`ALTER TABLE words_new RENAME TO words`,
@@ -45,13 +44,7 @@ func init() {
 				}
 			}
 
-			var meID, adminID int64
-			if err := db.QueryRow(`SELECT id FROM users WHERE email = 'me@elygor.de'`).Scan(&meID); err != nil {
-				return fmt.Errorf("get me user id: %w", err)
-			}
-			if err := db.QueryRow(`SELECT id FROM users WHERE email = 'admin@elygor.de'`).Scan(&adminID); err != nil {
-				return fmt.Errorf("get admin user id: %w", err)
-			}
+			const meID, adminID = int64(2), int64(1)
 
 			// Seed template words (admin user) by copying me's vocabulary.
 			// Copy non-zh words first (translations reference both sides).
