@@ -84,7 +84,7 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	req.DeTexts = filteredDe
 
-	id, err := h.Store.CreateWord(r.Context(), req)
+	id, err := h.Store.CreateWord(r.Context(), int64(2), req)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -155,7 +155,7 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	req.DeTexts = filteredDe
 
-	if err := h.Store.UpdateWord(r.Context(), id, req); err != nil {
+	if err := h.Store.UpdateWord(r.Context(), int64(2), id, req); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
@@ -198,7 +198,7 @@ func (h *WordsHandler) AddTranslation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "en_text is required")
 		return
 	}
-	if err := h.Store.AddTranslation(r.Context(), id, body.EnText); err != nil {
+	if err := h.Store.AddTranslation(r.Context(), int64(2), id, body.EnText); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return

@@ -6,7 +6,7 @@ import (
 	"vocabulary_trainer/models"
 )
 
-const pinyinTestUserID = int64(1)
+const pinyinTestUserID = int64(2)
 
 func seedPinyinSounds(t *testing.T, store *Store) []models.PinyinSound {
 	t.Helper()

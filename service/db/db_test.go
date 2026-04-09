@@ -23,7 +23,7 @@ func openTestDB(t *testing.T) *Store {
 // seedWord inserts one full vocabulary entry and returns the zh word ID.
 func seedWord(t *testing.T, s *Store, zhText, pinyin string, enTexts []string) int64 {
 	t.Helper()
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  zhText,
 		Pinyin:  pinyin,
 		EnTexts: enTexts,
@@ -185,7 +185,7 @@ func TestGetWords_Pagination(t *testing.T) {
 func TestUpdateWord_ChangesZhText(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "妳好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello (female)"},
@@ -204,7 +204,7 @@ func TestUpdateWord_ChangesZhText(t *testing.T) {
 
 func TestUpdateWord_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.UpdateWord(context.Background(), 9999, models.UpdateWordRequest{
+	err := s.UpdateWord(context.Background(), int64(2), 9999, models.UpdateWordRequest{
 		ZhText:  "test",
 		EnTexts: []string{"test"},
 	})
@@ -240,7 +240,7 @@ func TestDeleteWord_NotFound(t *testing.T) {
 func TestAddTranslation_AddsNewEN(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	if err := s.AddTranslation(context.Background(), id, "hi"); err != nil {
+	if err := s.AddTranslation(context.Background(), int64(2), id, "hi"); err != nil {
 		t.Fatal(err)
 	}
 	wd, _ := s.GetWordByID(context.Background(), id)
@@ -258,8 +258,8 @@ func TestAddTranslation_AddsNewEN(t *testing.T) {
 func TestAddTranslation_Idempotent(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	s.AddTranslation(context.Background(), id, "hi")
-	s.AddTranslation(context.Background(), id, "hi") // second call is no-op
+	s.AddTranslation(context.Background(), int64(2), id, "hi")
+	s.AddTranslation(context.Background(), int64(2), id, "hi") // second call is no-op
 	wd, _ := s.GetWordByID(context.Background(), id)
 	count := 0
 	for _, e := range wd.EnTexts {
@@ -274,7 +274,7 @@ func TestAddTranslation_Idempotent(t *testing.T) {
 
 func TestAddTranslation_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.AddTranslation(context.Background(), 9999, "hello")
+	err := s.AddTranslation(context.Background(), int64(2), 9999, "hello")
 	if err == nil {
 		t.Error("expected error for unknown zh word id")
 	}
@@ -574,7 +574,7 @@ func TestGetTranslationsForWord_EmptyWhenNone(t *testing.T) {
 
 func seedWordWithTags(t *testing.T, s *Store, zhText, pinyin string, enTexts, tags []string) int64 {
 	t.Helper()
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  zhText,
 		Pinyin:  pinyin,
 		EnTexts: enTexts,
@@ -604,7 +604,7 @@ func TestCreateWord_WithTags(t *testing.T) {
 func TestUpdateWord_ReplacesTags(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"old-tag"})
-	err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1095,7 +1095,7 @@ func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	if err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1170,17 +1170,17 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.RecordDailyStat(ctx, int64(1), true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
 		t.Fatalf("RecordDailyStat(correct): %v", err)
 	}
-	if _, err := s.RecordDailyStat(ctx, int64(1), true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
 		t.Fatalf("RecordDailyStat(correct): %v", err)
 	}
-	if _, err := s.RecordDailyStat(ctx, int64(1), false); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(2), false); err != nil {
 		t.Fatalf("RecordDailyStat(wrong): %v", err)
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx, int64(1))
+	stats, err := s.GetDailyStatsHistory(ctx, int64(2))
 	if err != nil {
 		t.Fatalf("GetDailyStatsHistory: %v", err)
 	}
@@ -1208,12 +1208,12 @@ func TestRecordDailyStat_StreakResets(t *testing.T) {
 
 	// wrong, correct, correct, wrong, correct
 	for _, correct := range []bool{false, true, true, false, true} {
-		if _, err := s.RecordDailyStat(ctx, int64(1), correct); err != nil {
+		if _, err := s.RecordDailyStat(ctx, int64(2), correct); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx, int64(1))
+	stats, err := s.GetDailyStatsHistory(ctx, int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1230,12 +1230,12 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 	for _, d := range []string{"2026-02-10", "2026-02-12", "2026-02-11"} {
 		if _, err := s.db.ExecContext(ctx,
 			`INSERT INTO daily_stats (user_id, date, attempts, mistakes, correct_streak, current_streak)
-			 VALUES (1, ?, 10, 2, 3, 0)`, d); err != nil {
+			 VALUES (2, ?, 10, 2, 3, 0)`, d); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx, int64(1))
+	stats, err := s.GetDailyStatsHistory(ctx, int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1249,7 +1249,7 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 
 func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
 	s := openTestDB(t)
-	stats, err := s.GetDailyStatsHistory(context.Background(), int64(1))
+	stats, err := s.GetDailyStatsHistory(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1265,7 +1265,7 @@ func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
 
 func TestGetTodaySessionInfo_NoRows(t *testing.T) {
 	s := openTestDB(t)
-	attempts, mistakes, available, err := s.GetTodaySessionInfo(context.Background(), int64(1))
+	attempts, mistakes, available, err := s.GetTodaySessionInfo(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1290,11 +1290,11 @@ func TestGetTodaySessionInfo_WithData(t *testing.T) {
 	}
 
 	// Record a daily stat (1 correct answer).
-	if _, err := s.RecordDailyStat(ctx, int64(1), true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
 		t.Fatal(err)
 	}
 
-	attempts, mistakes, available, err := s.GetTodaySessionInfo(ctx, int64(1))
+	attempts, mistakes, available, err := s.GetTodaySessionInfo(ctx, int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1406,7 +1406,7 @@ func TestGetTranslationLanguages_OnlyEN(t *testing.T) {
 func TestGetTranslationLanguages_ENandDE(t *testing.T) {
 	s := openTestDB(t)
 	// Create a word with both EN and DE translations.
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1432,7 +1432,7 @@ func TestGetTranslationLanguages_ENandDE(t *testing.T) {
 
 func TestGetTranslationsForWord_DE(t *testing.T) {
 	s := openTestDB(t)
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -1457,7 +1457,7 @@ func TestGetTranslationsForWord_DE(t *testing.T) {
 
 func TestGetTranslationsForWord_DEvsEN_NoMix(t *testing.T) {
 	s := openTestDB(t)
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "吃",
 		Pinyin:  "chī",
 		EnTexts: []string{"eat"},
@@ -1489,7 +1489,7 @@ func TestGetWords_MissingLangEN(t *testing.T) {
 	// Word with EN only (no DE).
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	// Word with both EN and DE.
-	_, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -1515,18 +1515,18 @@ func TestGetWords_MissingLangEN(t *testing.T) {
 func TestGetWords_MissingLangDE(t *testing.T) {
 	s := openTestDB(t)
 	// Word missing EN (raw insert to bypass CreateWord EN requirement).
-	s.db.Exec(`INSERT INTO words (text, language) VALUES ('孤独', 'zh')`)
+	s.db.Exec(`INSERT INTO words (text, language, user_id) VALUES ('孤独', 'zh', 2)`)
 	var zhID int64
 	s.db.QueryRow(`SELECT id FROM words WHERE text = '孤独'`).Scan(&zhID)
 	s.db.Exec(`INSERT INTO sm2_progress (word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus) VALUES (?, 0, 2.5, 1, CURRENT_TIMESTAMP, 0, 0, 0)`, zhID)
 	// DE word linked to it.
-	s.db.Exec(`INSERT INTO words (text, language) VALUES ('Einsamkeit', 'de')`)
+	s.db.Exec(`INSERT INTO words (text, language, user_id) VALUES ('Einsamkeit', 'de', 2)`)
 	var deID int64
 	s.db.QueryRow(`SELECT id FROM words WHERE text = 'Einsamkeit'`).Scan(&deID)
 	s.db.Exec(`INSERT INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`, deID, zhID)
 
 	// Word with both EN and DE.
-	s.CreateWord(context.Background(), models.CreateWordRequest{
+	s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1565,7 +1565,7 @@ func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	// Save with the exact same ZhText — should not cause a UNIQUE constraint error.
-	err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello", "hi"},
@@ -1586,7 +1586,7 @@ func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
 
 func TestCreateWord_WithDeTexts(t *testing.T) {
 	s := openTestDB(t)
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1606,7 +1606,7 @@ func TestCreateWord_WithDeTexts(t *testing.T) {
 
 func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 	s := openTestDB(t)
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -1616,7 +1616,7 @@ func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	err = s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -1649,17 +1649,33 @@ func TestMigration_v20_UsersTableExists(t *testing.T) {
 	}
 }
 
-func TestMigration_v20_InitialUserSeeded(t *testing.T) {
+func TestMigration_v20_BothUsersSeeded(t *testing.T) {
 	s := openTestDB(t)
-	var email, hash string
-	if err := s.db.QueryRow(`SELECT email, password_hash FROM users WHERE email = 'me@elygor.de'`).Scan(&email, &hash); err != nil {
+
+	var adminHash, meHash string
+	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE email = 'admin@elygor.de'`).Scan(&adminHash); err != nil {
+		t.Fatalf("query admin user: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(adminHash), []byte("I am the admin")); err != nil {
+		t.Errorf("admin password hash does not match 'I am the admin': %v", err)
+	}
+
+	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE email = 'me@elygor.de'`).Scan(&meHash); err != nil {
 		t.Fatalf("query initial user: %v", err)
 	}
-	if email != "me@elygor.de" {
-		t.Errorf("unexpected email: %q", email)
+	if err := bcrypt.CompareHashAndPassword([]byte(meHash), []byte("I learn zh")); err != nil {
+		t.Errorf("me password hash does not match 'I learn zh': %v", err)
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte("I learn zh")); err != nil {
-		t.Errorf("password hash does not match 'I learn zh': %v", err)
+}
+
+func TestMigration_v20_AdminIsUserID1(t *testing.T) {
+	s := openTestDB(t)
+	var id int64
+	if err := s.db.QueryRow(`SELECT id FROM users WHERE email = 'admin@elygor.de'`).Scan(&id); err != nil {
+		t.Fatalf("query admin id: %v", err)
+	}
+	if id != 1 {
+		t.Errorf("expected admin user id=1, got %d", id)
 	}
 }
 
@@ -1669,8 +1685,8 @@ func TestMigration_v20_IdempotentOnFreshDB(t *testing.T) {
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
 		t.Fatalf("count users: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("expected exactly 1 user after migration, got %d", count)
+	if count != 2 {
+		t.Errorf("expected exactly 2 users after migration, got %d", count)
 	}
 }
 
@@ -1687,16 +1703,16 @@ func TestMigration_v21_WordsHaveUserIDColumn(t *testing.T) {
 	}
 }
 
-func TestMigration_v21_CreateWordSetsNullUserID(t *testing.T) {
+func TestMigration_v21_CreateWordSetsUserID(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "测试", "cè shì", []string{"test"})
 
-	var userID *int64
+	var userID int64
 	if err := s.db.QueryRow(`SELECT user_id FROM words WHERE id = ?`, id).Scan(&userID); err != nil {
 		t.Fatalf("query word user_id: %v", err)
 	}
-	if userID != nil {
-		t.Errorf("expected NULL user_id for word created via CreateWord, got %d", *userID)
+	if userID != 2 {
+		t.Errorf("expected user_id=2 for word created via CreateWord, got %d", userID)
 	}
 }
 
@@ -1707,11 +1723,12 @@ func TestMigration_v21_CreateWordSetsNullUserID(t *testing.T) {
 
 func TestMigration_v21_TemplateWordsAreSubsetOfAllWords(t *testing.T) {
 	s := openTestDB(t)
-	// Insert a word via CreateWord (goes to user_id=NULL templates).
-	seedWord(t, s, "学习", "xuéxí", []string{"study"})
+	// Insert a template word (admin user, id=1) and a regular word (me user, id=2).
+	seedTemplateWord(t, s, "学习", "xuéxí", []string{"study"}, nil)
+	seedWord(t, s, "工作", "gōngzuò", []string{"work"})
 
 	var templateCount, totalCount int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id IS NULL`).Scan(&templateCount); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id = 1`).Scan(&templateCount); err != nil {
 		t.Fatalf("count template words: %v", err)
 	}
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words`).Scan(&totalCount); err != nil {
@@ -1726,7 +1743,7 @@ func TestMigration_v21_TemplateWordsAreSubsetOfAllWords(t *testing.T) {
 
 func seedTemplateWord(t *testing.T, s *Store, zhText, pinyin string, enTexts []string, tags []string) int64 {
 	t.Helper()
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(1), models.CreateWordRequest{
 		ZhText:  zhText,
 		Pinyin:  pinyin,
 		EnTexts: enTexts,
@@ -1842,9 +1859,9 @@ func TestImportTemplateWords_TemplatesUnchanged(t *testing.T) {
 		t.Fatalf("ImportTemplateWords: %v", err)
 	}
 
-	// Template words (user_id=NULL) must still exist after import.
+	// Template words (user_id=1, admin) must still exist after import.
 	var count int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id IS NULL AND language = 'zh'`).Scan(&count); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id = 1 AND language = 'zh'`).Scan(&count); err != nil {
 		t.Fatalf("count template zh words: %v", err)
 	}
 	if count == 0 {

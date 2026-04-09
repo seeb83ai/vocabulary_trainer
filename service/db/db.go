@@ -375,14 +375,14 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 
 // CreateWord creates (or reuses) the zh word + en words and links them.
 // Returns the zh word ID.
-func (s *Store) CreateWord(ctx context.Context, req models.CreateWordRequest) (int64, error) {
+func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateWordRequest) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	zhID, err := upsertWord(ctx, tx, req.ZhText, "zh", &req.Pinyin)
+	zhID, err := upsertWord(ctx, tx, req.ZhText, "zh", &req.Pinyin, userID)
 	if err != nil {
 		return 0, err
 	}
@@ -395,7 +395,7 @@ func (s *Store) CreateWord(ctx context.Context, req models.CreateWordRequest) (i
 		if enText == "" {
 			continue
 		}
-		enID, err := upsertWord(ctx, tx, enText, "en", nil)
+		enID, err := upsertWord(ctx, tx, enText, "en", nil, userID)
 		if err != nil {
 			return 0, err
 		}
@@ -414,7 +414,7 @@ func (s *Store) CreateWord(ctx context.Context, req models.CreateWordRequest) (i
 		if deText == "" {
 			continue
 		}
-		deID, err := upsertWord(ctx, tx, deText, "de", nil)
+		deID, err := upsertWord(ctx, tx, deText, "de", nil, userID)
 		if err != nil {
 			return 0, err
 		}
@@ -436,7 +436,7 @@ func (s *Store) CreateWord(ctx context.Context, req models.CreateWordRequest) (i
 }
 
 // UpdateWord updates zh word text/pinyin and replaces all translation links.
-func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordRequest) error {
+func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req models.UpdateWordRequest) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -490,7 +490,7 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 		if enText == "" {
 			continue
 		}
-		enID, err := upsertWord(ctx, tx, enText, "en", nil)
+		enID, err := upsertWord(ctx, tx, enText, "en", nil, userID)
 		if err != nil {
 			return err
 		}
@@ -509,7 +509,7 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 		if deText == "" {
 			continue
 		}
-		deID, err := upsertWord(ctx, tx, deText, "de", nil)
+		deID, err := upsertWord(ctx, tx, deText, "de", nil, userID)
 		if err != nil {
 			return err
 		}
@@ -535,7 +535,7 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 
 // AddTranslation appends a single EN text as a new translation for the given zh word ID.
 // If the EN word already exists it is reused; if the link already exists it is a no-op.
-func (s *Store) AddTranslation(ctx context.Context, zhID int64, enText string) error {
+func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, enText string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -552,7 +552,7 @@ func (s *Store) AddTranslation(ctx context.Context, zhID int64, enText string) e
 		return sql.ErrNoRows
 	}
 
-	enID, err := upsertWord(ctx, tx, enText, "en", nil)
+	enID, err := upsertWord(ctx, tx, enText, "en", nil, userID)
 	if err != nil {
 		return err
 	}
@@ -1151,29 +1151,18 @@ func parseDateTime(s string) time.Time {
 	return time.Time{}
 }
 
-// upsertWord inserts a word if it doesn't exist and returns its ID.
-func upsertWord(ctx context.Context, tx *sql.Tx, text, lang string, pinyin *string) (int64, error) {
+// upsertWord inserts a word for the given user if it doesn't exist and returns its ID.
+func upsertWord(ctx context.Context, tx *sql.Tx, text, lang string, pinyin *string, userID int64) (int64, error) {
 	text = strings.TrimSpace(text)
-	// SQLite treats NULL as distinct from NULL in UNIQUE constraints, so
-	// INSERT OR IGNORE would not prevent duplicates when user_id IS NULL.
-	// Use a check-then-insert pattern instead.
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO words (text, language, pinyin, user_id) VALUES (?, ?, ?, ?)`,
+		text, lang, pinyin, userID); err != nil {
+		return 0, fmt.Errorf("upsert word: %w", err)
+	}
 	var id int64
-	err := tx.QueryRowContext(ctx,
-		`SELECT id FROM words WHERE text = ? AND language = ? AND user_id IS NULL`, text, lang).Scan(&id)
-	if err == nil {
-		return id, nil
-	}
-	if err != sql.ErrNoRows {
-		return 0, fmt.Errorf("lookup word: %w", err)
-	}
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO words (text, language, pinyin, user_id) VALUES (?, ?, ?, NULL)`, text, lang, pinyin)
-	if err != nil {
-		return 0, fmt.Errorf("insert word: %w", err)
-	}
-	id, err = res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("get word id after insert: %w", err)
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE text = ? AND language = ? AND user_id = ?`, text, lang, userID).Scan(&id); err != nil {
+		return 0, fmt.Errorf("get word id: %w", err)
 	}
 	return id, nil
 }
@@ -2229,11 +2218,12 @@ func (s *Store) SaveHMMSceneWithLibrary(ctx context.Context, wordID int64, initi
 	return tx.Commit()
 }
 
-// ImportTemplateWords copies all template words (user_id IS NULL) to the given
-// user, creating fresh sm2_progress rows. Translations and word_tags are
-// re-created using the new word IDs; global tags (user_id=NULL) are reused as-is.
+// ImportTemplateWords copies all template words (owned by the admin user, id=1)
+// to the given user, creating fresh sm2_progress rows. Translations and word_tags
+// are re-created using the new word IDs; global tags are reused as-is.
 // If the user already owns a word with the same text+language it is skipped.
 // This is a single transaction.
+const templateUserID = int64(1)
 func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -2243,7 +2233,7 @@ func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 
 	// Load all template non-zh words.
 	enRows, err := tx.QueryContext(ctx,
-		`SELECT id, text, language FROM words WHERE user_id IS NULL AND language != 'zh'`)
+		`SELECT id, text, language FROM words WHERE user_id = 1 AND language != 'zh'`)
 	if err != nil {
 		return fmt.Errorf("query template non-zh words: %w", err)
 	}
@@ -2292,7 +2282,7 @@ func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 
 	// Load all template zh words.
 	zhRows, err := tx.QueryContext(ctx,
-		`SELECT id, text, pinyin FROM words WHERE user_id IS NULL AND language = 'zh'`)
+		`SELECT id, text, pinyin FROM words WHERE user_id = 1 AND language = 'zh'`)
 	if err != nil {
 		return fmt.Errorf("query template zh words: %w", err)
 	}
@@ -2342,7 +2332,7 @@ func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 	// Copy translations.
 	tRows, err := tx.QueryContext(ctx,
 		`SELECT en_word_id, zh_word_id FROM translations
-		 WHERE zh_word_id IN (SELECT id FROM words WHERE user_id IS NULL)`)
+		 WHERE zh_word_id IN (SELECT id FROM words WHERE user_id = 1)`)
 	if err != nil {
 		return fmt.Errorf("query template translations: %w", err)
 	}
@@ -2377,7 +2367,7 @@ func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 	// Copy word_tags (global tags are reused by ID).
 	wtRows, err := tx.QueryContext(ctx,
 		`SELECT word_id, tag_id FROM word_tags
-		 WHERE word_id IN (SELECT id FROM words WHERE user_id IS NULL)`)
+		 WHERE word_id IN (SELECT id FROM words WHERE user_id = 1)`)
 	if err != nil {
 		return fmt.Errorf("query template word_tags: %w", err)
 	}

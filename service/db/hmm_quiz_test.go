@@ -44,7 +44,7 @@ func seedHMMLibrary(t *testing.T, db *sql.DB) {
 	}
 }
 
-const testUserID = int64(1)
+const testUserID = int64(2)
 
 func TestEnsureHMMProgress(t *testing.T) {
 	store := openTestDB(t)

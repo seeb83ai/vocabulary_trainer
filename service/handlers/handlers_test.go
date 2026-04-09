@@ -35,28 +35,28 @@ func openTestDB(t *testing.T) *db.Store {
 func clearHMMLibrary(t *testing.T, s *db.Store) {
 	t.Helper()
 	ctx := context.Background()
-	actors, err := s.GetHMMActors(ctx, int64(1))
+	actors, err := s.GetHMMActors(ctx, int64(2))
 	if err != nil {
 		t.Fatalf("clearHMMLibrary GetHMMActors: %v", err)
 	}
 	for _, a := range actors {
 		if a.ActorName != "" {
-			if err := s.UpdateHMMActor(ctx, int64(1), a.Initial, ""); err != nil {
+			if err := s.UpdateHMMActor(ctx, int64(2), a.Initial, ""); err != nil {
 				t.Fatalf("clearHMMLibrary UpdateHMMActor %s: %v", a.Initial, err)
 			}
 		}
 	}
 	for tone := 1; tone <= 5; tone++ {
-		if err := s.UpdateHMMToneRoom(ctx, int64(1), tone, ""); err != nil {
+		if err := s.UpdateHMMToneRoom(ctx, int64(2), tone, ""); err != nil {
 			t.Fatalf("clearHMMLibrary tone %d: %v", tone, err)
 		}
 	}
-	props, err := s.GetHMMProps(ctx, int64(1))
+	props, err := s.GetHMMProps(ctx, int64(2))
 	if err != nil {
 		t.Fatalf("clearHMMLibrary GetHMMProps: %v", err)
 	}
 	for _, p := range props {
-		if err := s.DeleteHMMProp(ctx, int64(1), p.Radical); err != nil {
+		if err := s.DeleteHMMProp(ctx, int64(2), p.Radical); err != nil {
 			t.Fatalf("clearHMMLibrary DeleteHMMProp %s: %v", p.Radical, err)
 		}
 	}
@@ -118,7 +118,7 @@ func decodeJSON(t *testing.T, rec *httptest.ResponseRecorder, v any) {
 
 func seedWord(t *testing.T, s *db.Store, zhText, pinyin string, enTexts []string) int64 {
 	t.Helper()
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  zhText,
 		Pinyin:  pinyin,
 		EnTexts: enTexts,
@@ -169,7 +169,7 @@ func TestQuizNext_ReturnsCard(t *testing.T) {
 func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	s := openTestDB(t)
 	// Word with no pinyin — zh_pinyin_to_en must never be returned
-	_, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "", // no pinyin
 		EnTexts: []string{"hello"},
@@ -1500,7 +1500,7 @@ func TestAdvanceHandler_AdvancesWords(t *testing.T) {
 
 	// Seed a word, acknowledge it (marks as seen, due_date = now), then skip
 	// it forward so it has a future due date.
-	wid, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "测试", EnTexts: []string{"test"}})
+	wid, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "测试", EnTexts: []string{"test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1532,7 +1532,7 @@ func TestStatsHandlerNewAvailable(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed an unseen word.
-	if _, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "未见", EnTexts: []string{"unseen"}}); err != nil {
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "未见", EnTexts: []string{"unseen"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1571,7 +1571,7 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed a word (unseen).
-	if _, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "新词", EnTexts: []string{"new word"}}); err != nil {
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "新词", EnTexts: []string{"new word"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1657,13 +1657,13 @@ func TestDueDateDistribution_TagFilter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create two words with different tags
-	id1, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id1, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText: "猫", Pinyin: "māo", EnTexts: []string{"cat"}, Tags: []string{"animals"},
 	})
 	if err != nil {
 		t.Fatalf("create word 1: %v", err)
 	}
-	id2, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id2, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText: "书", Pinyin: "shū", EnTexts: []string{"book"}, Tags: []string{"objects"},
 	})
 	if err != nil {
@@ -1746,7 +1746,7 @@ func seedPinyinSounds(t *testing.T, store *db.Store) {
 		{Initial: "p", Final: "a", Tone: 1, Syllable: "pa", Filename: "pa1.mp3", Tag: "b_p_m_f"},
 	}
 	for _, snd := range sounds {
-		if _, err := store.InsertPinyinSound(context.Background(), 1, snd); err != nil {
+		if _, err := store.InsertPinyinSound(context.Background(), 2, snd); err != nil {
 			t.Fatalf("seedPinyinSounds: %v", err)
 		}
 	}
@@ -1926,7 +1926,7 @@ func TestQuizLangs_AfterInsertEN(t *testing.T) {
 func TestQuizLangs_ENandDE(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1957,7 +1957,7 @@ func TestQuizLangs_ENandDE(t *testing.T) {
 func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1988,7 +1988,7 @@ func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -2021,7 +2021,7 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -2054,7 +2054,7 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -2115,7 +2115,7 @@ func TestWordsList_MissingLangDE(t *testing.T) {
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
 	// Word with both EN and DE.
-	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},

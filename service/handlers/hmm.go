@@ -20,7 +20,7 @@ type HMMHandler struct {
 // ── Library endpoints ───────────────────────────────────────────────────
 
 func (h *HMMHandler) GetActors(w http.ResponseWriter, r *http.Request) {
-	actors, err := h.Store.GetHMMActors(r.Context(), int64(1))
+	actors, err := h.Store.GetHMMActors(r.Context(), int64(2))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch actors")
 		return
@@ -40,7 +40,7 @@ func (h *HMMHandler) UpdateActor(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if err := h.Store.UpdateHMMActor(r.Context(), int64(1), initial, strings.TrimSpace(body.ActorName)); err != nil {
+	if err := h.Store.UpdateHMMActor(r.Context(), int64(2), initial, strings.TrimSpace(body.ActorName)); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -48,7 +48,7 @@ func (h *HMMHandler) UpdateActor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HMMHandler) GetLocations(w http.ResponseWriter, r *http.Request) {
-	locs, err := h.Store.GetHMMLocations(r.Context(), int64(1))
+	locs, err := h.Store.GetHMMLocations(r.Context(), int64(2))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch locations")
 		return
@@ -68,7 +68,7 @@ func (h *HMMHandler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if err := h.Store.UpdateHMMLocation(r.Context(), int64(1), finalKey, strings.TrimSpace(body.LocationName)); err != nil {
+	if err := h.Store.UpdateHMMLocation(r.Context(), int64(2), finalKey, strings.TrimSpace(body.LocationName)); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -76,7 +76,7 @@ func (h *HMMHandler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HMMHandler) GetToneRooms(w http.ResponseWriter, r *http.Request) {
-	rooms, err := h.Store.GetHMMToneRooms(r.Context(), int64(1))
+	rooms, err := h.Store.GetHMMToneRooms(r.Context(), int64(2))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch tone rooms")
 		return
@@ -100,7 +100,7 @@ func (h *HMMHandler) UpdateToneRoom(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if err := h.Store.UpdateHMMToneRoom(r.Context(), int64(1), tone, strings.TrimSpace(body.RoomName)); err != nil {
+	if err := h.Store.UpdateHMMToneRoom(r.Context(), int64(2), tone, strings.TrimSpace(body.RoomName)); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -108,7 +108,7 @@ func (h *HMMHandler) UpdateToneRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HMMHandler) GetProps(w http.ResponseWriter, r *http.Request) {
-	props, err := h.Store.GetHMMProps(r.Context(), int64(1))
+	props, err := h.Store.GetHMMProps(r.Context(), int64(2))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch props")
 		return
@@ -130,7 +130,7 @@ func (h *HMMHandler) UpsertProp(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "radical is required")
 		return
 	}
-	if err := h.Store.UpsertHMMProp(r.Context(), int64(1), body.Radical, strings.TrimSpace(body.PropName)); err != nil {
+	if err := h.Store.UpsertHMMProp(r.Context(), int64(2), body.Radical, strings.TrimSpace(body.PropName)); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -139,7 +139,7 @@ func (h *HMMHandler) UpsertProp(w http.ResponseWriter, r *http.Request) {
 
 func (h *HMMHandler) DeleteProp(w http.ResponseWriter, r *http.Request) {
 	radical := chi.URLParam(r, "radical")
-	if err := h.Store.DeleteHMMProp(r.Context(), int64(1), radical); err != nil {
+	if err := h.Store.DeleteHMMProp(r.Context(), int64(2), radical); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -276,16 +276,16 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if initial != "" {
-		resp.Actor, _ = h.Store.GetHMMActorByInitial(ctx, int64(1), initial)
+		resp.Actor, _ = h.Store.GetHMMActorByInitial(ctx, int64(2), initial)
 	}
 	if final != "" {
-		resp.Location, _ = h.Store.GetHMMLocationByFinal(ctx, int64(1), final)
+		resp.Location, _ = h.Store.GetHMMLocationByFinal(ctx, int64(2), final)
 	}
 	if tone >= 1 && tone <= 5 {
-		resp.ToneRoom, _ = h.Store.GetHMMToneRoom(ctx, int64(1), tone)
+		resp.ToneRoom, _ = h.Store.GetHMMToneRoom(ctx, int64(2), tone)
 	}
 	if len(radicals) > 0 {
-		resp.Props, _ = h.Store.GetHMMPropsByRadicals(ctx, int64(1), radicals)
+		resp.Props, _ = h.Store.GetHMMPropsByRadicals(ctx, int64(2), radicals)
 	}
 	if resp.Props == nil {
 		resp.Props = []models.HMMProp{}
