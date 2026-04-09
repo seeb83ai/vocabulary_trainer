@@ -320,7 +320,7 @@ async function submitAnswer(e) {
         const addBtn = $('add-translation-btn');
         addBtn.textContent = t('result.addTranslation', { answer });
         addBtn.disabled = false;
-        addBtn.className = 'mt-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
+        addBtn.className = 'mt-3 mb-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
         show('add-translation-btn');
 
         addBtn.onclick = async () => {
