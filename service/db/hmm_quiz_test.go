@@ -151,7 +151,7 @@ func TestGetHMMStats(t *testing.T) {
 	if stats.Total != 4 {
 		t.Errorf("Total = %d, want 4", stats.Total)
 	}
-	// All entries have due_date = CURRENT_TIMESTAMP, so all 4 are due
+	// All entries have due_date = CURRENT_TIMESTAMP (today), so all 4 are due
 	if stats.DueToday != 4 {
 		t.Errorf("DueToday = %d, want 4", stats.DueToday)
 	}
