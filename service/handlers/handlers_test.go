@@ -1468,10 +1468,30 @@ func TestStatsHandlerNewFields(t *testing.T) {
 	var resp map[string]int
 	decodeJSON(t, rec, &resp)
 
-	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available"} {
+	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available", "hmm_due_today"} {
 		if _, ok := resp[key]; !ok {
 			t.Errorf("stats response missing key %q", key)
 		}
+	}
+}
+
+func TestStatsHandler_HmmDueTodayIncluded(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+
+	if _, ok := resp["hmm_due_today"]; !ok {
+		t.Error("stats response missing key \"hmm_due_today\"")
+	}
+	// With an empty DB, hmm_due_today should be 0.
+	if resp["hmm_due_today"] != 0 {
+		t.Errorf("hmm_due_today: want 0, got %d", resp["hmm_due_today"])
 	}
 }
 
