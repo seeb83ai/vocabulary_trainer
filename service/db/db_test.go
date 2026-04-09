@@ -10,8 +10,14 @@ import (
 )
 
 // openTestDB creates an in-memory SQLite store for tests.
+// It pre-sets the credential env vars that v20 migration prompts for so that
+// tests don't block waiting on stdin.
 func openTestDB(t *testing.T) *Store {
 	t.Helper()
+	t.Setenv("ADMIN_EMAIL", "admin@elygor.de")
+	t.Setenv("ADMIN_PASSWORD", "I am the admin")
+	t.Setenv("USER_EMAIL", "me@elygor.de")
+	t.Setenv("USER_PASSWORD", "I learn zh")
 	s, err := Open(":memory:")
 	if err != nil {
 		t.Fatalf("openTestDB: %v", err)
