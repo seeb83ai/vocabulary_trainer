@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -8,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"vocabulary_trainer/db"
@@ -17,6 +19,26 @@ import (
 
 const cookieName = "vocab_session"
 const sessionTTL = 24 * time.Hour
+
+type contextKey int
+
+const userIDCtxKey contextKey = iota
+
+// UserIDFromContext returns the authenticated user's ID from the request context.
+func UserIDFromContext(ctx context.Context) int64 {
+	id, _ := ctx.Value(userIDCtxKey).(int64)
+	return id
+}
+
+// WithUserID returns a middleware that injects a fixed user ID into the request
+// context. Useful for test routers that bypass the auth middleware.
+func WithUserID(id int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userIDCtxKey, id)))
+		})
+	}
+}
 
 // AuthHandler handles login/logout and provides middleware.
 type AuthHandler struct {
@@ -33,7 +55,7 @@ func NewAuthHandler(store *db.Store) (*AuthHandler, error) {
 	return &AuthHandler{store: store, secret: secret}, nil
 }
 
-// Middleware rejects unauthenticated requests.
+// Middleware rejects unauthenticated requests and injects the user ID into context.
 // API requests receive 401 JSON; page requests redirect to /login.
 func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +65,8 @@ func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !a.validSession(r) {
+		userID, ok := a.sessionUserID(r)
+		if !ok {
 			if strings.HasPrefix(r.URL.Path, "/api/") {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
@@ -53,7 +76,8 @@ func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
-		next.ServeHTTP(w, r)
+		ctx := context.WithValue(r.Context(), userIDCtxKey, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -83,7 +107,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := a.mintToken()
+	token := a.mintToken(user.ID)
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    token,
@@ -96,7 +120,6 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 // AuthStatus returns a handler for GET /api/auth/status.
-// Always responds 200; body indicates whether auth is enabled.
 func AuthStatus(a *AuthHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"auth": a != nil})
@@ -115,32 +138,48 @@ func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// mintToken creates a signed token: "timestamp:hmac".
-func (a *AuthHandler) mintToken() string {
-	ts := fmt.Sprintf("%d", time.Now().Unix())
-	sig := a.sign(ts)
-	return ts + ":" + sig
+// mintToken creates a signed token: "userID:timestamp:hmac".
+// The HMAC is computed over "userID:timestamp" to bind both to the signature.
+func (a *AuthHandler) mintToken(userID int64) string {
+	uid := strconv.FormatInt(userID, 10)
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	payload := uid + ":" + ts
+	sig := a.sign(payload)
+	return payload + ":" + sig
 }
 
-// validSession checks the session cookie signature and expiry.
-func (a *AuthHandler) validSession(r *http.Request) bool {
+// sessionUserID validates the session cookie and returns the user ID it encodes.
+func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 	c, err := r.Cookie(cookieName)
 	if err != nil {
-		return false
+		return 0, false
 	}
-	parts := strings.SplitN(c.Value, ":", 2)
+	// Token format: "userID:timestamp:hmac"
+	lastColon := strings.LastIndex(c.Value, ":")
+	if lastColon < 0 {
+		return 0, false
+	}
+	payload, sig := c.Value[:lastColon], c.Value[lastColon+1:]
+	if a.sign(payload) != sig {
+		return 0, false
+	}
+	// payload = "userID:timestamp"
+	parts := strings.SplitN(payload, ":", 2)
 	if len(parts) != 2 {
-		return false
+		return 0, false
 	}
-	ts, sig := parts[0], parts[1]
-	if a.sign(ts) != sig {
-		return false
+	userID, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, false
 	}
-	var unix int64
-	if _, err := fmt.Sscanf(ts, "%d", &unix); err != nil {
-		return false
+	ts, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, false
 	}
-	return time.Since(time.Unix(unix, 0)) < sessionTTL
+	if time.Since(time.Unix(ts, 0)) >= sessionTTL {
+		return 0, false
+	}
+	return userID, true
 }
 
 func (a *AuthHandler) sign(data string) string {

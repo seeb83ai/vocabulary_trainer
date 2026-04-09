@@ -51,7 +51,7 @@ func (h *PinyinQuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 	skipNew := r.URL.Query().Get("skip_new") == "true"
 
-	sound, progress, err := h.Store.GetNextPinyinCard(r.Context(), int64(2), tags, skipNew)
+	sound, progress, err := h.Store.GetNextPinyinCard(r.Context(), UserIDFromContext(r.Context()), tags, skipNew)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -63,7 +63,7 @@ func (h *PinyinQuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	// First time seeing this sound: mark as seen
 	if progress.TotalAttempts == 0 {
-		_ = h.Store.AcknowledgePinyinSound(r.Context(), int64(2), sound.ID)
+		_ = h.Store.AcknowledgePinyinSound(r.Context(), UserIDFromContext(r.Context()), sound.ID)
 	}
 
 	// Determine mode: learning phase = multiple choice, review = type answer
@@ -141,7 +141,7 @@ func (h *PinyinQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	progress, err := h.Store.GetPinyinProgress(r.Context(), int64(2), req.SoundID)
+	progress, err := h.Store.GetPinyinProgress(r.Context(), UserIDFromContext(r.Context()), req.SoundID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -204,7 +204,7 @@ func (h *PinyinQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
 
-	if err := h.Store.UpdatePinyinProgress(r.Context(), int64(2), updated); err != nil {
+	if err := h.Store.UpdatePinyinProgress(r.Context(), UserIDFromContext(r.Context()), updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "sound not found")
 			return
@@ -212,7 +212,7 @@ func (h *PinyinQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	_ = h.Store.RecordPinyinDailyStat(r.Context(), int64(2), correct, sound.Tone)
+	_ = h.Store.RecordPinyinDailyStat(r.Context(), UserIDFromContext(r.Context()), correct, sound.Tone)
 
 	resp := models.PinyinAnswerResponse{
 		Correct:       correct,
@@ -251,7 +251,7 @@ func (h *PinyinQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !correct && confusedWithID > 0 {
-		_ = h.Store.UpsertPinyinConfusion(r.Context(), int64(2), sound.ID, confusedWithID)
+		_ = h.Store.UpsertPinyinConfusion(r.Context(), UserIDFromContext(r.Context()), sound.ID, confusedWithID)
 		detail, _ := h.Store.GetPinyinConfusionDetail(r.Context(), sound.ID, confusedWithID)
 		if detail != nil {
 			resp.ConfusedWith = detail
@@ -266,7 +266,7 @@ func (h *PinyinQuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	if t := r.URL.Query().Get("tags"); t != "" {
 		tags = strings.Split(t, ",")
 	}
-	due, total, err := h.Store.GetPinyinStats(r.Context(), int64(2), tags)
+	due, total, err := h.Store.GetPinyinStats(r.Context(), UserIDFromContext(r.Context()), tags)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -290,7 +290,7 @@ func (h *PinyinQuizHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PinyinQuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.Store.GetPinyinDailyStatsHistory(r.Context(), int64(2))
+	stats, err := h.Store.GetPinyinDailyStatsHistory(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

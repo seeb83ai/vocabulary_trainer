@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 	"vocabulary_trainer/db"
@@ -16,14 +17,20 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// TestMain sets migration credential env vars once for the entire test binary
+// so all in-memory DBs get consistent user seeds regardless of the host environment.
+func TestMain(m *testing.M) {
+	os.Setenv("ADMIN_EMAIL", "admin@example.de")
+	os.Setenv("ADMIN_PASSWORD", "I am the admin")
+	os.Setenv("USER_EMAIL", "me@example.de")
+	os.Setenv("USER_PASSWORD", "I learn zh")
+	os.Exit(m.Run())
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func openTestDB(t *testing.T) *db.Store {
 	t.Helper()
-	t.Setenv("ADMIN_EMAIL", "admin@example.de")
-	t.Setenv("ADMIN_PASSWORD", "I am the admin")
-	t.Setenv("USER_EMAIL", "me@example.de")
-	t.Setenv("USER_PASSWORD", "I learn zh")
 	s, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatalf("openTestDB: %v", err)
@@ -72,6 +79,7 @@ func newRouter(s *db.Store) http.Handler {
 	mismatchH := &handlers.MismatchesHandler{Store: s}
 
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/answer", quizH.Answer)
 	r.Post("/api/quiz/skip", quizH.Skip)
@@ -263,6 +271,7 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 	// Build a router with maxNew=1 (cap is now reached).
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 1}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Get("/api/quiz/stats", quizH.Stats)
 
@@ -1531,6 +1540,7 @@ func TestStatsHandlerNewAvailable(t *testing.T) {
 	// Use MaxNewPerDay=0 so new words are blocked by default.
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 0}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Post("/api/quiz/advance", quizH.Advance)
 	ctx := context.Background()
@@ -1570,6 +1580,7 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 	// Use a handler with MaxNewPerDay=0 so new words are normally blocked.
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 0}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/advance", quizH.Advance)
 	ctx := context.Background()
@@ -1733,6 +1744,7 @@ func newPinyinRouter(t *testing.T, s *db.Store) http.Handler {
 	t.Helper()
 	pinyinH := &handlers.PinyinQuizHandler{Store: s, PinyinAudioDirs: []string{t.TempDir()}}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/pinyin-quiz/next", pinyinH.Next)
 	r.Post("/api/pinyin-quiz/answer", pinyinH.Answer)
 	r.Get("/api/pinyin-quiz/stats", pinyinH.Stats)

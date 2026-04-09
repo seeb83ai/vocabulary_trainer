@@ -15,6 +15,7 @@ func hmmQuizRouter(t *testing.T) (http.Handler, *handlers.HMMQuizHandler) {
 	store := openTestDB(t)
 	h := &handlers.HMMQuizHandler{Store: store}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Post("/api/hmm-quiz/answer", h.Answer)
 	return r, h
 }

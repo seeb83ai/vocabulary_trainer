@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
@@ -9,15 +10,18 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// TestMain sets migration credential env vars once for the entire test binary.
+func TestMain(m *testing.M) {
+	os.Setenv("ADMIN_EMAIL", "admin@example.de")
+	os.Setenv("ADMIN_PASSWORD", "I am the admin")
+	os.Setenv("USER_EMAIL", "me@example.de")
+	os.Setenv("USER_PASSWORD", "I learn zh")
+	os.Exit(m.Run())
+}
+
 // openTestDB creates an in-memory SQLite store for tests.
-// It pre-sets the credential env vars that v20 migration prompts for so that
-// tests don't block waiting on stdin.
 func openTestDB(t *testing.T) *Store {
 	t.Helper()
-	t.Setenv("ADMIN_EMAIL", "admin@example.de")
-	t.Setenv("ADMIN_PASSWORD", "I am the admin")
-	t.Setenv("USER_EMAIL", "me@example.de")
-	t.Setenv("USER_PASSWORD", "I learn zh")
 	s, err := Open(":memory:")
 	if err != nil {
 		t.Fatalf("openTestDB: %v", err)

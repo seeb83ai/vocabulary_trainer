@@ -128,7 +128,7 @@ func TestMiddleware_AuthStatusAccessibleWithoutSession(t *testing.T) {
 
 func TestLogin_CorrectCredentials(t *testing.T) {
 	r := newAuthRouter(t)
-	rec := loginReq(t, r, "me@elygor.de", "I learn zh")
+	rec := loginReq(t, r, "me@example.de", "I learn zh")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
@@ -137,7 +137,7 @@ func TestLogin_CorrectCredentials(t *testing.T) {
 
 func TestLogin_WrongPassword(t *testing.T) {
 	r := newAuthRouter(t)
-	rec := loginReq(t, r, "me@elygor.de", "wrong")
+	rec := loginReq(t, r, "me@example.de", "wrong")
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("want 401, got %d", rec.Code)
 	}
@@ -153,7 +153,7 @@ func TestLogin_UnknownEmail(t *testing.T) {
 
 func TestLogin_AdminCredentials(t *testing.T) {
 	r := newAuthRouter(t)
-	rec := loginReq(t, r, "admin@elygor.de", "I am the admin")
+	rec := loginReq(t, r, "admin@example.de", "I am the admin")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200 for admin login, got %d: %s", rec.Code, rec.Body)
 	}
@@ -175,7 +175,7 @@ func TestLogin_InvalidJSON(t *testing.T) {
 
 func TestSession_ValidCookieAllowsAccess(t *testing.T) {
 	r := newAuthRouter(t)
-	loginRec := loginReq(t, r, "me@elygor.de", "I learn zh")
+	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
 
 	rec := doWithCookie(t, r, "GET", "/api/protected", cookie)
@@ -186,7 +186,7 @@ func TestSession_ValidCookieAllowsAccess(t *testing.T) {
 
 func TestSession_TamperedCookieDenied(t *testing.T) {
 	r := newAuthRouter(t)
-	loginRec := loginReq(t, r, "me@elygor.de", "I learn zh")
+	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
 
 	tampered := &http.Cookie{Name: cookie.Name, Value: cookie.Value + "x"}
@@ -211,7 +211,7 @@ func TestSession_GarbageCookieDenied(t *testing.T) {
 func TestLogout_ClearsSession(t *testing.T) {
 	r := newAuthRouter(t)
 
-	loginRec := loginReq(t, r, "me@elygor.de", "I learn zh")
+	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
 
 	rec := doWithCookie(t, r, "GET", "/api/protected", cookie)

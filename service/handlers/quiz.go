@@ -85,13 +85,13 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ensure progress rows exist for any newly-named library entries.
-	if err := h.Store.EnsureHMMProgress(r.Context(), int64(2)); err != nil {
+	if err := h.Store.EnsureHMMProgress(r.Context(), UserIDFromContext(r.Context())); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	// Interleave due HMM mnemonic cards.
-	hmmCard, _, hmmErr := h.Store.GetNextDueHMMCard(r.Context(), int64(2), nil)
+	hmmCard, _, hmmErr := h.Store.GetNextDueHMMCard(r.Context(), UserIDFromContext(r.Context()), nil)
 	if hmmErr != nil {
 		writeError(w, http.StatusInternalServerError, hmmErr.Error())
 		return
@@ -315,7 +315,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), int64(2), correct)
+	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
 
 	resp := models.AnswerResponse{
 		Correct:         correct,
@@ -363,7 +363,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 // DailyStats returns the full daily stats history.
 func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.Store.GetDailyStatsHistory(r.Context(), int64(2))
+	stats, err := h.Store.GetDailyStatsHistory(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -456,7 +456,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), int64(2))
+	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -491,7 +491,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			newAvailable = n
 		}
 	}
-	hmmStats, err := h.Store.GetHMMStats(r.Context(), int64(2), nil)
+	hmmStats, err := h.Store.GetHMMStats(r.Context(), UserIDFromContext(r.Context()), nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
