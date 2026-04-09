@@ -36,6 +36,16 @@ the changed behaviour.
 - Test files live in `service/frontend/` as `*.test.js`.
 - Run `npm test` to verify.
 
+### Pre-flight checklist
+
+Before marking any task done:
+1. `cd service && go test ./... -count=1` — no failures.
+2. `npm test` — no failures (if JS was changed).
+3. New route registered in **both** `service/main.go` and `newRouter()` in `handlers_test.go`.
+4. `README.md` updated if user-visible behaviour changed.
+5. No SQL outside `service/db/db.go`.
+6. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
+
 ### What must be tested
 | Change type | Required test |
 |---|---|
@@ -63,6 +73,12 @@ Update `README.md` whenever:
 - `db.SetMaxOpenConns(1)` is intentional (SQLite WAL). Collect all rows and call `rows.Close()` **before**
   issuing any follow-up query in the same function to avoid deadlocks.
 - Do not add docstrings or comments to code you didn't change.
+
+## Error handling
+
+- Use `writeError(w, status, "message")` for all error responses (JSON shape: `{"error":"..."}`).
+- Status codes: `400` malformed/missing input, `404` resource not found, `500` unexpected DB/IO failure, `503` optional feature not configured.
+- Never return `200 OK` with an error body.
 
 ## Data invariants
 
@@ -98,6 +114,8 @@ Never rename or drop tables.
 - Static frontend files are embedded in the binary via `//go:embed frontend` (from `service/main.go`). No separate build step.
 - The import tools (`service/cmd/import`, `service/cmd/import-hsk`) call `db.Migrate()` for schema setup and can run
   independently of the main server.
+- To add a new frontend page: create `service/frontend/<name>.html` (copy `<head>` + `<nav>` from `stats.html`), create `service/frontend/<name>.js`, add `r.Get("/<name>", ...)` in `main.go`. The `//go:embed frontend` directive picks up new files automatically — no build step. Add both files to the File map below.
+- All configuration is env vars read in `service/main.go`. Always provide a documented default and log the effective value on startup. Optional external features (API keys, etc.) gate route registration on a nil/empty check — see the LLM/DeepL/Auth handlers for the pattern. Do not use the `flag` package in `main.go`; it is only for standalone CLI tools in `service/cmd/`.
 
 ## File map
 
