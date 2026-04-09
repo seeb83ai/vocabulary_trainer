@@ -14,9 +14,9 @@ import (
 // tests don't block waiting on stdin.
 func openTestDB(t *testing.T) *Store {
 	t.Helper()
-	t.Setenv("ADMIN_EMAIL", "admin@elygor.de")
+	t.Setenv("ADMIN_EMAIL", "admin@example.de")
 	t.Setenv("ADMIN_PASSWORD", "I am the admin")
-	t.Setenv("USER_EMAIL", "me@elygor.de")
+	t.Setenv("USER_EMAIL", "me@example.de")
 	t.Setenv("USER_PASSWORD", "I learn zh")
 	s, err := Open(":memory:")
 	if err != nil {
@@ -1659,14 +1659,14 @@ func TestMigration_v20_BothUsersSeeded(t *testing.T) {
 	s := openTestDB(t)
 
 	var adminHash, meHash string
-	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE email = 'admin@elygor.de'`).Scan(&adminHash); err != nil {
+	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE email = 'admin@example.de'`).Scan(&adminHash); err != nil {
 		t.Fatalf("query admin user: %v", err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(adminHash), []byte("I am the admin")); err != nil {
 		t.Errorf("admin password hash does not match 'I am the admin': %v", err)
 	}
 
-	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE email = 'me@elygor.de'`).Scan(&meHash); err != nil {
+	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE email = 'me@example.de'`).Scan(&meHash); err != nil {
 		t.Fatalf("query initial user: %v", err)
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(meHash), []byte("I learn zh")); err != nil {
@@ -1677,7 +1677,7 @@ func TestMigration_v20_BothUsersSeeded(t *testing.T) {
 func TestMigration_v20_AdminIsUserID1(t *testing.T) {
 	s := openTestDB(t)
 	var id int64
-	if err := s.db.QueryRow(`SELECT id FROM users WHERE email = 'admin@elygor.de'`).Scan(&id); err != nil {
+	if err := s.db.QueryRow(`SELECT id FROM users WHERE email = 'admin@example.de'`).Scan(&id); err != nil {
 		t.Fatalf("query admin id: %v", err)
 	}
 	if id != 1 {

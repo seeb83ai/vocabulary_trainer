@@ -20,9 +20,9 @@ import (
 
 func openTestDB(t *testing.T) *db.Store {
 	t.Helper()
-	t.Setenv("ADMIN_EMAIL", "admin@elygor.de")
+	t.Setenv("ADMIN_EMAIL", "admin@example.de")
 	t.Setenv("ADMIN_PASSWORD", "I am the admin")
-	t.Setenv("USER_EMAIL", "me@elygor.de")
+	t.Setenv("USER_EMAIL", "me@example.de")
 	t.Setenv("USER_PASSWORD", "I learn zh")
 	s, err := db.Open(":memory:")
 	if err != nil {
