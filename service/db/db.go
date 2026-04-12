@@ -70,7 +70,7 @@ var validSortExprs = map[string]string{
 // If reviewOnly is true, only words with needs_review = 1 are returned.
 // If hideUnseen is true, only words with at least one quiz attempt are returned.
 // bucket filters by accuracy tier (same rules as tierFilter / wordTier in app.js).
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string, missingLang string) ([]models.WordDetail, int, error) {
+func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string, missingLang string) ([]models.WordDetail, int, error) {
 	exportAll := perPage <= 0
 	if exportAll {
 		page = 1
@@ -166,6 +166,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		FROM words w
 		LEFT JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh'
+		  AND w.user_id = ?
 		  AND (? = '' OR w.text LIKE '%' || ? || '%'
 		       OR w.pinyin LIKE '%' || ? || '%'
 		       OR EXISTS (
@@ -174,7 +175,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           WHERE ew.text LIKE '%' || ? || '%'
 		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + missingLangFilter + `
 		ORDER BY ` + orderClause + limitClause
-	listArgs := []any{q, q, q, q}
+	listArgs := []any{userID, q, q, q, q}
 	listArgs = append(listArgs, tagArgs...)
 	listArgs = append(listArgs, missingLangArgs...)
 	if !exportAll {
@@ -343,7 +344,7 @@ func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, la
 }
 
 // GetWordByID returns a single zh word with all its English translations.
-func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, error) {
+func (s *Store) GetWordByID(ctx context.Context, userID, id int64) (*models.WordDetail, error) {
 	var wd models.WordDetail
 	var createdAt, dueDate string
 	var needsReview int
@@ -357,7 +358,7 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 		        COALESCE(w.needs_review, 0)
 		 FROM words w
 		 LEFT JOIN sm2_progress p ON p.word_id = w.id
-		 WHERE w.id = ? AND w.language = 'zh'`, id).
+		 WHERE w.id = ? AND w.language = 'zh' AND w.user_id = ?`, id, userID).
 		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
 			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
@@ -471,7 +472,7 @@ func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req mode
 	// the database (e.g. after manual migrations) or by the form's trim().
 	var currentText string
 	err = tx.QueryRowContext(ctx,
-		`SELECT text FROM words WHERE id = ? AND language = 'zh'`, id).Scan(&currentText)
+		`SELECT text FROM words WHERE id = ? AND language = 'zh' AND user_id = ?`, id, userID).Scan(&currentText)
 	if err == sql.ErrNoRows {
 		return sql.ErrNoRows
 	} else if err != nil {
@@ -481,12 +482,12 @@ func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req mode
 	var res sql.Result
 	if currentText == newText {
 		res, err = tx.ExecContext(ctx,
-			`UPDATE words SET pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
-			pinyin, id)
+			`UPDATE words SET pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh' AND user_id = ?`,
+			pinyin, id, userID)
 	} else {
 		res, err = tx.ExecContext(ctx,
-			`UPDATE words SET text = ?, pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
-			newText, pinyin, id)
+			`UPDATE words SET text = ?, pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh' AND user_id = ?`,
+			newText, pinyin, id, userID)
 	}
 	if err != nil {
 		return fmt.Errorf("update word: %w", err)
@@ -584,8 +585,8 @@ func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, en
 }
 
 // DeleteWord deletes a word by ID. Cascades to translations and sm2_progress.
-func (s *Store) DeleteWord(ctx context.Context, id int64) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM words WHERE id = ?`, id)
+func (s *Store) DeleteWord(ctx context.Context, userID, id int64) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM words WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {
 		return fmt.Errorf("delete word: %w", err)
 	}
@@ -597,9 +598,9 @@ func (s *Store) DeleteWord(ctx context.Context, id int64) error {
 }
 
 // MarkWordForReview sets needs_review = 1 for the given zh word ID.
-func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
+func (s *Store) MarkWordForReview(ctx context.Context, userID, id int64) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE words SET needs_review = 1 WHERE id = ? AND language = 'zh'`, id)
+		`UPDATE words SET needs_review = 1 WHERE id = ? AND language = 'zh' AND user_id = ?`, id, userID)
 	if err != nil {
 		return fmt.Errorf("mark for review: %w", err)
 	}
@@ -643,7 +644,7 @@ func tierFilter(bucket string) string {
 // maxNew caps how many new words (first_seen_date IS NULL) can be introduced today; once
 // the count for today reaches maxNew, only already-seen cards are returned.
 // skipNew forces unseen words to be excluded regardless of the daily cap.
-func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, bucket string, skipNew bool) (*models.Word, *models.SM2Progress, error) {
+func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool) (*models.Word, *models.SM2Progress, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -660,12 +661,12 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 	}
 	bucketSQL := tierFilter(bucket)
 
-	// Count new words already introduced today (global, not per-tag).
+	// Count new words already introduced today (per user, not per-tag).
 	var newToday int
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date = date('now')`).Scan(&newToday); err != nil {
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date = date('now')`, userID).Scan(&newToday); err != nil {
 		return nil, nil, fmt.Errorf("count new today: %w", err)
 	}
 
@@ -683,12 +684,12 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
-		WHERE w.language = 'zh'` + tagFilter + newWordFilter + bucketSQL + ` %s
+		WHERE w.language = 'zh' AND w.user_id = ?` + tagFilter + newWordFilter + bucketSQL + ` %s
 		ORDER BY p.due_date ASC
 		LIMIT 1`
 
 	tryQuery := func(extra string) (*models.Word, *models.SM2Progress, error) {
-		args := append([]any{}, tagArgs...)
+		args := append([]any{userID}, tagArgs...)
 		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, extra), args...)
 		var w models.Word
 		var p models.SM2Progress
@@ -859,7 +860,7 @@ func (s *Store) AcknowledgeWord(ctx context.Context, wordID int64) error {
 
 // GetStats returns due-today count, total word count (zh words only), and the number of
 // new words introduced today (globally, not filtered by tag).
-func (s *Store) GetStats(ctx context.Context, tags []string, bucket string) (dueToday, total, newToday int, err error) {
+func (s *Store) GetStats(ctx context.Context, userID int64, tags []string, bucket string) (dueToday, total, newToday int, err error) {
 	tagFilter := ""
 	var tagArgs []any
 	if len(tags) > 0 {
@@ -876,26 +877,26 @@ func (s *Store) GetStats(ctx context.Context, tags []string, bucket string) (due
 	bucketSQL := tierFilter(bucket)
 
 	// When a bucket filter is active the total count must join sm2_progress.
-	totalArgs := append([]any{}, tagArgs...)
+	totalArgs := append([]any{userID}, tagArgs...)
 	if bucket != "" {
 		err = s.db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM words w JOIN sm2_progress p ON p.word_id = w.id`+
-				` WHERE w.language = 'zh'`+tagFilter+bucketSQL, totalArgs...).Scan(&total)
+				` WHERE w.language = 'zh' AND w.user_id = ?`+tagFilter+bucketSQL, totalArgs...).Scan(&total)
 	} else {
 		err = s.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM words w WHERE w.language = 'zh'`+tagFilter, totalArgs...).Scan(&total)
+			`SELECT COUNT(*) FROM words w WHERE w.language = 'zh' AND w.user_id = ?`+tagFilter, totalArgs...).Scan(&total)
 	}
 	if err != nil {
 		return
 	}
-	dueArgs := append([]any{}, tagArgs...)
+	dueArgs := append([]any{userID}, tagArgs...)
 	// Count all words due by end of today (midnight) so the user sees the
 	// full day's workload and the "done" screen only appears once every
 	// card due today has been reviewed.
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date IS NOT NULL
 		   AND p.due_date < date('now', '+1 day')`+tagFilter+bucketSQL, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
@@ -903,15 +904,15 @@ func (s *Store) GetStats(ctx context.Context, tags []string, bucket string) (due
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date = date('now')`).Scan(&newToday)
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date = date('now')`, userID).Scan(&newToday)
 	return
 }
 
 // CountUnseenZhWords returns the number of zh words that have never been presented
 // (first_seen_date IS NULL), optionally filtered by tags.
-func (s *Store) CountUnseenZhWords(ctx context.Context, tags []string) (int, error) {
+func (s *Store) CountUnseenZhWords(ctx context.Context, userID int64, tags []string) (int, error) {
 	tagFilter := ""
-	var args []any
+	args := []any{userID}
 	if len(tags) > 0 {
 		placeholders := make([]string, len(tags))
 		for i, t := range tags {
@@ -927,7 +928,7 @@ func (s *Store) CountUnseenZhWords(ctx context.Context, tags []string) (int, err
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date IS NULL`+tagFilter,
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date IS NULL`+tagFilter,
 		args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count unseen zh words: %w", err)
@@ -937,9 +938,9 @@ func (s *Store) CountUnseenZhWords(ctx context.Context, tags []string) (int, err
 
 // CountLearningNewWords returns the number of zh words still in the "new" learning
 // phase (learning_new_word = 1), optionally filtered by tags.
-func (s *Store) CountLearningNewWords(ctx context.Context, tags []string) (int, error) {
+func (s *Store) CountLearningNewWords(ctx context.Context, userID int64, tags []string) (int, error) {
 	tagFilter := ""
-	var args []any
+	args := []any{userID}
 	if len(tags) > 0 {
 		placeholders := make([]string, len(tags))
 		for i, t := range tags {
@@ -955,7 +956,7 @@ func (s *Store) CountLearningNewWords(ctx context.Context, tags []string) (int, 
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`+tagFilter,
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`+tagFilter,
 		args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count learning new words: %w", err)
@@ -966,9 +967,9 @@ func (s *Store) CountLearningNewWords(ctx context.Context, tags []string) (int, 
 // GetWordCountByDueDate returns the number of zh words grouped by due date,
 // covering overdue words (grouped as today), today, and the next 30 days.
 // Unseen words (first_seen_date IS NULL) are excluded.
-func (s *Store) GetWordCountByDueDate(ctx context.Context, tags []string) ([]models.DueDateCount, error) {
+func (s *Store) GetWordCountByDueDate(ctx context.Context, userID int64, tags []string) ([]models.DueDateCount, error) {
 	tagFilter := ""
-	var args []any
+	args := []any{userID}
 	if len(tags) > 0 {
 		placeholders := make([]string, len(tags))
 		for i, t := range tags {
@@ -989,6 +990,7 @@ func (s *Store) GetWordCountByDueDate(ctx context.Context, tags []string) ([]mod
 	FROM sm2_progress p
 	JOIN words w ON w.id = p.word_id
 	WHERE w.language = 'zh'
+	  AND w.user_id = ?
 	  AND p.first_seen_date IS NOT NULL
 	  AND date(p.due_date) <= date('now', '+30 days')` + tagFilter + `
 	GROUP BY bucket_date
@@ -1389,7 +1391,7 @@ func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]model
 }
 
 // GetWordStats returns aggregate statistics for all words seen at least once.
-func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, error) {
+func (s *Store) GetWordStats(ctx context.Context, userID int64) (*models.WordStatsResponse, error) {
 	// Fetch per-word stats for all seen zh words in a single query.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id, w.text, w.pinyin,
@@ -1397,8 +1399,8 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 		       p.learning_new_word
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL
-		ORDER BY p.total_attempts DESC`)
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date IS NOT NULL
+		ORDER BY p.total_attempts DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get word stats: %w", err)
 	}

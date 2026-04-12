@@ -40,7 +40,7 @@ func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
 	bucket := r.URL.Query().Get("bucket")
 	dueFilter := r.URL.Query().Get("due")
 	missingLang := r.URL.Query().Get("missing_lang")
-	words, total, err := h.Store.GetWords(r.Context(), q, page, perPage, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter, missingLang)
+	words, total, err := h.Store.GetWords(r.Context(), UserIDFromContext(r.Context()), q, page, perPage, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter, missingLang)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -107,7 +107,7 @@ func (h *WordsHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	wd, err := h.Store.GetWordByID(r.Context(), id)
+	wd, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -172,7 +172,7 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if h.Audio != nil {
 		go h.Audio.regenerate(id, req.ZhText)
 	}
-	wd, err := h.Store.GetWordByID(r.Context(), id)
+	wd, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -215,7 +215,7 @@ func (h *WordsHandler) MarkReview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.Store.MarkWordForReview(r.Context(), id); err != nil {
+	if err := h.Store.MarkWordForReview(r.Context(), UserIDFromContext(r.Context()), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
@@ -232,7 +232,7 @@ func (h *WordsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.Store.DeleteWord(r.Context(), id); err != nil {
+	if err := h.Store.DeleteWord(r.Context(), UserIDFromContext(r.Context()), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
@@ -255,7 +255,7 @@ func (h *WordsHandler) Export(w http.ResponseWriter, r *http.Request) {
 	hideUnseen := r.URL.Query().Get("hide_unseen") == "1"
 	bucket := r.URL.Query().Get("bucket")
 	dueFilter := r.URL.Query().Get("due")
-	words, _, err := h.Store.GetWords(r.Context(), q, 1, 0, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter, "")
+	words, _, err := h.Store.GetWords(r.Context(), UserIDFromContext(r.Context()), q, 1, 0, sortBy, sortDir, tags, reviewOnly, hideUnseen, bucket, dueFilter, "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

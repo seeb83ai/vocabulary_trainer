@@ -154,7 +154,7 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid word id")
 		return
 	}
-	word, err := h.Store.GetWordByID(r.Context(), id)
+	word, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch word")
 		return
@@ -306,7 +306,7 @@ func (h *HMMHandler) SaveScene(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid word id")
 		return
 	}
-	word, err := h.Store.GetWordByID(r.Context(), id)
+	word, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil || word == nil {
 		writeError(w, http.StatusNotFound, "word not found")
 		return
