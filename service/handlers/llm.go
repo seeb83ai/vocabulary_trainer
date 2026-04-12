@@ -126,14 +126,20 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	started := false
 	for {
 		select {
 		case res := <-done:
 			if res.err != nil {
 				log.Printf("Error: LLM request failed: %v\n", res.err)
-				// Headers already sent; write a JSON error body and let the
-				// client detect it via the error field.
-				w.Write([]byte(`{"error":"LLM request failed"}`)) //nolint:errcheck
+				if !started {
+					// No bytes written yet — can still set a proper 500 status.
+					writeError(w, http.StatusInternalServerError, "LLM request failed")
+				} else {
+					// Status 200 already committed via keep-alive flush; signal
+					// the error in the body so the client can detect it.
+					w.Write([]byte(`{"error":"LLM request failed"}`)) //nolint:errcheck
+				}
 				return
 			}
 			log.Printf("LLM response: %v\n", res.text)
@@ -141,6 +147,7 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ticker.C:
 			if canFlush {
+				started = true
 				w.Write([]byte(" ")) //nolint:errcheck
 				flusher.Flush()
 			}
