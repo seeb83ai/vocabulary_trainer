@@ -179,7 +179,7 @@ LOCAL_LLM_API_KEY=                     # optional bearer token (e.g. LM Studio)
 
 `LOCAL_LLM_URL` and `LOCAL_LLM_MODEL` must both be set to activate the local provider. The server must expose an OpenAI-compatible chat completions endpoint at `POST /v1/chat/completions`. This works with [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), [LocalAI](https://localai.io), vLLM, and any other OpenAI-compatible server.
 
-When a local model is configured it takes precedence over any cloud API keys that may also be present.
+When a local model is configured it takes precedence over any cloud API keys that may also be present. If the local server is unreachable or returns an error when a scene is requested, the next configured provider is tried automatically — no restart required.
 
 ## Makefile targets
 

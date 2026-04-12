@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 // Request holds the prompt for an LLM call.
@@ -27,30 +29,71 @@ type Client interface {
 	Name() string
 }
 
-// NewClientFromEnv checks LOCAL_LLM_URL+LOCAL_LLM_MODEL first, then
-// OPENAI_API_KEY, ANTHROPIC_API_KEY, and GEMINI_API_KEY in that order.
-// Returns the first available client, or nil if none are configured.
+// NewClientFromEnv collects every configured LLM provider in priority order
+// (local first, then OpenAI, Anthropic, Gemini) and returns them wrapped in a
+// fallbackClient so that if the primary provider fails the next one is tried
+// automatically. Returns nil if no provider is configured.
 func NewClientFromEnv() Client {
+	var clients []Client
 	if url := os.Getenv("LOCAL_LLM_URL"); url != "" {
 		if model := os.Getenv("LOCAL_LLM_MODEL"); model != "" {
-			return &localClient{
+			clients = append(clients, &localClient{
 				baseURL:    url,
 				model:      model,
 				apiKey:     os.Getenv("LOCAL_LLM_API_KEY"),
 				httpClient: http.DefaultClient,
-			}
+			})
 		}
 	}
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
-		return &openAIClient{apiKey: key, httpClient: http.DefaultClient}
+		clients = append(clients, &openAIClient{apiKey: key, httpClient: http.DefaultClient})
 	}
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		return &anthropicClient{apiKey: key, httpClient: http.DefaultClient}
+		clients = append(clients, &anthropicClient{apiKey: key, httpClient: http.DefaultClient})
 	}
 	if key := os.Getenv("GEMINI_API_KEY"); key != "" {
-		return &geminiClient{apiKey: key, httpClient: http.DefaultClient}
+		clients = append(clients, &geminiClient{apiKey: key, httpClient: http.DefaultClient})
 	}
-	return nil
+	switch len(clients) {
+	case 0:
+		return nil
+	case 1:
+		return clients[0]
+	default:
+		return &fallbackClient{clients: clients}
+	}
+}
+
+// ── Fallback chain ─────────────────────────────────────────────────────────────
+
+// fallbackClient tries each provider in order. If a provider returns an error
+// (network failure, HTTP error, etc.) the next one is attempted automatically.
+type fallbackClient struct {
+	clients []Client
+}
+
+func (c *fallbackClient) Name() string {
+	names := make([]string, len(c.clients))
+	for i, cl := range c.clients {
+		names[i] = cl.Name()
+	}
+	return strings.Join(names, " → ")
+}
+
+func (c *fallbackClient) Generate(ctx context.Context, req Request) (string, error) {
+	var lastErr error
+	for _, cl := range c.clients {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		result, err := cl.Generate(ctx, req)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		log.Printf("LLM provider %s failed (%v); trying next provider", cl.Name(), err)
+	}
+	return "", lastErr
 }
 
 // ── OpenAI (Responses API) ────────────────────────────────────────────────────

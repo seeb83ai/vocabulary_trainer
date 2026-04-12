@@ -385,6 +385,106 @@ func TestLocalClient_Generate_EmptyChoices(t *testing.T) {
 	}
 }
 
+// ── Fallback chain ────────────────────────────────────────────────────────────
+
+func TestFallbackClient_FirstSucceeds(t *testing.T) {
+	called := 0
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called++
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "from local"}},
+			},
+		})
+	}))
+	defer srv1.Close()
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("second provider should not be called when first succeeds")
+	}))
+	defer srv2.Close()
+
+	fc := &fallbackClient{clients: []Client{
+		&localClient{baseURL: srv1.URL, model: "llama3", httpClient: srv1.Client()},
+		&localClient{baseURL: srv2.URL, model: "backup", httpClient: srv2.Client()},
+	}}
+	got, err := fc.Generate(context.Background(), Request{User: "prompt"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got != "from local" {
+		t.Errorf("got %q", got)
+	}
+	if called != 1 {
+		t.Errorf("expected srv1 called once, got %d", called)
+	}
+}
+
+func TestFallbackClient_FallsBackOnError(t *testing.T) {
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "connection refused", http.StatusServiceUnavailable)
+	}))
+	defer srv1.Close()
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "from fallback"}},
+			},
+		})
+	}))
+	defer srv2.Close()
+
+	fc := &fallbackClient{clients: []Client{
+		&localClient{baseURL: srv1.URL, model: "llama3", httpClient: srv1.Client()},
+		&localClient{baseURL: srv2.URL, model: "backup", httpClient: srv2.Client()},
+	}}
+	got, err := fc.Generate(context.Background(), Request{User: "prompt"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got != "from fallback" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestFallbackClient_AllFail(t *testing.T) {
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer srv1.Close()
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "also down", http.StatusInternalServerError)
+	}))
+	defer srv2.Close()
+
+	fc := &fallbackClient{clients: []Client{
+		&localClient{baseURL: srv1.URL, model: "a", httpClient: srv1.Client()},
+		&localClient{baseURL: srv2.URL, model: "b", httpClient: srv2.Client()},
+	}}
+	_, err := fc.Generate(context.Background(), Request{User: "prompt"})
+	if err == nil {
+		t.Fatal("expected error when all providers fail")
+	}
+}
+
+func TestFallbackClient_StopsOnContextCancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+
+	fc := &fallbackClient{clients: []Client{
+		&localClient{baseURL: srv.URL, model: "a", httpClient: srv.Client()},
+		&localClient{baseURL: srv.URL, model: "b", httpClient: srv.Client()},
+	}}
+	_, err := fc.Generate(ctx, Request{User: "prompt"})
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
 // ── Name ──────────────────────────────────────────────────────────────────────
 
 func TestClientNames(t *testing.T) {
@@ -400,6 +500,11 @@ func TestClientNames(t *testing.T) {
 	c := &localClient{baseURL: "http://localhost:11434", model: "llama3"}
 	if c.Name() != "local(llama3 @ http://localhost:11434)" {
 		t.Errorf("unexpected local client name: %q", c.Name())
+	}
+	fc := &fallbackClient{clients: []Client{c, &openAIClient{}}}
+	want := "local(llama3 @ http://localhost:11434) → openai"
+	if fc.Name() != want {
+		t.Errorf("fallbackClient.Name() = %q, want %q", fc.Name(), want)
 	}
 }
 
