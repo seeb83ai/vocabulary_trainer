@@ -257,6 +257,134 @@ func TestGeminiClient_Generate_NoCandidates(t *testing.T) {
 	}
 }
 
+// ── Local (OpenAI-compatible chat completions) ────────────────────────────────
+
+func TestLocalClient_Generate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("want POST, got %s", r.Method)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["model"] != "llama3" {
+			t.Errorf("expected model=llama3, got %v", body["model"])
+		}
+		msgs, _ := body["messages"].([]any)
+		if len(msgs) != 2 {
+			t.Errorf("expected 2 messages (system+user), got %d", len(msgs))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"role": "assistant", "content": "The dragon roars."}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	got, err := c.Generate(context.Background(), Request{System: "be brief", User: "write a scene"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got != "The dragon roars." {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestLocalClient_Generate_NoSystem(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		msgs, _ := body["messages"].([]any)
+		if len(msgs) != 1 {
+			t.Errorf("expected 1 message (user only), got %d", len(msgs))
+		}
+		msg, _ := msgs[0].(map[string]any)
+		if msg["role"] != "user" {
+			t.Errorf("expected role=user, got %v", msg["role"])
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "ok"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	if _, err := c.Generate(context.Background(), Request{User: "prompt"}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+}
+
+func TestLocalClient_Generate_WithAPIKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer secret" {
+			t.Errorf("missing or wrong Authorization header: %q", r.Header.Get("Authorization"))
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "ok"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", apiKey: "secret", httpClient: srv.Client()}
+	if _, err := c.Generate(context.Background(), Request{User: "prompt"}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+}
+
+func TestLocalClient_Generate_NoAPIKey_NoAuthHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("Authorization header should be absent when no API key configured")
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "ok"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	if _, err := c.Generate(context.Background(), Request{User: "prompt"}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+}
+
+func TestLocalClient_Generate_HTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "model not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	_, err := c.Generate(context.Background(), Request{User: "prompt"})
+	if err == nil {
+		t.Fatal("expected error for non-200 response")
+	}
+}
+
+func TestLocalClient_Generate_EmptyChoices(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"choices": []any{}})
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	_, err := c.Generate(context.Background(), Request{User: "prompt"})
+	if err == nil {
+		t.Fatal("expected error for empty choices")
+	}
+}
+
 // ── Name ──────────────────────────────────────────────────────────────────────
 
 func TestClientNames(t *testing.T) {
@@ -268,6 +396,10 @@ func TestClientNames(t *testing.T) {
 	}
 	if (&geminiClient{}).Name() != "gemini" {
 		t.Error("geminiClient.Name() != gemini")
+	}
+	c := &localClient{baseURL: "http://localhost:11434", model: "llama3"}
+	if c.Name() != "local(llama3 @ http://localhost:11434)" {
+		t.Errorf("unexpected local client name: %q", c.Name())
 	}
 }
 

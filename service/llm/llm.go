@@ -27,9 +27,20 @@ type Client interface {
 	Name() string
 }
 
-// NewClientFromEnv checks OPENAI_API_KEY, ANTHROPIC_API_KEY, and GEMINI_API_KEY
-// in that order and returns the first available client. Returns nil if none are set.
+// NewClientFromEnv checks LOCAL_LLM_URL+LOCAL_LLM_MODEL first, then
+// OPENAI_API_KEY, ANTHROPIC_API_KEY, and GEMINI_API_KEY in that order.
+// Returns the first available client, or nil if none are configured.
 func NewClientFromEnv() Client {
+	if url := os.Getenv("LOCAL_LLM_URL"); url != "" {
+		if model := os.Getenv("LOCAL_LLM_MODEL"); model != "" {
+			return &localClient{
+				baseURL:    url,
+				model:      model,
+				apiKey:     os.Getenv("LOCAL_LLM_API_KEY"),
+				httpClient: http.DefaultClient,
+			}
+		}
+	}
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
 		return &openAIClient{apiKey: key, httpClient: http.DefaultClient}
 	}
@@ -221,4 +232,71 @@ func (c *geminiClient) Generate(ctx context.Context, req Request) (string, error
 		return "", fmt.Errorf("gemini: no content in response")
 	}
 	return result.Candidates[0].Content.Parts[0].Text, nil
+}
+
+// ── Local / private model (OpenAI-compatible chat completions) ────────────────
+//
+// Compatible with Ollama, LM Studio, LocalAI, vLLM, and any server that
+// implements the OpenAI chat completions API at POST /v1/chat/completions.
+//
+// Required env vars: LOCAL_LLM_URL, LOCAL_LLM_MODEL
+// Optional env var:  LOCAL_LLM_API_KEY  (bearer token; some setups require it)
+
+type localClient struct {
+	baseURL    string
+	model      string
+	apiKey     string
+	httpClient *http.Client
+}
+
+func (c *localClient) Name() string {
+	return fmt.Sprintf("local(%s @ %s)", c.model, c.baseURL)
+}
+
+func (c *localClient) Generate(ctx context.Context, req Request) (string, error) {
+	messages := []map[string]string{}
+	if req.System != "" {
+		messages = append(messages, map[string]string{"role": "system", "content": req.System})
+	}
+	messages = append(messages, map[string]string{"role": "user", "content": req.User})
+
+	payload := map[string]any{
+		"model":    c.model,
+		"messages": messages,
+	}
+	body, _ := json.Marshal(payload)
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("local: status %d: %s", resp.StatusCode, raw)
+	}
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return "", fmt.Errorf("local: decode: %w", err)
+	}
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("local: no choices in response")
+	}
+	return result.Choices[0].Message.Content, nil
 }

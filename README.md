@@ -155,6 +155,32 @@ When enabled, an **Auto-translate** button appears in the Add/Edit Word form. It
 
 Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin is generated server-side using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser — all DeepL calls are proxied through the backend.
 
+## LLM scene generation
+
+The Hanzi Movie Method scene builder can call an LLM to generate mnemonic scenes automatically. Set one of the following provider configurations to enable the **Generate scene** button:
+
+**Cloud providers** (one key is enough):
+
+```bash
+OPENAI_API_KEY=sk-...
+# or
+ANTHROPIC_API_KEY=sk-ant-...
+# or
+GEMINI_API_KEY=AI...
+```
+
+**Local / private model** (takes priority over cloud keys when set):
+
+```bash
+LOCAL_LLM_URL=http://localhost:11434   # base URL of your local server
+LOCAL_LLM_MODEL=llama3.1               # model name as known to that server
+LOCAL_LLM_API_KEY=                     # optional bearer token (e.g. LM Studio)
+```
+
+`LOCAL_LLM_URL` and `LOCAL_LLM_MODEL` must both be set to activate the local provider. The server must expose an OpenAI-compatible chat completions endpoint at `POST /v1/chat/completions`. This works with [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), [LocalAI](https://localai.io), vLLM, and any other OpenAI-compatible server.
+
+When a local model is configured it takes precedence over any cloud API keys that may also be present.
+
 ## Makefile targets
 
 | Target | Description |
