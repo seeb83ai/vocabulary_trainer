@@ -30,7 +30,7 @@ func TestOpenAIClient_Generate(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"output": []map[string]any{
-				{"content": []map[string]string{{"type": "text", "text": "Jackie Chan storms in."}}},
+				{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "Jackie Chan storms in."}}},
 			},
 		})
 	}))
@@ -55,7 +55,7 @@ func TestOpenAIClient_Generate_NoSystem(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"output": []map[string]any{
-				{"content": []map[string]string{{"type": "text", "text": "ok"}}},
+				{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "ok"}}},
 			},
 		})
 	}))
@@ -257,11 +257,23 @@ func TestGeminiClient_Generate_NoCandidates(t *testing.T) {
 	}
 }
 
-// ── Local (OpenAI-compatible chat completions) ────────────────────────────────
+// ── Local (OpenAI Responses API) ─────────────────────────────────────────────
+
+func localOKResponse(text string) map[string]any {
+	return map[string]any{
+		"output": []map[string]any{
+			{
+				"type": "message",
+				"role": "assistant",
+				"content": []map[string]string{{"type": "output_text", "text": text}},
+			},
+		},
+	}
+}
 
 func TestLocalClient_Generate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/chat/completions" {
+		if r.URL.Path != "/v1/responses" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Method != http.MethodPost {
@@ -272,16 +284,12 @@ func TestLocalClient_Generate(t *testing.T) {
 		if body["model"] != "llama3" {
 			t.Errorf("expected model=llama3, got %v", body["model"])
 		}
-		msgs, _ := body["messages"].([]any)
-		if len(msgs) != 2 {
-			t.Errorf("expected 2 messages (system+user), got %d", len(msgs))
+		input, _ := body["input"].(string)
+		if !strings.Contains(input, "be brief") || !strings.Contains(input, "write a scene") {
+			t.Errorf("expected input to contain system+user, got %q", input)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{
-				{"message": map[string]string{"role": "assistant", "content": "The dragon roars."}},
-			},
-		})
+		json.NewEncoder(w).Encode(localOKResponse("The dragon roars."))
 	}))
 	defer srv.Close()
 
@@ -299,19 +307,11 @@ func TestLocalClient_Generate_NoSystem(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
-		msgs, _ := body["messages"].([]any)
-		if len(msgs) != 1 {
-			t.Errorf("expected 1 message (user only), got %d", len(msgs))
+		input, _ := body["input"].(string)
+		if input == "" {
+			t.Errorf("expected non-empty input field")
 		}
-		msg, _ := msgs[0].(map[string]any)
-		if msg["role"] != "user" {
-			t.Errorf("expected role=user, got %v", msg["role"])
-		}
-		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{
-				{"message": map[string]string{"content": "ok"}},
-			},
-		})
+		json.NewEncoder(w).Encode(localOKResponse("ok"))
 	}))
 	defer srv.Close()
 
@@ -326,11 +326,7 @@ func TestLocalClient_Generate_WithAPIKey(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer secret" {
 			t.Errorf("missing or wrong Authorization header: %q", r.Header.Get("Authorization"))
 		}
-		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{
-				{"message": map[string]string{"content": "ok"}},
-			},
-		})
+		json.NewEncoder(w).Encode(localOKResponse("ok"))
 	}))
 	defer srv.Close()
 
@@ -345,11 +341,7 @@ func TestLocalClient_Generate_NoAPIKey_NoAuthHeader(t *testing.T) {
 		if r.Header.Get("Authorization") != "" {
 			t.Errorf("Authorization header should be absent when no API key configured")
 		}
-		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{
-				{"message": map[string]string{"content": "ok"}},
-			},
-		})
+		json.NewEncoder(w).Encode(localOKResponse("ok"))
 	}))
 	defer srv.Close()
 
@@ -372,16 +364,16 @@ func TestLocalClient_Generate_HTTPError(t *testing.T) {
 	}
 }
 
-func TestLocalClient_Generate_EmptyChoices(t *testing.T) {
+func TestLocalClient_Generate_EmptyOutput(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"choices": []any{}})
+		json.NewEncoder(w).Encode(map[string]any{"output": []any{}})
 	}))
 	defer srv.Close()
 
 	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
 	_, err := c.Generate(context.Background(), Request{User: "prompt"})
 	if err == nil {
-		t.Fatal("expected error for empty choices")
+		t.Fatal("expected error for empty output")
 	}
 }
 
@@ -391,11 +383,7 @@ func TestFallbackClient_FirstSucceeds(t *testing.T) {
 	called := 0
 	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called++
-		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{
-				{"message": map[string]string{"content": "from local"}},
-			},
-		})
+		json.NewEncoder(w).Encode(localOKResponse("from local"))
 	}))
 	defer srv1.Close()
 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -425,11 +413,7 @@ func TestFallbackClient_FallsBackOnError(t *testing.T) {
 	}))
 	defer srv1.Close()
 	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{
-				{"message": map[string]string{"content": "from fallback"}},
-			},
-		})
+		json.NewEncoder(w).Encode(localOKResponse("from fallback"))
 	}))
 	defer srv2.Close()
 
@@ -520,7 +504,7 @@ func TestOpenAIClient_Generate_NewlineInInput(t *testing.T) {
 		seen, _ = body["input"].(string)
 		json.NewEncoder(w).Encode(map[string]any{
 			"output": []map[string]any{
-				{"content": []map[string]string{{"type": "text", "text": "ok"}}},
+				{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "ok"}}},
 			},
 		})
 	}))

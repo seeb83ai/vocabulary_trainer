@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // Request holds the prompt for an LLM call.
@@ -107,6 +108,9 @@ type openAIClient struct {
 func (c *openAIClient) Name() string { return "openai" }
 
 func (c *openAIClient) Generate(ctx context.Context, req Request) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
 	base := c.BaseURL
 	if base == "" {
 		base = "https://api.openai.com"
@@ -139,6 +143,8 @@ func (c *openAIClient) Generate(ctx context.Context, req Request) (string, error
 
 	var result struct {
 		Output []struct {
+			Type    string `json:"type"`
+			Role    string `json:"role"`
 			Content []struct {
 				Type string `json:"type"`
 				Text string `json:"text"`
@@ -148,10 +154,16 @@ func (c *openAIClient) Generate(ctx context.Context, req Request) (string, error
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return "", fmt.Errorf("openai: decode: %w", err)
 	}
-	if len(result.Output) == 0 || len(result.Output[0].Content) == 0 {
-		return "", fmt.Errorf("openai: no output in response")
+	for _, item := range result.Output {
+		if item.Type == "message" && item.Role == "assistant" {
+			for _, block := range item.Content {
+				if block.Type == "output_text" {
+					return block.Text, nil
+				}
+			}
+		}
 	}
-	return result.Output[0].Content[0].Text, nil
+	return "", fmt.Errorf("openai: no assistant message in response")
 }
 
 // ── Anthropic ─────────────────────────────────────────────────────────────────
@@ -165,6 +177,9 @@ type anthropicClient struct {
 func (c *anthropicClient) Name() string { return "anthropic" }
 
 func (c *anthropicClient) Generate(ctx context.Context, req Request) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
 	base := c.BaseURL
 	if base == "" {
 		base = "https://api.anthropic.com"
@@ -225,6 +240,9 @@ type geminiClient struct {
 func (c *geminiClient) Name() string { return "gemini" }
 
 func (c *geminiClient) Generate(ctx context.Context, req Request) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
 	base := c.BaseURL
 	if base == "" {
 		base = "https://generativelanguage.googleapis.com"
@@ -296,20 +314,21 @@ func (c *localClient) Name() string {
 	return fmt.Sprintf("local(%s @ %s)", c.model, c.baseURL)
 }
 
-func (c *localClient) Generate(ctx context.Context, req Request) (string, error) {
-	messages := []map[string]string{}
-	if req.System != "" {
-		messages = append(messages, map[string]string{"role": "system", "content": req.System})
-	}
-	messages = append(messages, map[string]string{"role": "user", "content": req.User})
+func (c *localClient) Generate(_ context.Context, req Request) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
 
 	payload := map[string]any{
-		"model":    c.model,
-		"messages": messages,
+		"model":     c.model,
+		"input":     req.System + " " + req.User,
+		"reasoning": map[string]any{"effort": "minimal"},
 	}
+
+	log.Printf("%v\n", payload)
+
 	body, _ := json.Marshal(payload)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/responses", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -329,17 +348,27 @@ func (c *localClient) Generate(ctx context.Context, req Request) (string, error)
 	}
 
 	var result struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		Output []struct {
+			Type    string `json:"type"`
+			Role    string `json:"role"`
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"output"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return "", fmt.Errorf("local: decode: %w", err)
 	}
-	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("local: no choices in response")
+
+	for _, item := range result.Output {
+		if item.Type == "message" && item.Role == "assistant" {
+			for _, block := range item.Content {
+				if block.Type == "output_text" {
+					return block.Text, nil
+				}
+			}
+		}
 	}
-	return result.Choices[0].Message.Content, nil
+	return "", fmt.Errorf("local: no assistant message in response")
 }
