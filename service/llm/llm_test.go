@@ -30,7 +30,7 @@ func TestOpenAIClient_Generate(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"output": []map[string]any{
-				{"content": []map[string]string{{"type": "text", "text": "Jackie Chan storms in."}}},
+				{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "Jackie Chan storms in."}}},
 			},
 		})
 	}))
@@ -55,7 +55,7 @@ func TestOpenAIClient_Generate_NoSystem(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"output": []map[string]any{
-				{"content": []map[string]string{{"type": "text", "text": "ok"}}},
+				{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "ok"}}},
 			},
 		})
 	}))
@@ -257,6 +257,218 @@ func TestGeminiClient_Generate_NoCandidates(t *testing.T) {
 	}
 }
 
+// ── Local (OpenAI Responses API) ─────────────────────────────────────────────
+
+func localOKResponse(text string) map[string]any {
+	return map[string]any{
+		"output": []map[string]any{
+			{
+				"type": "message",
+				"role": "assistant",
+				"content": []map[string]string{{"type": "output_text", "text": text}},
+			},
+		},
+	}
+}
+
+func TestLocalClient_Generate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("want POST, got %s", r.Method)
+		}
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["model"] != "llama3" {
+			t.Errorf("expected model=llama3, got %v", body["model"])
+		}
+		input, _ := body["input"].(string)
+		if !strings.Contains(input, "be brief") || !strings.Contains(input, "write a scene") {
+			t.Errorf("expected input to contain system+user, got %q", input)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(localOKResponse("The dragon roars."))
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	got, err := c.Generate(context.Background(), Request{System: "be brief", User: "write a scene"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got != "The dragon roars." {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestLocalClient_Generate_NoSystem(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		input, _ := body["input"].(string)
+		if input == "" {
+			t.Errorf("expected non-empty input field")
+		}
+		json.NewEncoder(w).Encode(localOKResponse("ok"))
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	if _, err := c.Generate(context.Background(), Request{User: "prompt"}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+}
+
+func TestLocalClient_Generate_WithAPIKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer secret" {
+			t.Errorf("missing or wrong Authorization header: %q", r.Header.Get("Authorization"))
+		}
+		json.NewEncoder(w).Encode(localOKResponse("ok"))
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", apiKey: "secret", httpClient: srv.Client()}
+	if _, err := c.Generate(context.Background(), Request{User: "prompt"}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+}
+
+func TestLocalClient_Generate_NoAPIKey_NoAuthHeader(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("Authorization header should be absent when no API key configured")
+		}
+		json.NewEncoder(w).Encode(localOKResponse("ok"))
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	if _, err := c.Generate(context.Background(), Request{User: "prompt"}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+}
+
+func TestLocalClient_Generate_HTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "model not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	_, err := c.Generate(context.Background(), Request{User: "prompt"})
+	if err == nil {
+		t.Fatal("expected error for non-200 response")
+	}
+}
+
+func TestLocalClient_Generate_EmptyOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"output": []any{}})
+	}))
+	defer srv.Close()
+
+	c := &localClient{baseURL: srv.URL, model: "llama3", httpClient: srv.Client()}
+	_, err := c.Generate(context.Background(), Request{User: "prompt"})
+	if err == nil {
+		t.Fatal("expected error for empty output")
+	}
+}
+
+// ── Fallback chain ────────────────────────────────────────────────────────────
+
+func TestFallbackClient_FirstSucceeds(t *testing.T) {
+	called := 0
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called++
+		json.NewEncoder(w).Encode(localOKResponse("from local"))
+	}))
+	defer srv1.Close()
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("second provider should not be called when first succeeds")
+	}))
+	defer srv2.Close()
+
+	fc := &fallbackClient{clients: []Client{
+		&localClient{baseURL: srv1.URL, model: "llama3", httpClient: srv1.Client()},
+		&localClient{baseURL: srv2.URL, model: "backup", httpClient: srv2.Client()},
+	}}
+	got, err := fc.Generate(context.Background(), Request{User: "prompt"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got != "from local" {
+		t.Errorf("got %q", got)
+	}
+	if called != 1 {
+		t.Errorf("expected srv1 called once, got %d", called)
+	}
+}
+
+func TestFallbackClient_FallsBackOnError(t *testing.T) {
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "connection refused", http.StatusServiceUnavailable)
+	}))
+	defer srv1.Close()
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(localOKResponse("from fallback"))
+	}))
+	defer srv2.Close()
+
+	fc := &fallbackClient{clients: []Client{
+		&localClient{baseURL: srv1.URL, model: "llama3", httpClient: srv1.Client()},
+		&localClient{baseURL: srv2.URL, model: "backup", httpClient: srv2.Client()},
+	}}
+	got, err := fc.Generate(context.Background(), Request{User: "prompt"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got != "from fallback" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestFallbackClient_AllFail(t *testing.T) {
+	srv1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer srv1.Close()
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "also down", http.StatusInternalServerError)
+	}))
+	defer srv2.Close()
+
+	fc := &fallbackClient{clients: []Client{
+		&localClient{baseURL: srv1.URL, model: "a", httpClient: srv1.Client()},
+		&localClient{baseURL: srv2.URL, model: "b", httpClient: srv2.Client()},
+	}}
+	_, err := fc.Generate(context.Background(), Request{User: "prompt"})
+	if err == nil {
+		t.Fatal("expected error when all providers fail")
+	}
+}
+
+func TestFallbackClient_StopsOnContextCancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled
+
+	fc := &fallbackClient{clients: []Client{
+		&localClient{baseURL: srv.URL, model: "a", httpClient: srv.Client()},
+		&localClient{baseURL: srv.URL, model: "b", httpClient: srv.Client()},
+	}}
+	_, err := fc.Generate(ctx, Request{User: "prompt"})
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
 // ── Name ──────────────────────────────────────────────────────────────────────
 
 func TestClientNames(t *testing.T) {
@@ -268,6 +480,15 @@ func TestClientNames(t *testing.T) {
 	}
 	if (&geminiClient{}).Name() != "gemini" {
 		t.Error("geminiClient.Name() != gemini")
+	}
+	c := &localClient{baseURL: "http://localhost:11434", model: "llama3"}
+	if c.Name() != "local(llama3 @ http://localhost:11434)" {
+		t.Errorf("unexpected local client name: %q", c.Name())
+	}
+	fc := &fallbackClient{clients: []Client{c, &openAIClient{}}}
+	want := "local(llama3 @ http://localhost:11434) → openai"
+	if fc.Name() != want {
+		t.Errorf("fallbackClient.Name() = %q, want %q", fc.Name(), want)
 	}
 }
 
@@ -283,7 +504,7 @@ func TestOpenAIClient_Generate_NewlineInInput(t *testing.T) {
 		seen, _ = body["input"].(string)
 		json.NewEncoder(w).Encode(map[string]any{
 			"output": []map[string]any{
-				{"content": []map[string]string{{"type": "text", "text": "ok"}}},
+				{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "ok"}}},
 			},
 		})
 	}))

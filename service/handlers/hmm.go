@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -326,6 +327,7 @@ func (h *HMMHandler) SaveScene(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.Store.SaveHMMSceneWithLibrary(r.Context(), id, initial, final, tone, req); err != nil {
+		log.Printf("Error: failed to save scene: %s\n", err)
 		writeError(w, http.StatusInternalServerError, "failed to save scene")
 		return
 	}

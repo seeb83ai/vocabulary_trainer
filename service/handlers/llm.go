@@ -3,8 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/llm"
 )
@@ -62,10 +64,10 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Sanitize user-controlled fields before interpolating into the prompt.
-	actor    := sanitizeLLMField(req.Actor)
+	actor := sanitizeLLMField(req.Actor)
 	location := sanitizeLLMField(req.Location)
-	room     := sanitizeLLMField(req.Room)
-	props    := make([]string, 0, len(req.Props))
+	room := sanitizeLLMField(req.Room)
+	props := make([]string, 0, len(req.Props))
 	for _, p := range req.Props {
 		if s := sanitizeLLMField(p); s != "" {
 			props = append(props, s)
@@ -77,7 +79,7 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// zh_text and en_texts come from the DB — not from the request.
-	zhText  := word.ZhText
+	zhText := word.ZhText
 	enTexts := strings.Join(word.EnTexts, ", ")
 	if enTexts == "" {
 		enTexts = "unknown"
@@ -86,6 +88,7 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 	// User message: trusted template with untrusted values inside XML tags.
 	// XML tags make it clear to the LLM which parts are data vs instructions,
 	// reducing the risk of injected content hijacking the task.
+	// TODO: response should be written in language as defined by user
 	userMsg := fmt.Sprintf(
 		"Chinese word: <word>%s</word>\n"+
 			"Meaning: <meaning>%s</meaning>\n"+
@@ -93,6 +96,7 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 			"Location: <location>%s</location> (final sound: <final>%s</final>)\n"+
 			"Room: <room>%s</room> (tone: <tone>%d</tone>)\n"+
 			"Props: <props>%s</props>\n\n"+
+			"Answer in German\n"+
 			"Write one vivid, memorable movie scene where the actor is in the location, "+
 			"in the room, interacting with the props in a way that encodes the word's meaning. "+
 			"Be concrete, visual, and strange enough to be memorable.",
@@ -103,15 +107,52 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 		propsStr,
 	)
 
-	text, err := h.Client.Generate(r.Context(), llm.Request{
-		System: llmSystemPrompt,
-		User:   userMsg,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "LLM request failed")
-		return
+	type result struct {
+		text string
+		err  error
 	}
-	writeJSON(w, http.StatusOK, llmGenerateResponse{Text: text})
+	done := make(chan result, 1)
+	go func() {
+		text, err := h.Client.Generate(r.Context(), llm.Request{
+			System: llmSystemPrompt,
+			User:   userMsg,
+		})
+		done <- result{text, err}
+	}()
+
+	// Flush a space byte every 5s so the WSL2→Windows TCP connection is not
+	// treated as idle and reset before the LLM finishes generating.
+	flusher, canFlush := w.(http.Flusher)
+	w.Header().Set("Content-Type", "application/json")
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	started := false
+	for {
+		select {
+		case res := <-done:
+			if res.err != nil {
+				log.Printf("Error: LLM request failed: %v\n", res.err)
+				if !started {
+					// No bytes written yet — can still set a proper 500 status.
+					writeError(w, http.StatusInternalServerError, "LLM request failed")
+				} else {
+					// Status 200 already committed via keep-alive flush; signal
+					// the error in the body so the client can detect it.
+					w.Write([]byte(`{"error":"LLM request failed"}`)) //nolint:errcheck
+				}
+				return
+			}
+			log.Printf("LLM response: %v\n", res.text)
+			json.NewEncoder(w).Encode(llmGenerateResponse{Text: res.text})
+			return
+		case <-ticker.C:
+			if canFlush {
+				started = true
+				w.Write([]byte(" ")) //nolint:errcheck
+				flusher.Flush()
+			}
+		}
+	}
 }
 
 // sanitizeLLMField strips control characters (including newlines) and limits
