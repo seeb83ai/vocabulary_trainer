@@ -956,9 +956,20 @@ func TestCountLearningNewWords_BeforePresented(t *testing.T) {
 	ctx := context.Background()
 
 	// Newly created word: learning_new_word=1 (default), first_seen_date=NULL
-	seedWord(t, s, "一", "", []string{"one"})
+	wordId := seedWord(t, s, "一", "", []string{"one"})
 
 	count, err := s.CountLearningNewWords(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Must count unseen learning words so the new-word gate works correctly.
+	if count != 0 {
+		t.Errorf("want 0 learning word (unseen), got %d", count)
+	}
+
+	s.AcknowledgeWord(ctx, wordId)
+
+	count, err = s.CountLearningNewWords(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1041,7 +1052,7 @@ func TestSkipWord_AdvancesDueDateByNDays(t *testing.T) {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
 	}
 
-	minDue := before.Add(7 * 24 * time.Hour)
+	minDue := before.Truncate(time.Second).Add(7 * 24 * time.Hour)
 	maxDue := time.Now().UTC().Add(8 * 24 * time.Hour)
 	if p.DueDate.Before(minDue) || p.DueDate.After(maxDue) {
 		t.Errorf("due_date not advanced by ~7 days; got %v (expected between %v and %v)", p.DueDate, minDue, maxDue)

@@ -609,7 +609,7 @@ func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts`
 	switch bucket {
 	case "new":
-		return ` AND p.learning_new_word = 1`
+		return ` AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`
 	case "0-49":
 		return ` AND p.learning_new_word = 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
 	case "50-69":
@@ -829,8 +829,7 @@ func (s *Store) AcknowledgeWord(ctx context.Context, wordID int64) error {
 		`UPDATE sm2_progress
 		 SET total_attempts = CASE WHEN total_attempts = 0 THEN 1 ELSE total_attempts END,
 		     first_seen_date = COALESCE(first_seen_date, date('now')),
-		     due_date = CURRENT_TIMESTAMP,
-		     learning_new_word = 1
+		     due_date = CURRENT_TIMESTAMP
 		 WHERE word_id = ?`, wordID)
 	if err != nil {
 		return fmt.Errorf("acknowledge word: %w", err)
@@ -940,7 +939,7 @@ func (s *Store) CountLearningNewWords(ctx context.Context, tags []string) (int, 
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.learning_new_word = 1`+tagFilter,
+		 WHERE w.language = 'zh' AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`+tagFilter,
 		args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count learning new words: %w", err)
