@@ -352,10 +352,10 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !correct {
-		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), req.WordID, req.Answer, req.Mode)
+		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), req.WordID, req.Answer, req.Mode, langs)
 		if err == nil && found {
 			_ = h.Store.UpsertConfusion(r.Context(), req.WordID, confusedWithID, req.Mode)
-			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode)
+			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode, langs)
 			if err == nil {
 				resp.ConfusedWith = confusions
 			}

@@ -994,11 +994,12 @@ func (s *Store) GetWordCountByDueDate(ctx context.Context, tags []string) ([]mod
 }
 
 // LookupConfusion checks if the user's wrong answer matches a different known word.
-// For zh_to_en / zh_pinyin_to_en: looks for an EN word matching the answer, then
-// returns the zh word it belongs to (if different from zhWordID).
+// For zh_to_en / zh_pinyin_to_en: looks for a translation word (restricted to langs)
+// whose text matches the answer, then returns the zh word it belongs to (if different
+// from zhWordID).
 // For en_to_zh: looks for a ZH word whose text matches the answer (if different from zhWordID).
 // Returns (confusedWithID, true, nil) if a confusion is found, (0, false, nil) if not.
-func (s *Store) LookupConfusion(ctx context.Context, zhWordID int64, answer, mode string) (int64, bool, error) {
+func (s *Store) LookupConfusion(ctx context.Context, zhWordID int64, answer, mode string, langs []string) (int64, bool, error) {
 	normalized := sm2.NormalizeAnswer(answer)
 	if normalized == "" {
 		return 0, false, nil
@@ -1009,13 +1010,26 @@ func (s *Store) LookupConfusion(ctx context.Context, zhWordID int64, answer, mod
 
 	switch mode {
 	case "zh_to_en", "zh_pinyin_to_en":
-		// Find the zh word linked to an EN word whose text matches the answer.
+		// Find the zh word linked to a translation word whose text matches the answer,
+		// restricted to the languages the user has selected.
+		if len(langs) == 0 {
+			langs = []string{"en"}
+		}
+		placeholders := make([]string, len(langs))
+		args := make([]any, 0, len(langs)+2)
+		args = append(args, normalized)
+		for i, l := range langs {
+			placeholders[i] = "?"
+			args = append(args, l)
+		}
+		args = append(args, zhWordID)
 		err = s.db.QueryRowContext(ctx, `
 			SELECT t.zh_word_id FROM words w
 			JOIN translations t ON t.en_word_id = w.id
-			WHERE w.language = 'en' AND LOWER(TRIM(w.text)) = ?
+			WHERE LOWER(TRIM(w.text)) = ?
+			  AND w.language IN (`+strings.Join(placeholders, ",")+`)
 			  AND t.zh_word_id != ?
-			LIMIT 1`, normalized, zhWordID).Scan(&confusedWithID)
+			LIMIT 1`, args...).Scan(&confusedWithID)
 	case "en_to_zh":
 		// Find a ZH word whose text matches the answer.
 		err = s.db.QueryRowContext(ctx, `
@@ -1051,7 +1065,7 @@ func (s *Store) UpsertConfusion(ctx context.Context, zhWordID, confusedWithID in
 }
 
 // GetConfusionDetail returns a single ConfusionDetail for use in the answer response.
-func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string) (*models.ConfusionDetail, error) {
+func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error) {
 	var d models.ConfusionDetail
 	var lastSeen string
 	err := s.db.QueryRowContext(ctx, `
@@ -1074,14 +1088,20 @@ func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID
 		return nil, fmt.Errorf("get confusion detail: %w", err)
 	}
 	d.LastSeen = parseDateTime(lastSeen)
-	var ferr error
-	d.ZhEnTexts, ferr = s.getTranslationTextsForZhWord(ctx, zhWordID, "en")
-	if ferr != nil {
-		return nil, ferr
+	if len(langs) == 0 {
+		langs = []string{"en"}
 	}
-	d.ConfusedWithEnTexts, ferr = s.getTranslationTextsForZhWord(ctx, confusedWithID, "en")
-	if ferr != nil {
-		return nil, ferr
+	for _, lang := range langs {
+		texts, ferr := s.getTranslationTextsForZhWord(ctx, zhWordID, lang)
+		if ferr != nil {
+			return nil, ferr
+		}
+		d.ZhEnTexts = append(d.ZhEnTexts, texts...)
+		texts, ferr = s.getTranslationTextsForZhWord(ctx, confusedWithID, lang)
+		if ferr != nil {
+			return nil, ferr
+		}
+		d.ConfusedWithEnTexts = append(d.ConfusedWithEnTexts, texts...)
 	}
 	return &d, nil
 }
