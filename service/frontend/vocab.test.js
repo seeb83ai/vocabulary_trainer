@@ -7,8 +7,9 @@ function renderProgress(word) {
   if (word.total_attempts === 0) {
     return '<span class="text-gray-400">New</span>';
   }
+  const effCorrect = word.total_correct + (word.streak_bonus || 0);
   const pct = word.total_attempts > 0
-    ? Math.round((word.total_correct / word.total_attempts) * 100)
+    ? Math.round((effCorrect / word.total_attempts) * 100)
     : 0;
   const due = new Date(word.due_date);
   const now = new Date();
@@ -209,49 +210,79 @@ describe('buildFormPayload', () => {
 });
 
 // ── renderDue ─────────────────────────────────────────────────────────────────
-// Inline the fixed function from vocab.js.
+// Inlined from vocab.js (without i18n/HTML, using plain strings for logic).
 
 function renderDue(word) {
-  if (word.total_attempts === 0) {
-    return '<span class="text-gray-400">—</span>';
-  }
-  if (!word.due_date) {
-    return '<span class="text-gray-400">—</span>';
-  }
+  if (word.total_attempts === 0) return 'unseen';
+  if (!word.due_date) return '—';
   const due = new Date(word.due_date);
-  if (isNaN(due.getTime())) {
-    return '<span class="text-gray-400">—</span>';
-  }
+  if (isNaN(due.getTime())) return '—';
   const diffDays = Math.round((due - new Date()) / 86400000);
-  if (diffDays <= 0) return '<span class="text-orange-500">Due</span>';
-  return `<span class="text-gray-500">in ${diffDays}d</span>`;
+  if (diffDays <= 0) return 'due';
+  return `in ${diffDays}d`;
 }
 
 describe('renderDue', () => {
-  it('returns em-dash for unseen words (total_attempts=0)', () => {
-    expect(renderDue({ total_attempts: 0, due_date: null })).toContain('—');
+  it('returns "unseen" when no attempts', () => {
+    expect(renderDue({ total_attempts: 0, due_date: null })).toBe('unseen');
   });
 
   it('returns em-dash for null due_date', () => {
-    expect(renderDue({ total_attempts: 1, due_date: null })).toContain('—');
+    expect(renderDue({ total_attempts: 1, due_date: null })).toBe('—');
   });
 
   it('returns em-dash for invalid date string', () => {
-    expect(renderDue({ total_attempts: 1, due_date: 'not-a-date' })).toContain('—');
+    expect(renderDue({ total_attempts: 1, due_date: 'not-a-date' })).toBe('—');
   });
 
-  it('returns "Due" for past due date', () => {
-    const past = new Date(Date.now() - 86400000 * 2).toISOString();
-    expect(renderDue({ total_attempts: 1, due_date: past })).toContain('Due');
+  it('returns "due" when due_date is in the past', () => {
+    const word = {
+      total_attempts: 5,
+      due_date: new Date(Date.now() - 86400000 * 2).toISOString(),
+    };
+    expect(renderDue(word)).toBe('due');
   });
 
-  it('returns "Due" for due date exactly now', () => {
-    const now = new Date().toISOString();
-    expect(renderDue({ total_attempts: 1, due_date: now })).toContain('Due');
+  it('returns "due" when due_date is now (diff rounds to 0)', () => {
+    const word = {
+      total_attempts: 3,
+      due_date: new Date().toISOString(),
+    };
+    expect(renderDue(word)).toBe('due');
   });
 
-  it('returns "in Nd" for future due date', () => {
-    const future = new Date(Date.now() + 86400000 * 5).toISOString();
-    expect(renderDue({ total_attempts: 1, due_date: future })).toMatch(/in \d+d/);
+  it('returns future days when not yet due', () => {
+    const word = {
+      total_attempts: 5,
+      due_date: new Date(Date.now() + 86400000 * 7).toISOString(),
+    };
+    expect(renderDue(word)).toBe('in 7d');
+  });
+});
+
+// ── missingLangFilter state logic ────────────────────────────────────────────
+// The filter state is a simple string that controls query param sent to API.
+
+function buildMissingLangParam(missingLangFilter) {
+  if (!missingLangFilter) return null;
+  if (missingLangFilter === 'en' || missingLangFilter === 'de') return missingLangFilter;
+  return null;
+}
+
+describe('missingLangFilter state', () => {
+  it('returns null for empty string (no filter)', () => {
+    expect(buildMissingLangParam('')).toBeNull();
+  });
+
+  it('returns "en" for en filter', () => {
+    expect(buildMissingLangParam('en')).toBe('en');
+  });
+
+  it('returns "de" for de filter', () => {
+    expect(buildMissingLangParam('de')).toBe('de');
+  });
+
+  it('returns null for unknown filter value', () => {
+    expect(buildMissingLangParam('fr')).toBeNull();
   });
 });

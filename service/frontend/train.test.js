@@ -138,8 +138,10 @@ function applyResult(doc, result, answer) {
   if (result.learning_new_word || result.graduated) {
     doc.getElementById('attempt-stats').textContent = `Streak: ${result.repetitions} / ${result.graduate_reps}`;
   } else {
+    const eff = result.total_correct + (result.streak_bonus || 0);
     doc.getElementById('attempt-stats').textContent =
-      `Correct: ${result.total_correct} / ${result.total_attempts}`;
+      `Correct: ${eff} / ${result.total_attempts}` +
+      (result.streak_bonus > 0 ? ` (+${result.streak_bonus} streak bonus)` : '');
   }
 }
 
@@ -213,5 +215,90 @@ describe('result area DOM rendering', () => {
     }, 'wrong');
 
     expect(doc.getElementById('attempt-stats').textContent).toBe('Correct: 2 / 5');
+  });
+});
+
+// ── toggleLang state logic ─────────────────────────────────────────────────────
+// Pure state portion of train.js toggleLang (without DOM side-effects).
+
+function toggleLangState(selectedLangs, lang) {
+  if (selectedLangs.includes(lang)) {
+    if (selectedLangs.length <= 1) return [...selectedLangs]; // cannot deselect last
+    return selectedLangs.filter(l => l !== lang);
+  }
+  return [...selectedLangs, lang];
+}
+
+describe('toggleLang state', () => {
+  it('adds a lang when not selected', () => {
+    const result = toggleLangState(['en'], 'de');
+    expect(result).toEqual(['en', 'de']);
+  });
+
+  it('removes a lang when already selected', () => {
+    const result = toggleLangState(['en', 'de'], 'de');
+    expect(result).toEqual(['en']);
+  });
+
+  it('does not remove the last selected lang', () => {
+    const result = toggleLangState(['en'], 'en');
+    expect(result).toEqual(['en']);
+  });
+
+  it('does not duplicate a lang', () => {
+    // Adding 'en' when 'en' is already present and another lang exists
+    // actually triggers the remove branch because includes() returns true.
+    const result = toggleLangState(['en', 'de'], 'en');
+    expect(result).toEqual(['de']);
+  });
+
+  it('keeps selection unchanged when only one lang and trying to remove', () => {
+    const result = toggleLangState(['de'], 'de');
+    expect(result).toEqual(['de']);
+  });
+});
+
+// ── allTransTexts filtering ────────────────────────────────────────────────────
+// Mirrors the logic in train.js that filters translations by selectedLangs.
+
+function buildAllTransTexts(selectedLangs, result) {
+  return [
+    ...(selectedLangs.includes('en') ? (result.en_texts || []) : []),
+    ...(selectedLangs.includes('de') ? (result.de_texts || []) : []),
+  ];
+}
+
+describe('allTransTexts', () => {
+  it('includes EN texts when en is selected', () => {
+    const texts = buildAllTransTexts(['en'], { en_texts: ['hello'], de_texts: ['hallo'] });
+    expect(texts).toContain('hello');
+    expect(texts).not.toContain('hallo');
+  });
+
+  it('includes DE texts when de is selected', () => {
+    const texts = buildAllTransTexts(['de'], { en_texts: ['hello'], de_texts: ['hallo'] });
+    expect(texts).toContain('hallo');
+    expect(texts).not.toContain('hello');
+  });
+
+  it('includes both when both are selected', () => {
+    const texts = buildAllTransTexts(['en', 'de'], { en_texts: ['hello'], de_texts: ['hallo'] });
+    expect(texts).toContain('hello');
+    expect(texts).toContain('hallo');
+  });
+
+  it('handles missing en_texts gracefully', () => {
+    const texts = buildAllTransTexts(['en', 'de'], { de_texts: ['hallo'] });
+    expect(texts).toEqual(['hallo']);
+  });
+
+  it('handles missing de_texts gracefully', () => {
+    const texts = buildAllTransTexts(['en', 'de'], { en_texts: ['hello'] });
+    expect(texts).toEqual(['hello']);
+  });
+
+  it('returns empty array when no langs selected', () => {
+    const texts = buildAllTransTexts([], { en_texts: ['hello'], de_texts: ['hallo'] });
+    expect(texts).toEqual([]);
   });
 });

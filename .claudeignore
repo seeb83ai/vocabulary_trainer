@@ -1,0 +1,14 @@
+dictionary.txt
+chinese_a1.txt
+
+package-lock.json
+
+images/
+deploy/
+data/
+node_modules/
+
+.env
+.env.example
+
+*.sh

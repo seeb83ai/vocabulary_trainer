@@ -17,8 +17,9 @@ type TranslateHandler struct {
 }
 
 type translateRequest struct {
-	ZhText string `json:"zh_text"`
-	EnText string `json:"en_text"`
+	ZhText     string `json:"zh_text"`
+	EnText     string `json:"en_text"`
+	TargetLang string `json:"target_lang"`
 }
 
 type translateResponse struct {
@@ -44,12 +45,17 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 
 	resp := translateResponse{ZhText: req.ZhText, EnText: req.EnText}
 
+	targetLang := h.TargetLang
+	if req.TargetLang != "" {
+		targetLang = strings.ToUpper(req.TargetLang)
+	}
+
 	if req.ZhText != "" && req.EnText == "" {
 		// Chinese provided → translate to target language (request multiple meanings)
 		instructions := []string{
 			"If this word has multiple distinct meanings in the target language, list up to 3 translations separated by ' / '. Only include genuinely different meanings, not synonyms.",
 		}
-		translated, err := deeplTranslate([]string{req.ZhText}, h.TargetLang, "ZH", h.APIKey, instructions)
+		translated, err := deeplTranslate([]string{req.ZhText}, targetLang, "ZH", h.APIKey, instructions)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
 			return
@@ -59,7 +65,7 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		resp.EnTexts = parts
 		resp.Pinyin = toPinyin(req.ZhText)
 	} else if req.EnText != "" && req.ZhText == "" {
-		// Target language provided → translate to Chinese
+		// Source language text provided → translate to Chinese
 		translated, err := deeplTranslate([]string{req.EnText}, "ZH", "", h.APIKey, nil)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
@@ -91,9 +97,12 @@ func Pinyin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"pinyin": toPinyin(req.ZhText)})
 }
 
-func Config(deeplEnabled bool) http.HandlerFunc {
+func Config(deeplEnabled, llmEnabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]bool{"deepl_enabled": deeplEnabled})
+		writeJSON(w, http.StatusOK, map[string]bool{
+			"deepl_enabled": deeplEnabled,
+			"llm_enabled":   llmEnabled,
+		})
 	}
 }
 

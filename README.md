@@ -13,6 +13,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
 - **Training stats** — daily progress tracking: attempts, mistakes, accuracy, words known, new words learned, and best correct streak; view a Chart.js bar/line chart of the full history and a detailed table of the last 14 days on the `/stats` page
 - **Word-level statistics** — real-time aggregate stats for all seen words on the `/stats` page: correctness milestones (1+/3+/5+/10+ correct), accuracy distribution (doughnut chart), avg/median/P95 of correct answers, attempts, accuracy, and ease factor; tables of the 5 hardest and 5 most-practiced words with translations; includes an info box explaining SM-2 ease factor and all metrics
+- **Due date distribution** — bar chart on the `/stats` page showing how many words are due on each day over the next 30 days; includes tag filter chips to narrow the view to specific word groups
 - **Confusion tracking** — if your wrong answer is a valid translation of a *different* known word, it is recorded as a confusion pair (works in all quiz modes); a yellow hint box shows immediately on the result screen, and the full history is visible on the `/mismatches` page
 - 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS, built into the binary), falls back silently to the browser's Web Speech API
 - **Tags** — assign tags to vocabulary words (e.g. "HSK1", "food", "travel"); filter by tag on both the vocabulary list and training page (OR logic when multiple tags selected); tags are created on-the-fly via an autocomplete input and cleaned up automatically when no longer used
@@ -20,6 +21,9 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - Vocabulary management: add, edit, delete, search, paginate, sort by any column; SM-2 progress shown per word
 - Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
 - Bulk import from a structured text file (see `service/cmd/import`)
+- **Character breakdown** — on the training screen, a collapsible "Character breakdown" block appears below each Chinese character; click to reveal radical, definition, etymology hint, and component parts with their meanings (data from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported via `service/cmd/import-hanzi`)
+- **Hanzi Movie Method mnemonics** — for single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorise characters by mapping pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`; compose scenes in the vocabulary edit form; saved scenes appear automatically during training (expanded on wrong answers, collapsed on correct). Choices are remembered globally — set an actor for "b" once and it pre-fills everywhere
+- **Pinyin listening training** — dedicated `/pinyin` page for tone and sound discrimination; hear a pinyin syllable and identify it via multiple choice (learning phase) or typed answer e.g. `ba1` (review phase); SM-2 spaced repetition tracks progress per sound; ~1,600 syllable/tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection; filter by consonant group (b/p/m/f, zh/ch/sh/r, etc.); confusion tracking for commonly mixed-up sounds
 - HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `service/cmd/import-hsk`)
 - Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
 - SQLite database stored on the host filesystem
@@ -107,13 +111,28 @@ The training page and vocabulary list show a **New** tier badge for words still 
 
 **Accuracy tiers:**
 
+Tier assignment uses **effective accuracy** = `(total_correct + streak_bonus) / total_attempts`. The `streak_bonus` accelerates recovery from initial mistakes — see "Streak bonus" below.
+
 | Tier | Criteria |
 |---|---|
 | **New** | `learning_new_word = true` (still in learning phase) |
-| **Struggling** | `< 3 attempts` or `accuracy < 50%` |
-| **Learning** | `≥ 3 attempts` and `50% ≤ accuracy < 70%` |
-| **Practicing** | `≥ 10 attempts` and `70% ≤ accuracy < 85%` |
-| **Mastered** | `≥ 10 attempts` and `accuracy ≥ 85%` |
+| **Struggling** | `< 3 attempts` or `effective accuracy < 50%` |
+| **Learning** | `≥ 3 attempts` and `50% ≤ effective accuracy < 70%` |
+| **Practicing** | `≥ 10 attempts` and `70% ≤ effective accuracy < 85%` |
+| **Mastered** | `≥ 10 attempts` and `effective accuracy ≥ 85%` |
+
+**Streak bonus:**
+
+When you answer a word correctly multiple times in a row, the system grants a `streak_bonus` that boosts effective accuracy to match the bucket for your current streak length:
+
+| Consecutive correct (streak) | Target bucket | Min effective accuracy |
+|---|---|---|
+| < 3 | _(no boost)_ | — |
+| 3–5 | Learning | 50% |
+| 6–8 | Practicing | 70% |
+| ≥ 9 | Mastered | 85% |
+
+The bonus is calculated as the minimum value needed to reach the target accuracy threshold. It **never decreases** — once earned, it persists even if the streak later breaks. However, wrong answers naturally dilute the bonus over time because `total_attempts` grows while `streak_bonus` stays fixed. The training page shows effective accuracy with a "(+N streak bonus)" indicator when a bonus is active.
 
 **Skip vs Got it:**
 - **Got it** marks the word as introduced, enters the learning phase, and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.
@@ -136,6 +155,32 @@ When enabled, an **Auto-translate** button appears in the Add/Edit Word form. It
 
 Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin is generated server-side using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser — all DeepL calls are proxied through the backend.
 
+## LLM scene generation
+
+The Hanzi Movie Method scene builder can call an LLM to generate mnemonic scenes automatically. Set one of the following provider configurations to enable the **Generate scene** button:
+
+**Cloud providers** (one key is enough):
+
+```bash
+OPENAI_API_KEY=sk-...
+# or
+ANTHROPIC_API_KEY=sk-ant-...
+# or
+GEMINI_API_KEY=AI...
+```
+
+**Local / private model** (takes priority over cloud keys when set):
+
+```bash
+LOCAL_LLM_URL=http://localhost:11434   # base URL of your local server
+LOCAL_LLM_MODEL=llama3.1               # model name as known to that server
+LOCAL_LLM_API_KEY=                     # optional bearer token (e.g. LM Studio)
+```
+
+`LOCAL_LLM_URL` and `LOCAL_LLM_MODEL` must both be set to activate the local provider. The server must expose an OpenAI-compatible chat completions endpoint at `POST /v1/chat/completions`. This works with [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), [LocalAI](https://localai.io), vLLM, and any other OpenAI-compatible server.
+
+When a local model is configured it takes precedence over any cloud API keys that may also be present. If the local server is unreachable or returns an error when a scene is requested, the next configured provider is tried automatically — no restart required.
+
 ## Makefile targets
 
 | Target | Description |
@@ -148,6 +193,7 @@ Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin
 | `make tidy` | Tidy Go module dependencies |
 | `make import` | Import vocabulary from a text file (see below) |
 | `make import-hsk` | Fetch and import HSK 1–6 vocabulary from mandarinbean.com (see below) |
+| `make import-pinyin` | Import pinyin audio files for listening training (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
 | `make test` | Run all Go and JS tests |
 | `make clean` | Stop containers and remove build artifacts |
@@ -213,6 +259,59 @@ table is translated via the [DeepL API](https://www.deepl.com/en/products/api) b
 being stored. Translations are always stored as `language='en'` rows so the existing quiz
 logic works unchanged. If `DEEPL_API_KEY` is not set, the original English text is used
 and a warning is printed.
+
+### Character decomposition import (makemeahanzi)
+
+Import character decomposition data from the [makemeahanzi](https://github.com/skishore/makemeahanzi)
+project's `dictionary.txt` file. This enables the "Character breakdown" feature on the training screen.
+
+1. Download `dictionary.txt` from the makemeahanzi repository into the project root
+2. Run the import:
+
+```bash
+make import-hanzi                          # uses dictionary.txt in project root
+make import-hanzi FILE=/path/to/dictionary.txt  # custom path
+```
+
+Or directly:
+
+```bash
+cd service && go run ./cmd/import-hanzi -db ../data/vocab.db -file ../dictionary.txt
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-file` | *(required)* | Path to makemeahanzi `dictionary.txt` |
+| `-dry-run` | false | Parse and validate without writing |
+
+### Pinyin audio import
+
+Import pinyin pronunciation audio files from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. This enables the `/pinyin` listening training page.
+
+1. Clone the audio repository:
+```bash
+git clone https://github.com/davinfifield/mp3-chinese-pinyin-sound.git
+```
+
+2. Import the audio files:
+```bash
+make import-pinyin SOURCE=mp3-chinese-pinyin-sound/mp3
+```
+
+Or directly:
+```bash
+cd service && go run ./cmd/import-pinyin -source ../mp3-chinese-pinyin-sound/mp3
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-source` | `mp3` | Directory containing pinyin MP3 files (e.g. `ba1.mp3`) |
+| `-audio-dir` | `data/pinyin-audio` | Destination directory for audio files |
+| `-dry-run` | false | Parse files without writing to DB or copying |
+
+Audio files are stored in `PINYIN_AUDIO_DIR` (default: `data/pinyin-audio/`). Set this environment variable to override the default location.
 
 ## Deploy to Raspberry Pi
 
@@ -289,28 +388,41 @@ vocabulary_trainer/
 ├── service/                 # All Go source and embedded frontend
 │   ├── main.go              # Server entry point, router, embedded static files
 │   ├── go.mod / go.sum
-│   ├── db/
-│   │   ├── migrate.go       # Version-based schema migrations
-│   │   └── db.go            # Data access layer (Store)
 │   ├── handlers/
 │   │   ├── quiz.go          # GET /api/quiz/next, POST /api/quiz/answer, GET /api/quiz/stats
+│   │   ├── pinyin_quiz.go   # GET /api/pinyin-quiz/next, POST /api/pinyin-quiz/answer, GET /api/pinyin-quiz/stats
 │   │   ├── words.go         # CRUD /api/words + POST /api/words/{id}/translations
+│   │   ├── hmm.go           # Hanzi Movie Method — library CRUD, scene builder, pinyin parsing
 │   │   ├── mismatches.go    # GET /api/mismatches
 │   │   ├── translate.go     # POST /api/translate, GET /api/config — DeepL proxy + pinyin
-│   │   └── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
+│   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
+│   │   └── hanzi.go         # GET /api/hanzi/decompose — character decomposition
 │   ├── models/models.go     # Shared structs and mode constants
-│   ├── sm2/sm2.go           # SM-2 algorithm, answer checking, variant expansion
+│   ├── sm2/
+│   │   ├── sm2.go           # SM-2 algorithm, answer checking, variant expansion
+│   │   └── pinyin.go        # Tone mark conversion, pinyin answer parsing
 │   ├── tts/tts.go           # Microsoft Edge TTS WebSocket client
+│   ├── db/
+│   │   ├── migrate.go       # Version-based schema migrations
+│   │   ├── db.go            # Data access layer (Store) — vocabulary
+│   │   └── pinyin.go        # Data access layer — pinyin listening
 │   ├── cmd/import/main.go   # Standalone vocabulary import tool (text file)
 │   ├── cmd/import-hsk/main.go # HSK vocabulary import from mandarinbean.com
+│   ├── cmd/import-hanzi/main.go # makemeahanzi character decomposition import
+│   ├── cmd/import-pinyin/main.go # Pinyin audio import tool
 │   └── frontend/
 │       ├── index.html       # Training page
+│       ├── pinyin.html      # Pinyin listening training page
 │       ├── vocab.html       # Vocabulary management page
+│       ├── mnemonics.html   # HMM mnemonic library settings page
 │       ├── mismatches.html  # Confusion pairs page
 │       ├── stats.html       # Training stats page
 │       ├── app.js           # Shared fetch utilities and DOM helpers
 │       ├── train.js         # Training page logic
+│       ├── pinyin.js        # Pinyin listening training logic
 │       ├── vocab.js         # Vocabulary management logic
+│       ├── hmm-builder.js   # Reusable HMM scene builder component
+│       ├── mnemonics.js     # HMM library settings page logic
 │       ├── mismatches.js    # Confusion pairs page logic
 │       └── stats.js         # Training stats page logic
 ├── deploy/
@@ -330,6 +442,7 @@ vocabulary_trainer/
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
+| `GET` | `/api/quiz/due-date-distribution` | Get word counts grouped by due date for the next 30 days (`tags` query param) |
 | `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |
 | `POST` | `/api/words` | Create a vocabulary entry |
 | `GET` | `/api/words/{id}` | Get a single word with translations |
@@ -341,6 +454,24 @@ vocabulary_trainer/
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
+| `GET` | `/api/hanzi/decompose` | Decompose Chinese characters into radicals and components (`chars` query param, max 20) |
+| `GET` | `/api/hmm/actors` | List all HMM actor mappings (pinyin initial → person) |
+| `PUT` | `/api/hmm/actors/{initial}` | Update actor name for an initial |
+| `GET` | `/api/hmm/locations` | List all HMM location mappings (pinyin final → place) |
+| `PUT` | `/api/hmm/locations/{final}` | Update location name for a final |
+| `GET` | `/api/hmm/tone-rooms` | List all HMM tone room mappings (tone → room) |
+| `PUT` | `/api/hmm/tone-rooms/{tone}` | Update room name for a tone |
+| `GET` | `/api/hmm/props` | List all HMM prop mappings (radical → object) |
+| `PUT` | `/api/hmm/props` | Create or update a prop mapping |
+| `DELETE` | `/api/hmm/props/{radical}` | Delete a prop mapping |
+| `GET` | `/api/words/{id}/hmm/context` | Get HMM scene context for a word (parsed pinyin, radicals, library lookups) |
+| `PUT` | `/api/words/{id}/hmm` | Save mnemonic scene and auto-update library |
+| `DELETE` | `/api/words/{id}/hmm` | Delete mnemonic scene |
+| `GET` | `/api/pinyin-quiz/next` | Get the next pinyin sound to study (`tags` query param) |
+| `POST` | `/api/pinyin-quiz/answer` | Submit a pinyin listening answer |
+| `GET` | `/api/pinyin-quiz/stats` | Get pinyin due-today and total counts (`tags` query param) |
+| `GET` | `/api/pinyin-quiz/audio/{filename}` | Serve a pinyin pronunciation MP3 file |
+| `GET` | `/api/pinyin-quiz/tags` | List pinyin consonant group tags |
 
 ## License
 

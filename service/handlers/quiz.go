@@ -21,6 +21,49 @@ type QuizHandler struct {
 	newCapBase   int    // newToday count at cap-reset time; cap = newCapBase + MaxNewPerDay
 }
 
+// wordTier returns the accuracy bucket label for a progress record.
+// Must stay in sync with wordTier() in app.js and tierFilter() in db.go.
+func wordTier(p models.SM2Progress) string {
+	if p.TotalAttempts == 0 {
+		return ""
+	}
+	if p.LearningNewWord {
+		return "New"
+	}
+	acc := float64(p.TotalCorrect+p.StreakBonus) / float64(p.TotalAttempts)
+	switch {
+	case p.TotalAttempts >= 10 && acc >= 0.85:
+		return "Mastered"
+	case p.TotalAttempts >= 10 && acc >= 0.70:
+		return "Practicing"
+	case p.TotalAttempts >= 3 && acc >= 0.50:
+		return "Learning"
+	default:
+		return "Struggling"
+	}
+}
+
+// Langs returns the distinct translation languages available in the database.
+func (h *QuizHandler) Langs(w http.ResponseWriter, r *http.Request) {
+	langs, err := h.Store.GetTranslationLanguages(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if langs == nil {
+		langs = []string{}
+	}
+	writeJSON(w, http.StatusOK, langs)
+}
+
+// parseLangs extracts the "langs" query param (comma-separated) or returns ["en"].
+func parseLangs(r *http.Request) []string {
+	if l := r.URL.Query().Get("langs"); l != "" {
+		return strings.Split(l, ",")
+	}
+	return []string{"en"}
+}
+
 // Next returns the next card to study.
 func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	var tags []string
@@ -38,11 +81,42 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		cap = h.newCapBase + extra
 	}
 	h.mu.Unlock()
-	word, progress, err := h.Store.GetNextCard(r.Context(), tags, cap, bucket)
+	skipNew := r.URL.Query().Get("skip_new") == "true"
+	word, progress, err := h.Store.GetNextCard(r.Context(), tags, cap, bucket, skipNew)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
+
+	// Ensure progress rows exist for any newly-named library entries.
+	if err := h.Store.EnsureHMMProgress(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Interleave due HMM mnemonic cards.
+	hmmCard, _, hmmErr := h.Store.GetNextDueHMMCard(r.Context(), nil)
+	if hmmErr != nil {
+		writeError(w, http.StatusInternalServerError, hmmErr.Error())
+		return
+	}
+	if hmmCard != nil {
+		serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
+		if serveHMM {
+			writeJSON(w, http.StatusOK, models.QuizCard{
+				CardType:     "hmm",
+				EntityType:   hmmCard.EntityType,
+				EntityKey:    hmmCard.EntityKey,
+				Prompt:       hmmCard.Prompt,
+				Category:     hmmCard.Category,
+				Hint:         hmmCard.Hint,
+				DueDate:      hmmCard.DueDate,
+				IntervalDays: hmmCard.IntervalDays,
+			})
+			return
+		}
+	}
+
 	if word == nil {
 		writeError(w, http.StatusNotFound, "no words available")
 		return
@@ -52,23 +126,31 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	// Progressive mode: new words (total_attempts==0) are shown as introductions
 	if progress.TotalAttempts == 0 {
-		enWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, "en")
-		if err != nil {
-			internalError(w, err)
-			return
-		}
-		enTexts := make([]string, len(enWords))
-		for i, ew := range enWords {
-			enTexts[i] = ew.Text
-		}
+		langs := parseLangs(r)
 		card := models.QuizCard{
 			WordID:       word.ID,
 			Mode:         models.ModeNewWord,
 			Prompt:       word.Text,
 			Pinyin:       word.Pinyin,
-			EnTexts:      enTexts,
 			DueDate:      progress.DueDate,
 			IntervalDays: progress.IntervalDays,
+		}
+		for _, lang := range langs {
+			transWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			texts := make([]string, len(transWords))
+			for i, tw := range transWords {
+				texts[i] = tw.Text
+			}
+			switch lang {
+			case "en":
+				card.EnTexts = texts
+			case "de":
+				card.DeTexts = texts
+			}
 		}
 		writeJSON(w, http.StatusOK, card)
 		return
@@ -79,7 +161,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	case models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn:
 		mode = requestedMode
 	case models.ModeProgressive:
-		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts)
+		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus)
 	default:
 		mode = sm2.SelectMode()
 	}
@@ -99,14 +181,27 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	switch mode {
 	case models.ModeEnToZh:
-		enWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, "en")
-		if err != nil || len(enWords) == 0 {
+		langs := parseLangs(r)
+		// Find the first selected lang that has translations; use it as prompt.
+		var promptWords []models.Word
+		for _, lang := range langs {
+			words, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			if len(words) > 0 {
+				promptWords = words
+				break
+			}
+		}
+		if len(promptWords) == 0 {
 			card.Mode = models.ModeZhToEn
 			card.Prompt = word.Text
 		} else {
-			card.Prompt = enWords[0].Text
-			for _, ew := range enWords {
-				card.EnTexts = append(card.EnTexts, ew.Text)
+			card.Prompt = promptWords[0].Text
+			for _, pw := range promptWords {
+				card.EnTexts = append(card.EnTexts, pw.Text)
 			}
 			// For learning words, send a masked pinyin hint based on progress
 			if progress.LearningNewWord && word.Pinyin != nil {
@@ -158,18 +253,24 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	langs := req.Langs
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
 	var correctTexts []string
 	switch req.Mode {
 	case models.ModeEnToZh:
 		correctTexts = []string{zhWord.ZhText}
 	case models.ModeZhToEn, models.ModeZhPinyinToEn:
-		enWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, "en")
-		if err != nil {
-			internalError(w, err)
-			return
-		}
-		for _, ew := range enWords {
-			correctTexts = append(correctTexts, ew.Text)
+		for _, lang := range langs {
+			transWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, lang)
+			if err != nil {
+				internalError(w, err)
+				return
+			}
+			for _, tw := range transWords {
+				correctTexts = append(correctTexts, tw.Text)
+			}
 		}
 	}
 
@@ -188,6 +289,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "progress not found")
 		return
 	}
+	prevTier := wordTier(*progress)
 
 	var updated models.SM2Progress
 	var graduated bool
@@ -206,6 +308,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			updated.TotalCorrect++
 		}
 	}
+	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -216,7 +319,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = h.Store.RecordDailyStat(r.Context(), correct)
+	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), correct)
 
 	resp := models.AnswerResponse{
 		Correct:         correct,
@@ -224,14 +327,28 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		ZhText:          zhWord.ZhText,
 		Pinyin:          zhWord.Pinyin,
 		EnTexts:         zhWord.EnTexts,
+		DeTexts:         zhWord.DeTexts,
 		NextDue:         updated.DueDate,
 		IntervalDays:    updated.IntervalDays,
 		TotalCorrect:    updated.TotalCorrect,
 		TotalAttempts:   updated.TotalAttempts,
+		StreakBonus:     updated.StreakBonus,
 		Repetitions:     updated.Repetitions,
 		GraduateReps:    sm2.LearningGraduateReps,
 		LearningNewWord: updated.LearningNewWord,
 		Graduated:       graduated,
+	}
+
+	resp.SceneText, _ = h.Store.GetHMMSceneText(r.Context(), req.WordID)
+
+	if correct {
+		if sessionStreak > 1 {
+			resp.SessionStreak = sessionStreak
+		}
+		resp.Tier = wordTier(updated)
+		if prevTier != "" && prevTier != resp.Tier {
+			resp.PrevTier = prevTier
+		}
 	}
 
 	if !correct {
@@ -380,6 +497,11 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			newAvailable = n
 		}
 	}
+	hmmStats, err := h.Store.GetHMMStats(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]int{
 		"due_today":            due,
 		"total":                total,
@@ -389,7 +511,26 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"today_mistakes":       todayMistakes,
 		"available_to_advance": availableToAdvance,
 		"new_available":        newAvailable,
+		"hmm_due_today":        hmmStats.DueToday,
+		"hmm_total":            hmmStats.Total,
 	})
+}
+
+// DueDateDistribution returns word counts grouped by due date, optionally filtered by tags.
+func (h *QuizHandler) DueDateDistribution(w http.ResponseWriter, r *http.Request) {
+	var tags []string
+	if t := r.URL.Query().Get("tags"); t != "" {
+		tags = strings.Split(t, ",")
+	}
+	dates, err := h.Store.GetWordCountByDueDate(r.Context(), tags)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if dates == nil {
+		dates = []models.DueDateCount{}
+	}
+	writeJSON(w, http.StatusOK, models.DueDateDistributionResponse{Dates: dates})
 }
 
 // Advance pulls forward the due dates of n seen zh words so they become due now,

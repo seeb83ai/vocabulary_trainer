@@ -39,7 +39,9 @@ func NewAuthHandler(username, password string) (*AuthHandler, error) {
 // API requests receive 401 JSON; page requests redirect to /login.
 func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/login" || strings.HasPrefix(r.URL.Path, "/api/login") || r.URL.Path == "/api/auth/status" {
+		p := r.URL.Path
+		if p == "/login" || strings.HasPrefix(p, "/api/login") || p == "/api/auth/status" ||
+			strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
 			next.ServeHTTP(w, r)
 			return
 		}

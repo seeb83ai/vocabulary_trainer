@@ -11,6 +11,7 @@ import (
 	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
+	"vocabulary_trainer/llm"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -78,9 +79,40 @@ func main() {
 	}
 	log.Printf("Daily new-word cap: %d (set MAX_NEW_WORDS to change)", maxNewWords)
 
+	pinyinAudioDir := os.Getenv("PINYIN_AUDIO_DIR")
+
+	pinyinAudioDirs := []string{}
+	if extra := os.Getenv("PINYIN_AUDIO_DIRS"); extra != "" {
+		for _, d := range strings.Split(extra, ":") {
+			if d = strings.TrimSpace(d); d != "" {
+				pinyinAudioDirs = append(pinyinAudioDirs, d)
+			}
+		}
+	} else if pinyinAudioDir == "" {
+		pinyinAudioDirs = append(pinyinAudioDirs, filepath.Join(filepath.Dir(dbPath), "pinyin-audio"))
+	} else {
+		pinyinAudioDirs = append(pinyinAudioDirs, pinyinAudioDir)
+	}
+	log.Printf("Pinyin audio dirs: %v", pinyinAudioDirs)
+
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
+	hanziH := &handlers.HanziHandler{Store: store}
+	hmmDeepLKey := ""
+	if translateH != nil {
+		hmmDeepLKey = translateH.APIKey
+	}
+	hmmH := &handlers.HMMHandler{Store: store, DeepLAPIKey: hmmDeepLKey}
+	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
+	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDirs: pinyinAudioDirs}
+
+	llmClient := llm.NewClientFromEnv()
+	var llmH *handlers.LLMHandler
+	if llmClient != nil {
+		llmH = &handlers.LLMHandler{Client: llmClient, Store: store}
+		log.Printf("LLM enabled: provider=%s", llmClient.Name())
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -106,12 +138,14 @@ func main() {
 		}
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
+		r.Get("/quiz/langs", quizH.Langs)
 		r.Post("/quiz/skip", quizH.Skip)
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)
 		r.Post("/quiz/advance", quizH.Advance)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Get("/quiz/word-stats", quizH.WordStats)
+		r.Get("/quiz/due-date-distribution", quizH.DueDateDistribution)
 		r.Route("/words", func(r chi.Router) {
 			r.Get("/", wordsH.List)
 			r.Post("/", wordsH.Create)
@@ -122,13 +156,38 @@ func main() {
 				r.Delete("/", wordsH.Delete)
 				r.Post("/translations", wordsH.AddTranslation)
 				r.Post("/review", wordsH.MarkReview)
+				r.Get("/hmm/context", hmmH.GetSceneContext)
+				r.Put("/hmm", hmmH.SaveScene)
+				r.Delete("/hmm", hmmH.DeleteScene)
+				if llmH != nil {
+					r.Post("/hmm/generate-scene", llmH.GenerateScene)
+				}
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
+		r.Get("/hanzi/decompose", hanziH.Decompose)
 		r.Post("/pinyin", handlers.Pinyin)
-		r.Get("/config", handlers.Config(translateH != nil))
+		r.Route("/hmm", func(r chi.Router) {
+			r.Get("/actors", hmmH.GetActors)
+			r.Put("/actors/{initial}", hmmH.UpdateActor)
+			r.Get("/locations", hmmH.GetLocations)
+			r.Put("/locations/{final}", hmmH.UpdateLocation)
+			r.Get("/tone-rooms", hmmH.GetToneRooms)
+			r.Put("/tone-rooms/{tone}", hmmH.UpdateToneRoom)
+			r.Get("/props", hmmH.GetProps)
+			r.Put("/props", hmmH.UpsertProp)
+			r.Delete("/props/{radical}", hmmH.DeleteProp)
+		})
+		r.Get("/pinyin-quiz/next", pinyinQuizH.Next)
+		r.Post("/pinyin-quiz/answer", pinyinQuizH.Answer)
+		r.Get("/pinyin-quiz/stats", pinyinQuizH.Stats)
+		r.Get("/pinyin-quiz/daily-stats", pinyinQuizH.DailyStats)
+		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
+		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
+		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
+		r.Get("/config", handlers.Config(translateH != nil, llmH != nil))
 		if translateH != nil {
 			r.Post("/translate", translateH.Translate)
 		}
@@ -154,8 +213,14 @@ func main() {
 	r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "stats.html")
 	})
+	r.Get("/mnemonics", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "mnemonics.html")
+	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "login.html")
+	})
+	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "pinyin.html")
 	})
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)

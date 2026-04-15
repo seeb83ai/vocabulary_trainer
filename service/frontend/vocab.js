@@ -14,6 +14,7 @@ let reviewFilterActive = false;
 let hideUnseenActive = true;
 let selectedTierFilter = '';
 let dueFilter = '';
+let missingLangFilter = '';
 
 async function loadWords() {
   const params = new URLSearchParams({
@@ -39,6 +40,9 @@ async function loadWords() {
   }
   if (dueFilter) {
     params.set('due', dueFilter);
+  }
+  if (missingLangFilter) {
+    params.set('missing_lang', missingLangFilter);
   }
   try {
     const data = await apiFetch(`/api/words?${params}`);
@@ -66,7 +70,7 @@ function renderTable(words) {
   tbody.innerHTML = '';
   if (!words || words.length === 0) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="6" class="text-center py-8 text-gray-500">No vocabulary entries found.</td>`;
+    tr.innerHTML = `<td colspan="7" class="text-center py-8 text-gray-500">${escHtml(t('vocab.noEntries'))}</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -77,18 +81,21 @@ function renderTable(words) {
       <td class="py-3 px-4 text-lg font-medium">
         <span class="mr-1">${escHtml(word.zh_text)}</span>
         <button class="btn-play text-base text-gray-400 hover:text-blue-500 transition leading-none align-middle" data-id="${word.id}" data-zh="${escHtml(word.zh_text)}" title="Read aloud">🔊</button>
-        ${word.needs_review ? '<span class="inline-block bg-orange-100 text-orange-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">review</span>' : ''}
+        ${word.needs_review ? `<span class="inline-block bg-orange-100 text-orange-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(t('vocab.review'))}</span>` : ''}
+        ${(word.tags || []).map(tag => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(tag)}</span>`).join('')}
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
-      <td class="py-3 px-4">
-        ${word.en_texts.map(escHtml).join(', ')}
-        ${(word.tags || []).map(t => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1">${escHtml(t)}</span>`).join('')}
+      <td class="py-3 px-4 text-gray-600">
+        ${(word.en_texts && word.en_texts.length) ? word.en_texts.map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
+      </td>
+      <td class="py-3 px-4 text-gray-600">
+        ${(word.de_texts && word.de_texts.length) ? word.de_texts.map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
       </td>
       <td class="py-3 px-4 whitespace-nowrap">${renderTierBadge(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderDue(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap">
-        <button class="btn-edit text-blue-600 hover:text-blue-800 mr-3 font-medium" data-id="${word.id}">Edit</button>
-        <button class="btn-delete text-red-600 hover:text-red-800 font-medium" data-id="${word.id}">Delete</button>
+        <button class="btn-edit text-blue-600 hover:text-blue-800 mr-3 font-medium" data-id="${word.id}">${escHtml(t('vocab.edit'))}</button>
+        <button class="btn-delete text-red-600 hover:text-red-800 font-medium" data-id="${word.id}">${escHtml(t('vocab.delete'))}</button>
       </td>`;
     tbody.appendChild(tr);
   }
@@ -140,7 +147,7 @@ function renderPagination(total, page, ppSize) {
   }
 
   // Total count
-  setText('page-total', `${total} entries`);
+  setText('page-total', t('vocab.entries', { n: total }));
 
   // Per-page dropdown
   $('per-page-select').value = ppSize;
@@ -161,9 +168,12 @@ function makePageBtn(pageNum, activePage) {
 
 function openEditForm(word) {
   editingWordId = word.id;
-  setText('form-title', 'Edit Word');
+  setText('form-title', t('vocab.editWord'));
   $('form-zh').value = word.zh_text;
   $('form-pinyin').value = word.pinyin || '';
+  const hanziwayLink = $('hanziway-link');
+  hanziwayLink.href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(word.zh_text);
+  show('hanziway-link');
   show('form-cancel-btn');
 
   let notice = $('review-notice');
@@ -172,7 +182,7 @@ function openEditForm(word) {
       notice = document.createElement('p');
       notice.id = 'review-notice';
       notice.className = 'text-sm text-orange-600 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2';
-      notice.textContent = 'This word is flagged for review — the flag will be cleared when you save.';
+      notice.textContent = t('vocab.reviewNotice');
       $('word-form').prepend(notice);
     }
   } else if (notice) {
@@ -185,6 +195,12 @@ function openEditForm(word) {
     addEnInput(t);
   }
 
+  const deContainer = $('de-inputs-container');
+  deContainer.innerHTML = '';
+  for (const t of ((word.de_texts && word.de_texts.length) ? word.de_texts : [''])) {
+    addDeInput(t);
+  }
+
   formTags = [...(word.tags || [])];
   renderFormTags();
 
@@ -195,18 +211,31 @@ function openEditForm(word) {
     hide('start-training-row');
   }
 
+  // HMM scene builder
+  const hmmContainer = $('hmm-builder-container');
+  if (word.id) {
+    hmmContainer.classList.remove('hidden');
+    loadHMMBuilder('hmm-builder-container', word.id, { zh: word.zh_text, en: word.en_texts || [] });
+  } else {
+    hmmContainer.classList.add('hidden');
+    hmmContainer.innerHTML = '';
+  }
+
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
   $('form-zh').focus();
 }
 
 function resetForm() {
   editingWordId = null;
-  setText('form-title', 'Add Word');
+  setText('form-title', t('vocab.addWord'));
   $('form-zh').value = '';
   $('form-pinyin').value = '';
   hide('form-cancel-btn');
+  hide('hanziway-link');
   $('en-inputs-container').innerHTML = '';
   addEnInput('');
+  $('de-inputs-container').innerHTML = '';
+  addDeInput('');
   formTags = [];
   renderFormTags();
   $('form-tag-input').value = '';
@@ -214,6 +243,8 @@ function resetForm() {
   if (notice) notice.remove();
   show('start-training-row');
   $('form-start-training').checked = false;
+  $('hmm-builder-container').classList.add('hidden');
+  $('hmm-builder-container').innerHTML = '';
 }
 
 function addEnInput(value = '') {
@@ -222,9 +253,23 @@ function addEnInput(value = '') {
   wrapper.className = 'flex items-center gap-2 mb-2';
   wrapper.innerHTML = `
     <input type="text" class="en-input flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-           placeholder="English translation" value="${escHtml(value)}">
+           placeholder="${escHtml(t('vocab.englishPlaceholder'))}" value="${escHtml(value)}">
     <button type="button" class="btn-remove-en text-gray-400 hover:text-red-500 text-xl leading-none" title="Remove">×</button>`;
   wrapper.querySelector('.btn-remove-en').addEventListener('click', () => {
+    if (container.children.length > 1) wrapper.remove();
+  });
+  container.appendChild(wrapper);
+}
+
+function addDeInput(value = '') {
+  const container = $('de-inputs-container');
+  const wrapper = document.createElement('div');
+  wrapper.className = 'flex items-center gap-2 mb-2';
+  wrapper.innerHTML = `
+    <input type="text" class="de-input flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+           placeholder="${escHtml(t('vocab.germanPlaceholder'))}" value="${escHtml(value)}">
+    <button type="button" class="btn-remove-de text-gray-400 hover:text-red-500 text-xl leading-none" title="Remove">×</button>`;
+  wrapper.querySelector('.btn-remove-de').addEventListener('click', () => {
     if (container.children.length > 1) wrapper.remove();
   });
   container.appendChild(wrapper);
@@ -238,6 +283,9 @@ function buildFormPayload() {
     en_texts: Array.from(document.querySelectorAll('.en-input'))
       .map(i => i.value.trim())
       .filter(Boolean),
+    de_texts: Array.from(document.querySelectorAll('.de-input'))
+      .map(i => i.value.trim())
+      .filter(Boolean),
     tags: [...formTags],
     start_training: $('form-start-training').checked,
   };
@@ -246,8 +294,8 @@ function buildFormPayload() {
 async function handleFormSubmit(e) {
   e.preventDefault();
   const payload = buildFormPayload();
-  if (!payload.zh_text) { alert('Chinese text is required.'); return; }
-  if (!payload.en_texts.length) { alert('At least one English translation is required.'); return; }
+  if (!payload.zh_text) { alert(t('vocab.zhRequired')); return; }
+  if (!payload.en_texts.length) { alert(t('vocab.enRequired')); return; }
 
   try {
     if (editingWordId) {
@@ -270,7 +318,7 @@ async function handleFormSubmit(e) {
 }
 
 async function deleteWord(id) {
-  if (!confirm('Delete this word and all its translations? This cannot be undone.')) return;
+  if (!confirm(t('vocab.confirmDelete'))) return;
   try {
     await apiFetch(`/api/words/${id}`, { method: 'DELETE' });
     loadTags();
@@ -281,11 +329,11 @@ async function deleteWord(id) {
 }
 
 function renderTierBadge(word) {
-  const tier = wordTier(word.total_correct, word.total_attempts, word.learning_new_word);
-  if (!tier) return '<span class="text-gray-400 text-xs">Unseen</span>';
-  if (word.learning_new_word) return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span>`;
-  const pct = Math.round(word.total_correct / word.total_attempts * 100);
-  return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${tier.label}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
+  const tier = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
+  if (!tier) return `<span class="text-gray-400 text-xs">${escHtml(t('vocab.unseen'))}</span>`;
+  if (word.learning_new_word) return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${t(tier.i18nKey)}</span>`;
+  const pct = Math.round((word.total_correct + (word.streak_bonus || 0)) / word.total_attempts * 100);
+  return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${t(tier.i18nKey)}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
 }
 
 function renderDue(word) {
@@ -300,8 +348,8 @@ function renderDue(word) {
     return '<span class="text-gray-400">—</span>';
   }
   const diffDays = Math.round((due - new Date()) / 86400000);
-  if (diffDays <= 0) return '<span class="text-orange-500">Due</span>';
-  return `<span class="text-gray-500">in ${diffDays}d</span>`;
+  if (diffDays <= 0) return `<span class="text-orange-500">${escHtml(t('vocab.dueLabel'))}</span>`;
+  return `<span class="text-gray-500">${escHtml(t('vocab.inDays', { n: diffDays }))}</span>`;
 }
 
 async function loadTags() {
@@ -343,7 +391,7 @@ function showTagAutocomplete(query) {
   for (const m of matches.slice(0, 10)) {
     const item = document.createElement('div');
     item.className = 'px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer';
-    item.textContent = m === query && !allTags.includes(query) ? `Create "${m}"` : m;
+    item.textContent = m === query && !allTags.includes(query) ? t('vocab.createTag', { tag: m }) : m;
     item.addEventListener('mousedown', (e) => {
       e.preventDefault();
       addFormTag(m);
@@ -398,7 +446,7 @@ function renderTierFilter() {
     const active = selectedTierFilter === tier.key;
     pill.className = `tier-filter-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`;
     if (active) pill.style.backgroundColor = tier.color;
-    pill.textContent = tier.label;
+    pill.textContent = t(tier.i18nKey);
     pill.addEventListener('click', () => {
       selectedTierFilter = selectedTierFilter === tier.key ? '' : tier.key;
       currentPage = 1;
@@ -416,7 +464,7 @@ async function applyPinyin(newPinyin) {
   if (!current) {
     field.value = newPinyin;
   } else if (current !== newPinyin) {
-    if (confirm(`Replace pinyin "${current}" with "${newPinyin}"?`)) {
+    if (confirm(t('vocab.replacePinyin', { old: current, new: newPinyin }))) {
       field.value = newPinyin;
     }
   }
@@ -448,33 +496,70 @@ async function handleTranslate() {
   const btn = $('translate-btn');
   const zh = $('form-zh').value.trim();
   const enInputs = document.querySelectorAll('.en-input');
+  const deInputs = document.querySelectorAll('.de-input');
   const en = enInputs.length > 0 ? enInputs[0].value.trim() : '';
+  const de = deInputs.length > 0 ? deInputs[0].value.trim() : '';
 
-  if (!zh && !en) {
-    alert('Enter Chinese or English text first.');
+  if (!zh && !en && !de) {
+    alert(t('vocab.enterTextFirst'));
     return;
   }
 
   const origText = btn.textContent;
-  btn.textContent = 'Translating…';
+  btn.textContent = t('vocab.translating');
   btn.disabled = true;
 
   try {
-    const result = await apiFetch('/api/translate', {
-      method: 'POST',
-      body: JSON.stringify({ zh_text: zh, en_text: en }),
-    });
+    // Translate zh → EN if en field is empty
+    const enPromise = (zh && !en)
+      ? apiFetch('/api/translate', {
+          method: 'POST',
+          body: JSON.stringify({ zh_text: zh, target_lang: 'EN' }),
+        }).catch(() => null)
+      : Promise.resolve(null);
 
-    if (result.zh_text && !zh) {
-      $('form-zh').value = result.zh_text;
+    // Translate zh → DE if de field is empty
+    const dePromise = (zh && !de)
+      ? apiFetch('/api/translate', {
+          method: 'POST',
+          body: JSON.stringify({ zh_text: zh, target_lang: 'DE' }),
+        }).catch(() => null)
+      : Promise.resolve(null);
+
+    // Translate en/de → zh if zh field is empty
+    const zhPromise = (!zh && (en || de))
+      ? apiFetch('/api/translate', {
+          method: 'POST',
+          body: JSON.stringify({ en_text: en || de }),
+        }).catch(() => null)
+      : Promise.resolve(null);
+
+    const [enResult, deResult, zhResult] = await Promise.all([enPromise, dePromise, zhPromise]);
+
+    if (zhResult) {
+      if (zhResult.zh_text) $('form-zh').value = zhResult.zh_text;
+      await applyPinyin(zhResult.pinyin);
+    } else if (enResult) {
+      await applyPinyin(enResult.pinyin);
+    } else if (deResult) {
+      await applyPinyin(deResult.pinyin);
     }
-    await applyPinyin(result.pinyin);
-    const translations = result.en_texts || (result.en_text ? [result.en_text] : []);
-    if (translations.length > 0 && !en) {
-      const container = $('en-inputs-container');
-      container.innerHTML = '';
-      for (const t of translations) {
-        addEnInput(t);
+
+    if (enResult) {
+      const translations = enResult.en_texts || (enResult.en_text ? [enResult.en_text] : []);
+      if (translations.length > 0) {
+        const container = $('en-inputs-container');
+        container.innerHTML = '';
+        for (const tr of translations) addEnInput(tr);
+      }
+    }
+
+    if (deResult) {
+      const translations = deResult.en_texts || (deResult.en_text ? [deResult.en_text] : []);
+      if (translations.length > 0) {
+        const container = $('de-inputs-container');
+        container.innerHTML = '';
+        for (const tr of translations) addDeInput(tr);
       }
     }
   } catch (e) {
@@ -540,7 +625,7 @@ async function executeDownload() {
   if (dueFilter) params.set('due', dueFilter);
 
   const btn = $('dl-confirm-btn');
-  btn.textContent = 'Downloading…';
+  btn.textContent = t('download.downloading');
   btn.disabled = true;
   try {
     const words = await apiFetch(`/api/words/export?${params}`);
@@ -556,7 +641,7 @@ async function executeDownload() {
   } catch (e) {
     alert('Download failed: ' + e.message);
   } finally {
-    btn.textContent = 'Download';
+    btn.textContent = t('download.download');
     btn.disabled = false;
   }
 }
@@ -579,12 +664,13 @@ function buildDownload(words, cols, format) {
     if (cols.en)     vals.push((word.en_texts || []).join('; '));
     if (cols.tags)   vals.push((word.tags || []).join('; '));
     if (cols.tier) {
-      const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word);
+      const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
       vals.push(t ? t.label : '');
     }
     if (cols.accuracy) {
+      const effCorrect = word.total_correct + (word.streak_bonus || 0);
       vals.push(word.total_attempts > 0
-        ? Math.round(word.total_correct / word.total_attempts * 100) + '%'
+        ? Math.round(effCorrect / word.total_attempts * 100) + '%'
         : '');
     }
     if (cols.attempts) vals.push(String(word.total_attempts));
@@ -602,12 +688,13 @@ function buildDownload(words, cols, format) {
       if (cols.en)       obj.translations = word.en_texts || [];
       if (cols.tags)     obj.tags         = word.tags || [];
       if (cols.tier) {
-        const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word);
+        const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
         obj.level = t ? t.label : '';
       }
       if (cols.accuracy) {
+        const effCorrect = word.total_correct + (word.streak_bonus || 0);
         obj.accuracy = word.total_attempts > 0
-          ? Math.round(word.total_correct / word.total_attempts * 100)
+          ? Math.round(effCorrect / word.total_attempts * 100)
           : null;
       }
       if (cols.attempts) obj.attempts = word.total_attempts;
@@ -649,6 +736,14 @@ document.addEventListener('DOMContentLoaded', () => {
   renderTierFilter();
   initTranslateButton();
 
+  // Handle ?edit=<wordId> for deep-linking to edit form (e.g. from training page)
+  const editParam = new URLSearchParams(window.location.search).get('edit');
+  if (editParam) {
+    apiFetch(`/api/words/${editParam}`).then(word => {
+      if (word) openEditForm(word);
+    }).catch(() => {});
+  }
+
   $('hide-unseen-btn').addEventListener('click', () => {
     hideUnseenActive = !hideUnseenActive;
     updateHideUnseenBtn();
@@ -679,6 +774,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadWords();
   });
 
+  $('missing-lang-select').addEventListener('change', (e) => {
+    missingLangFilter = e.target.value;
+    currentPage = 1;
+    loadWords();
+  });
+
   $('word-form').addEventListener('submit', handleFormSubmit);
 
   $('form-tag-input').addEventListener('input', () => {
@@ -704,9 +805,17 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(pinyinTimer);
     const zh = $('form-zh').value.trim();
     pinyinTimer = setTimeout(() => fetchAndFillPinyin(zh), 500);
+    const hanziwayLink = $('hanziway-link');
+    if (zh) {
+      hanziwayLink.href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(zh);
+      show('hanziway-link');
+    } else {
+      hide('hanziway-link');
+    }
   });
 
   $('add-en-btn').addEventListener('click', () => addEnInput(''));
+  $('add-de-btn').addEventListener('click', () => addDeInput(''));
   $('translate-btn').addEventListener('click', handleTranslate);
 
   $('form-cancel-btn').addEventListener('click', () => {
@@ -750,5 +859,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('dl-confirm-btn').addEventListener('click', executeDownload);
   $('download-modal').addEventListener('click', e => {
     if (e.target === $('download-modal')) hide('download-modal');
+  });
+
+  // Re-render dynamic text when UI language changes
+  document.addEventListener('langchange', () => {
+    renderTierFilter();
+    loadWords();
   });
 });

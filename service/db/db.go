@@ -3,8 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 	"vocabulary_trainer/models"
@@ -19,7 +19,7 @@ type Store struct {
 
 // Open opens (or creates) the SQLite database at the given path and runs schema migrations.
 func Open(path string) (*Store, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)", path)
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -43,17 +43,18 @@ func (s *Store) Close() error {
 var validSortExprs = map[string]string{
 	"zh":          "w.text",
 	"pinyin":      "w.pinyin",
-	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id)",
-	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
+	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'en')",
+	"de":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'de')",
+	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
 	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
-	"accuracy":    "CAST(COALESCE(p.total_correct, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
+	"accuracy":    "CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
 }
 
 // GetWords returns a paginated list of vocabulary entries (zh words with their en translations).
 // If reviewOnly is true, only words with needs_review = 1 are returned.
 // If hideUnseen is true, only words with at least one quiz attempt are returned.
 // bucket filters by accuracy tier (same rules as tierFilter / wordTier in app.js).
-func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string) ([]models.WordDetail, int, error) {
+func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string, missingLang string) ([]models.WordDetail, int, error) {
 	exportAll := perPage <= 0
 	if exportAll {
 		page = 1
@@ -104,6 +105,17 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 
 	bucketFilter := tierFilter(bucket)
 
+	missingLangFilter := ""
+	var missingLangArgs []any
+	if missingLang == "en" || missingLang == "de" {
+		missingLangFilter = ` AND NOT EXISTS (
+			SELECT 1 FROM translations t
+			JOIN words tw ON t.en_word_id = tw.id
+			WHERE t.zh_word_id = w.id AND tw.language = ?
+		)`
+		missingLangArgs = []any{missingLang}
+	}
+
 	orderExpr, ok := validSortExprs[sortBy]
 	if !ok {
 		orderExpr = "w.created_at"
@@ -130,6 +142,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		       COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
 		       COALESCE(p.interval_days, 1),
 		       COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
+		       COALESCE(p.streak_bonus, 0),
 		       COALESCE(p.due_date, CURRENT_TIMESTAMP),
 		       COALESCE(w.needs_review, 0),
 		       COALESCE(p.learning_new_word, 1),
@@ -143,10 +156,11 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		           SELECT 1 FROM words ew
 		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
-		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + `
+		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + missingLangFilter + `
 		ORDER BY ` + orderClause + limitClause
 	listArgs := []any{q, q, q, q}
 	listArgs = append(listArgs, tagArgs...)
+	listArgs = append(listArgs, missingLangArgs...)
 	if !exportAll {
 		listArgs = append(listArgs, perPage, offset)
 	}
@@ -165,8 +179,8 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 		if err := rows.Scan(
 			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
-			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate,
-			&needsReview, &learning,
+			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
+			&dueDate, &needsReview, &learning,
 			&total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
@@ -182,8 +196,7 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	}
 	rows.Close()
 
-	// Batch-load English texts and tags for all page results in two queries
-	// instead of 2×N per-word queries.
+	// Batch-load translations and tags for all page results.
 	if len(words) > 0 {
 		ids := make([]int64, len(words))
 		idIndex := make(map[int64]int, len(words))
@@ -191,8 +204,25 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 			ids[i] = w.ID
 			idIndex[w.ID] = i
 		}
-		if err := s.batchLoadEnTexts(ctx, words, ids, idIndex); err != nil {
+		enMap, err := s.batchLoadTranslationTexts(ctx, ids, "en")
+		if err != nil {
 			return nil, 0, err
+		}
+		deMap, err := s.batchLoadTranslationTexts(ctx, ids, "de")
+		if err != nil {
+			return nil, 0, err
+		}
+		for i, w := range words {
+			if t := enMap[w.ID]; t != nil {
+				words[i].EnTexts = t
+			} else {
+				words[i].EnTexts = []string{}
+			}
+			if t := deMap[w.ID]; t != nil {
+				words[i].DeTexts = t
+			} else {
+				words[i].DeTexts = []string{}
+			}
 		}
 		if err := s.batchLoadTags(ctx, words, ids, idIndex); err != nil {
 			return nil, 0, err
@@ -204,40 +234,36 @@ func (s *Store) GetWords(ctx context.Context, q string, page, perPage int, sortB
 	return words, total, nil
 }
 
-func (s *Store) batchLoadEnTexts(ctx context.Context, words []models.WordDetail, ids []int64, idIndex map[int64]int) error {
+// batchLoadTranslationTexts loads all translation texts for the given zh word IDs
+// filtered by the given language ('en' or 'de'), returning a map of zhID → texts.
+func (s *Store) batchLoadTranslationTexts(ctx context.Context, ids []int64, lang string) (map[int64][]string, error) {
 	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids))
+	args := make([]any, len(ids)+1)
+	args[0] = lang
 	for i, id := range ids {
 		placeholders[i] = "?"
-		args[i] = id
+		args[i+1] = id
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT t.zh_word_id, w.text FROM words w
 		 JOIN translations t ON t.en_word_id = w.id
-		 WHERE t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
+		 WHERE w.language = ?
+		   AND t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
 		 ORDER BY w.text`, args...)
 	if err != nil {
-		return fmt.Errorf("batch en texts: %w", err)
+		return nil, fmt.Errorf("batch %s texts: %w", lang, err)
 	}
 	defer rows.Close()
+	result := make(map[int64][]string)
 	for rows.Next() {
 		var zhID int64
 		var text string
 		if err := rows.Scan(&zhID, &text); err != nil {
-			return err
+			return nil, err
 		}
-		idx := idIndex[zhID]
-		words[idx].EnTexts = append(words[idx].EnTexts, text)
+		result[zhID] = append(result[zhID], text)
 	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	for i := range words {
-		if words[i].EnTexts == nil {
-			words[i].EnTexts = []string{}
-		}
-	}
-	return nil
+	return result, rows.Err()
 }
 
 func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, ids []int64, idIndex map[int64]int) error {
@@ -276,23 +302,23 @@ func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, id
 	return nil
 }
 
-func (s *Store) getEnTextsForZhWord(ctx context.Context, zhID int64) ([]string, error) {
+func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, lang string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text FROM words w
 		 JOIN translations t ON t.en_word_id = w.id
-		 WHERE t.zh_word_id = ?
-		 ORDER BY w.text`, zhID)
+		 WHERE t.zh_word_id = ? AND w.language = ?
+		 ORDER BY w.text`, zhID, lang)
 	if err != nil {
-		return nil, fmt.Errorf("get en texts: %w", err)
+		return nil, fmt.Errorf("get %s texts: %w", lang, err)
 	}
 	defer rows.Close()
 	var texts []string
 	for rows.Next() {
-		var t string
-		if err := rows.Scan(&t); err != nil {
+		var txt string
+		if err := rows.Scan(&txt); err != nil {
 			return nil, err
 		}
-		texts = append(texts, t)
+		texts = append(texts, txt)
 	}
 	if texts == nil {
 		texts = []string{}
@@ -310,6 +336,7 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 		        COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
 		        COALESCE(p.interval_days, 1),
 		        COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
+		        COALESCE(p.streak_bonus, 0),
 		        COALESCE(p.due_date, CURRENT_TIMESTAMP),
 		        COALESCE(w.needs_review, 0)
 		 FROM words w
@@ -317,7 +344,8 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 		 WHERE w.id = ? AND w.language = 'zh'`, id).
 		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
-			&wd.TotalCorrect, &wd.TotalAttempts, &dueDate, &needsReview)
+			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
+			&dueDate, &needsReview)
 	wd.CreatedAt = parseDateTime(createdAt)
 	wd.DueDate = parseDateTime(dueDate)
 	wd.NeedsReview = needsReview == 1
@@ -327,15 +355,21 @@ func (s *Store) GetWordByID(ctx context.Context, id int64) (*models.WordDetail, 
 	if err != nil {
 		return nil, fmt.Errorf("get word by id: %w", err)
 	}
-	enTexts, err := s.getEnTextsForZhWord(ctx, id)
+	enTexts, err := s.getTranslationTextsForZhWord(ctx, id, "en")
 	if err != nil {
 		return nil, err
 	}
 	wd.EnTexts = enTexts
+	deTexts, err := s.getTranslationTextsForZhWord(ctx, id, "de")
+	if err != nil {
+		return nil, err
+	}
+	wd.DeTexts = deTexts
 	wd.Tags, err = s.getTagsForWord(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	wd.SceneText, _ = s.GetHMMSceneText(ctx, id)
 	return &wd, nil
 }
 
@@ -371,7 +405,26 @@ func (s *Store) CreateWord(ctx context.Context, req models.CreateWordRequest) (i
 		if _, err := tx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
 			enID, zhID); err != nil {
-			return 0, fmt.Errorf("link translation: %w", err)
+			return 0, fmt.Errorf("link en translation: %w", err)
+		}
+	}
+
+	for _, deText := range req.DeTexts {
+		deText = strings.TrimSpace(deText)
+		if deText == "" {
+			continue
+		}
+		deID, err := upsertWord(ctx, tx, deText, "de", nil)
+		if err != nil {
+			return 0, err
+		}
+		if err := initSM2(ctx, tx, deID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
+			deID, zhID); err != nil {
+			return 0, fmt.Errorf("link de translation: %w", err)
 		}
 	}
 
@@ -395,9 +448,30 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 		pinyin = &p
 	}
 
-	res, err := tx.ExecContext(ctx,
-		`UPDATE words SET text = ?, pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
-		strings.TrimSpace(req.ZhText), pinyin, id)
+	newText := strings.TrimSpace(req.ZhText)
+
+	// Read current text so we can skip updating it when unchanged — avoids
+	// a spurious UNIQUE constraint violation caused by duplicate zh rows in
+	// the database (e.g. after manual migrations) or by the form's trim().
+	var currentText string
+	err = tx.QueryRowContext(ctx,
+		`SELECT text FROM words WHERE id = ? AND language = 'zh'`, id).Scan(&currentText)
+	if err == sql.ErrNoRows {
+		return sql.ErrNoRows
+	} else if err != nil {
+		return fmt.Errorf("get current word: %w", err)
+	}
+
+	var res sql.Result
+	if currentText == newText {
+		res, err = tx.ExecContext(ctx,
+			`UPDATE words SET pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
+			pinyin, id)
+	} else {
+		res, err = tx.ExecContext(ctx,
+			`UPDATE words SET text = ?, pinyin = ?, needs_review = 0 WHERE id = ? AND language = 'zh'`,
+			newText, pinyin, id)
+	}
 	if err != nil {
 		return fmt.Errorf("update word: %w", err)
 	}
@@ -426,7 +500,26 @@ func (s *Store) UpdateWord(ctx context.Context, id int64, req models.UpdateWordR
 		if _, err := tx.ExecContext(ctx,
 			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
 			enID, id); err != nil {
-			return fmt.Errorf("link translation: %w", err)
+			return fmt.Errorf("link en translation: %w", err)
+		}
+	}
+
+	for _, deText := range req.DeTexts {
+		deText = strings.TrimSpace(deText)
+		if deText == "" {
+			continue
+		}
+		deID, err := upsertWord(ctx, tx, deText, "de", nil)
+		if err != nil {
+			return err
+		}
+		if err := initSM2(ctx, tx, deID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
+			deID, id); err != nil {
+			return fmt.Errorf("link de translation: %w", err)
 		}
 	}
 
@@ -513,7 +606,7 @@ func (s *Store) MarkWordForReview(ctx context.Context, id int64) error {
 //	70-84  : ≥ 10 attempts AND 70 % ≤ acc < 85 %
 //	85-100 : ≥ 10 attempts AND acc ≥ 85 %
 func tierFilter(bucket string) string {
-	const acc = `CAST(p.total_correct AS REAL) / p.total_attempts`
+	const acc = `CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts`
 	switch bucket {
 	case "new":
 		return ` AND p.learning_new_word = 1`
@@ -533,7 +626,8 @@ func tierFilter(bucket string) string {
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
 // maxNew caps how many new words (first_seen_date IS NULL) can be introduced today; once
 // the count for today reaches maxNew, only already-seen cards are returned.
-func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, bucket string) (*models.Word, *models.SM2Progress, error) {
+// skipNew forces unseen words to be excluded regardless of the daily cap.
+func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, bucket string, skipNew bool) (*models.Word, *models.SM2Progress, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -559,19 +653,10 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		return nil, nil, fmt.Errorf("count new today: %w", err)
 	}
 
-	// When the daily cap is reached, or there are still words in the learning
-	// phase for the current filter set, skip words that have never been presented.
+	// When the daily cap is reached or the user chose to skip new words then exclude never-presented words.
 	newWordFilter := ""
-	if newToday >= maxNew {
+	if skipNew || newToday >= maxNew {
 		newWordFilter = " AND p.first_seen_date IS NOT NULL"
-	} else {
-		learningCount, err := s.CountLearningNewWords(ctx, tags)
-		if err != nil {
-			return nil, nil, fmt.Errorf("count learning words: %w", err)
-		}
-		if learningCount > 0 {
-			newWordFilter = " AND p.first_seen_date IS NOT NULL"
-		}
 	}
 
 	// Only quiz on zh words — they are the canonical unit; en words are just
@@ -579,7 +664,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 	query := `
 		SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
 		       p.repetitions, p.easiness, p.interval_days, p.due_date,
-		       p.total_correct, p.total_attempts, p.learning_new_word
+		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh'` + tagFilter + newWordFilter + bucketSQL + ` %s
@@ -596,7 +681,7 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		err := row.Scan(
 			&w.ID, &w.Text, &w.Language, &w.Pinyin, &createdAt,
 			&p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts, &learning,
+			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning,
 		)
 		w.CreatedAt = parseDateTime(createdAt)
 		p.DueDate = parseDateTime(dueDate)
@@ -611,52 +696,54 @@ func (s *Store) GetNextCard(ctx context.Context, tags []string, maxNew int, buck
 		return &w, &p, nil
 	}
 
-	// stamp sets first_seen_date the first time a card is presented.
-	stamp := func(w *models.Word) {
-		if w != nil {
-			if _, err := s.db.ExecContext(ctx,
-				`UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ? AND first_seen_date IS NULL`,
-				w.ID); err != nil {
-				log.Printf("stamp first_seen_date for word %d: %v", w.ID, err)
-			}
-		}
-	}
+	// Only consider cards due by end of today so we don't pull in future
+	// cards and inflate the session beyond what due_today reports.
+	todayBound := "AND p.due_date < date('now', '+1 day')"
 
 	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP")
 	if err != nil || w != nil {
-		stamp(w)
 		return w, p, err
 	}
 	// No overdue cards — prefer cards outside the wrong-retry window so a
 	// recently failed card is not immediately repeated.
-	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds')", int(sm2.WrongRetryDelay.Seconds())))
+	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds') %s", int(sm2.WrongRetryDelay.Seconds()), todayBound))
 	if err != nil || w != nil {
-		stamp(w)
 		return w, p, err
 	}
 	// All remaining cards are within the retry window; return the soonest one.
-	w, p, err = tryQuery("")
-	stamp(w)
-	return w, p, err
+	return tryQuery(todayBound)
+}
+
+// GetTranslationLanguages returns the distinct non-zh languages that have at
+// least one translation row in the database.
+func (s *Store) GetTranslationLanguages(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT w.language FROM words w
+		 JOIN translations t ON t.en_word_id = w.id
+		 WHERE w.language != 'zh'
+		 ORDER BY w.language`)
+	if err != nil {
+		return nil, fmt.Errorf("get translation languages: %w", err)
+	}
+	defer rows.Close()
+	var langs []string
+	for rows.Next() {
+		var lang string
+		if err := rows.Scan(&lang); err != nil {
+			return nil, err
+		}
+		langs = append(langs, lang)
+	}
+	return langs, rows.Err()
 }
 
 // GetTranslationsForWord returns all words in targetLang linked to wordID.
 func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error) {
-	var rows *sql.Rows
-	var err error
-	if targetLang == "en" {
-		rows, err = s.db.QueryContext(ctx,
-			`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
-			 FROM words w
-			 JOIN translations t ON t.en_word_id = w.id
-			 WHERE t.zh_word_id = ?`, wordID)
-	} else {
-		rows, err = s.db.QueryContext(ctx,
-			`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
-			 FROM words w
-			 JOIN translations t ON t.zh_word_id = w.id
-			 WHERE t.en_word_id = ?`, wordID)
-	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
+		 FROM words w
+		 JOIN translations t ON t.en_word_id = w.id
+		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
 	if err != nil {
 		return nil, fmt.Errorf("get translations: %w", err)
 	}
@@ -680,10 +767,10 @@ func (s *Store) GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Pr
 	var dueDate string
 	var learning int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, learning_new_word
+		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus, learning_new_word
 		 FROM sm2_progress WHERE word_id = ?`, wordID).
 		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts, &learning)
+			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning)
 	p.DueDate = parseDateTime(dueDate)
 	p.LearningNewWord = learning == 1
 	if err == sql.ErrNoRows {
@@ -704,11 +791,11 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress
 		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
-		     total_correct = ?, total_attempts = ?, learning_new_word = ?
+		     total_correct = ?, total_attempts = ?, streak_bonus = ?, learning_new_word = ?
 		 WHERE word_id = ?`,
 		p.Repetitions, p.Easiness, p.IntervalDays,
 		p.DueDate.UTC().Format("2006-01-02 15:04:05"),
-		p.TotalCorrect, p.TotalAttempts, learningInt, p.WordID)
+		p.TotalCorrect, p.TotalAttempts, p.StreakBonus, learningInt, p.WordID)
 	if err != nil {
 		return fmt.Errorf("update sm2: %w", err)
 	}
@@ -861,6 +948,52 @@ func (s *Store) CountLearningNewWords(ctx context.Context, tags []string) (int, 
 	return count, nil
 }
 
+// GetWordCountByDueDate returns the number of zh words grouped by due date,
+// covering overdue words (grouped as today), today, and the next 30 days.
+// Unseen words (first_seen_date IS NULL) are excluded.
+func (s *Store) GetWordCountByDueDate(ctx context.Context, tags []string) ([]models.DueDateCount, error) {
+	tagFilter := ""
+	var args []any
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		tagFilter = ` AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
+	query := `SELECT
+		CASE
+			WHEN date(p.due_date) <= date('now') THEN date('now')
+			ELSE date(p.due_date)
+		END AS bucket_date,
+		COUNT(*) AS cnt
+	FROM sm2_progress p
+	JOIN words w ON w.id = p.word_id
+	WHERE w.language = 'zh'
+	  AND p.first_seen_date IS NOT NULL
+	  AND date(p.due_date) <= date('now', '+30 days')` + tagFilter + `
+	GROUP BY bucket_date
+	ORDER BY bucket_date`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get word count by due date: %w", err)
+	}
+	defer rows.Close()
+	var result []models.DueDateCount
+	for rows.Next() {
+		var d models.DueDateCount
+		if err := rows.Scan(&d.Date, &d.Count); err != nil {
+			return nil, fmt.Errorf("scan due date count: %w", err)
+		}
+		result = append(result, d)
+	}
+	return result, rows.Err()
+}
+
 // LookupConfusion checks if the user's wrong answer matches a different known word.
 // For zh_to_en / zh_pinyin_to_en: looks for an EN word matching the answer, then
 // returns the zh word it belongs to (if different from zhWordID).
@@ -943,11 +1076,11 @@ func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID
 	}
 	d.LastSeen = parseDateTime(lastSeen)
 	var ferr error
-	d.ZhEnTexts, ferr = s.getEnTextsForZhWord(ctx, zhWordID)
+	d.ZhEnTexts, ferr = s.getTranslationTextsForZhWord(ctx, zhWordID, "en")
 	if ferr != nil {
 		return nil, ferr
 	}
-	d.ConfusedWithEnTexts, ferr = s.getEnTextsForZhWord(ctx, confusedWithID)
+	d.ConfusedWithEnTexts, ferr = s.getTranslationTextsForZhWord(ctx, confusedWithID, "en")
 	if ferr != nil {
 		return nil, ferr
 	}
@@ -989,11 +1122,11 @@ func (s *Store) GetConfusions(ctx context.Context) ([]models.ConfusionDetail, er
 	rows.Close() // release before per-row queries
 
 	for i := range items {
-		items[i].ZhEnTexts, err = s.getEnTextsForZhWord(ctx, items[i].ZhWordID)
+		items[i].ZhEnTexts, err = s.getTranslationTextsForZhWord(ctx, items[i].ZhWordID, "en")
 		if err != nil {
 			return nil, err
 		}
-		items[i].ConfusedWithEnTexts, err = s.getEnTextsForZhWord(ctx, items[i].ConfusedWithID)
+		items[i].ConfusedWithEnTexts, err = s.getTranslationTextsForZhWord(ctx, items[i].ConfusedWithID, "en")
 		if err != nil {
 			return nil, err
 		}
@@ -1135,13 +1268,14 @@ func (s *Store) GetAllTags(ctx context.Context) ([]string, error) {
 }
 
 // RecordDailyStat upserts today's daily_stats row after an answer submission.
-func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
+// It returns the updated session streak (consecutive correct answers today).
+func (s *Store) RecordDailyStat(ctx context.Context, correct bool) (int, error) {
 	var wordsSeen int
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(&wordsSeen); err != nil {
-		return fmt.Errorf("count words seen: %w", err)
+		return 0, fmt.Errorf("count words seen: %w", err)
 	}
 
 	var bNew, bStruggling, bLearning, bPracticing, bMastered int
@@ -1149,28 +1283,28 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 		SELECT
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 1 THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
-		    AND (p.total_attempts < 3 OR CAST(p.total_correct AS REAL) / p.total_attempts < 0.50)
+		    AND (p.total_attempts < 3 OR CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts < 0.50)
 		    THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
 		    AND p.total_attempts >= 3
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.50
-		    AND NOT (p.total_attempts >= 10 AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.70)
+		    AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.50
+		    AND NOT (p.total_attempts >= 10 AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.70)
 		    THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
 		    AND p.total_attempts >= 10
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.70
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts < 0.85
+		    AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.70
+		    AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts < 0.85
 		    THEN 1 ELSE 0 END), 0),
 		  COALESCE(SUM(CASE WHEN p.learning_new_word = 0
 		    AND p.total_attempts >= 10
-		    AND CAST(p.total_correct AS REAL) / p.total_attempts >= 0.85
+		    AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.85
 		    THEN 1 ELSE 0 END), 0)
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(
 		&bNew, &bStruggling, &bLearning, &bPracticing, &bMastered,
 	); err != nil {
-		return fmt.Errorf("count buckets: %w", err)
+		return 0, fmt.Errorf("count buckets: %w", err)
 	}
 
 	mistakeInc := 0
@@ -1206,9 +1340,11 @@ func (s *Store) RecordDailyStat(ctx context.Context, correct bool) error {
 		bNew, bStruggling, bLearning, bPracticing, bMastered,
 	)
 	if err != nil {
-		return fmt.Errorf("upsert daily stat: %w", err)
+		return 0, fmt.Errorf("upsert daily stat: %w", err)
 	}
-	return nil
+	var streak int
+	_ = s.db.QueryRowContext(ctx, `SELECT current_streak FROM daily_stats WHERE date = date('now')`).Scan(&streak)
+	return streak, nil
 }
 
 // GetDailyStatsHistory returns all daily stats ordered by date ascending.
@@ -1241,7 +1377,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	// Fetch per-word stats for all seen zh words in a single query.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id, w.text, w.pinyin,
-		       p.total_correct, p.total_attempts, p.easiness,
+		       p.total_correct, p.total_attempts, p.streak_bonus, p.easiness,
 		       p.learning_new_word
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
@@ -1253,25 +1389,26 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 	defer rows.Close()
 
 	type row struct {
-		id       int64
-		text     string
-		pinyin   *string
-		correct  int
-		attempts int
-		easiness float64
-		accuracy float64
-		learning bool
+		id          int64
+		text        string
+		pinyin      *string
+		correct     int
+		attempts    int
+		streakBonus int
+		easiness    float64
+		accuracy    float64
+		learning    bool
 	}
 	var all []row
 	for rows.Next() {
 		var r row
 		var learning int
-		if err := rows.Scan(&r.id, &r.text, &r.pinyin, &r.correct, &r.attempts, &r.easiness, &learning); err != nil {
+		if err := rows.Scan(&r.id, &r.text, &r.pinyin, &r.correct, &r.attempts, &r.streakBonus, &r.easiness, &learning); err != nil {
 			return nil, fmt.Errorf("scan word stat: %w", err)
 		}
 		r.learning = learning == 1
 		if r.attempts > 0 {
-			r.accuracy = float64(r.correct) / float64(r.attempts) * 100
+			r.accuracy = float64(r.correct+r.streakBonus) / float64(r.attempts) * 100
 		}
 		all = append(all, r)
 	}
@@ -1338,7 +1475,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 		r := all[candidates[k].idx]
 		resp.Hardest = append(resp.Hardest, models.WordStatDetail{
 			WordID: r.id, ZhText: r.text, Pinyin: r.pinyin,
-			Correct: r.correct, Attempts: r.attempts,
+			Correct: r.correct, Attempts: r.attempts, StreakBonus: r.streakBonus,
 			Accuracy: r.accuracy, Easiness: r.easiness,
 		})
 		detailIDs = append(detailIDs, r.id)
@@ -1353,7 +1490,7 @@ func (s *Store) GetWordStats(ctx context.Context) (*models.WordStatsResponse, er
 		r := all[k]
 		resp.MostPract = append(resp.MostPract, models.WordStatDetail{
 			WordID: r.id, ZhText: r.text, Pinyin: r.pinyin,
-			Correct: r.correct, Attempts: r.attempts,
+			Correct: r.correct, Attempts: r.attempts, StreakBonus: r.streakBonus,
 			Accuracy: r.accuracy, Easiness: r.easiness,
 		})
 		detailIDs = append(detailIDs, r.id)
@@ -1476,4 +1613,605 @@ func (s *Store) AdvanceDueDates(ctx context.Context, n int) (int, error) {
 		return 0, fmt.Errorf("count now due: %w", err)
 	}
 	return nowDue, nil
+}
+
+// idsOperator returns true for IDS operator runes (U+2FF0–U+2FFB).
+func idsOperator(r rune) bool {
+	return r >= 0x2FF0 && r <= 0x2FFB
+}
+
+// extractComponents returns the non-operator, non-placeholder runes from an IDS string.
+func extractComponents(decomposition string) []rune {
+	var out []rune
+	for _, r := range decomposition {
+		if !idsOperator(r) && r != '？' && r != '?' {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]models.HanziDecomposition, error) {
+	if len(chars) == 0 {
+		return nil, nil
+	}
+
+	// Build placeholders for the IN clause.
+	ph := make([]string, len(chars))
+	args := make([]any, len(chars))
+	for i, c := range chars {
+		ph[i] = "?"
+		args[i] = string(c)
+	}
+
+	query := `SELECT character, definition, radical, decomposition, etymology
+		FROM hanzi_decomposition WHERE character IN (` + strings.Join(ph, ",") + `)`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query hanzi decomposition: %w", err)
+	}
+
+	type rawRow struct {
+		character     string
+		definition    sql.NullString
+		radical       sql.NullString
+		decomposition sql.NullString
+		etymology     sql.NullString
+	}
+	var rawRows []rawRow
+	for rows.Next() {
+		var r rawRow
+		if err := rows.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan hanzi decomposition: %w", err)
+		}
+		rawRows = append(rawRows, r)
+	}
+	rows.Close()
+
+	// Collect all component characters for a second-level lookup.
+	compSet := map[rune]bool{}
+	for _, r := range rawRows {
+		if r.decomposition.Valid {
+			for _, c := range extractComponents(r.decomposition.String) {
+				compSet[c] = true
+			}
+		}
+	}
+	// Remove characters we already have from the top-level query.
+	for _, c := range chars {
+		delete(compSet, c)
+	}
+
+	// Second query for component definitions.
+	compMap := map[string]*models.HanziDecomposition{}
+	if len(compSet) > 0 {
+		ph2 := make([]string, 0, len(compSet))
+		args2 := make([]any, 0, len(compSet))
+		for c := range compSet {
+			ph2 = append(ph2, "?")
+			args2 = append(args2, string(c))
+		}
+		rows2, err := s.db.QueryContext(ctx, `SELECT character, definition, radical, decomposition, etymology
+			FROM hanzi_decomposition WHERE character IN (`+strings.Join(ph2, ",")+`)`, args2...)
+		if err != nil {
+			return nil, fmt.Errorf("query component decomposition: %w", err)
+		}
+		for rows2.Next() {
+			var r rawRow
+			if err := rows2.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology); err != nil {
+				rows2.Close()
+				return nil, fmt.Errorf("scan component decomposition: %w", err)
+			}
+			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+			compMap[r.character] = &d
+		}
+		rows2.Close()
+	}
+
+	// Also index top-level results so components can reference siblings.
+	for _, r := range rawRows {
+		if _, ok := compMap[r.character]; !ok {
+			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+			compMap[r.character] = &d
+		}
+	}
+
+	// Build result with components attached.
+	results := make([]models.HanziDecomposition, 0, len(rawRows))
+	for _, r := range rawRows {
+		d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+		if r.decomposition.Valid {
+			for _, c := range extractComponents(r.decomposition.String) {
+				if comp, ok := compMap[string(c)]; ok && string(c) != r.character {
+					appendComponent(&d, *comp)
+				}
+			}
+		}
+		results = append(results, d)
+	}
+
+	// Return in the same order as the input chars.
+	ordered := make([]models.HanziDecomposition, 0, len(chars))
+	idx := map[string]models.HanziDecomposition{}
+	for _, d := range results {
+		idx[d.Character] = d
+	}
+	for _, c := range chars {
+		if d, ok := idx[string(c)]; ok {
+			ordered = append(ordered, d)
+		}
+	}
+	return ordered, nil
+}
+
+// GetHanziDecompositionString returns the raw decomposition string for a single character,
+// or an empty string if none exists.
+func (s *Store) GetHanziDecompositionString(ctx context.Context, char string) (string, error) {
+	var decomp sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT decomposition FROM hanzi_decomposition WHERE character = ?`, char,
+	).Scan(&decomp)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get hanzi decomposition string: %w", err)
+	}
+	if decomp.Valid {
+		return decomp.String, nil
+	}
+	return "", nil
+}
+
+// UpsertHanziDecomposition inserts or updates the decomposition string for a character.
+func (s *Store) UpsertHanziDecomposition(ctx context.Context, char, decomp string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition (character, decomposition)
+		 VALUES (?, ?)
+		 ON CONFLICT(character) DO UPDATE SET decomposition = excluded.decomposition`,
+		char, decomp)
+	if err != nil {
+		return fmt.Errorf("upsert hanzi decomposition: %w", err)
+	}
+	return nil
+}
+
+func appendComponent(parent *models.HanziDecomposition, comp models.HanziDecomposition) {
+	comp.Components = nil
+	comp.Decomposition = ""
+	parent.Components = append(parent.Components, comp)
+}
+
+func buildDecomposition(character string, definition, radical, decomposition, etymology sql.NullString) models.HanziDecomposition {
+	d := models.HanziDecomposition{Character: character}
+	if definition.Valid {
+		d.Definition = definition.String
+	}
+	if radical.Valid {
+		d.Radical = radical.String
+	}
+	if decomposition.Valid {
+		d.Decomposition = decomposition.String
+	}
+	if etymology.Valid && etymology.String != "" {
+		var ety models.HanziEtymology
+		if err := json.Unmarshal([]byte(etymology.String), &ety); err == nil && ety.Type != "" {
+			d.Etymology = &ety
+		}
+	}
+	return d
+}
+
+// ── Hanzi Movie Method (HMM) ────────────────────────────────────────────
+
+func (s *Store) GetHMMActors(ctx context.Context) ([]models.HMMActor, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT initial, category, actor_name, hint FROM hmm_actors
+		 ORDER BY CASE category
+		   WHEN 'male' THEN 1 WHEN 'female' THEN 2
+		   WHEN 'fictional' THEN 3 WHEN 'wildcard' THEN 4 END, initial`)
+	if err != nil {
+		return nil, fmt.Errorf("get hmm actors: %w", err)
+	}
+	var actors []models.HMMActor
+	for rows.Next() {
+		var a models.HMMActor
+		if err := rows.Scan(&a.Initial, &a.Category, &a.ActorName, &a.Hint); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan hmm actor: %w", err)
+		}
+		actors = append(actors, a)
+	}
+	rows.Close()
+	return actors, rows.Err()
+}
+
+func (s *Store) UpdateHMMActor(ctx context.Context, initial, actorName string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE hmm_actors SET actor_name = ? WHERE initial = ?`, actorName, initial)
+	if err != nil {
+		return fmt.Errorf("update hmm actor: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("hmm actor %q not found", initial)
+	}
+	return nil
+}
+
+func (s *Store) GetHMMLocations(ctx context.Context) ([]models.HMMLocation, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT final_key, location_name FROM hmm_locations ORDER BY final_key`)
+	if err != nil {
+		return nil, fmt.Errorf("get hmm locations: %w", err)
+	}
+	var locs []models.HMMLocation
+	for rows.Next() {
+		var l models.HMMLocation
+		if err := rows.Scan(&l.FinalKey, &l.LocationName); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan hmm location: %w", err)
+		}
+		locs = append(locs, l)
+	}
+	rows.Close()
+	return locs, rows.Err()
+}
+
+func (s *Store) UpdateHMMLocation(ctx context.Context, finalKey, locationName string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE hmm_locations SET location_name = ? WHERE final_key = ?`, locationName, finalKey)
+	if err != nil {
+		return fmt.Errorf("update hmm location: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("hmm location %q not found", finalKey)
+	}
+	return nil
+}
+
+func (s *Store) GetHMMToneRooms(ctx context.Context) ([]models.HMMToneRoom, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT tone, room_name FROM hmm_tone_rooms ORDER BY tone`)
+	if err != nil {
+		return nil, fmt.Errorf("get hmm tone rooms: %w", err)
+	}
+	var rooms []models.HMMToneRoom
+	for rows.Next() {
+		var tr models.HMMToneRoom
+		if err := rows.Scan(&tr.Tone, &tr.RoomName); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan hmm tone room: %w", err)
+		}
+		rooms = append(rooms, tr)
+	}
+	rows.Close()
+	return rooms, rows.Err()
+}
+
+func (s *Store) UpdateHMMToneRoom(ctx context.Context, tone int, roomName string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE hmm_tone_rooms SET room_name = ? WHERE tone = ?`, roomName, tone)
+	if err != nil {
+		return fmt.Errorf("update hmm tone room: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("hmm tone room %d not found", tone)
+	}
+	return nil
+}
+
+func (s *Store) GetHMMProps(ctx context.Context) ([]models.HMMProp, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT radical, prop_name FROM hmm_props ORDER BY radical`)
+	if err != nil {
+		return nil, fmt.Errorf("get hmm props: %w", err)
+	}
+	var props []models.HMMProp
+	for rows.Next() {
+		var p models.HMMProp
+		if err := rows.Scan(&p.Radical, &p.PropName); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan hmm prop: %w", err)
+		}
+		props = append(props, p)
+	}
+	rows.Close()
+	return props, rows.Err()
+}
+
+func (s *Store) UpsertHMMProp(ctx context.Context, radical, propName string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hmm_props (radical, prop_name) VALUES (?, ?)
+		 ON CONFLICT(radical) DO UPDATE SET prop_name = excluded.prop_name`,
+		radical, propName)
+	if err != nil {
+		return fmt.Errorf("upsert hmm prop: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) DeleteHMMProp(ctx context.Context, radical string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM hmm_props WHERE radical = ?`, radical)
+	if err != nil {
+		return fmt.Errorf("delete hmm prop: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetHMMScene(ctx context.Context, wordID int64) (*models.HMMScene, error) {
+	var sc models.HMMScene
+	err := s.db.QueryRowContext(ctx,
+		`SELECT word_id, scene_text FROM hmm_scenes WHERE word_id = ?`, wordID).
+		Scan(&sc.WordID, &sc.SceneText)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get hmm scene: %w", err)
+	}
+	return &sc, nil
+}
+
+func (s *Store) UpsertHMMScene(ctx context.Context, wordID int64, sceneText string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hmm_scenes (word_id, scene_text) VALUES (?, ?)
+		 ON CONFLICT(word_id) DO UPDATE SET scene_text = excluded.scene_text`,
+		wordID, sceneText)
+	if err != nil {
+		return fmt.Errorf("upsert hmm scene: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) DeleteHMMScene(ctx context.Context, wordID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM hmm_scenes WHERE word_id = ?`, wordID)
+	if err != nil {
+		return fmt.Errorf("delete hmm scene: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) GetHMMSceneText(ctx context.Context, wordID int64) (string, error) {
+	var text string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT scene_text FROM hmm_scenes WHERE word_id = ?`, wordID).Scan(&text)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get hmm scene text: %w", err)
+	}
+	return text, nil
+}
+
+func (s *Store) GetHMMActorByInitial(ctx context.Context, initial string) (*models.HMMActor, error) {
+	var a models.HMMActor
+	err := s.db.QueryRowContext(ctx,
+		`SELECT initial, category, actor_name, hint FROM hmm_actors WHERE initial = ?`, initial).
+		Scan(&a.Initial, &a.Category, &a.ActorName, &a.Hint)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get hmm actor by initial: %w", err)
+	}
+	return &a, nil
+}
+
+func (s *Store) GetHMMLocationByFinal(ctx context.Context, finalKey string) (*models.HMMLocation, error) {
+	var l models.HMMLocation
+	err := s.db.QueryRowContext(ctx,
+		`SELECT final_key, location_name FROM hmm_locations WHERE final_key = ?`, finalKey).
+		Scan(&l.FinalKey, &l.LocationName)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get hmm location by final: %w", err)
+	}
+	return &l, nil
+}
+
+func (s *Store) GetHMMToneRoom(ctx context.Context, tone int) (*models.HMMToneRoom, error) {
+	var tr models.HMMToneRoom
+	err := s.db.QueryRowContext(ctx,
+		`SELECT tone, room_name FROM hmm_tone_rooms WHERE tone = ?`, tone).
+		Scan(&tr.Tone, &tr.RoomName)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get hmm tone room: %w", err)
+	}
+	return &tr, nil
+}
+
+// getTranslationsByZhTexts returns the first translation in the given language for each
+// zh_text in the supplied slice, keyed by zh_text. Both EN and DE translations share
+// the translations table; language is distinguished via words.language.
+func (s *Store) getTranslationsByZhTexts(ctx context.Context, zhTexts []string, lang string) (map[string]string, error) {
+	if len(zhTexts) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(zhTexts))
+	args := make([]any, len(zhTexts)+1)
+	args[0] = lang
+	for i, t := range zhTexts {
+		placeholders[i] = "?"
+		args[i+1] = t
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.text, MIN(e.text)
+		 FROM words w
+		 JOIN translations t ON t.zh_word_id = w.id
+		 JOIN words e ON e.id = t.en_word_id AND e.language = ?
+		 WHERE w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
+		 GROUP BY w.text`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("get %s translations by zh texts: %w", lang, err)
+	}
+	result := make(map[string]string)
+	for rows.Next() {
+		var zh, trans string
+		if err := rows.Scan(&zh, &trans); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan %s translation: %w", lang, err)
+		}
+		result[zh] = trans
+	}
+	rows.Close()
+	return result, rows.Err()
+}
+
+// GetEnTranslationsByZhTexts returns the first English translation for each
+// zh_text in the supplied slice, keyed by zh_text.
+func (s *Store) GetEnTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
+	return s.getTranslationsByZhTexts(ctx, zhTexts, "en")
+}
+
+// GetDeTranslationsByZhTexts returns the first German translation for each
+// zh_text in the supplied slice, keyed by zh_text.
+func (s *Store) GetDeTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
+	return s.getTranslationsByZhTexts(ctx, zhTexts, "de")
+}
+
+// StoreTranslationForZhChar stores an EN or DE translation for a Chinese character.
+// Both languages use the translations table; words.language distinguishes them.
+// If the zh character does not yet exist in the words table it is created with the
+// supplied pinyin (which may be empty). No SM-2 progress row is initialised because
+// the character is stored only as a reference, not as a quiz word.
+func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, transText, lang string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var zhID int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
+	).Scan(&zhID); err != nil {
+		if err != sql.ErrNoRows {
+			return fmt.Errorf("find zh word: %w", err)
+		}
+		// zh word doesn't exist yet — create it so the translation can be linked.
+		var py *string
+		if pinyin != "" {
+			py = &pinyin
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO words (text, language, pinyin) VALUES (?, 'zh', ?)`, zhText, py,
+		); err != nil {
+			return fmt.Errorf("insert zh word: %w", err)
+		}
+		if err := tx.QueryRowContext(ctx,
+			`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
+		).Scan(&zhID); err != nil {
+			return fmt.Errorf("get new zh word id: %w", err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO words (text, language) VALUES (?, ?)`, transText, lang,
+	); err != nil {
+		return fmt.Errorf("upsert %s word: %w", lang, err)
+	}
+	var transID int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE text = ? AND language = ?`, transText, lang,
+	).Scan(&transID); err != nil {
+		return fmt.Errorf("get %s word id: %w", lang, err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`, transID, zhID,
+	); err != nil {
+		return fmt.Errorf("link %s translation: %w", lang, err)
+	}
+
+	return tx.Commit()
+}
+
+func (s *Store) GetHMMPropsByRadicals(ctx context.Context, radicals []string) ([]models.HMMProp, error) {
+	if len(radicals) == 0 {
+		return nil, nil
+	}
+	placeholders := make([]string, len(radicals))
+	args := make([]any, len(radicals))
+	for i, r := range radicals {
+		placeholders[i] = "?"
+		args[i] = r
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT radical, prop_name FROM hmm_props WHERE radical IN (`+strings.Join(placeholders, ",")+`)`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("get hmm props by radicals: %w", err)
+	}
+	var props []models.HMMProp
+	for rows.Next() {
+		var p models.HMMProp
+		if err := rows.Scan(&p.Radical, &p.PropName); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan hmm prop: %w", err)
+		}
+		props = append(props, p)
+	}
+	rows.Close()
+	return props, rows.Err()
+}
+
+func (s *Store) SaveHMMSceneWithLibrary(ctx context.Context, wordID int64, initial, finalKey string, tone int, req models.HMMSaveSceneRequest) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO hmm_scenes (word_id, scene_text) VALUES (?, ?)
+		 ON CONFLICT(word_id) DO UPDATE SET scene_text = excluded.scene_text`,
+		wordID, req.SceneText); err != nil {
+		return fmt.Errorf("upsert scene: %w", err)
+	}
+
+	if req.ActorName != "" && initial != "" {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE hmm_actors SET actor_name = ? WHERE initial = ?`,
+			req.ActorName, initial); err != nil {
+			return fmt.Errorf("update actor: %w", err)
+		}
+	}
+	if req.LocationName != "" && finalKey != "" {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE hmm_locations SET location_name = ? WHERE final_key = ?`,
+			req.LocationName, finalKey); err != nil {
+			return fmt.Errorf("update location: %w", err)
+		}
+	}
+	if req.RoomName != "" && tone >= 1 && tone <= 5 {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE hmm_tone_rooms SET room_name = ? WHERE tone = ?`,
+			req.RoomName, tone); err != nil {
+			return fmt.Errorf("update tone room: %w", err)
+		}
+	}
+	for _, p := range req.Props {
+		if p.Radical == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO hmm_props (radical, prop_name) VALUES (?, ?)
+			 ON CONFLICT(radical) DO UPDATE SET prop_name = excluded.prop_name`,
+			p.Radical, p.PropName); err != nil {
+			return fmt.Errorf("upsert prop %s: %w", p.Radical, err)
+		}
+	}
+
+	return tx.Commit()
 }

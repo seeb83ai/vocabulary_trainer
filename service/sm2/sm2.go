@@ -86,11 +86,41 @@ func UpdateLearning(p models.SM2Progress, quality int) (models.SM2Progress, bool
 		p.IntervalDays = 1
 		p.TotalCorrect = 3
 		p.TotalAttempts = 3
+		p.StreakBonus = 0
 		p.DueDate = time.Now().UTC().Add(24*time.Hour + time.Duration(rand.Int63n(int64(2*time.Hour))))
 		return p, true
 	}
 
 	return p, false
+}
+
+// CalcStreakBonus computes the streak_bonus so that effective accuracy
+// (total_correct + streak_bonus) / total_attempts reaches the minimum for
+// the bucket corresponding to the current streak length (repetitions).
+// The bonus never decreases below currentBonus.
+func CalcStreakBonus(currentBonus, repetitions, totalCorrect, totalAttempts int) int {
+	if totalAttempts == 0 {
+		return currentBonus
+	}
+	var targetAcc float64
+	switch {
+	case repetitions >= 9:
+		targetAcc = 0.85
+	case repetitions >= 6:
+		targetAcc = 0.70
+	case repetitions >= 3:
+		targetAcc = 0.50
+	default:
+		return currentBonus
+	}
+	needed := int(math.Ceil(targetAcc*float64(totalAttempts))) - totalCorrect
+	if needed < 0 {
+		needed = 0
+	}
+	if needed > currentBonus {
+		return needed
+	}
+	return currentBonus
 }
 
 // CheckAnswer returns true if the user's answer matches any accepted answer
@@ -214,11 +244,11 @@ func MaskPinyin(pinyin string, totalCorrect int) string {
 //   - accuracy < 70% or attempts < 10       → zh_pinyin_to_en (progressing; pinyin scaffold)
 //   - accuracy < 85%                        → zh_to_en (reliable; drop pinyin)
 //   - accuracy ≥ 85% and attempts ≥ 10      → random (mastered)
-func SelectProgressiveMode(totalCorrect, totalAttempts int) string {
+func SelectProgressiveMode(totalCorrect, totalAttempts, streakBonus int) string {
 	if totalAttempts < 3 {
 		return models.ModeEnToZh
 	}
-	accuracy := float64(totalCorrect) / float64(totalAttempts)
+	accuracy := float64(totalCorrect+streakBonus) / float64(totalAttempts)
 	switch {
 	case accuracy < 0.50:
 		return models.ModeEnToZh

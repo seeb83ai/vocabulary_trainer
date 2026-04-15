@@ -25,7 +25,41 @@ func openTestDB(t *testing.T) *db.Store {
 		t.Fatalf("openTestDB: %v", err)
 	}
 	t.Cleanup(func() { s.Close() })
+	clearHMMLibrary(t, s)
 	return s
+}
+
+// clearHMMLibrary blanks all HMM library names so no entries qualify for the
+// mnemonic quiz.  Migration v13 pre-seeds several named entries; this resets
+// them so word-quiz tests are not disturbed by interleaved HMM cards.
+func clearHMMLibrary(t *testing.T, s *db.Store) {
+	t.Helper()
+	ctx := context.Background()
+	actors, err := s.GetHMMActors(ctx)
+	if err != nil {
+		t.Fatalf("clearHMMLibrary GetHMMActors: %v", err)
+	}
+	for _, a := range actors {
+		if a.ActorName != "" {
+			if err := s.UpdateHMMActor(ctx, a.Initial, ""); err != nil {
+				t.Fatalf("clearHMMLibrary UpdateHMMActor %s: %v", a.Initial, err)
+			}
+		}
+	}
+	for tone := 1; tone <= 5; tone++ {
+		if err := s.UpdateHMMToneRoom(ctx, tone, ""); err != nil {
+			t.Fatalf("clearHMMLibrary tone %d: %v", tone, err)
+		}
+	}
+	props, err := s.GetHMMProps(ctx)
+	if err != nil {
+		t.Fatalf("clearHMMLibrary GetHMMProps: %v", err)
+	}
+	for _, p := range props {
+		if err := s.DeleteHMMProp(ctx, p.Radical); err != nil {
+			t.Fatalf("clearHMMLibrary DeleteHMMProp %s: %v", p.Radical, err)
+		}
+	}
 }
 
 func newRouter(s *db.Store) http.Handler {
@@ -40,8 +74,10 @@ func newRouter(s *db.Store) http.Handler {
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
 	r.Post("/api/quiz/advance", quizH.Advance)
 	r.Get("/api/quiz/stats", quizH.Stats)
+	r.Get("/api/quiz/langs", quizH.Langs)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
+	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
 	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
@@ -215,10 +251,9 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 		t.Fatalf("UpdateSM2Progress id2: %v", err)
 	}
 
-	// Call GetNextCard once (high limit) to stamp id1 as today's introduced word.
-	w, _, err := s.GetNextCard(ctx, nil, 100, "")
-	if err != nil || w == nil || w.ID != id1 {
-		t.Fatalf("setup: expected id1=%d to be stamped, got w=%v err=%v", id1, w, err)
+	// Acknowledge id1 so it counts as today's introduced word.
+	if err := s.AcknowledgeWord(ctx, id1); err != nil {
+		t.Fatalf("AcknowledgeWord id1: %v", err)
 	}
 
 	// Build a router with maxNew=1 (cap is now reached).
@@ -1296,9 +1331,8 @@ func TestDailyStats_BucketCounts(t *testing.T) {
 	dogID := seedWord(t, s, "狗", "gǒu", []string{"dog"})
 	r := newRouter(s)
 
-	// Present words so first_seen_date is stamped
-	do(t, r, "GET", "/api/quiz/next", nil)
-	// Acknowledge the second word directly so both get first_seen_date
+	// Acknowledge both words so first_seen_date is set
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": catID})
 	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": dogID})
 
 	// Answer 猫 correctly once — still learning_new_word=1 → bucket "new"
@@ -1369,8 +1403,10 @@ func TestWordStats_WithData(t *testing.T) {
 	seedWord(t, s, "狗", "gǒu", []string{"dog"})
 	seedWord(t, s, "鱼", "yú", []string{"fish"})
 
-	// Get cards to set first_seen_date (triggers stamp)
-	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
+	// Acknowledge all words so first_seen_date is set
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": 1})
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": 2})
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": 3})
 
 	// Answer 猫 correctly 3 times
 	for i := 0; i < 3; i++ {
@@ -1393,13 +1429,6 @@ func TestWordStats_WithData(t *testing.T) {
 		"word_id": 3, "mode": "zh_to_en", "answer": "fish",
 	})
 
-	// Mark first_seen_date for all words that were answered (stamps on next card fetch)
-	// We need to manually ensure first_seen_date is set via the quiz flow
-	// The answer flow doesn't set first_seen_date — GetNextCard does.
-	// Let's fetch cards for each to stamp them.
-	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
-	do(t, r, "GET", "/api/quiz/next?mode=zh_to_en", nil)
-
 	rec := do(t, r, "GET", "/api/quiz/word-stats", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1407,7 +1436,7 @@ func TestWordStats_WithData(t *testing.T) {
 	var resp models.WordStatsResponse
 	decodeJSON(t, rec, &resp)
 
-	// At least 1 word should be seen (the one fetched via GetNextCard)
+	// At least 1 word should be seen (acknowledged words have first_seen_date set)
 	if resp.TotalSeen < 1 {
 		t.Errorf("total_seen: want >= 1, got %d", resp.TotalSeen)
 	}
@@ -1442,10 +1471,30 @@ func TestStatsHandlerNewFields(t *testing.T) {
 	var resp map[string]int
 	decodeJSON(t, rec, &resp)
 
-	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available"} {
+	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available", "hmm_due_today"} {
 		if _, ok := resp[key]; !ok {
 			t.Errorf("stats response missing key %q", key)
 		}
+	}
+}
+
+func TestStatsHandler_HmmDueTodayIncluded(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+
+	if _, ok := resp["hmm_due_today"]; !ok {
+		t.Error("stats response missing key \"hmm_due_today\"")
+	}
+	// With an empty DB, hmm_due_today should be 0.
+	if resp["hmm_due_today"] != 0 {
+		t.Errorf("hmm_due_today: want 0, got %d", resp["hmm_due_today"])
 	}
 }
 
@@ -1599,14 +1648,6 @@ func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
 
 func TestWordsCreate_ZhTextTooLong(t *testing.T) {
 	r := newRouter(openTestDB(t))
-	longText := string(make([]rune, 201))
-	for i := range []rune(longText) {
-		longText = longText[:i] + "好" + longText[i+1:]
-		if i == 200 {
-			break
-		}
-	}
-	// Build a 201-rune string
 	long201 := ""
 	for i := 0; i < 201; i++ {
 		long201 += "好"
@@ -1648,5 +1689,568 @@ func TestWordsCreate_TooManyTags(t *testing.T) {
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for > 20 tags, got %d", rec.Code)
+	}
+}
+
+// ── GET /api/quiz/due-date-distribution ──────────────────────────────────────
+
+func TestDueDateDistribution_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/quiz/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Dates) != 0 {
+		t.Errorf("expected empty dates, got %d", len(resp.Dates))
+	}
+}
+
+func TestDueDateDistribution_AfterAnswer(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "猫", "māo", []string{"cat"})
+	r := newRouter(s)
+
+	// Present the word via /next and then acknowledge to set first_seen_date
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("next: want 200, got %d", rec.Code)
+	}
+
+	// Acknowledge (sets first_seen_date) and answer the word
+	rec = do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": id})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("acknowledge: want 204, got %d", rec.Code)
+	}
+	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": id,
+		"mode":    "zh_to_en",
+		"answer":  "cat",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Dates) == 0 {
+		t.Fatal("expected at least one date entry")
+	}
+	total := 0
+	for _, d := range resp.Dates {
+		total += d.Count
+	}
+	if total != 1 {
+		t.Errorf("expected total count 1, got %d", total)
+	}
+}
+
+func TestDueDateDistribution_TagFilter(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Create two words with different tags
+	id1, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText: "猫", Pinyin: "māo", EnTexts: []string{"cat"}, Tags: []string{"animals"},
+	})
+	if err != nil {
+		t.Fatalf("create word 1: %v", err)
+	}
+	id2, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText: "书", Pinyin: "shū", EnTexts: []string{"book"}, Tags: []string{"objects"},
+	})
+	if err != nil {
+		t.Fatalf("create word 2: %v", err)
+	}
+
+	r := newRouter(s)
+
+	// Present and acknowledge+answer both words so first_seen_date is set
+	for _, wid := range []int64{id1, id2} {
+		rec := do(t, r, "GET", "/api/quiz/next", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("next for word %d: want 200, got %d", wid, rec.Code)
+		}
+		rec = do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": wid})
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("acknowledge word %d: want 204, got %d", wid, rec.Code)
+		}
+		rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": wid,
+			"mode":    "zh_to_en",
+			"answer":  "wrong",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer word %d: want 200, got %d", wid, rec.Code)
+		}
+	}
+
+	// Without filter: should see 2 words
+	rec := do(t, r, "GET", "/api/quiz/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	total := 0
+	for _, d := range resp.Dates {
+		total += d.Count
+	}
+	if total != 2 {
+		t.Errorf("unfiltered: expected total 2, got %d", total)
+	}
+
+	// With animals tag filter: should see 1 word
+	rec = do(t, r, "GET", "/api/quiz/due-date-distribution?tags=animals", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var filtered models.DueDateDistributionResponse
+	decodeJSON(t, rec, &filtered)
+	filteredTotal := 0
+	for _, d := range filtered.Dates {
+		filteredTotal += d.Count
+	}
+	if filteredTotal != 1 {
+		t.Errorf("filtered by 'animals': expected total 1, got %d", filteredTotal)
+	}
+}
+
+// ── Pinyin Quiz Handlers ────────────────────────────────────────────────────
+
+func newPinyinRouter(t *testing.T, s *db.Store) http.Handler {
+	t.Helper()
+	pinyinH := &handlers.PinyinQuizHandler{Store: s, PinyinAudioDirs: []string{t.TempDir()}}
+	r := chi.NewRouter()
+	r.Get("/api/pinyin-quiz/next", pinyinH.Next)
+	r.Post("/api/pinyin-quiz/answer", pinyinH.Answer)
+	r.Get("/api/pinyin-quiz/stats", pinyinH.Stats)
+	r.Get("/api/pinyin-quiz/tags", pinyinH.ListTags)
+	return r
+}
+
+func seedPinyinSounds(t *testing.T, store *db.Store) {
+	t.Helper()
+	sounds := []models.PinyinSound{
+		{Initial: "b", Final: "a", Tone: 1, Syllable: "ba", Filename: "ba1.mp3", Tag: "b_p_m_f"},
+		{Initial: "b", Final: "a", Tone: 2, Syllable: "ba", Filename: "ba2.mp3", Tag: "b_p_m_f"},
+		{Initial: "b", Final: "a", Tone: 3, Syllable: "ba", Filename: "ba3.mp3", Tag: "b_p_m_f"},
+		{Initial: "b", Final: "a", Tone: 4, Syllable: "ba", Filename: "ba4.mp3", Tag: "b_p_m_f"},
+		{Initial: "p", Final: "a", Tone: 1, Syllable: "pa", Filename: "pa1.mp3", Tag: "b_p_m_f"},
+	}
+	for _, snd := range sounds {
+		if _, err := store.InsertPinyinSound(context.Background(), snd); err != nil {
+			t.Fatalf("seedPinyinSounds: %v", err)
+		}
+	}
+}
+
+func TestPinyinQuizNext_EmptyDB(t *testing.T) {
+	s := openTestDB(t)
+	r := newPinyinRouter(t, s)
+	rec := do(t, r, "GET", "/api/pinyin-quiz/next", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestPinyinQuizNext_ReturnsCard(t *testing.T) {
+	s := openTestDB(t)
+	seedPinyinSounds(t, s)
+	r := newPinyinRouter(t, s)
+
+	rec := do(t, r, "GET", "/api/pinyin-quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var card models.PinyinCard
+	decodeJSON(t, rec, &card)
+
+	if card.SoundID == 0 {
+		t.Error("expected non-zero sound_id")
+	}
+	if card.Mode != models.PinyinModeMultipleChoice {
+		t.Errorf("expected multiple_choice mode for new sound, got %q", card.Mode)
+	}
+	if len(card.Options) < 2 {
+		t.Errorf("expected at least 2 options, got %d", len(card.Options))
+	}
+	if card.AudioFile == "" {
+		t.Error("expected non-empty audio_file")
+	}
+}
+
+func TestPinyinQuizAnswer_Correct(t *testing.T) {
+	s := openTestDB(t)
+	seedPinyinSounds(t, s)
+	r := newPinyinRouter(t, s)
+
+	// Get a card first
+	rec := do(t, r, "GET", "/api/pinyin-quiz/next", nil)
+	var card models.PinyinCard
+	decodeJSON(t, rec, &card)
+
+	// Submit correct answer (the card's own sound_id)
+	rec = do(t, r, "POST", "/api/pinyin-quiz/answer", models.PinyinAnswerRequest{
+		SoundID: card.SoundID,
+		Answer:  fmt.Sprintf("%d", card.SoundID),
+		Mode:    models.PinyinModeMultipleChoice,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp models.PinyinAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("expected correct=true")
+	}
+	if resp.CorrectAnswer == "" {
+		t.Error("expected non-empty correct_answer")
+	}
+}
+
+func TestPinyinQuizAnswer_Wrong(t *testing.T) {
+	s := openTestDB(t)
+	seedPinyinSounds(t, s)
+	r := newPinyinRouter(t, s)
+
+	rec := do(t, r, "GET", "/api/pinyin-quiz/next", nil)
+	var card models.PinyinCard
+	decodeJSON(t, rec, &card)
+
+	// Find a wrong option
+	var wrongID int64
+	for _, opt := range card.Options {
+		if opt.SoundID != card.SoundID {
+			wrongID = opt.SoundID
+			break
+		}
+	}
+	if wrongID == 0 {
+		t.Fatal("no wrong option found")
+	}
+
+	rec = do(t, r, "POST", "/api/pinyin-quiz/answer", models.PinyinAnswerRequest{
+		SoundID: card.SoundID,
+		Answer:  fmt.Sprintf("%d", wrongID),
+		Mode:    models.PinyinModeMultipleChoice,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp models.PinyinAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Error("expected correct=false")
+	}
+	if resp.ConfusedWith == nil {
+		t.Error("expected confusion detail for wrong MC answer")
+	}
+}
+
+func TestPinyinQuizStats(t *testing.T) {
+	s := openTestDB(t)
+	seedPinyinSounds(t, s)
+	r := newPinyinRouter(t, s)
+
+	rec := do(t, r, "GET", "/api/pinyin-quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+
+	var stats map[string]int
+	decodeJSON(t, rec, &stats)
+	if stats["total"] != 5 {
+		t.Errorf("expected total=5, got %d", stats["total"])
+	}
+}
+
+func TestPinyinQuizTags(t *testing.T) {
+	s := openTestDB(t)
+	seedPinyinSounds(t, s)
+	r := newPinyinRouter(t, s)
+
+	rec := do(t, r, "GET", "/api/pinyin-quiz/tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+
+	var tags []string
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 || tags[0] != "b_p_m_f" {
+		t.Errorf("expected [b_p_m_f], got %v", tags)
+	}
+}
+
+// ── GET /api/quiz/langs ───────────────────────────────────────────────────────
+
+func TestQuizLangs_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/quiz/langs", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var langs []string
+	decodeJSON(t, rec, &langs)
+	if len(langs) != 0 {
+		t.Errorf("expected empty langs, got %v", langs)
+	}
+}
+
+func TestQuizLangs_AfterInsertEN(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/langs", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var langs []string
+	decodeJSON(t, rec, &langs)
+	if len(langs) != 1 || langs[0] != "en" {
+		t.Errorf("expected [en], got %v", langs)
+	}
+}
+
+func TestQuizLangs_ENandDE(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/langs", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var langs []string
+	decodeJSON(t, rec, &langs)
+	if len(langs) != 2 {
+		t.Fatalf("expected 2 langs, got %v", langs)
+	}
+	// Sorted: de, en
+	if langs[0] != "de" || langs[1] != "en" {
+		t.Errorf("expected [de en], got %v", langs)
+	}
+}
+
+// ── POST /api/quiz/answer — multi-lang ───────────────────────────────────────
+
+func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	// Answer with German when langs includes "de" — should be correct.
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToEn,
+		Answer: "hallo",
+		Langs:  []string{"en", "de"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("German answer 'hallo' should be accepted when de is in langs")
+	}
+}
+
+func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "再见",
+		Pinyin:  "zàijiàn",
+		EnTexts: []string{"goodbye"},
+		DeTexts: []string{"auf Wiedersehen"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToEn,
+		Answer: "wrong",
+		Langs:  []string{"en", "de"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.DeTexts) == 0 {
+		t.Error("DeTexts should be populated in response when word has DE translations")
+	}
+	if resp.DeTexts[0] != "auf Wiedersehen" {
+		t.Errorf("DeTexts[0]: want 'auf Wiedersehen', got %q", resp.DeTexts[0])
+	}
+}
+
+func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	// Answer with German when langs not specified (defaults to ["en"]) — should be wrong.
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToEn,
+		Answer: "hallo",
+		// Langs omitted → defaults to ["en"]
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Error("German answer 'hallo' should NOT be accepted when langs defaults to [en]")
+	}
+}
+
+// ── GET /api/quiz/next — new_word with langs ──────────────────────────────────
+
+func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello"},
+		DeTexts: []string{"hallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?langs=en,de", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeNewWord {
+		t.Skipf("card is not new_word (mode=%s); test only applies to first introduction", card.Mode)
+	}
+	if len(card.EnTexts) == 0 {
+		t.Error("EnTexts should be set on new_word card when langs includes en")
+	}
+	if len(card.DeTexts) == 0 {
+		t.Error("DeTexts should be set on new_word card when langs includes de")
+	}
+}
+
+// ── PUT /api/words/{id} — unchanged zh_text ───────────────────────────────────
+
+func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	// Re-save with the exact same zh_text — should not return 500.
+	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
+		ZhText:  "你好",
+		Pinyin:  "nǐ hǎo",
+		EnTexts: []string{"hello", "hi"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var wd models.WordDetail
+	decodeJSON(t, rec, &wd)
+	if wd.ZhText != "你好" {
+		t.Errorf("ZhText: want 你好, got %q", wd.ZhText)
+	}
+}
+
+// ── GET /api/words?missing_lang= ─────────────────────────────────────────────
+
+func TestWordsList_MissingLangDE(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Word with EN only.
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Word with both EN and DE.
+	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+		ZhText:  "再见",
+		Pinyin:  "zàijiàn",
+		EnTexts: []string{"goodbye"},
+		DeTexts: []string{"auf Wiedersehen"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/words?page=1&per_page=20&missing_lang=de", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.WordListResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 1 {
+		t.Errorf("missing_lang=de: want 1 result, got %d", resp.Total)
+	}
+	if len(resp.Words) != 1 || resp.Words[0].ZhText != "你好" {
+		t.Errorf("unexpected words: %v", resp.Words)
+	}
+}
+
+func TestWordsList_MissingLangEmpty_ReturnsAll(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "", []string{"hello"})
+	seedWord(t, s, "再见", "", []string{"goodbye"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/words?page=1&per_page=20", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.WordListResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 2 {
+		t.Errorf("no missing_lang filter: want 2 results, got %d", resp.Total)
 	}
 }
