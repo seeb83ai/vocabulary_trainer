@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"vocabulary_trainer/db"
+	"vocabulary_trainer/email"
 	"vocabulary_trainer/handlers"
 	"vocabulary_trainer/llm"
 
@@ -50,7 +51,24 @@ func main() {
 	}
 	log.Printf("TTS enabled: audio=%s", audioDir)
 
-	authH, err := handlers.NewAuthHandler(store)
+	emailSender := email.NewSenderFromEnv()
+	if emailSender != nil {
+		log.Printf("Email enabled: SMTP configured")
+	} else {
+		log.Printf("Email disabled: SMTP not configured (accounts auto-verified)")
+	}
+
+	appURL := os.Getenv("APP_URL")
+	if appURL == "" {
+		port0 := os.Getenv("PORT")
+		if port0 == "" {
+			port0 = "8080"
+		}
+		appURL = "http://localhost:" + port0
+	}
+	log.Printf("App URL: %s", appURL)
+
+	authH, err := handlers.NewAuthHandler(store, emailSender, appURL)
 	if err != nil {
 		log.Fatalf("Failed to initialise auth: %v", err)
 	}
@@ -129,6 +147,10 @@ func main() {
 		r.Get("/auth/status", handlers.AuthStatus(authH))
 		r.Post("/login", authH.Login)
 		r.Post("/logout", authH.Logout)
+		r.Post("/register", authH.Register)
+		r.Get("/verify-email", authH.VerifyEmail)
+		r.Get("/me", authH.Me)
+		r.Post("/change-password", authH.ChangePassword)
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
 		r.Get("/quiz/langs", quizH.Langs)
@@ -209,8 +231,14 @@ func main() {
 	r.Get("/mnemonics", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "mnemonics.html")
 	})
+	r.Get("/train", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "train.html")
+	})
+	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "settings.html")
+	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "login.html")
+		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
 	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "pinyin.html")

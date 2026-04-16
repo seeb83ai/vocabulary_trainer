@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Vocab Trainer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navigation -->
+  <nav class="bg-white shadow-sm border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between">
+      <span class="text-xl font-bold text-gray-800" data-i18n="nav.title">词汇训练 · Vocab Trainer</span>
+      <button id="nav-menu-btn" class="sm:hidden p-1 rounded text-gray-500 hover:text-gray-800 transition" aria-label="Open navigation menu">☰</button>
+      <div id="nav-menu" class="hidden sm:flex sm:flex-row sm:items-center sm:gap-4">
+        <a href="/train" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.train">Train</a>
+        <a href="/pinyin" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.pinyin">Pinyin</a>
+        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.vocabulary">Vocabulary</a>
+        <a href="/mnemonics" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mnemonics">Mnemonics</a>
+        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mismatches">Mismatches</a>
+        <a href="/stats" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.stats">Stats</a>
+        <a href="/settings" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5">Settings</a>
+        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="en">🇬🇧</option>
+          <option value="zh">🇨🇳</option>
+        </select>
+        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition" data-i18n="nav.signOut">Sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1 max-w-2xl w-full mx-auto px-4 py-8 space-y-6">
+
+    <!-- Account info -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-4">Account</h2>
+      <p class="text-sm text-gray-500 mb-1">Signed in as</p>
+      <p id="account-email" class="text-base font-medium text-gray-800">—</p>
+    </div>
+
+    <!-- Change password -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-4">Change Password</h2>
+
+      <div id="pw-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+        Password changed successfully.
+      </div>
+      <div id="pw-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+
+      <form id="pw-form" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-current">Current Password</label>
+          <input id="pw-current" type="password" required autocomplete="current-password"
+            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-new">New Password <span class="text-gray-400 font-normal">(min. 8 characters)</span></label>
+          <input id="pw-new" type="password" required autocomplete="new-password" minlength="8"
+            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-confirm">Confirm New Password</label>
+          <input id="pw-confirm" type="password" required autocomplete="new-password"
+            class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <button type="submit" id="pw-btn"
+          class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition">
+          Update Password
+        </button>
+      </form>
+    </div>
+
+  </main>
+
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

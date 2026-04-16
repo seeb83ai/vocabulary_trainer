@@ -2199,3 +2199,146 @@ func TestLookupConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 		t.Error("DE answer should not match when only EN is selected")
 	}
 }
+
+// ── CreateUser ────────────────────────────────────────────────────────────────
+
+func TestCreateUser_ReturnsID(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateUser(context.Background(), "testuser@example.com", "hash", "token123", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id <= 0 {
+		t.Errorf("expected positive user ID, got %d", id)
+	}
+}
+
+func TestCreateUser_EmailNotVerified(t *testing.T) {
+	s := openTestDB(t)
+	_, err := s.CreateUser(context.Background(), "unverified@example.com", "hash", "tok", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := s.GetUserByEmail(context.Background(), "unverified@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("user not found after creation")
+	}
+	if user.EmailVerified {
+		t.Error("new user should not be email_verified")
+	}
+}
+
+// ── GetUserByID ────────────────────────────────────────────────────────────────
+
+func TestGetUserByID_Found(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateUser(context.Background(), "byid@example.com", "hash", "tok2", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := s.GetUserByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("expected user, got nil")
+	}
+	if user.Email != "byid@example.com" {
+		t.Errorf("email: want byid@example.com, got %q", user.Email)
+	}
+}
+
+func TestGetUserByID_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	user, err := s.GetUserByID(context.Background(), 99999)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user != nil {
+		t.Error("expected nil for missing user ID")
+	}
+}
+
+// ── SetUserEmailVerified ───────────────────────────────────────────────────────
+
+func TestSetUserEmailVerified_OK(t *testing.T) {
+	s := openTestDB(t)
+	token := "validtoken12345678901234567890ab"
+	_, err := s.CreateUser(context.Background(), "verify@example.com", "hash", token, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	user, err := s.SetUserEmailVerified(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("expected user after verification, got nil")
+	}
+	if !user.EmailVerified {
+		t.Error("user should be email_verified after verification")
+	}
+
+	// Token must be consumed — second call returns nil
+	user2, err := s.SetUserEmailVerified(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user2 != nil {
+		t.Error("second verification with same token should return nil")
+	}
+}
+
+func TestSetUserEmailVerified_UnknownToken(t *testing.T) {
+	s := openTestDB(t)
+	user, err := s.SetUserEmailVerified(context.Background(), "nosuchtoken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user != nil {
+		t.Error("expected nil for unknown token")
+	}
+}
+
+func TestSetUserEmailVerified_ExpiredToken(t *testing.T) {
+	s := openTestDB(t)
+	token := "expiredtoken1234567890123456789"
+	_, err := s.CreateUser(context.Background(), "expired@example.com", "hash", token, time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	user, err := s.SetUserEmailVerified(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user != nil {
+		t.Error("expected nil for expired token")
+	}
+}
+
+// ── UpdateUserPassword ────────────────────────────────────────────────────────
+
+func TestUpdateUserPassword_OK(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateUser(context.Background(), "pwchange@example.com", "oldhash", "tok3", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpdateUserPassword(context.Background(), id, "newhash"); err != nil {
+		t.Fatal(err)
+	}
+
+	user, err := s.GetUserByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.PasswordHash != "newhash" {
+		t.Errorf("expected newhash, got %q", user.PasswordHash)
+	}
+}

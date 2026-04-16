@@ -8,17 +8,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 	"vocabulary_trainer/db"
+	"vocabulary_trainer/email"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 const cookieName = "vocab_session"
 const sessionTTL = 24 * time.Hour
+const verificationTTL = 24 * time.Hour
 
 type contextKey int
 
@@ -40,28 +43,37 @@ func WithUserID(id int64) func(http.Handler) http.Handler {
 	}
 }
 
-// AuthHandler handles login/logout and provides middleware.
+// AuthHandler handles login/logout/registration and provides middleware.
 type AuthHandler struct {
-	store  *db.Store
-	secret []byte // HMAC signing key, generated at startup
+	store       *db.Store
+	secret      []byte // HMAC signing key, generated at startup
+	emailSender *email.Sender
+	appURL      string
 }
 
 // NewAuthHandler creates an AuthHandler backed by the given store.
-func NewAuthHandler(store *db.Store) (*AuthHandler, error) {
+// emailSender may be nil (email disabled — accounts auto-verified on register).
+// appURL is used to build email verification links (e.g. "https://example.com").
+func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL string) (*AuthHandler, error) {
 	secret := make([]byte, 32)
 	if _, err := rand.Read(secret); err != nil {
 		return nil, fmt.Errorf("generate auth secret: %w", err)
 	}
-	return &AuthHandler{store: store, secret: secret}, nil
+	return &AuthHandler{store: store, secret: secret, emailSender: emailSender, appURL: appURL}, nil
 }
 
 // Middleware rejects unauthenticated requests and injects the user ID into context.
-// API requests receive 401 JSON; page requests redirect to /login.
+// API requests receive 401 JSON; page requests redirect to /.
 func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
-		if p == "/login" || strings.HasPrefix(p, "/api/login") || p == "/api/auth/status" ||
-			strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
+		if p == "/" || p == "/login" ||
+			strings.HasPrefix(p, "/api/login") ||
+			strings.HasPrefix(p, "/api/register") ||
+			strings.HasPrefix(p, "/api/verify-email") ||
+			p == "/api/auth/status" ||
+			strings.HasSuffix(p, ".js") ||
+			strings.HasSuffix(p, ".css") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -73,7 +85,7 @@ func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 				json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
 				return
 			}
-			http.Redirect(w, r, "/login", http.StatusFound)
+			http.Redirect(w, r, "/", http.StatusFound)
 			return
 		}
 		ctx := context.WithValue(r.Context(), userIDCtxKey, userID)
@@ -106,6 +118,10 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
+	if !user.EmailVerified {
+		writeError(w, http.StatusForbidden, "email_not_verified")
+		return
+	}
 
 	token := a.mintToken(user.ID)
 	http.SetCookie(w, &http.Cookie{
@@ -116,6 +132,177 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// Register handles POST /api/register.
+func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+
+	if !isValidEmail(req.Email) {
+		writeError(w, http.StatusBadRequest, "invalid email address")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+
+	existing, err := a.store.GetUserByEmail(r.Context(), req.Email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if existing != nil {
+		writeError(w, http.StatusConflict, "email already registered")
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	verToken := hex.EncodeToString(tokenBytes)
+	expiresAt := time.Now().Add(verificationTTL)
+
+	userID, err := a.store.CreateUser(r.Context(), req.Email, string(hash), verToken, expiresAt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if a.emailSender == nil {
+		// No SMTP configured: auto-verify and log token for inspection.
+		user, err := a.store.SetUserEmailVerified(r.Context(), verToken)
+		if err != nil || user == nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		log.Printf("Registration (no SMTP): user %d (%s) auto-verified", userID, req.Email)
+		sessionToken := a.mintToken(user.ID)
+		http.SetCookie(w, &http.Cookie{
+			Name:     cookieName,
+			Value:    sessionToken,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int(sessionTTL.Seconds()),
+		})
+		writeJSON(w, http.StatusOK, map[string]any{"auto_login": true, "redirect": "/train"})
+		return
+	}
+
+	// Send verification email.
+	link := a.appURL + "/api/verify-email?token=" + verToken
+	subject := "Confirm your Vocabulary Trainer account"
+	bodyText := fmt.Sprintf("Click the link below to activate your account:\n\n%s\n\nThis link expires in 24 hours.", link)
+	bodyHTML := fmt.Sprintf(`<p>Click the button below to activate your Vocabulary Trainer account:</p>
+<p><a href="%s" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Confirm Email</a></p>
+<p>Or copy this link:<br><a href="%s">%s</a></p>
+<p>This link expires in 24 hours.</p>`, link, link, link)
+
+	if err := a.emailSender.Send(req.Email, subject, bodyText, bodyHTML); err != nil {
+		log.Printf("Error: send verification email to %s: %v", req.Email, err)
+		// Don't expose the internal error; user can request a resend later.
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"pending_verification": true})
+}
+
+// VerifyEmail handles GET /api/verify-email?token=...
+func (a *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Redirect(w, r, "/?error=invalid_token", http.StatusFound)
+		return
+	}
+	user, err := a.store.SetUserEmailVerified(r.Context(), token)
+	if err != nil {
+		log.Printf("Error: verify email token: %v", err)
+		http.Redirect(w, r, "/?error=invalid_token", http.StatusFound)
+		return
+	}
+	if user == nil {
+		http.Redirect(w, r, "/?error=invalid_token", http.StatusFound)
+		return
+	}
+
+	sessionToken := a.mintToken(user.ID)
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    sessionToken,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+	http.Redirect(w, r, "/train", http.StatusFound)
+}
+
+// Me handles GET /api/me — returns the current user's public profile.
+func (a *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+	user, err := a.store.GetUserByID(r.Context(), userID)
+	if err != nil || user == nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"email":          user.Email,
+		"email_verified": user.EmailVerified,
+	})
+}
+
+// ChangePassword handles POST /api/change-password.
+func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		writeError(w, http.StatusBadRequest, "new password must be at least 8 characters")
+		return
+	}
+
+	userID := UserIDFromContext(r.Context())
+	user, err := a.store.GetUserByID(r.Context(), userID)
+	if err != nil || user == nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)) != nil {
+		writeError(w, http.StatusForbidden, "current password is incorrect")
+		return
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if err := a.store.UpdateUserPassword(r.Context(), userID, string(newHash)); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -139,7 +326,6 @@ func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // mintToken creates a signed token: "userID:timestamp:hmac".
-// The HMAC is computed over "userID:timestamp" to bind both to the signature.
 func (a *AuthHandler) mintToken(userID int64) string {
 	uid := strconv.FormatInt(userID, 10)
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
@@ -154,7 +340,6 @@ func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
-	// Token format: "userID:timestamp:hmac"
 	lastColon := strings.LastIndex(c.Value, ":")
 	if lastColon < 0 {
 		return 0, false
@@ -163,7 +348,6 @@ func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 	if a.sign(payload) != sig {
 		return 0, false
 	}
-	// payload = "userID:timestamp"
 	parts := strings.SplitN(payload, ":", 2)
 	if len(parts) != 2 {
 		return 0, false
@@ -186,4 +370,15 @@ func (a *AuthHandler) sign(data string) string {
 	mac := hmac.New(sha256.New, a.secret)
 	mac.Write([]byte(data))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// isValidEmail does a minimal sanity check: contains exactly one "@" with
+// non-empty local and domain parts containing at least one ".".
+func isValidEmail(email string) bool {
+	at := strings.LastIndex(email, "@")
+	if at <= 0 || at == len(email)-1 {
+		return false
+	}
+	domain := email[at+1:]
+	return strings.Contains(domain, ".")
 }

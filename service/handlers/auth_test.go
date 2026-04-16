@@ -14,7 +14,7 @@ import (
 func newAuthRouter(t *testing.T) http.Handler {
 	t.Helper()
 	s := openTestDB(t)
-	authH, err := handlers.NewAuthHandler(s)
+	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost:8080")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func newAuthRouter(t *testing.T) http.Handler {
 	r.Get("/api/protected", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	return r
@@ -93,26 +93,26 @@ func TestMiddleware_NoSession_APIReturns401(t *testing.T) {
 	}
 }
 
-func TestMiddleware_NoSession_PageRedirectsToLogin(t *testing.T) {
+func TestMiddleware_NoSession_PageRedirectsToRoot(t *testing.T) {
 	r := newAuthRouter(t)
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest("GET", "/train", nil)
 	rec := httptest.NewRecorder()
 	r.(http.Handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusFound {
 		t.Errorf("want 302 redirect for unauthenticated page request, got %d", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/login" {
-		t.Errorf("want redirect to /login, got %q", loc)
+	if loc := rec.Header().Get("Location"); loc != "/" {
+		t.Errorf("want redirect to /, got %q", loc)
 	}
 }
 
-func TestMiddleware_LoginPageAccessibleWithoutSession(t *testing.T) {
+func TestMiddleware_RootAccessibleWithoutSession(t *testing.T) {
 	r := newAuthRouter(t)
-	rec := do(t, r, "GET", "/login", nil)
+	rec := do(t, r, "GET", "/", nil)
 	if rec.Code != http.StatusOK {
-		t.Errorf("want 200 on /login without session, got %d", rec.Code)
+		t.Errorf("want 200 on / without session, got %d", rec.Code)
 	}
 }
 
