@@ -20,7 +20,7 @@ type Store struct {
 
 // Open opens (or creates) the SQLite database at the given path and runs schema migrations.
 func Open(path string) (*Store, error) {
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)", path)
+	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -825,10 +825,11 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 
 // SkipWord moves a word's due date forward by the given number of days without
 // touching first_seen_date or attempt counters.
-func (s *Store) SkipWord(ctx context.Context, wordID int64, days int) error {
+func (s *Store) SkipWord(ctx context.Context, userID, wordID int64, days int) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET due_date = datetime('now', ?) WHERE word_id = ?`,
-		fmt.Sprintf("+%d days", days), wordID)
+		`UPDATE sm2_progress SET due_date = datetime('now', ?)
+		 WHERE word_id = ? AND word_id IN (SELECT id FROM words WHERE user_id = ?)`,
+		fmt.Sprintf("+%d days", days), wordID, userID)
 	if err != nil {
 		return fmt.Errorf("skip word: %w", err)
 	}
@@ -841,13 +842,14 @@ func (s *Store) SkipWord(ctx context.Context, wordID int64, days int) error {
 
 // AcknowledgeWord marks a new word as "introduced" by setting total_attempts=1,
 // first_seen_date=today, and due_date=now so it becomes immediately available for quizzing.
-func (s *Store) AcknowledgeWord(ctx context.Context, wordID int64) error {
+func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress
 		 SET total_attempts = CASE WHEN total_attempts = 0 THEN 1 ELSE total_attempts END,
 		     first_seen_date = COALESCE(first_seen_date, date('now')),
 		     due_date = CURRENT_TIMESTAMP
-		 WHERE word_id = ?`, wordID)
+		 WHERE word_id = ? AND word_id IN (SELECT id FROM words WHERE user_id = ?)`,
+		wordID, userID)
 	if err != nil {
 		return fmt.Errorf("acknowledge word: %w", err)
 	}
@@ -1012,11 +1014,12 @@ func (s *Store) GetWordCountByDueDate(ctx context.Context, userID int64, tags []
 }
 
 // LookupConfusion checks if the user's wrong answer matches a different known word.
-// For zh_to_en / zh_pinyin_to_en: looks for an EN word matching the answer, then
-// returns the zh word it belongs to (if different from zhWordID).
+// For zh_to_en / zh_pinyin_to_en: looks for a translation word (restricted to langs)
+// whose text matches the answer, then returns the zh word it belongs to (if different
+// from zhWordID).
 // For en_to_zh: looks for a ZH word whose text matches the answer (if different from zhWordID).
 // Returns (confusedWithID, true, nil) if a confusion is found, (0, false, nil) if not.
-func (s *Store) LookupConfusion(ctx context.Context, zhWordID int64, answer, mode string) (int64, bool, error) {
+func (s *Store) LookupConfusion(ctx context.Context, userID, zhWordID int64, answer, mode string, langs []string) (int64, bool, error) {
 	normalized := sm2.NormalizeAnswer(answer)
 	if normalized == "" {
 		return 0, false, nil
@@ -1027,20 +1030,35 @@ func (s *Store) LookupConfusion(ctx context.Context, zhWordID int64, answer, mod
 
 	switch mode {
 	case "zh_to_en", "zh_pinyin_to_en":
-		// Find the zh word linked to an EN word whose text matches the answer.
+		// Find the zh word linked to a translation word whose text matches the answer,
+		// restricted to the languages the user has selected and owned by the same user.
+		if len(langs) == 0 {
+			langs = []string{"en"}
+		}
+		placeholders := make([]string, len(langs))
+		args := make([]any, 0, len(langs)+3)
+		args = append(args, normalized)
+		for i, l := range langs {
+			placeholders[i] = "?"
+			args = append(args, l)
+		}
+		args = append(args, zhWordID, userID)
 		err = s.db.QueryRowContext(ctx, `
 			SELECT t.zh_word_id FROM words w
 			JOIN translations t ON t.en_word_id = w.id
-			WHERE w.language = 'en' AND LOWER(TRIM(w.text)) = ?
+			JOIN words wz ON wz.id = t.zh_word_id
+			WHERE LOWER(TRIM(w.text)) = ?
+			  AND w.language IN (`+strings.Join(placeholders, ",")+`)
 			  AND t.zh_word_id != ?
-			LIMIT 1`, normalized, zhWordID).Scan(&confusedWithID)
+			  AND wz.user_id = ?
+			LIMIT 1`, args...).Scan(&confusedWithID)
 	case "en_to_zh":
-		// Find a ZH word whose text matches the answer.
+		// Find a ZH word whose text matches the answer, owned by the same user.
 		err = s.db.QueryRowContext(ctx, `
 			SELECT id FROM words
 			WHERE language = 'zh' AND LOWER(TRIM(text)) = ?
-			  AND id != ?
-			LIMIT 1`, normalized, zhWordID).Scan(&confusedWithID)
+			  AND id != ? AND user_id = ?
+			LIMIT 1`, normalized, zhWordID, userID).Scan(&confusedWithID)
 	default:
 		return 0, false, nil
 	}
@@ -1069,7 +1087,7 @@ func (s *Store) UpsertConfusion(ctx context.Context, zhWordID, confusedWithID in
 }
 
 // GetConfusionDetail returns a single ConfusionDetail for use in the answer response.
-func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string) (*models.ConfusionDetail, error) {
+func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error) {
 	var d models.ConfusionDetail
 	var lastSeen string
 	err := s.db.QueryRowContext(ctx, `
@@ -1092,20 +1110,26 @@ func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID
 		return nil, fmt.Errorf("get confusion detail: %w", err)
 	}
 	d.LastSeen = parseDateTime(lastSeen)
-	var ferr error
-	d.ZhEnTexts, ferr = s.getTranslationTextsForZhWord(ctx, zhWordID, "en")
-	if ferr != nil {
-		return nil, ferr
+	if len(langs) == 0 {
+		langs = []string{"en"}
 	}
-	d.ConfusedWithEnTexts, ferr = s.getTranslationTextsForZhWord(ctx, confusedWithID, "en")
-	if ferr != nil {
-		return nil, ferr
+	for _, lang := range langs {
+		texts, ferr := s.getTranslationTextsForZhWord(ctx, zhWordID, lang)
+		if ferr != nil {
+			return nil, ferr
+		}
+		d.ZhEnTexts = append(d.ZhEnTexts, texts...)
+		texts, ferr = s.getTranslationTextsForZhWord(ctx, confusedWithID, lang)
+		if ferr != nil {
+			return nil, ferr
+		}
+		d.ConfusedWithEnTexts = append(d.ConfusedWithEnTexts, texts...)
 	}
 	return &d, nil
 }
 
-// GetConfusions returns all confusion pairs ordered by last_seen DESC, with full word details.
-func (s *Store) GetConfusions(ctx context.Context) ([]models.ConfusionDetail, error) {
+// GetConfusions returns all confusion pairs for the given user, ordered by last_seen DESC.
+func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT cp.zh_word_id, wz.text, wz.pinyin,
 		       cp.confused_with_id, wc.text, wc.pinyin,
@@ -1113,7 +1137,8 @@ func (s *Store) GetConfusions(ctx context.Context) ([]models.ConfusionDetail, er
 		FROM confusion_pairs cp
 		JOIN words wz ON wz.id = cp.zh_word_id
 		JOIN words wc ON wc.id = cp.confused_with_id
-		ORDER BY cp.last_seen DESC`)
+		WHERE wz.user_id = ?
+		ORDER BY cp.last_seen DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get confusions: %w", err)
 	}
@@ -1577,9 +1602,9 @@ func (s *Store) GetTodaySessionInfo(ctx context.Context, userID int64) (attempts
 	err = s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh'
+		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_date IS NOT NULL
-		  AND p.due_date > CURRENT_TIMESTAMP`).Scan(&availableToAdvance)
+		  AND p.due_date > CURRENT_TIMESTAMP`, userID).Scan(&availableToAdvance)
 	if err != nil {
 		err = fmt.Errorf("count available to advance: %w", err)
 	}
@@ -1590,16 +1615,16 @@ func (s *Store) GetTodaySessionInfo(ctx context.Context, userID int64) (attempts
 // n words become due now. It finds the Nth earliest future due date among seen
 // zh words, computes the delta to now, and subtracts it from all seen zh words'
 // due dates. Returns the number of zh words now due after the operation.
-func (s *Store) AdvanceDueDates(ctx context.Context, n int) (int, error) {
+func (s *Store) AdvanceDueDates(ctx context.Context, userID int64, n int) (int, error) {
 	var nthDueDateStr string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT p.due_date FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh'
+		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_date IS NOT NULL
 		  AND p.due_date > CURRENT_TIMESTAMP
 		ORDER BY p.due_date ASC
-		LIMIT 1 OFFSET ?`, n-1).Scan(&nthDueDateStr)
+		LIMIT 1 OFFSET ?`, userID, n-1).Scan(&nthDueDateStr)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
@@ -1617,7 +1642,8 @@ func (s *Store) AdvanceDueDates(ctx context.Context, n int) (int, error) {
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE sm2_progress SET due_date = datetime(due_date, ?)
 		WHERE first_seen_date IS NOT NULL
-		  AND word_id IN (SELECT id FROM words WHERE language = 'zh')`, modifier); err != nil {
+		  AND word_id IN (SELECT id FROM words WHERE language = 'zh' AND user_id = ?)`,
+		modifier, userID); err != nil {
 		return 0, fmt.Errorf("advance due dates: %w", err)
 	}
 
@@ -1625,9 +1651,9 @@ func (s *Store) AdvanceDueDates(ctx context.Context, n int) (int, error) {
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh'
+		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_date IS NOT NULL
-		  AND p.due_date <= CURRENT_TIMESTAMP`).Scan(&nowDue); err != nil {
+		  AND p.due_date <= CURRENT_TIMESTAMP`, userID).Scan(&nowDue); err != nil {
 		return 0, fmt.Errorf("count now due: %w", err)
 	}
 	return nowDue, nil
@@ -1985,9 +2011,11 @@ func (s *Store) UpsertHMMScene(ctx context.Context, wordID int64, sceneText stri
 	return nil
 }
 
-func (s *Store) DeleteHMMScene(ctx context.Context, wordID int64) error {
+func (s *Store) DeleteHMMScene(ctx context.Context, userID, wordID int64) error {
 	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM hmm_scenes WHERE word_id = ?`, wordID)
+		`DELETE FROM hmm_scenes WHERE word_id = ?
+		 AND word_id IN (SELECT id FROM words WHERE user_id = ?)`,
+		wordID, userID)
 	if err != nil {
 		return fmt.Errorf("delete hmm scene: %w", err)
 	}
@@ -2186,7 +2214,7 @@ func (s *Store) GetHMMPropsByRadicals(ctx context.Context, userID int64, radical
 	return props, rows.Err()
 }
 
-func (s *Store) SaveHMMSceneWithLibrary(ctx context.Context, wordID int64, initial, finalKey string, tone int, req models.HMMSaveSceneRequest) error {
+func (s *Store) SaveHMMSceneWithLibrary(ctx context.Context, userID, wordID int64, initial, finalKey string, tone int, req models.HMMSaveSceneRequest) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -2202,22 +2230,22 @@ func (s *Store) SaveHMMSceneWithLibrary(ctx context.Context, wordID int64, initi
 
 	if req.ActorName != "" && initial != "" {
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE hmm_actors SET actor_name = ? WHERE initial = ?`,
-			req.ActorName, initial); err != nil {
+			`UPDATE hmm_actors SET actor_name = ? WHERE user_id = ? AND initial = ?`,
+			req.ActorName, userID, initial); err != nil {
 			return fmt.Errorf("update actor: %w", err)
 		}
 	}
 	if req.LocationName != "" && finalKey != "" {
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE hmm_locations SET location_name = ? WHERE final_key = ?`,
-			req.LocationName, finalKey); err != nil {
+			`UPDATE hmm_locations SET location_name = ? WHERE user_id = ? AND final_key = ?`,
+			req.LocationName, userID, finalKey); err != nil {
 			return fmt.Errorf("update location: %w", err)
 		}
 	}
 	if req.RoomName != "" && tone >= 1 && tone <= 5 {
 		if _, err := tx.ExecContext(ctx,
-			`UPDATE hmm_tone_rooms SET room_name = ? WHERE tone = ?`,
-			req.RoomName, tone); err != nil {
+			`UPDATE hmm_tone_rooms SET room_name = ? WHERE user_id = ? AND tone = ?`,
+			req.RoomName, userID, tone); err != nil {
 			return fmt.Errorf("update tone room: %w", err)
 		}
 	}
@@ -2226,9 +2254,9 @@ func (s *Store) SaveHMMSceneWithLibrary(ctx context.Context, wordID int64, initi
 			continue
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO hmm_props (radical, prop_name) VALUES (?, ?)
-			 ON CONFLICT(radical) DO UPDATE SET prop_name = excluded.prop_name`,
-			p.Radical, p.PropName); err != nil {
+			`INSERT INTO hmm_props (user_id, radical, prop_name) VALUES (?, ?, ?)
+			 ON CONFLICT(user_id, radical) DO UPDATE SET prop_name = excluded.prop_name`,
+			userID, p.Radical, p.PropName); err != nil {
 			return fmt.Errorf("upsert prop %s: %w", p.Radical, err)
 		}
 	}

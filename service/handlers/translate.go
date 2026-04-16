@@ -97,9 +97,12 @@ func Pinyin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"pinyin": toPinyin(req.ZhText)})
 }
 
-func Config(deeplEnabled bool) http.HandlerFunc {
+func Config(deeplEnabled, llmEnabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]bool{"deepl_enabled": deeplEnabled})
+		writeJSON(w, http.StatusOK, map[string]bool{
+			"deepl_enabled": deeplEnabled,
+			"llm_enabled":   llmEnabled,
+		})
 	}
 }
 

@@ -1,0 +1,28 @@
+{
+  "model": "claude-sonnet-4-6",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "Stop" : [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "make -C $CLAUDE_PROJECT_DIR test"
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "MAX_THINKING_TOKENS": "10000"
+  }
+}

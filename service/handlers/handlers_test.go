@@ -264,7 +264,7 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 	}
 
 	// Acknowledge id1 so it counts as today's introduced word.
-	if err := s.AcknowledgeWord(ctx, id1); err != nil {
+	if err := s.AcknowledgeWord(ctx, int64(2), id1); err != nil {
 		t.Fatalf("AcknowledgeWord id1: %v", err)
 	}
 
@@ -1135,6 +1135,9 @@ func TestQuizAcknowledge_Valid(t *testing.T) {
 	if p.TotalCorrect != 0 {
 		t.Errorf("total_correct: want 0, got %d", p.TotalCorrect)
 	}
+	if !p.LearningNewWord {
+		t.Error("acknowledge must set learning_new_word=true so the word enters the learning phase")
+	}
 }
 
 func TestQuizAcknowledge_Idempotent(t *testing.T) {
@@ -1481,10 +1484,30 @@ func TestStatsHandlerNewFields(t *testing.T) {
 	var resp map[string]int
 	decodeJSON(t, rec, &resp)
 
-	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available"} {
+	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available", "hmm_due_today"} {
 		if _, ok := resp[key]; !ok {
 			t.Errorf("stats response missing key %q", key)
 		}
+	}
+}
+
+func TestStatsHandler_HmmDueTodayIncluded(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+
+	if _, ok := resp["hmm_due_today"]; !ok {
+		t.Error("stats response missing key \"hmm_due_today\"")
+	}
+	// With an empty DB, hmm_due_today should be 0.
+	if resp["hmm_due_today"] != 0 {
+		t.Errorf("hmm_due_today: want 0, got %d", resp["hmm_due_today"])
 	}
 }
 
@@ -1517,10 +1540,10 @@ func TestAdvanceHandler_AdvancesWords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AcknowledgeWord(ctx, wid); err != nil {
+	if err := s.AcknowledgeWord(ctx, int64(2), wid); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SkipWord(ctx, wid, 1); err != nil {
+	if err := s.SkipWord(ctx, int64(2), wid, 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1606,6 +1629,81 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 	rec = do(t, r, "GET", "/api/quiz/next", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 after cap reset, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── StartTraining sets learning phase ─────────────────────────────────────────
+
+func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:        "学",
+		EnTexts:       []string{"study"},
+		StartTraining: true,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp map[string]int64
+	decodeJSON(t, rec, &resp)
+
+	p, err := s.GetSM2Progress(ctx, resp["id"])
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	if !p.LearningNewWord {
+		t.Error("start_training=true must set learning_new_word=1 so the word enters the learning phase")
+	}
+}
+
+// ── Input length validation ───────────────────────────────────────────────────
+
+func TestWordsCreate_ZhTextTooLong(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	long201 := ""
+	for i := 0; i < 201; i++ {
+		long201 += "好"
+	}
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:  long201,
+		EnTexts: []string{"ok"},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for zh_text > 200 chars, got %d", rec.Code)
+	}
+}
+
+func TestWordsCreate_TooManyTranslations(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	texts := make([]string, 21)
+	for i := range texts {
+		texts[i] = fmt.Sprintf("translation %d", i)
+	}
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:  "好",
+		EnTexts: texts,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for > 20 translations, got %d", rec.Code)
+	}
+}
+
+func TestWordsCreate_TooManyTags(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	tags := make([]string, 21)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("tag%d", i)
+	}
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:  "好",
+		EnTexts: []string{"ok"},
+		Tags:    tags,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for > 20 tags, got %d", rec.Code)
 	}
 }
 

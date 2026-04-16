@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
@@ -15,6 +16,7 @@ import (
 type QuizHandler struct {
 	Store        *db.Store
 	MaxNewPerDay int
+	mu           sync.Mutex
 	capResetDate string // date string (YYYY-MM-DD) on which the new-word cap was reset
 	newCapBase   int    // newToday count at cap-reset time; cap = newCapBase + MaxNewPerDay
 }
@@ -69,6 +71,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		tags = strings.Split(t, ",")
 	}
 	bucket := r.URL.Query().Get("bucket")
+	h.mu.Lock()
 	cap := h.MaxNewPerDay
 	if h.capResetDate == time.Now().Format("2006-01-02") {
 		extra := h.MaxNewPerDay
@@ -77,10 +80,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 		cap = h.newCapBase + extra
 	}
+	h.mu.Unlock()
 	skipNew := r.URL.Query().Get("skip_new") == "true"
 	word, progress, err := h.Store.GetNextCard(r.Context(), UserIDFromContext(r.Context()), tags, cap, bucket, skipNew)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 
@@ -241,7 +245,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	// Look up the zh word (word_id is always the zh word)
 	zhWord, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), req.WordID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	if zhWord == nil {
@@ -261,7 +265,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		for _, lang := range langs {
 			transWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, lang)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+				internalError(w, err)
 				return
 			}
 			for _, tw := range transWords {
@@ -278,7 +282,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 	progress, err := h.Store.GetSM2Progress(r.Context(), req.WordID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	if progress == nil {
@@ -311,7 +315,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 
@@ -348,10 +352,10 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !correct {
-		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), req.WordID, req.Answer, req.Mode)
+		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Answer, req.Mode, langs)
 		if err == nil && found {
 			_ = h.Store.UpsertConfusion(r.Context(), req.WordID, confusedWithID, req.Mode)
-			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode)
+			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode, langs)
 			if err == nil {
 				resp.ConfusedWith = confusions
 			}
@@ -365,7 +369,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.Store.GetDailyStatsHistory(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	resp := models.DailyStatsResponse{Days: make([]models.DailyStatEntry, len(stats))}
@@ -399,12 +403,12 @@ func (h *QuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "word_id is required")
 		return
 	}
-	if err := h.Store.SkipWord(r.Context(), req.WordID, 7); err != nil {
+	if err := h.Store.SkipWord(r.Context(), UserIDFromContext(r.Context()), req.WordID, 7); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -423,12 +427,12 @@ func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "word_id is required")
 		return
 	}
-	if err := h.Store.AcknowledgeWord(r.Context(), req.WordID); err != nil {
+	if err := h.Store.AcknowledgeWord(r.Context(), UserIDFromContext(r.Context()), req.WordID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -438,7 +442,7 @@ func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
 func (h *QuizHandler) WordStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.Store.GetWordStats(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, stats)
@@ -453,14 +457,15 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	bucket := r.URL.Query().Get("bucket")
 	due, total, newToday, err := h.Store.GetStats(r.Context(), UserIDFromContext(r.Context()), tags, bucket)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
 	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		internalError(w, err)
 		return
 	}
+	h.mu.Lock()
 	cap := h.MaxNewPerDay
 	if h.capResetDate == time.Now().Format("2006-01-02") {
 		extra := h.MaxNewPerDay
@@ -469,6 +474,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		}
 		cap = h.newCapBase + extra
 	}
+	h.mu.Unlock()
 	newAvailable := 0
 	// When drilling a specific tier, don't introduce new words (they have no tier yet).
 	// Also skip new words if there are still words in the learning ("new") phase
@@ -476,13 +482,13 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	if bucket == "" && newToday < cap {
 		learningCount, err := h.Store.CountLearningNewWords(r.Context(), UserIDFromContext(r.Context()), tags)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			internalError(w, err)
 			return
 		}
 		if learningCount == 0 {
 			n, err := h.Store.CountUnseenZhWords(r.Context(), UserIDFromContext(r.Context()), tags)
 			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
+				internalError(w, err)
 				return
 			}
 			if remaining := cap - newToday; n > remaining {
@@ -540,9 +546,9 @@ func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
 	}
 	advanced := 0
 	if req.Count > 0 {
-		n, err := h.Store.AdvanceDueDates(r.Context(), req.Count)
+		n, err := h.Store.AdvanceDueDates(r.Context(), UserIDFromContext(r.Context()), req.Count)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			internalError(w, err)
 			return
 		}
 		advanced = n
@@ -550,8 +556,10 @@ func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
 	if req.ResetNewCap {
 		_, _, newToday, err := h.Store.GetStats(r.Context(), UserIDFromContext(r.Context()), nil, "")
 		if err == nil {
+			h.mu.Lock()
 			h.capResetDate = time.Now().Format("2006-01-02")
 			h.newCapBase = newToday
+			h.mu.Unlock()
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -325,7 +326,8 @@ func (h *HMMHandler) SaveScene(w http.ResponseWriter, r *http.Request) {
 		initial, final, tone = parsePinyin(*word.Pinyin)
 	}
 
-	if err := h.Store.SaveHMMSceneWithLibrary(r.Context(), id, initial, final, tone, req); err != nil {
+	if err := h.Store.SaveHMMSceneWithLibrary(r.Context(), UserIDFromContext(r.Context()), id, initial, final, tone, req); err != nil {
+		log.Printf("Error: failed to save scene: %s\n", err)
 		writeError(w, http.StatusInternalServerError, "failed to save scene")
 		return
 	}
@@ -343,7 +345,12 @@ func (h *HMMHandler) DeleteScene(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid word id")
 		return
 	}
-	if err := h.Store.DeleteHMMScene(r.Context(), id); err != nil {
+	word, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
+	if err != nil || word == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+	if err := h.Store.DeleteHMMScene(r.Context(), UserIDFromContext(r.Context()), id); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete scene")
 		return
 	}

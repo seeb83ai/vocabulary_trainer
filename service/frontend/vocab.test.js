@@ -210,11 +210,13 @@ describe('buildFormPayload', () => {
 });
 
 // ── renderDue ─────────────────────────────────────────────────────────────────
-// Inlined from vocab.js (without i18n calls, using fixed strings for logic).
+// Inlined from vocab.js (without i18n/HTML, using plain strings for logic).
 
 function renderDue(word) {
   if (word.total_attempts === 0) return 'unseen';
+  if (!word.due_date) return '—';
   const due = new Date(word.due_date);
+  if (isNaN(due.getTime())) return '—';
   const diffDays = Math.round((due - new Date()) / 86400000);
   if (diffDays <= 0) return 'due';
   return `in ${diffDays}d`;
@@ -222,7 +224,15 @@ function renderDue(word) {
 
 describe('renderDue', () => {
   it('returns "unseen" when no attempts', () => {
-    expect(renderDue({ total_attempts: 0 })).toBe('unseen');
+    expect(renderDue({ total_attempts: 0, due_date: null })).toBe('unseen');
+  });
+
+  it('returns em-dash for null due_date', () => {
+    expect(renderDue({ total_attempts: 1, due_date: null })).toBe('—');
+  });
+
+  it('returns em-dash for invalid date string', () => {
+    expect(renderDue({ total_attempts: 1, due_date: 'not-a-date' })).toBe('—');
   });
 
   it('returns "due" when due_date is in the past', () => {

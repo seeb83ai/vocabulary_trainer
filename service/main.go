@@ -11,6 +11,7 @@ import (
 	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
+	"vocabulary_trainer/llm"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -103,9 +104,24 @@ func main() {
 	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
 	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDirs: pinyinAudioDirs}
 
+	llmClient := llm.NewClientFromEnv()
+	var llmH *handlers.LLMHandler
+	if llmClient != nil {
+		llmH = &handlers.LLMHandler{Client: llmClient, Store: store}
+		log.Printf("LLM enabled: provider=%s", llmClient.Name())
+	}
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			next.ServeHTTP(w, r)
+		})
+	})
 	r.Use(authH.Middleware)
 
 	// API routes
@@ -136,6 +152,9 @@ func main() {
 				r.Get("/hmm/context", hmmH.GetSceneContext)
 				r.Put("/hmm", hmmH.SaveScene)
 				r.Delete("/hmm", hmmH.DeleteScene)
+				if llmH != nil {
+					r.Post("/hmm/generate-scene", llmH.GenerateScene)
+				}
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
@@ -161,7 +180,7 @@ func main() {
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
-		r.Get("/config", handlers.Config(translateH != nil))
+		r.Get("/config", handlers.Config(translateH != nil, llmH != nil))
 		if translateH != nil {
 			r.Post("/translate", translateH.Translate)
 		}

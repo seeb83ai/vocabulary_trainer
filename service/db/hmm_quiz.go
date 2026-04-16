@@ -238,7 +238,7 @@ WHERE p.user_id = ? AND ` + hmmNameFilter + typeFilter
 
 	dueArgs := append([]any{userID}, typeArgs...)
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) `+baseQuery+` AND p.due_date <= CURRENT_TIMESTAMP`,
+		`SELECT COUNT(*) `+baseQuery+` AND p.due_date < date('now', '+1 day')`,
 		dueArgs...).Scan(&stats.DueToday); err != nil {
 		return stats, fmt.Errorf("count hmm due: %w", err)
 	}

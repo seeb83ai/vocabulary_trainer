@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
@@ -26,12 +27,16 @@ func newRouterForUser(s *db.Store, userID int64) http.Handler {
 	wordsH := &handlers.WordsHandler{Store: s}
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
 	hmmH := &handlers.HMMHandler{Store: s}
+	mismatchH := &handlers.MismatchesHandler{Store: s}
 
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(userID))
 
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/answer", quizH.Answer)
+	r.Post("/api/quiz/skip", quizH.Skip)
+	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
+	r.Post("/api/quiz/advance", quizH.Advance)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
@@ -39,20 +44,29 @@ func newRouterForUser(s *db.Store, userID int64) http.Handler {
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
 		r.Post("/", wordsH.Create)
+		r.Get("/export", wordsH.Export)
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", wordsH.GetByID)
 			r.Put("/", wordsH.Update)
 			r.Delete("/", wordsH.Delete)
 			r.Post("/review", wordsH.MarkReview)
+			r.Put("/hmm", hmmH.SaveScene)
+			r.Delete("/hmm", hmmH.DeleteScene)
 		})
 	})
 
 	r.Route("/api/hmm", func(r chi.Router) {
 		r.Get("/actors", hmmH.GetActors)
 		r.Put("/actors/{initial}", hmmH.UpdateActor)
+		r.Get("/locations", hmmH.GetLocations)
+		r.Put("/locations/{final}", hmmH.UpdateLocation)
 		r.Get("/tone-rooms", hmmH.GetToneRooms)
 		r.Put("/tone-rooms/{tone}", hmmH.UpdateToneRoom)
+		r.Get("/props", hmmH.GetProps)
+		r.Put("/props", hmmH.UpsertProp)
 	})
+
+	r.Get("/api/mismatches", mismatchH.List)
 
 	return r
 }
@@ -207,11 +221,11 @@ func TestIsolation_QuizNext_OnlyOwnWords(t *testing.T) {
 	ctx := context.Background()
 	words1, _, _ := s.GetWords(ctx, 1, "", 1, 100, "", "", nil, false, false, "", "", "")
 	for _, w := range words1 {
-		_ = s.AcknowledgeWord(ctx, w.ID)
+		_ = s.AcknowledgeWord(ctx, 1, w.ID)
 	}
 	words2, _, _ := s.GetWords(ctx, 2, "", 1, 100, "", "", nil, false, false, "", "", "")
 	for _, w := range words2 {
-		_ = s.AcknowledgeWord(ctx, w.ID)
+		_ = s.AcknowledgeWord(ctx, 2, w.ID)
 	}
 
 	r1 := newRouterForUser(s, 1)
@@ -459,7 +473,7 @@ func TestIsolation_QuizAnswer_CannotAnswerOtherUsersWord(t *testing.T) {
 
 	// User 1 creates a word.
 	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
-	if err := s.AcknowledgeWord(context.Background(), idA); err != nil {
+	if err := s.AcknowledgeWord(context.Background(), 1, idA); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
 
@@ -485,7 +499,7 @@ func TestIsolation_DueDateDistribution_OnlyOwnWords(t *testing.T) {
 
 	// User 1 has a word that is seen (has first_seen_date set by AcknowledgeWord).
 	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
-	if err := s.AcknowledgeWord(ctx, idA); err != nil {
+	if err := s.AcknowledgeWord(ctx, 1, idA); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
 
@@ -511,5 +525,271 @@ func TestIsolation_DueDateDistribution_OnlyOwnWords(t *testing.T) {
 	decodeJSON(t, rec, &dist2)
 	if len(dist2.Dates) != 0 {
 		t.Errorf("user2 should see no due dates (no words), got %d entries", len(dist2.Dates))
+	}
+}
+
+// ── Quiz: Skip isolation ──────────────────────────────────────────────────────
+
+func TestIsolation_Skip_CannotSkipOtherUsersWord(t *testing.T) {
+	s := openTestDB(t)
+
+	// User 1 owns a word.
+	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
+
+	r2 := newRouterForUser(s, 2)
+
+	// User 2 tries to skip user 1's word — must be rejected (404).
+	rec := do(t, r2, "POST", "/api/quiz/skip", map[string]int64{"word_id": idA})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("user2 skip user1 word: want 404, got %d", rec.Code)
+	}
+}
+
+// ── Quiz: Acknowledge isolation ───────────────────────────────────────────────
+
+func TestIsolation_Acknowledge_CannotAcknowledgeOtherUsersWord(t *testing.T) {
+	s := openTestDB(t)
+
+	// User 1 owns a word.
+	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
+
+	r2 := newRouterForUser(s, 2)
+
+	rec := do(t, r2, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": idA})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("user2 acknowledge user1 word: want 404, got %d", rec.Code)
+	}
+}
+
+// ── Quiz: Advance isolation ───────────────────────────────────────────────────
+
+func TestIsolation_Advance_OnlyOwnWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// User 1 has a word with a future due date (acknowledged, then skipped forward).
+	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
+	if err := s.AcknowledgeWord(ctx, 1, idA); err != nil {
+		t.Fatalf("AcknowledgeWord user1: %v", err)
+	}
+	if err := s.SkipWord(ctx, 1, idA, 7); err != nil {
+		t.Fatalf("SkipWord user1: %v", err)
+	}
+
+	r2 := newRouterForUser(s, 2)
+
+	// User 2 advances 1 word — should advance 0 (they have no words).
+	rec := do(t, r2, "POST", "/api/quiz/advance", map[string]any{"count": 1})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user2 advance: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["advanced"].(float64) != 0 {
+		t.Errorf("user2 advance: expected 0 words advanced (no own words), got %v", resp["advanced"])
+	}
+
+	// Verify user1's word still has a future due date via stats.
+	// If advance had wrongly affected user1, available_to_advance would be 0.
+	r1 := newRouterForUser(s, 1)
+	rec = do(t, r1, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user1 stats: %d", rec.Code)
+	}
+	var stats map[string]int
+	decodeJSON(t, rec, &stats)
+	if stats["available_to_advance"] != 1 {
+		t.Errorf("user1 available_to_advance: want 1, got %d (user2's advance should not affect user1)", stats["available_to_advance"])
+	}
+}
+
+// ── HMM: Scene delete isolation ───────────────────────────────────────────────
+
+func TestIsolation_HMMScene_DeleteCannotDeleteOtherUsersScene(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// User 1 has a word with a scene.
+	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
+	if err := s.UpsertHMMScene(ctx, idA, "User1's vivid scene."); err != nil {
+		t.Fatalf("UpsertHMMScene: %v", err)
+	}
+
+	r2 := newRouterForUser(s, 2)
+
+	// User 2 tries to delete user 1's scene.
+	rec := do(t, r2, "DELETE", fmt.Sprintf("/api/words/%d/hmm", idA), nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("user2 delete user1 scene: want 404, got %d", rec.Code)
+	}
+
+	// Scene should still exist for user 1.
+	scene, err := s.GetHMMScene(ctx, idA)
+	if err != nil {
+		t.Fatalf("GetHMMScene: %v", err)
+	}
+	if scene == nil || scene.SceneText != "User1's vivid scene." {
+		t.Error("user1 scene was deleted or corrupted by user2's delete attempt")
+	}
+}
+
+// ── HMM: Locations isolation ──────────────────────────────────────────────────
+
+func TestIsolation_HMMLocations_UserSeesOnlyOwnLocations(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// User 2 names location "a" (the "a" final).
+	if err := s.UpdateHMMLocation(ctx, 2, "a", "User2 Hotel"); err != nil {
+		t.Fatalf("UpdateHMMLocation user2: %v", err)
+	}
+
+	r1 := newRouterForUser(s, 1)
+	r2 := newRouterForUser(s, 2)
+
+	// User 1 has no location rows — expects empty list.
+	rec := do(t, r1, "GET", "/api/hmm/locations", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user1 get locations: %d", rec.Code)
+	}
+	var locs1 []models.HMMLocation
+	decodeJSON(t, rec, &locs1)
+	if len(locs1) != 0 {
+		t.Errorf("user1 should see 0 locations (no HMM data), got %d", len(locs1))
+	}
+
+	// User 2 should see their locations including "a" = "User2 Hotel".
+	rec = do(t, r2, "GET", "/api/hmm/locations", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user2 get locations: %d", rec.Code)
+	}
+	var locs2 []models.HMMLocation
+	decodeJSON(t, rec, &locs2)
+	found := false
+	for _, l := range locs2 {
+		if l.FinalKey == "a" {
+			if l.LocationName != "User2 Hotel" {
+				t.Errorf("user2 location a: want 'User2 Hotel', got %q", l.LocationName)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Error("user2 location 'a' not found in GET /api/hmm/locations")
+	}
+}
+
+// ── HMM: Props isolation ──────────────────────────────────────────────────────
+
+func TestIsolation_HMMProps_UserSeesOnlyOwnProps(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// User 2 upserts a prop.
+	if err := s.UpsertHMMProp(ctx, 2, "人", "person radical"); err != nil {
+		t.Fatalf("UpsertHMMProp user2: %v", err)
+	}
+
+	r1 := newRouterForUser(s, 1)
+	r2 := newRouterForUser(s, 2)
+
+	// User 1 has no props — expects empty list.
+	rec := do(t, r1, "GET", "/api/hmm/props", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user1 get props: %d", rec.Code)
+	}
+	var props1 []models.HMMProp
+	decodeJSON(t, rec, &props1)
+	if len(props1) != 0 {
+		t.Errorf("user1 should see 0 props, got %d", len(props1))
+	}
+
+	// User 2 should see their prop.
+	rec = do(t, r2, "GET", "/api/hmm/props", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user2 get props: %d", rec.Code)
+	}
+	var props2 []models.HMMProp
+	decodeJSON(t, rec, &props2)
+	if len(props2) != 1 || props2[0].Radical != "人" {
+		t.Errorf("user2 should see prop '人', got %v", props2)
+	}
+}
+
+// ── Mismatches: Confusion pairs isolation ─────────────────────────────────────
+
+func TestIsolation_Mismatches_OnlyOwnConfusions(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// User 1 has two words with a confusion pair between them.
+	id1A := seedWordForUser(t, s, 1, "鞋", "xié", []string{"shoe"})
+	id1B := seedWordForUser(t, s, 1, "书", "shū", []string{"book"})
+	if err := s.UpsertConfusion(ctx, id1A, id1B, "zh_to_en"); err != nil {
+		t.Fatalf("UpsertConfusion: %v", err)
+	}
+
+	r1 := newRouterForUser(s, 1)
+	r2 := newRouterForUser(s, 2)
+
+	// User 1 should see their confusion.
+	rec := do(t, r1, "GET", "/api/mismatches", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user1 mismatches: %d", rec.Code)
+	}
+	var items1 []models.ConfusionDetail
+	decodeJSON(t, rec, &items1)
+	if len(items1) != 1 {
+		t.Errorf("user1 mismatches: want 1, got %d", len(items1))
+	}
+
+	// User 2 should see no confusions.
+	rec = do(t, r2, "GET", "/api/mismatches", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user2 mismatches: %d", rec.Code)
+	}
+	var items2 []models.ConfusionDetail
+	decodeJSON(t, rec, &items2)
+	if len(items2) != 0 {
+		t.Errorf("user2 mismatches: want 0, got %d", len(items2))
+	}
+}
+
+// ── Export: Only own words ────────────────────────────────────────────────────
+
+func TestIsolation_Export_OnlyOwnWords(t *testing.T) {
+	s := openTestDB(t)
+
+	// User 1 has a word; user 2 has a different word.
+	seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
+	seedWordForUser(t, s, 2, "你好", "nǐ hǎo", []string{"hello"})
+
+	r1 := newRouterForUser(s, 1)
+	r2 := newRouterForUser(s, 2)
+
+	// User 1's export should contain only "再见".
+	rec := do(t, r1, "GET", "/api/words/export", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user1 export: %d %s", rec.Code, rec.Body)
+	}
+	body1 := rec.Body.String()
+	if !strings.Contains(body1, "再见") {
+		t.Error("user1 export: expected 再见")
+	}
+	if strings.Contains(body1, "你好") {
+		t.Error("user1 export: should not contain user2's word 你好")
+	}
+
+	// User 2's export should contain only "你好".
+	rec = do(t, r2, "GET", "/api/words/export", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user2 export: %d %s", rec.Code, rec.Body)
+	}
+	body2 := rec.Body.String()
+	if !strings.Contains(body2, "你好") {
+		t.Error("user2 export: expected 你好")
+	}
+	if strings.Contains(body2, "再见") {
+		t.Error("user2 export: should not contain user1's word 再见")
 	}
 }
