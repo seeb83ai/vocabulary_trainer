@@ -322,7 +322,8 @@ func (h *WordsHandler) Export(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WordsHandler) ListTags(w http.ResponseWriter, r *http.Request) {
-	tags, err := h.Store.GetAllTags(r.Context())
+	userID := UserIDFromContext(r.Context())
+	tags, err := h.Store.GetAllTags(r.Context(), userID)
 	if err != nil {
 		internalError(w, err)
 		return

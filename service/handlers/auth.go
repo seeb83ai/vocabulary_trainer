@@ -186,6 +186,10 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := a.store.InitPinyinProgressForUser(r.Context(), userID); err != nil {
+		log.Printf("Warning: init pinyin progress for user %d: %v", userID, err)
+	}
+
 	if a.emailSender == nil {
 		// No SMTP configured: auto-verify and log token for inspection.
 		user, err := a.store.SetUserEmailVerified(r.Context(), verToken)

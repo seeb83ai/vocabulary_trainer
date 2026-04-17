@@ -44,6 +44,19 @@ func (s *Store) InsertPinyinSound(ctx context.Context, userID int64, sound model
 	return id, nil
 }
 
+// InitPinyinProgressForUser creates pinyin_progress rows for all existing sounds
+// for the given user, skipping any that already exist.
+func (s *Store) InitPinyinProgressForUser(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO pinyin_progress (user_id, sound_id, due_date)
+		 SELECT ?, id, datetime('now', '-' || (abs(random()) % 3600) || ' seconds')
+		 FROM pinyin_sounds`, userID)
+	if err != nil {
+		return fmt.Errorf("init pinyin progress for user: %w", err)
+	}
+	return nil
+}
+
 // GetPinyinSoundByID returns a single pinyin sound by ID.
 func (s *Store) GetPinyinSoundByID(ctx context.Context, id int64) (*models.PinyinSound, error) {
 	var ps models.PinyinSound

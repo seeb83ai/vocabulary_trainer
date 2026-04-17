@@ -627,7 +627,7 @@ func TestUpdateWord_ReplacesTags(t *testing.T) {
 	if len(wd.Tags) != 1 || wd.Tags[0] != "new-tag" {
 		t.Errorf("expected [new-tag], got %v", wd.Tags)
 	}
-	tags, _ := s.GetAllTags(context.Background())
+	tags, _ := s.GetAllTags(context.Background(), int64(2))
 	for _, tg := range tags {
 		if tg == "old-tag" {
 			t.Error("orphan tag 'old-tag' should have been cleaned up")
@@ -760,7 +760,7 @@ func TestGetStats_FilterByTag(t *testing.T) {
 func TestGetAllTags(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"B-tag", "A-tag"})
-	tags, err := s.GetAllTags(context.Background())
+	tags, err := s.GetAllTags(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -769,13 +769,44 @@ func TestGetAllTags(t *testing.T) {
 	}
 }
 
+func TestGetAllTags_UserIsolation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	// User 2 owns words with tags (user 2 is created by openTestDB)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"user2-tag"})
+	// Create user 3 and give them their own word+tag
+	user3ID, err := s.CreateUser(ctx, "user3@example.com", "hash", "tok-u3", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateWord(ctx, user3ID, models.CreateWordRequest{
+		ZhText: "再见", EnTexts: []string{"goodbye"}, Tags: []string{"user3-tag"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tags2, err := s.GetAllTags(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags2) != 1 || tags2[0] != "user2-tag" {
+		t.Errorf("user 2 should only see user2-tag, got %v", tags2)
+	}
+	tags3, err := s.GetAllTags(ctx, user3ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags3) != 1 || tags3[0] != "user3-tag" {
+		t.Errorf("user 3 should only see user3-tag, got %v", tags3)
+	}
+}
+
 func TestDeleteWord_CleansOrphanTags(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"unique-tag"})
-	if err := s.DeleteWord(context.Background(), int64(2),id); err != nil {
+	if err := s.DeleteWord(context.Background(), int64(2), id); err != nil {
 		t.Fatal(err)
 	}
-	tags, _ := s.GetAllTags(context.Background())
+	tags, _ := s.GetAllTags(context.Background(), int64(2))
 	if len(tags) != 0 {
 		t.Errorf("expected no tags after deleting only word, got %v", tags)
 	}
@@ -1092,7 +1123,7 @@ func TestDeleteWord_SharedTagRetained(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tags, _ := s.GetAllTags(ctx)
+	tags, _ := s.GetAllTags(ctx, int64(2))
 	found := false
 	for _, tg := range tags {
 		if tg == "shared-tag" {
@@ -2340,5 +2371,50 @@ func TestUpdateUserPassword_OK(t *testing.T) {
 	}
 	if user.PasswordHash != "newhash" {
 		t.Errorf("expected newhash, got %q", user.PasswordHash)
+	}
+}
+
+func TestInitPinyinProgressForUser(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Create a real user (openTestDB seeds users 1 and 2; create user 3 here)
+	userID, err := s.CreateUser(ctx, "pinyin-test@example.com", "hash", "tok-pinyin", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert two pinyin sounds directly
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO pinyin_sounds (initial, final, tone, syllable, filename, tag) VALUES
+		 ('b', 'a', 1, 'ba', 'ba1.mp3', ''),
+		 ('p', 'a', 2, 'pa', 'pa2.mp3', '')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.InitPinyinProgressForUser(ctx, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pinyin_progress WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 progress rows, got %d", count)
+	}
+
+	// Calling again must be idempotent
+	if err := s.InitPinyinProgressForUser(ctx, userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pinyin_progress WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("idempotent: expected 2 progress rows, got %d", count)
 	}
 }

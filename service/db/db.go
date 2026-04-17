@@ -1361,9 +1361,14 @@ func (s *Store) cleanOrphanTags(ctx context.Context) error {
 	return nil
 }
 
-// GetAllTags returns all tag names ordered alphabetically.
-func (s *Store) GetAllTags(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT name FROM tags ORDER BY name`)
+// GetAllTags returns all tag names for words belonging to the given user, ordered alphabetically.
+func (s *Store) GetAllTags(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT tg.name FROM tags tg
+		 JOIN word_tags wt ON wt.tag_id = tg.id
+		 JOIN words w ON w.id = wt.word_id
+		 WHERE w.user_id = ?
+		 ORDER BY tg.name`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get all tags: %w", err)
 	}
