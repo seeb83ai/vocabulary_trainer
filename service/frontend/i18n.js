@@ -139,6 +139,24 @@ const I18N = {
     'vocab.dueLabel': 'Due',
     'vocab.inDays': 'in {n}d',
 
+    // Import tab
+    'vocab.importWords': 'Import',
+    'vocab.importPickTag': 'Select a tag to import from the shared library:',
+    'vocab.importLoadingTags': 'Loading tags…',
+    'vocab.next': 'Next',
+    'vocab.importPickLangs': 'Which translations do you want to import?',
+    'vocab.back': 'Back',
+    'vocab.importApplyTags': 'Tags to apply to imported words:',
+    'vocab.import': 'Import',
+    'vocab.importNoTags': 'No tags available.',
+    'vocab.importPreviewEmpty': 'No words found for this tag.',
+    'vocab.importPreviewWords': 'words',
+    'vocab.importing': 'Importing…',
+    'vocab.importSkipped': 'skipped',
+    'vocab.importAlreadyOwned': 'already in your vocabulary',
+    'vocab.importDone': 'Imported',
+    'vocab.importWords2': 'word(s)',
+
     // Download modal
     'download.title': 'Download Vocabulary',
     'download.columns': 'Columns',
@@ -486,6 +504,24 @@ const I18N = {
     'vocab.review': '复习',
     'vocab.dueLabel': '到期',
     'vocab.inDays': '{n}天后',
+
+    // Import tab
+    'vocab.importWords': '导入',
+    'vocab.importPickTag': '从共享库中选择一个标签导入：',
+    'vocab.importLoadingTags': '加载标签中…',
+    'vocab.next': '下一步',
+    'vocab.importPickLangs': '您希望导入哪些翻译？',
+    'vocab.back': '返回',
+    'vocab.importApplyTags': '应用到导入词汇的标签：',
+    'vocab.import': '导入',
+    'vocab.importNoTags': '暂无标签。',
+    'vocab.importPreviewEmpty': '该标签下未找到词汇。',
+    'vocab.importPreviewWords': '个词汇',
+    'vocab.importing': '导入中…',
+    'vocab.importSkipped': '跳过',
+    'vocab.importAlreadyOwned': '已在您的词汇中',
+    'vocab.importDone': '已导入',
+    'vocab.importWords2': '个词汇',
 
     // Download modal
     'download.title': '下载词汇',

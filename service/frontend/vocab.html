@@ -31,81 +31,158 @@
 
   <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-6">
 
-    <!-- Add / Edit form -->
+    <!-- Add / Edit form + Import tab -->
     <div id="word-form-panel" class="bg-white rounded-2xl shadow p-6">
-      <h2 id="form-title" class="text-lg font-semibold text-gray-800 mb-4" data-i18n="vocab.addWord">Add Word</h2>
-      <form id="word-form" class="space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.chinese">Chinese</label>
-            <input id="form-zh" type="text" placeholder="e.g. 你好" data-i18n-placeholder="vocab.zhPlaceholder"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+      <!-- Tab bar -->
+      <div class="flex border-b border-gray-200 mb-4 -mx-6 px-6">
+        <button id="tab-add"
+          class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 -mb-px transition"
+          data-i18n="vocab.addWord">Add Word</button>
+        <button id="tab-import"
+          class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition"
+          data-i18n="vocab.importWords">Import</button>
+      </div>
+
+      <!-- Add / Edit panel -->
+      <div id="panel-add">
+        <h2 id="form-title" class="text-lg font-semibold text-gray-800 mb-4" data-i18n="vocab.addWord">Add Word</h2>
+        <form id="word-form" class="space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.chinese">Chinese</label>
+              <input id="form-zh" type="text" placeholder="e.g. 你好" data-i18n-placeholder="vocab.zhPlaceholder"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.pinyin">Pinyin</label>
+              <input id="form-pinyin" type="text" placeholder="e.g. nǐ hǎo" data-i18n-placeholder="vocab.pinyinPlaceholder"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
           </div>
+
+          <div class="flex items-center gap-3">
+            <button type="button" id="translate-btn"
+              class="hidden text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1 rounded-lg border border-blue-200 hover:border-blue-400 transition">
+              <span data-i18n="vocab.autoTranslate">Auto-translate</span>
+            </button>
+            <a id="hanziway-link" href="#" target="_blank" rel="noopener noreferrer"
+              class="hidden text-sm text-gray-500 hover:text-gray-700 underline">hanziway</a>
+          </div>
+
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.pinyin">Pinyin</label>
-            <input id="form-pinyin" type="text" placeholder="e.g. nǐ hǎo" data-i18n-placeholder="vocab.pinyinPlaceholder"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.englishTranslations">English Translation(s)</label>
+            <div id="en-inputs-container" class="space-y-2"></div>
+            <button type="button" id="add-en-btn"
+              class="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
+              <span data-i18n="vocab.addTranslation">+ Add translation</span>
+            </button>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.germanTranslations">German Translation(s)</label>
+            <div id="de-inputs-container" class="space-y-2"></div>
+            <button type="button" id="add-de-btn"
+              class="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
+              <span data-i18n="vocab.addTranslation">+ Add translation</span>
+            </button>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.tags">Tags</label>
+            <div id="form-tags" class="flex flex-wrap gap-1 mb-2"></div>
+            <div class="relative">
+              <input id="form-tag-input" type="text" placeholder="Add tag…" data-i18n-placeholder="vocab.addTag"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autocomplete="off">
+              <div id="tag-autocomplete" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto"></div>
+            </div>
+          </div>
+
+          <div id="start-training-row" class="flex items-center gap-2">
+            <input type="checkbox" id="form-start-training"
+              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+            <label for="form-start-training" class="text-sm text-gray-700" data-i18n="vocab.startTraining">Start training immediately</label>
+          </div>
+
+          <div class="flex gap-3 pt-2">
+            <button type="submit"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition"
+              data-i18n="vocab.save">
+              Save
+            </button>
+            <button type="button" id="form-cancel-btn"
+              class="hidden text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+              data-i18n="vocab.cancel">
+              Cancel
+            </button>
+          </div>
+        </form>
+        <div id="hmm-builder-container" class="hidden mt-4"></div>
+      </div>
+
+      <!-- Import panel -->
+      <div id="panel-import" class="hidden">
+
+        <!-- Step 1: pick a tag -->
+        <div id="import-step1">
+          <p class="text-sm text-gray-600 mb-3" data-i18n="vocab.importPickTag">Select a tag to import from the shared library:</p>
+          <div id="import-tag-list" class="flex flex-wrap gap-2 mb-3">
+            <span class="text-sm text-gray-400" data-i18n="vocab.importLoadingTags">Loading tags…</span>
+          </div>
+          <div id="import-preview" class="hidden text-sm text-gray-600 bg-gray-50 rounded-lg p-3 mb-3">
+            <span id="import-preview-text"></span>
+          </div>
+          <button id="import-next-btn" disabled
+            class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+            data-i18n="vocab.next">Next</button>
+        </div>
+
+        <!-- Step 2: choose languages -->
+        <div id="import-step2" class="hidden">
+          <p class="text-sm text-gray-600 mb-3" data-i18n="vocab.importPickLangs">Which translations do you want to import?</p>
+          <div class="space-y-2 mb-4">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" id="import-en" checked class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+              <span data-i18n="vocab.english">English</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" id="import-de" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+              <span data-i18n="vocab.german">German</span>
+            </label>
+          </div>
+          <div class="flex gap-3">
+            <button id="import-back1-btn"
+              class="text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+              data-i18n="vocab.back">Back</button>
+            <button id="import-next2-btn"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg transition"
+              data-i18n="vocab.next">Next</button>
           </div>
         </div>
 
-        <div class="flex items-center gap-3">
-          <button type="button" id="translate-btn"
-            class="hidden text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1 rounded-lg border border-blue-200 hover:border-blue-400 transition">
-            <span data-i18n="vocab.autoTranslate">Auto-translate</span>
-          </button>
-          <a id="hanziway-link" href="#" target="_blank" rel="noopener noreferrer"
-            class="hidden text-sm text-gray-500 hover:text-gray-700 underline">hanziway</a>
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.englishTranslations">English Translation(s)</label>
-          <div id="en-inputs-container" class="space-y-2"></div>
-          <button type="button" id="add-en-btn"
-            class="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
-            <span data-i18n="vocab.addTranslation">+ Add translation</span>
-          </button>
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.germanTranslations">German Translation(s)</label>
-          <div id="de-inputs-container" class="space-y-2"></div>
-          <button type="button" id="add-de-btn"
-            class="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
-            <span data-i18n="vocab.addTranslation">+ Add translation</span>
-          </button>
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.tags">Tags</label>
-          <div id="form-tags" class="flex flex-wrap gap-1 mb-2"></div>
-          <div class="relative">
-            <input id="form-tag-input" type="text" placeholder="Add tag…" data-i18n-placeholder="vocab.addTag"
+        <!-- Step 3: apply tags + confirm -->
+        <div id="import-step3" class="hidden">
+          <p class="text-sm text-gray-600 mb-2" data-i18n="vocab.importApplyTags">Tags to apply to imported words:</p>
+          <div id="import-apply-tags" class="flex flex-wrap gap-1 mb-2"></div>
+          <div class="relative mb-4">
+            <input id="import-tag-input" type="text" placeholder="Add tag…" data-i18n-placeholder="vocab.addTag"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
               autocomplete="off">
-            <div id="tag-autocomplete" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto"></div>
+            <div id="import-tag-autocomplete" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto"></div>
           </div>
+          <div class="flex gap-3">
+            <button id="import-back2-btn"
+              class="text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+              data-i18n="vocab.back">Back</button>
+            <button id="import-submit-btn"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition"
+              data-i18n="vocab.import">Import</button>
+          </div>
+          <div id="import-status" class="hidden mt-3 text-sm"></div>
         </div>
 
-        <div id="start-training-row" class="flex items-center gap-2">
-          <input type="checkbox" id="form-start-training"
-            class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-          <label for="form-start-training" class="text-sm text-gray-700" data-i18n="vocab.startTraining">Start training immediately</label>
-        </div>
-
-        <div class="flex gap-3 pt-2">
-          <button type="submit"
-            class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition"
-            data-i18n="vocab.save">
-            Save
-          </button>
-          <button type="button" id="form-cancel-btn"
-            class="hidden text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
-            data-i18n="vocab.cancel">
-            Cancel
-          </button>
-        </div>
-      </form>
-      <div id="hmm-builder-container" class="hidden mt-4"></div>
+      </div>
     </div>
 
     <!-- Search & list -->

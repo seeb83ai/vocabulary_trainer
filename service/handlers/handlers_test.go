@@ -78,6 +78,7 @@ func newRouter(s *db.Store) http.Handler {
 	wordsH := &handlers.WordsHandler{Store: s}
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
 	mismatchH := &handlers.MismatchesHandler{Store: s}
+	importH := &handlers.ImportHandler{Store: s}
 	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080")
 
 	r := chi.NewRouter()
@@ -110,6 +111,9 @@ func newRouter(s *db.Store) http.Handler {
 			r.Post("/review", wordsH.MarkReview)
 		})
 	})
+	r.Get("/api/import/source-tags", importH.SourceTags)
+	r.Get("/api/import/preview", importH.Preview)
+	r.Post("/api/import", importH.Import)
 	return r
 }
 
@@ -144,6 +148,21 @@ func seedWord(t *testing.T, s *db.Store, zhText, pinyin string, enTexts []string
 	})
 	if err != nil {
 		t.Fatalf("seedWord: %v", err)
+	}
+	return id
+}
+
+func seedWordFull(t *testing.T, s *db.Store, userID int64, zhText, pinyin string, enTexts, deTexts, tags []string) int64 {
+	t.Helper()
+	id, err := s.CreateWord(context.Background(), userID, models.CreateWordRequest{
+		ZhText:  zhText,
+		Pinyin:  pinyin,
+		EnTexts: enTexts,
+		DeTexts: deTexts,
+		Tags:    tags,
+	})
+	if err != nil {
+		t.Fatalf("seedWordFull: %v", err)
 	}
 	return id
 }
@@ -2447,6 +2466,272 @@ func TestChangePassword_ShortNew(t *testing.T) {
 	rec := do(t, r, "POST", "/api/change-password", map[string]string{
 		"current_password": "I learn zh",
 		"new_password":     "short",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── GET /api/import/source-tags ───────────────────────────────────────────────
+
+func TestImportSourceTags_ReturnsTags(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
+	// User 2 has a different tag — should not appear
+	seedWordFull(t, s, 2, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK2"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/source-tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []string
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 || tags[0] != "HSK1" {
+		t.Errorf("want [HSK1], got %v", tags)
+	}
+}
+
+func TestImportSourceTags_EmptyWhenNoWords(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/import/source-tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []string
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 0 {
+		t.Errorf("want empty, got %v", tags)
+	}
+}
+
+// ── GET /api/import/preview ───────────────────────────────────────────────────
+
+func TestImportPreview_ValidTag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/preview?tag=HSK1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Tag      string   `json:"tag"`
+		Total    int      `json:"total"`
+		Examples []string `json:"examples"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Tag != "HSK1" {
+		t.Errorf("want tag HSK1, got %q", resp.Tag)
+	}
+	if resp.Total != 3 {
+		t.Errorf("want total 3, got %d", resp.Total)
+	}
+	if len(resp.Examples) == 0 {
+		t.Error("want at least one example")
+	}
+	if len(resp.Examples) > 5 {
+		t.Errorf("want at most 5 examples, got %d", len(resp.Examples))
+	}
+}
+
+func TestImportPreview_UnknownTag(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/import/preview?tag=nonexistent", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Total int `json:"total"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 0 {
+		t.Errorf("want total 0, got %d", resp.Total)
+	}
+}
+
+func TestImportPreview_MissingTag(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/import/preview", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── POST /api/import ──────────────────────────────────────────────────────────
+
+func TestImport_Basic(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  false,
+		"apply_tags": []string{"HSK1"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Imported int `json:"imported"`
+		Skipped  int `json:"skipped"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 3 {
+		t.Errorf("want imported=3, got %d", resp.Imported)
+	}
+	if resp.Skipped != 0 {
+		t.Errorf("want skipped=0, got %d", resp.Skipped)
+	}
+
+	// Verify words now exist for user 2
+	listRec := do(t, r, "GET", "/api/words/?tags=HSK1", nil)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list: want 200, got %d: %s", listRec.Code, listRec.Body)
+	}
+	var listResp struct {
+		Total int `json:"total"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if listResp.Total != 3 {
+		t.Errorf("want 3 words in user list, got %d", listResp.Total)
+	}
+}
+
+func TestImport_SkipsDuplicates(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+	// User 2 already has 你好
+	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, nil)
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  false,
+		"apply_tags": []string{"HSK1"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Imported int `json:"imported"`
+		Skipped  int `json:"skipped"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 1 {
+		t.Errorf("want imported=1, got %d", resp.Imported)
+	}
+	if resp.Skipped != 1 {
+		t.Errorf("want skipped=1, got %d", resp.Skipped)
+	}
+}
+
+func TestImport_DeFlag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"Hallo"}, []string{"HSK1"})
+
+	r := newRouter(s)
+	// Import with DE
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  true,
+		"apply_tags": []string{"HSK1"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct{ Imported int `json:"imported"` }
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 1 {
+		t.Fatalf("want imported=1, got %d", resp.Imported)
+	}
+
+	// Fetch the word and verify DE translation is present
+	listRec := do(t, r, "GET", "/api/words/?tags=HSK1", nil)
+	var listResp struct {
+		Words []struct {
+			DeTexts []string `json:"de_texts"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if len(listResp.Words) == 0 {
+		t.Fatal("no words returned")
+	}
+	if len(listResp.Words[0].DeTexts) == 0 {
+		t.Error("expected DE translations to be imported")
+	}
+}
+
+func TestImport_DeFlagFalse(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"Hallo"}, []string{"HSK1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  false,
+		"apply_tags": []string{},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	listRec := do(t, r, "GET", "/api/words/", nil)
+	var listResp struct {
+		Words []struct {
+			DeTexts []string `json:"de_texts"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if len(listResp.Words) == 0 {
+		t.Fatal("no words returned")
+	}
+	if len(listResp.Words[0].DeTexts) != 0 {
+		t.Errorf("expected no DE translations, got %v", listResp.Words[0].DeTexts)
+	}
+}
+
+func TestImport_ApplyCustomTags(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  false,
+		"apply_tags": []string{"HSK1", "my-review"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Verify both tags are on the imported word
+	listRec := do(t, r, "GET", "/api/words/?tags=my-review", nil)
+	var listResp struct{ Total int `json:"total"` }
+	decodeJSON(t, listRec, &listResp)
+	if listResp.Total != 1 {
+		t.Errorf("want 1 word tagged my-review, got %d", listResp.Total)
+	}
+}
+
+func TestImport_MissingTag(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"import_en":  true,
+		"apply_tags": []string{},
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)

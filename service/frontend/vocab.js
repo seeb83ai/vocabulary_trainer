@@ -16,6 +16,11 @@ let selectedTierFilter = '';
 let dueFilter = '';
 let missingLangFilter = '';
 
+// Import tab state
+let importSelectedTag = '';
+let importApplyTags = [];
+let importSourceTagsLoaded = false;
+
 async function loadWords() {
   const params = new URLSearchParams({
     q: searchQuery,
@@ -729,6 +734,185 @@ function buildDownload(words, cols, format) {
   return { content: lines.join('\n'), mime: 'text/csv', ext: 'csv' };
 }
 
+// ── Import tab ────────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  const isAdd = name === 'add';
+  $('panel-add').classList.toggle('hidden', !isAdd);
+  $('panel-import').classList.toggle('hidden', isAdd);
+
+  $('tab-add').classList.toggle('border-blue-600', isAdd);
+  $('tab-add').classList.toggle('text-blue-600', isAdd);
+  $('tab-add').classList.toggle('border-transparent', !isAdd);
+  $('tab-add').classList.toggle('text-gray-500', !isAdd);
+
+  $('tab-import').classList.toggle('border-blue-600', !isAdd);
+  $('tab-import').classList.toggle('text-blue-600', !isAdd);
+  $('tab-import').classList.toggle('border-transparent', isAdd);
+  $('tab-import').classList.toggle('text-gray-500', isAdd);
+
+  if (!isAdd && !importSourceTagsLoaded) {
+    loadImportSourceTags();
+  }
+}
+
+async function loadImportSourceTags() {
+  importSourceTagsLoaded = true;
+  const list = $('import-tag-list');
+  try {
+    const tags = await apiFetch('/api/import/source-tags');
+    list.innerHTML = '';
+    if (!tags || tags.length === 0) {
+      list.innerHTML = `<span class="text-sm text-gray-400">${escHtml(t('vocab.importNoTags'))}</span>`;
+      return;
+    }
+    for (const tag of tags) {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'import-source-tag px-3 py-1 rounded-full text-sm font-medium border border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition';
+      pill.textContent = tag;
+      pill.addEventListener('click', () => selectImportSourceTag(tag, pill));
+      list.appendChild(pill);
+    }
+  } catch (e) {
+    list.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
+  }
+}
+
+async function selectImportSourceTag(tag, pill) {
+  importSelectedTag = tag;
+  $('import-next-btn').disabled = true;
+  hide('import-preview');
+
+  // Highlight selected pill
+  document.querySelectorAll('.import-source-tag').forEach(p => {
+    p.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+    p.classList.add('border-gray-300', 'text-gray-600');
+  });
+  pill.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+  pill.classList.remove('border-gray-300', 'text-gray-600');
+
+  await loadImportPreview(tag);
+}
+
+async function loadImportPreview(tag) {
+  try {
+    const data = await apiFetch('/api/import/preview?tag=' + encodeURIComponent(tag));
+    const examples = (data.examples || []).join('、');
+    const text = data.total === 0
+      ? t('vocab.importPreviewEmpty')
+      : `${data.total} ${t('vocab.importPreviewWords')} — ${examples}`;
+    $('import-preview-text').textContent = text;
+    show('import-preview');
+    $('import-next-btn').disabled = false;
+  } catch (e) {
+    $('import-preview-text').textContent = e.message;
+    show('import-preview');
+  }
+}
+
+function showImportStep(n) {
+  [1, 2, 3].forEach(i => {
+    const el = $('import-step' + i);
+    if (el) el.classList.toggle('hidden', i !== n);
+  });
+}
+
+function renderImportApplyTags() {
+  const container = $('import-apply-tags');
+  container.innerHTML = '';
+  for (const tag of importApplyTags) {
+    const pill = document.createElement('span');
+    pill.className = 'inline-flex items-center bg-gray-200 text-gray-700 text-sm px-2 py-0.5 rounded-full';
+    pill.innerHTML = `${escHtml(tag)} <button type="button" class="ml-1 text-gray-400 hover:text-red-500 leading-none">&times;</button>`;
+    pill.querySelector('button').addEventListener('click', () => {
+      importApplyTags = importApplyTags.filter(t => t !== tag);
+      renderImportApplyTags();
+    });
+    container.appendChild(pill);
+  }
+}
+
+function addImportTag(tag) {
+  tag = tag.trim();
+  if (!tag || importApplyTags.includes(tag)) return;
+  importApplyTags.push(tag);
+  renderImportApplyTags();
+  $('import-tag-input').value = '';
+  $('import-tag-autocomplete').classList.add('hidden');
+}
+
+function showImportTagAutocomplete(query) {
+  const dropdown = $('import-tag-autocomplete');
+  const q = query.toLowerCase();
+  const matches = allTags.filter(tag => tag.toLowerCase().includes(q) && !importApplyTags.includes(tag));
+  if (query && !allTags.includes(query) && !importApplyTags.includes(query)) {
+    matches.push(query);
+  }
+  if (!matches.length) { dropdown.classList.add('hidden'); return; }
+  dropdown.innerHTML = '';
+  dropdown.classList.remove('hidden');
+  for (const m of matches) {
+    const item = document.createElement('div');
+    item.className = 'px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer';
+    item.textContent = m === query && !allTags.includes(query) ? t('vocab.createTag', { tag: m }) : m;
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      addImportTag(m);
+    });
+    dropdown.appendChild(item);
+  }
+}
+
+async function executeImport() {
+  const btn = $('import-submit-btn');
+  const statusEl = $('import-status');
+  btn.disabled = true;
+  btn.textContent = t('vocab.importing');
+  statusEl.className = 'mt-3 text-sm text-gray-500';
+  statusEl.textContent = '';
+  show('import-status');
+
+  try {
+    const result = await apiFetch('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tag: importSelectedTag,
+        import_en: $('import-en').checked,
+        import_de: $('import-de').checked,
+        apply_tags: [...importApplyTags],
+      }),
+    });
+    const skippedNote = result.skipped > 0
+      ? `, ${t('vocab.importSkipped')} ${result.skipped} ${t('vocab.importAlreadyOwned')}`
+      : '';
+    statusEl.className = 'mt-3 text-sm text-green-600';
+    statusEl.textContent = `${t('vocab.importDone')} ${result.imported} ${t('vocab.importWords2')}${skippedNote}.`;
+    loadTags();
+    loadWords();
+  } catch (e) {
+    statusEl.className = 'mt-3 text-sm text-red-500';
+    statusEl.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('vocab.import');
+  }
+}
+
+function resetImportPanel() {
+  importSelectedTag = '';
+  importApplyTags = [];
+  showImportStep(1);
+  hide('import-preview');
+  $('import-next-btn').disabled = true;
+  hide('import-status');
+  if ($('import-en')) $('import-en').checked = true;
+  if ($('import-de')) $('import-de').checked = false;
+}
+
+// ── End import tab ─────────────────────────────────────────────────────────────
+
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
   loadTags();
@@ -859,6 +1043,38 @@ document.addEventListener('DOMContentLoaded', () => {
   $('dl-confirm-btn').addEventListener('click', executeDownload);
   $('download-modal').addEventListener('click', e => {
     if (e.target === $('download-modal')) hide('download-modal');
+  });
+
+  // Import tab
+  $('tab-add').addEventListener('click', () => switchTab('add'));
+  $('tab-import').addEventListener('click', () => switchTab('import'));
+  $('import-next-btn').addEventListener('click', () => showImportStep(2));
+  $('import-back1-btn').addEventListener('click', () => showImportStep(1));
+  $('import-next2-btn').addEventListener('click', () => {
+    importApplyTags = importSelectedTag ? [importSelectedTag] : [];
+    renderImportApplyTags();
+    showImportStep(3);
+  });
+  $('import-back2-btn').addEventListener('click', () => showImportStep(2));
+  $('import-submit-btn').addEventListener('click', executeImport);
+
+  $('import-tag-input').addEventListener('input', () => {
+    const v = $('import-tag-input').value.trim();
+    if (v) {
+      showImportTagAutocomplete(v);
+    } else {
+      $('import-tag-autocomplete').classList.add('hidden');
+    }
+  });
+  $('import-tag-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const v = $('import-tag-input').value.trim();
+      if (v) addImportTag(v);
+    }
+  });
+  $('import-tag-input').addEventListener('blur', () => {
+    setTimeout(() => $('import-tag-autocomplete').classList.add('hidden'), 150);
   });
 
   // Re-render dynamic text when UI language changes
