@@ -34,9 +34,10 @@ type importResponse struct {
 
 const sourceUserID int64 = 1
 
-// SourceTags returns all tags belonging to the shared library user (user_id=1).
+// SourceTags returns importable tags belonging to the shared library user (user_id=1),
+// including each tag's description.
 func (h *ImportHandler) SourceTags(w http.ResponseWriter, r *http.Request) {
-	tags, err := h.Store.GetAllTags(r.Context(), sourceUserID)
+	tags, err := h.Store.GetImportableSourceTags(r.Context(), sourceUserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load source tags")
 		return

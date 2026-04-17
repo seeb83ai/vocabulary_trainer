@@ -112,6 +112,7 @@ func main() {
 
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
 	importH := &handlers.ImportHandler{Store: store}
+	tagsH := &handlers.TagsHandler{Store: store}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 	hanziH := &handlers.HanziHandler{Store: store}
@@ -184,6 +185,8 @@ func main() {
 		r.Get("/import/source-tags", importH.SourceTags)
 		r.Get("/import/preview", importH.Preview)
 		r.Post("/import", importH.Import)
+		r.Get("/tags/details", tagsH.Details)
+		r.Put("/tags/{name}", tagsH.Update)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
 		r.Get("/hanzi/decompose", hanziH.Decompose)

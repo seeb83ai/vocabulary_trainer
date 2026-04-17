@@ -79,6 +79,7 @@ func newRouter(s *db.Store) http.Handler {
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
 	mismatchH := &handlers.MismatchesHandler{Store: s}
 	importH := &handlers.ImportHandler{Store: s}
+	tagsH := &handlers.TagsHandler{Store: s}
 	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080")
 
 	r := chi.NewRouter()
@@ -114,6 +115,8 @@ func newRouter(s *db.Store) http.Handler {
 	r.Get("/api/import/source-tags", importH.SourceTags)
 	r.Get("/api/import/preview", importH.Preview)
 	r.Post("/api/import", importH.Import)
+	r.Get("/api/tags/details", tagsH.Details)
+	r.Put("/api/tags/{name}", tagsH.Update)
 	return r
 }
 
@@ -2486,10 +2489,13 @@ func TestImportSourceTags_ReturnsTags(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
-	var tags []string
+	var tags []models.TagDetail
 	decodeJSON(t, rec, &tags)
-	if len(tags) != 1 || tags[0] != "HSK1" {
-		t.Errorf("want [HSK1], got %v", tags)
+	if len(tags) != 1 || tags[0].Name != "HSK1" {
+		t.Errorf("want [{Name:HSK1 ...}], got %v", tags)
+	}
+	if !tags[0].Importable {
+		t.Errorf("expected importable=true by default")
 	}
 }
 
@@ -2499,10 +2505,31 @@ func TestImportSourceTags_EmptyWhenNoWords(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
-	var tags []string
+	var tags []models.TagDetail
 	decodeJSON(t, rec, &tags)
 	if len(tags) != 0 {
 		t.Errorf("want empty, got %v", tags)
+	}
+}
+
+func TestImportSourceTags_HidesNonImportable(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"public"})
+	seedWordFull(t, s, 1, "秘密", "", []string{"secret"}, nil, []string{"private"})
+	// Mark private tag as not importable.
+	if err := s.UpsertTagMeta(context.Background(), int64(1), "private", "", false); err != nil {
+		t.Fatalf("UpsertTagMeta: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/source-tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 || tags[0].Name != "public" {
+		t.Errorf("want only [public], got %v", tags)
 	}
 }
 
@@ -2733,6 +2760,101 @@ func TestImport_MissingTag(t *testing.T) {
 		"import_en":  true,
 		"apply_tags": []string{},
 	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── GET /api/tags/details ─────────────────────────────────────────────────────
+
+func TestTagDetails_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/tags/details", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 0 {
+		t.Errorf("want empty, got %v", tags)
+	}
+}
+
+func TestTagDetails_ReturnsTags(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"greetings"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/tags/details", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 || tags[0].Name != "greetings" {
+		t.Fatalf("want [{greetings ...}], got %v", tags)
+	}
+	if tags[0].Description != "" {
+		t.Errorf("expected empty description, got %q", tags[0].Description)
+	}
+	if !tags[0].Importable {
+		t.Errorf("expected importable=true by default")
+	}
+}
+
+func TestTagDetails_DoesNotReturnOtherUserTags(t *testing.T) {
+	s := openTestDB(t)
+	// User 1 has a tag; user 2 (current user in tests) has none.
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"library"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/tags/details", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 0 {
+		t.Errorf("want 0 tags for user 2, got %v", tags)
+	}
+}
+
+// ── PUT /api/tags/{name} ──────────────────────────────────────────────────────
+
+func TestTagUpdate_SetsDescriptionAndImportable(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"hsk1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "PUT", "/api/tags/hsk1", map[string]any{
+		"description": "HSK level 1 words",
+		"importable":  false,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Verify via GET /api/tags/details.
+	rec2 := do(t, r, "GET", "/api/tags/details", nil)
+	var tags []models.TagDetail
+	decodeJSON(t, rec2, &tags)
+	if len(tags) != 1 {
+		t.Fatalf("want 1 tag, got %d", len(tags))
+	}
+	if tags[0].Description != "HSK level 1 words" {
+		t.Errorf("expected description 'HSK level 1 words', got %q", tags[0].Description)
+	}
+	if tags[0].Importable {
+		t.Errorf("expected importable=false after update")
+	}
+}
+
+func TestTagUpdate_InvalidBody(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	req := httptest.NewRequest("PUT", "/api/tags/hsk1", bytes.NewBufferString("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
 	}

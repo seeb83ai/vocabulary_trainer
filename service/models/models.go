@@ -223,6 +223,17 @@ type PinyinDailyStatsResponse struct {
 	Days []PinyinDailyStatEntry `json:"days"`
 }
 
+type TagDetail struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Importable  bool   `json:"importable"`
+}
+
+type UpsertTagMetaRequest struct {
+	Description string `json:"description"`
+	Importable  bool   `json:"importable"`
+}
+
 type DueDateCount struct {
 	Date  string `json:"date"`
 	Count int    `json:"count"`

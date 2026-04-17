@@ -21,6 +21,9 @@ let importSelectedTag = '';
 let importApplyTags = [];
 let importSourceTagsLoaded = false;
 
+// Tags tab state
+let tagsLoaded = false;
+
 async function loadWords() {
   const params = new URLSearchParams({
     q: searchQuery,
@@ -363,6 +366,8 @@ async function loadTags() {
   } catch (_) {
     allTags = [];
   }
+  // Invalidate tags panel so it re-fetches with fresh details on next visit.
+  tagsLoaded = false;
   renderFilterTags();
 }
 
@@ -737,22 +742,21 @@ function buildDownload(words, cols, format) {
 // ── Import tab ────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
-  const isAdd = name === 'add';
-  $('panel-add').classList.toggle('hidden', !isAdd);
-  $('panel-import').classList.toggle('hidden', isAdd);
+  const tabs = ['add', 'import', 'tags'];
+  tabs.forEach(tab => {
+    const active = tab === name;
+    $('panel-' + tab).classList.toggle('hidden', !active);
+    $('tab-' + tab).classList.toggle('border-blue-600', active);
+    $('tab-' + tab).classList.toggle('text-blue-600', active);
+    $('tab-' + tab).classList.toggle('border-transparent', !active);
+    $('tab-' + tab).classList.toggle('text-gray-500', !active);
+  });
 
-  $('tab-add').classList.toggle('border-blue-600', isAdd);
-  $('tab-add').classList.toggle('text-blue-600', isAdd);
-  $('tab-add').classList.toggle('border-transparent', !isAdd);
-  $('tab-add').classList.toggle('text-gray-500', !isAdd);
-
-  $('tab-import').classList.toggle('border-blue-600', !isAdd);
-  $('tab-import').classList.toggle('text-blue-600', !isAdd);
-  $('tab-import').classList.toggle('border-transparent', isAdd);
-  $('tab-import').classList.toggle('text-gray-500', isAdd);
-
-  if (!isAdd && !importSourceTagsLoaded) {
+  if (name === 'import' && !importSourceTagsLoaded) {
     loadImportSourceTags();
+  }
+  if (name === 'tags' && !tagsLoaded) {
+    loadTagDetails();
   }
 }
 
@@ -770,7 +774,8 @@ async function loadImportSourceTags() {
       const pill = document.createElement('button');
       pill.type = 'button';
       pill.className = 'import-source-tag px-3 py-1 rounded-full text-sm font-medium border border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition';
-      pill.textContent = tag;
+      pill.textContent = tag.name;
+      if (tag.description) pill.title = tag.description;
       pill.addEventListener('click', () => selectImportSourceTag(tag, pill));
       list.appendChild(pill);
     }
@@ -780,7 +785,7 @@ async function loadImportSourceTags() {
 }
 
 async function selectImportSourceTag(tag, pill) {
-  importSelectedTag = tag;
+  importSelectedTag = tag.name;
   $('import-next-btn').disabled = true;
   hide('import-preview');
 
@@ -792,17 +797,18 @@ async function selectImportSourceTag(tag, pill) {
   pill.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
   pill.classList.remove('border-gray-300', 'text-gray-600');
 
-  await loadImportPreview(tag);
+  await loadImportPreview(tag.name, tag.description);
 }
 
-async function loadImportPreview(tag) {
+async function loadImportPreview(tagName, tagDescription) {
   try {
-    const data = await apiFetch('/api/import/preview?tag=' + encodeURIComponent(tag));
+    const data = await apiFetch('/api/import/preview?tag=' + encodeURIComponent(tagName));
     const examples = (data.examples || []).join('、');
-    const text = data.total === 0
+    const descLine = tagDescription ? `${tagDescription}` : '';
+    const countLine = data.total === 0
       ? t('vocab.importPreviewEmpty')
-      : `${data.total} ${t('vocab.importPreviewWords')} — ${examples}`;
-    $('import-preview-text').textContent = text;
+      : `${descLine} (${data.total} ${t('vocab.importPreviewWords')}) — ${examples}`;
+    $('import-preview-text').textContent = countLine;
     show('import-preview');
     $('import-next-btn').disabled = false;
   } catch (e) {
@@ -911,7 +917,93 @@ function resetImportPanel() {
   if ($('import-de')) $('import-de').checked = false;
 }
 
-// ── End import tab ─────────────────────────────────────────────────────────────
+// ── Tags tab ───────────────────────────────────────────────────────────────────
+
+async function loadTagDetails() {
+  tagsLoaded = true;
+  const container = $('tags-list');
+  try {
+    const tags = await apiFetch('/api/tags/details');
+    container.innerHTML = '';
+    if (!tags || tags.length === 0) {
+      container.innerHTML = `<span class="text-sm text-gray-400">${escHtml(t('vocab.tagsEmpty'))}</span>`;
+      return;
+    }
+    for (const tag of tags) {
+      container.appendChild(buildTagRow(tag));
+    }
+  } catch (e) {
+    container.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
+  }
+}
+
+function buildTagRow(tag) {
+  const row = document.createElement('div');
+  row.className = 'flex flex-col sm:flex-row sm:items-center gap-2 py-2 border-b border-gray-100 last:border-0';
+  row.dataset.tagName = tag.name;
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'text-sm font-medium text-gray-700 w-32 flex-none';
+  nameSpan.textContent = tag.name;
+
+  const descInput = document.createElement('input');
+  descInput.type = 'text';
+  descInput.className = 'flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  descInput.placeholder = t('vocab.tagsDescPlaceholder');
+  descInput.value = tag.description || '';
+  descInput.maxLength = 200;
+
+  const toggleLabel = document.createElement('label');
+  toggleLabel.className = 'flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer flex-none';
+
+  const toggleInput = document.createElement('input');
+  toggleInput.type = 'checkbox';
+  toggleInput.className = 'w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500';
+  toggleInput.checked = tag.importable;
+
+  const toggleText = document.createElement('span');
+  toggleText.dataset.i18n = 'vocab.tagsImportable';
+  toggleText.textContent = t('vocab.tagsImportable');
+
+  toggleLabel.append(toggleInput, toggleText);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 rounded-lg border border-blue-200 hover:border-blue-400 transition flex-none';
+  saveBtn.textContent = t('vocab.save');
+
+  const statusSpan = document.createElement('span');
+  statusSpan.className = 'text-xs text-green-600 hidden flex-none';
+  statusSpan.textContent = t('vocab.tagsSaved');
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      await saveTagMeta(tag.name, descInput.value.trim(), toggleInput.checked);
+      statusSpan.classList.remove('hidden');
+      setTimeout(() => statusSpan.classList.add('hidden'), 2000);
+    } catch (e) {
+      statusSpan.className = 'text-xs text-red-500 flex-none';
+      statusSpan.textContent = e.message;
+      statusSpan.classList.remove('hidden');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  row.append(nameSpan, descInput, toggleLabel, saveBtn, statusSpan);
+  return row;
+}
+
+async function saveTagMeta(name, description, importable) {
+  await apiFetch('/api/tags/' + encodeURIComponent(name), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description, importable }),
+  });
+}
+
+// ── End tags tab ───────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
@@ -1048,6 +1140,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Import tab
   $('tab-add').addEventListener('click', () => switchTab('add'));
   $('tab-import').addEventListener('click', () => switchTab('import'));
+  $('tab-tags').addEventListener('click', () => switchTab('tags'));
   $('import-next-btn').addEventListener('click', () => showImportStep(2));
   $('import-back1-btn').addEventListener('click', () => showImportStep(1));
   $('import-next2-btn').addEventListener('click', () => {

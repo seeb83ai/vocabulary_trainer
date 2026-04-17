@@ -1387,6 +1387,87 @@ func (s *Store) GetAllTags(ctx context.Context, userID int64) ([]string, error) 
 	return tags, rows.Err()
 }
 
+// GetTagDetails returns all tags owned by userID with their description and importable flag.
+func (s *Store) GetTagDetails(ctx context.Context, userID int64) ([]models.TagDetail, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT tg.name, tg.description, tg.importable
+		 FROM tags tg
+		 JOIN word_tags wt ON wt.tag_id = tg.id
+		 JOIN words w ON w.id = wt.word_id
+		 WHERE w.user_id = ?
+		 ORDER BY tg.name`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get tag details: %w", err)
+	}
+	defer rows.Close()
+	var out []models.TagDetail
+	for rows.Next() {
+		var td models.TagDetail
+		var imp int
+		if err := rows.Scan(&td.Name, &td.Description, &imp); err != nil {
+			return nil, err
+		}
+		td.Importable = imp != 0
+		out = append(out, td)
+	}
+	if out == nil {
+		out = []models.TagDetail{}
+	}
+	return out, rows.Err()
+}
+
+// UpsertTagMeta updates description and importable on the tag row that is linked to
+// the given user's words. Tags are created globally (user_id = NULL) by getOrCreateTag,
+// so we update by name matching the tag used by this user's words via word_tags.
+func (s *Store) UpsertTagMeta(ctx context.Context, userID int64, name, description string, importable bool) error {
+	imp := 0
+	if importable {
+		imp = 1
+	}
+	// Update the tag row that is referenced by this user's words.
+	// The sub-select finds the tag ID used by at least one of the user's words.
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE tags SET description = ?, importable = ?
+		WHERE name = ?
+		  AND id IN (
+		    SELECT DISTINCT wt.tag_id FROM word_tags wt
+		    JOIN words w ON w.id = wt.word_id
+		    WHERE w.user_id = ?
+		  )`, description, imp, name, userID); err != nil {
+		return fmt.Errorf("upsert tag meta: %w", err)
+	}
+	return nil
+}
+
+// GetImportableSourceTags returns tags for sourceUserID where importable = 1, ordered alphabetically.
+func (s *Store) GetImportableSourceTags(ctx context.Context, userID int64) ([]models.TagDetail, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT tg.name, tg.description, tg.importable
+		 FROM tags tg
+		 JOIN word_tags wt ON wt.tag_id = tg.id
+		 JOIN words w ON w.id = wt.word_id
+		 WHERE w.user_id = ? AND tg.importable = 1
+		 ORDER BY tg.name`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get importable source tags: %w", err)
+	}
+	defer rows.Close()
+	var out []models.TagDetail
+	for rows.Next() {
+		var td models.TagDetail
+		var imp int
+		if err := rows.Scan(&td.Name, &td.Description, &imp); err != nil {
+			return nil, err
+		}
+		td.Importable = imp != 0
+		out = append(out, td)
+	}
+	if out == nil {
+		out = []models.TagDetail{}
+	}
+	return out, rows.Err()
+}
+
 // RecordDailyStat upserts today's daily_stats row after an answer submission.
 // It returns the updated session streak (consecutive correct answers today).
 func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool) (int, error) {

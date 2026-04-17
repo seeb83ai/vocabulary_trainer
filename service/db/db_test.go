@@ -2418,3 +2418,125 @@ func TestInitPinyinProgressForUser(t *testing.T) {
 		t.Errorf("idempotent: expected 2 progress rows, got %d", count)
 	}
 }
+
+// ── Tag metadata tests ────────────────────────────────────────────────────────
+
+func TestGetTagDetails_Empty(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	tags, err := s.GetTagDetails(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetTagDetails: %v", err)
+	}
+	if len(tags) != 0 {
+		t.Errorf("expected 0 tags, got %d", len(tags))
+	}
+}
+
+func TestUpsertTagMeta_AndGetTagDetails(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed a word with a tag so the tag appears in GetTagDetails.
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:  "测试",
+		EnTexts: []string{"test"},
+		Tags:    []string{"hsk1"},
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	// Initially description is empty, importable defaults to true.
+	tags, err := s.GetTagDetails(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetTagDetails: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(tags))
+	}
+	if tags[0].Name != "hsk1" {
+		t.Errorf("expected name hsk1, got %q", tags[0].Name)
+	}
+	if tags[0].Description != "" {
+		t.Errorf("expected empty description, got %q", tags[0].Description)
+	}
+	if !tags[0].Importable {
+		t.Errorf("expected importable=true by default")
+	}
+
+	// Update meta.
+	if err := s.UpsertTagMeta(ctx, int64(2), "hsk1", "HSK level 1 vocabulary", false); err != nil {
+		t.Fatalf("UpsertTagMeta: %v", err)
+	}
+
+	tags, err = s.GetTagDetails(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetTagDetails after upsert: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(tags))
+	}
+	if tags[0].Description != "HSK level 1 vocabulary" {
+		t.Errorf("expected updated description, got %q", tags[0].Description)
+	}
+	if tags[0].Importable {
+		t.Errorf("expected importable=false after update")
+	}
+}
+
+func TestGetImportableSourceTags_FiltersImportable(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed two tags for user 1 (source/library user).
+	for _, tag := range []string{"hsk1", "hsk2"} {
+		if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
+			ZhText:  tag + "字",
+			EnTexts: []string{tag + " word"},
+			Tags:    []string{tag},
+		}); err != nil {
+			t.Fatalf("CreateWord %s: %v", tag, err)
+		}
+	}
+
+	// Mark hsk2 as not importable.
+	if err := s.UpsertTagMeta(ctx, int64(1), "hsk2", "", false); err != nil {
+		t.Fatalf("UpsertTagMeta: %v", err)
+	}
+
+	tags, err := s.GetImportableSourceTags(ctx, int64(1))
+	if err != nil {
+		t.Fatalf("GetImportableSourceTags: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 importable tag, got %d", len(tags))
+	}
+	if tags[0].Name != "hsk1" {
+		t.Errorf("expected hsk1, got %q", tags[0].Name)
+	}
+}
+
+func TestGetImportableSourceTags_WithDescription(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
+		ZhText:  "你好",
+		EnTexts: []string{"hello"},
+		Tags:    []string{"greetings"},
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+	if err := s.UpsertTagMeta(ctx, int64(1), "greetings", "Basic greeting words", true); err != nil {
+		t.Fatalf("UpsertTagMeta: %v", err)
+	}
+
+	tags, err := s.GetImportableSourceTags(ctx, int64(1))
+	if err != nil {
+		t.Fatalf("GetImportableSourceTags: %v", err)
+	}
+	if len(tags) != 1 || tags[0].Description != "Basic greeting words" {
+		t.Errorf("expected description 'Basic greeting words', got %+v", tags)
+	}
+}

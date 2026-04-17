@@ -139,6 +139,15 @@ const I18N = {
     'vocab.dueLabel': 'Due',
     'vocab.inDays': 'in {n}d',
 
+    // Tags tab
+    'vocab.tagsTab': 'Tags',
+    'vocab.tagsDesc': 'Set a description and control whether other users can import words from each tag.',
+    'vocab.tagsLoading': 'Loading tags…',
+    'vocab.tagsEmpty': 'No tags yet. Add words with tags to manage them here.',
+    'vocab.tagsDescPlaceholder': 'Description (shown during import)…',
+    'vocab.tagsImportable': 'Importable',
+    'vocab.tagsSaved': 'Saved',
+
     // Import tab
     'vocab.importWords': 'Import',
     'vocab.importPickTag': 'Select a tag to import from the shared library:',
@@ -504,6 +513,15 @@ const I18N = {
     'vocab.review': '复习',
     'vocab.dueLabel': '到期',
     'vocab.inDays': '{n}天后',
+
+    // Tags tab
+    'vocab.tagsTab': '标签',
+    'vocab.tagsDesc': '为每个标签设置描述，并控制其他用户是否可以导入该标签下的词汇。',
+    'vocab.tagsLoading': '加载标签中…',
+    'vocab.tagsEmpty': '暂无标签。添加带标签的词汇后可在此管理。',
+    'vocab.tagsDescPlaceholder': '描述（导入时显示）…',
+    'vocab.tagsImportable': '可导入',
+    'vocab.tagsSaved': '已保存',
 
     // Import tab
     'vocab.importWords': '导入',
