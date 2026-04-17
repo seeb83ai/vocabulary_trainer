@@ -801,19 +801,59 @@ async function selectImportSourceTag(tag, pill) {
 }
 
 async function loadImportPreview(tagName, tagDescription) {
+  const descEl = $('import-preview-desc');
+  const statsEl = $('import-preview-stats');
+  const tableWrap = $('import-preview-table-wrap');
+  const tbody = $('import-preview-tbody');
+
+  statsEl.textContent = t('vocab.importLoading');
+  descEl.classList.add('hidden');
+  tableWrap.classList.add('hidden');
+  tbody.innerHTML = '';
+  show('import-preview');
+
   try {
     const data = await apiFetch('/api/import/preview?tag=' + encodeURIComponent(tagName));
-    const examples = (data.examples || []).join('、');
-    const descLine = tagDescription ? `${tagDescription}` : '';
-    const countLine = data.total === 0
-      ? t('vocab.importPreviewEmpty')
-      : `${descLine} (${data.total} ${t('vocab.importPreviewWords')}) — ${examples}`;
-    $('import-preview-text').textContent = countLine;
-    show('import-preview');
+
+    // Description line
+    if (tagDescription) {
+      descEl.textContent = tagDescription;
+      descEl.classList.remove('hidden');
+    } else {
+      descEl.classList.add('hidden');
+    }
+
+    if (data.total === 0) {
+      statsEl.textContent = t('vocab.importPreviewEmpty');
+      $('import-next-btn').disabled = true;
+      return;
+    }
+
+    // Stats line: "123 words · 120 EN · 45 DE"
+    const parts = [`${data.total} ${t('vocab.importPreviewWords')}`];
+    if (data.with_en > 0) parts.push(`${data.with_en} EN`);
+    if (data.with_de > 0) parts.push(`${data.with_de} DE`);
+    statsEl.textContent = parts.join(' · ');
+
+    // Example table (up to 50 rows)
+    const hasDe = (data.examples || []).some(e => e.de_texts && e.de_texts.length > 0);
+    for (const ex of (data.examples || [])) {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-gray-100 last:border-0';
+      const en = (ex.en_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+      const de = (ex.de_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+      tr.innerHTML = `
+        <td class="py-1 px-2 font-medium">${escHtml(ex.zh_text)}</td>
+        <td class="py-1 px-2 text-gray-500">${escHtml(ex.pinyin)}</td>
+        <td class="py-1 px-2 text-gray-700">${en}</td>
+        <td class="py-1 px-2 text-gray-500">${hasDe ? de : ''}</td>`;
+      tbody.appendChild(tr);
+    }
+    tableWrap.classList.remove('hidden');
     $('import-next-btn').disabled = false;
   } catch (e) {
-    $('import-preview-text').textContent = e.message;
-    show('import-preview');
+    statsEl.textContent = e.message;
+    $('import-next-btn').disabled = true;
   }
 }
 

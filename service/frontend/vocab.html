@@ -133,8 +133,22 @@
           <div id="import-tag-list" class="flex flex-wrap gap-2 mb-3">
             <span class="text-sm text-gray-400" data-i18n="vocab.importLoadingTags">Loading tags…</span>
           </div>
-          <div id="import-preview" class="hidden text-sm text-gray-600 bg-gray-50 rounded-lg p-3 mb-3">
-            <span id="import-preview-text"></span>
+          <div id="import-preview" class="hidden text-sm text-gray-600 bg-gray-50 rounded-lg p-3 mb-3 space-y-2">
+            <div id="import-preview-desc" class="hidden font-medium text-gray-700"></div>
+            <div id="import-preview-stats"></div>
+            <div id="import-preview-table-wrap" class="hidden overflow-x-auto max-h-64 overflow-y-auto rounded border border-gray-200">
+              <table class="w-full text-xs">
+                <thead class="bg-gray-100 sticky top-0">
+                  <tr>
+                    <th class="py-1.5 px-2 text-left font-medium text-gray-600" data-i18n="vocab.chinese">Chinese</th>
+                    <th class="py-1.5 px-2 text-left font-medium text-gray-600" data-i18n="vocab.pinyin">Pinyin</th>
+                    <th class="py-1.5 px-2 text-left font-medium text-gray-600" data-i18n="vocab.english">English</th>
+                    <th class="py-1.5 px-2 text-left font-medium text-gray-600" data-i18n="vocab.german">German</th>
+                  </tr>
+                </thead>
+                <tbody id="import-preview-tbody"></tbody>
+              </table>
+            </div>
           </div>
           <button id="import-next-btn" disabled
             class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"

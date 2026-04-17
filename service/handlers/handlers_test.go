@@ -2537,7 +2537,7 @@ func TestImportSourceTags_HidesNonImportable(t *testing.T) {
 
 func TestImportPreview_ValidTag(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"hallo"}, []string{"HSK1"})
 	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
 	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
 
@@ -2547,9 +2547,16 @@ func TestImportPreview_ValidTag(t *testing.T) {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
 	var resp struct {
-		Tag      string   `json:"tag"`
-		Total    int      `json:"total"`
-		Examples []string `json:"examples"`
+		Tag      string `json:"tag"`
+		Total    int    `json:"total"`
+		WithEn   int    `json:"with_en"`
+		WithDe   int    `json:"with_de"`
+		Examples []struct {
+			ZhText  string   `json:"zh_text"`
+			Pinyin  string   `json:"pinyin"`
+			EnTexts []string `json:"en_texts"`
+			DeTexts []string `json:"de_texts"`
+		} `json:"examples"`
 	}
 	decodeJSON(t, rec, &resp)
 	if resp.Tag != "HSK1" {
@@ -2558,11 +2565,24 @@ func TestImportPreview_ValidTag(t *testing.T) {
 	if resp.Total != 3 {
 		t.Errorf("want total 3, got %d", resp.Total)
 	}
-	if len(resp.Examples) == 0 {
-		t.Error("want at least one example")
+	if resp.WithEn != 3 {
+		t.Errorf("want with_en=3, got %d", resp.WithEn)
 	}
-	if len(resp.Examples) > 5 {
-		t.Errorf("want at most 5 examples, got %d", len(resp.Examples))
+	if resp.WithDe != 1 {
+		t.Errorf("want with_de=1, got %d", resp.WithDe)
+	}
+	if len(resp.Examples) != 3 {
+		t.Errorf("want 3 examples, got %d", len(resp.Examples))
+	}
+	if len(resp.Examples) > 50 {
+		t.Errorf("want at most 50 examples, got %d", len(resp.Examples))
+	}
+	// First example should have zh_text and en_texts populated.
+	if resp.Examples[0].ZhText == "" {
+		t.Error("expected non-empty zh_text in first example")
+	}
+	if len(resp.Examples[0].EnTexts) == 0 {
+		t.Error("expected en_texts in first example")
 	}
 }
 

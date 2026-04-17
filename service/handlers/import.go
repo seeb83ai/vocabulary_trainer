@@ -14,10 +14,19 @@ type ImportHandler struct {
 	Store *db.Store
 }
 
+type importPreviewWord struct {
+	ZhText   string   `json:"zh_text"`
+	Pinyin   string   `json:"pinyin"`
+	EnTexts  []string `json:"en_texts"`
+	DeTexts  []string `json:"de_texts"`
+}
+
 type importPreviewResponse struct {
-	Tag      string   `json:"tag"`
-	Total    int      `json:"total"`
-	Examples []string `json:"examples"`
+	Tag      string               `json:"tag"`
+	Total    int                  `json:"total"`
+	WithEn   int                  `json:"with_en"`
+	WithDe   int                  `json:"with_de"`
+	Examples []importPreviewWord  `json:"examples"`
 }
 
 type importRequest struct {
@@ -59,15 +68,38 @@ func (h *ImportHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	examples := make([]string, 0, 5)
-	for i, w := range words {
-		if i >= 5 {
-			break
+	withEn, withDe := 0, 0
+	examples := make([]importPreviewWord, 0, 50)
+	for _, w := range words {
+		if len(w.EnTexts) > 0 {
+			withEn++
 		}
-		examples = append(examples, w.ZhText)
+		if len(w.DeTexts) > 0 {
+			withDe++
+		}
+		if len(examples) < 50 {
+			pinyin := ""
+			if w.Pinyin != nil {
+				pinyin = *w.Pinyin
+			}
+			enTexts := w.EnTexts
+			if len(enTexts) > 3 {
+				enTexts = enTexts[:3]
+			}
+			deTexts := w.DeTexts
+			if len(deTexts) > 3 {
+				deTexts = deTexts[:3]
+			}
+			examples = append(examples, importPreviewWord{
+				ZhText:  w.ZhText,
+				Pinyin:  pinyin,
+				EnTexts: enTexts,
+				DeTexts: deTexts,
+			})
+		}
 	}
 
-	writeJSON(w, http.StatusOK, importPreviewResponse{Tag: tag, Total: total, Examples: examples})
+	writeJSON(w, http.StatusOK, importPreviewResponse{Tag: tag, Total: total, WithEn: withEn, WithDe: withDe, Examples: examples})
 }
 
 // Import fetches all words for the source user with the given tag and creates
