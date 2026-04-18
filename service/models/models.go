@@ -227,6 +227,8 @@ type TagDetail struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Importable  bool   `json:"importable"`
+	WithEn      bool   `json:"with_en,omitempty"`
+	WithDe      bool   `json:"with_de,omitempty"`
 }
 
 type UpsertTagMetaRequest struct {

@@ -165,26 +165,29 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 			skipped++
 			continue
 		}
-		// Words without EN translations cannot be created (quiz requires EN).
-		if len(sw.EnTexts) == 0 {
-			skipped++
-			continue
-		}
-
 		pinyin := ""
 		if sw.Pinyin != nil {
 			pinyin = *sw.Pinyin
 		}
 
-		deTexts := []string{}
-		if req.ImportDe {
-			deTexts = sw.DeTexts
+		enTexts := sw.EnTexts
+		if !req.ImportEn {
+			enTexts = nil
+		}
+		deTexts := sw.DeTexts
+		if !req.ImportDe {
+			deTexts = nil
+		}
+		// Skip if no translations would be imported.
+		if len(enTexts) == 0 && len(deTexts) == 0 {
+			skipped++
+			continue
 		}
 
 		createReq := models.CreateWordRequest{
 			ZhText:  sw.ZhText,
 			Pinyin:  pinyin,
-			EnTexts: sw.EnTexts,
+			EnTexts: enTexts,
 			DeTexts: deTexts,
 			Tags:    cleanTags,
 		}

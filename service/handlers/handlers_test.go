@@ -540,13 +540,24 @@ func TestWordsCreate_MissingZhText(t *testing.T) {
 	}
 }
 
-func TestWordsCreate_MissingEnTexts(t *testing.T) {
+func TestWordsCreate_NoTranslations(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText: "你好",
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
+	}
+}
+
+func TestWordsCreate_DeOnlyValid(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:  "你好",
+		DeTexts: []string{"Hallo"},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Errorf("want 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -2496,6 +2507,35 @@ func TestImportSourceTags_ReturnsTags(t *testing.T) {
 	}
 	if !tags[0].Importable {
 		t.Errorf("expected importable=true by default")
+	}
+	if !tags[0].WithEn {
+		t.Errorf("expected with_en=true for tag with EN translations")
+	}
+	if tags[0].WithDe {
+		t.Errorf("expected with_de=false when no DE translations")
+	}
+}
+
+func TestImportSourceTags_WithDeFlag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"hallo"}, []string{"greetings"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"greetings"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/source-tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 {
+		t.Fatalf("want 1 tag, got %d", len(tags))
+	}
+	if !tags[0].WithEn {
+		t.Errorf("expected with_en=true")
+	}
+	if !tags[0].WithDe {
+		t.Errorf("expected with_de=true when at least one word has DE")
 	}
 }
 

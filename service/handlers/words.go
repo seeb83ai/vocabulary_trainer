@@ -81,10 +81,6 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 			filtered = append(filtered, s)
 		}
 	}
-	if len(filtered) == 0 {
-		writeError(w, http.StatusBadRequest, "at least one en_texts entry is required")
-		return
-	}
 	if len(filtered) > 20 {
 		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
 		return
@@ -94,6 +90,26 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
 			return
 		}
+	}
+	var filteredDe []string
+	for _, t := range req.DeTexts {
+		if s := strings.TrimSpace(t); s != "" {
+			filteredDe = append(filteredDe, s)
+		}
+	}
+	if len(filteredDe) > 20 {
+		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
+		return
+	}
+	for _, t := range filteredDe {
+		if utf8.RuneCountInString(t) > 500 {
+			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
+			return
+		}
+	}
+	if len(filtered) == 0 && len(filteredDe) == 0 {
+		writeError(w, http.StatusBadRequest, "at least one translation is required")
+		return
 	}
 	if len(req.Tags) > 20 {
 		writeError(w, http.StatusBadRequest, "too many tags (max 20)")
@@ -106,12 +122,6 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	req.EnTexts = filtered
-	var filteredDe []string
-	for _, t := range req.DeTexts {
-		if s := strings.TrimSpace(t); s != "" {
-			filteredDe = append(filteredDe, s)
-		}
-	}
 	req.DeTexts = filteredDe
 
 	id, err := h.Store.CreateWord(r.Context(), UserIDFromContext(r.Context()), req)
@@ -180,10 +190,6 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			filtered = append(filtered, s)
 		}
 	}
-	if len(filtered) == 0 {
-		writeError(w, http.StatusBadRequest, "at least one en_texts entry is required")
-		return
-	}
 	if len(filtered) > 20 {
 		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
 		return
@@ -193,6 +199,26 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
 			return
 		}
+	}
+	var filteredDe []string
+	for _, t := range req.DeTexts {
+		if s := strings.TrimSpace(t); s != "" {
+			filteredDe = append(filteredDe, s)
+		}
+	}
+	if len(filteredDe) > 20 {
+		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
+		return
+	}
+	for _, t := range filteredDe {
+		if utf8.RuneCountInString(t) > 500 {
+			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
+			return
+		}
+	}
+	if len(filtered) == 0 && len(filteredDe) == 0 {
+		writeError(w, http.StatusBadRequest, "at least one translation is required")
+		return
 	}
 	if len(req.Tags) > 20 {
 		writeError(w, http.StatusBadRequest, "too many tags (max 20)")
@@ -205,12 +231,6 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	req.EnTexts = filtered
-	var filteredDe []string
-	for _, t := range req.DeTexts {
-		if s := strings.TrimSpace(t); s != "" {
-			filteredDe = append(filteredDe, s)
-		}
-	}
 	req.DeTexts = filteredDe
 
 	if err := h.Store.UpdateWord(r.Context(), UserIDFromContext(r.Context()), id, req); err != nil {

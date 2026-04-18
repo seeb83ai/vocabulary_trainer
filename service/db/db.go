@@ -1439,15 +1439,35 @@ func (s *Store) UpsertTagMeta(ctx context.Context, userID int64, name, descripti
 	return nil
 }
 
-// GetImportableSourceTags returns tags for sourceUserID where importable = 1, ordered alphabetically.
+// GetImportableSourceTags returns tags for userID where importable = 1, ordered alphabetically.
+// Each TagDetail includes WithEn/WithDe flags indicating whether any zh word in the tag
+// has at least one EN or DE translation respectively.
 func (s *Store) GetImportableSourceTags(ctx context.Context, userID int64) ([]models.TagDetail, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT DISTINCT tg.name, tg.description, tg.importable
-		 FROM tags tg
-		 JOIN word_tags wt ON wt.tag_id = tg.id
-		 JOIN words w ON w.id = wt.word_id
-		 WHERE w.user_id = ? AND tg.importable = 1
-		 ORDER BY tg.name`, userID)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+		  tg.name,
+		  tg.description,
+		  tg.importable,
+		  EXISTS (
+		    SELECT 1 FROM word_tags wt2
+		    JOIN words zh ON zh.id = wt2.word_id AND zh.user_id = ? AND zh.language = 'zh'
+		    JOIN translations tr ON tr.zh_word_id = zh.id
+		    JOIN words en ON en.id = tr.en_word_id AND en.language = 'en'
+		    WHERE wt2.tag_id = tg.id
+		  ) AS with_en,
+		  EXISTS (
+		    SELECT 1 FROM word_tags wt3
+		    JOIN words zh ON zh.id = wt3.word_id AND zh.user_id = ? AND zh.language = 'zh'
+		    JOIN translations tr ON tr.zh_word_id = zh.id
+		    JOIN words de ON de.id = tr.en_word_id AND de.language = 'de'
+		    WHERE wt3.tag_id = tg.id
+		  ) AS with_de
+		FROM tags tg
+		JOIN word_tags wt ON wt.tag_id = tg.id
+		JOIN words w ON w.id = wt.word_id
+		WHERE w.user_id = ? AND tg.importable = 1
+		GROUP BY tg.id
+		ORDER BY tg.name`, userID, userID, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get importable source tags: %w", err)
 	}
@@ -1455,11 +1475,13 @@ func (s *Store) GetImportableSourceTags(ctx context.Context, userID int64) ([]mo
 	var out []models.TagDetail
 	for rows.Next() {
 		var td models.TagDetail
-		var imp int
-		if err := rows.Scan(&td.Name, &td.Description, &imp); err != nil {
+		var imp, withEn, withDe int
+		if err := rows.Scan(&td.Name, &td.Description, &imp, &withEn, &withDe); err != nil {
 			return nil, err
 		}
 		td.Importable = imp != 0
+		td.WithEn = withEn != 0
+		td.WithDe = withDe != 0
 		out = append(out, td)
 	}
 	if out == nil {

@@ -20,6 +20,9 @@ let missingLangFilter = '';
 let importSelectedTag = '';
 let importApplyTags = [];
 let importSourceTagsLoaded = false;
+let importAllTags = [];          // full tag list from server
+let importFilterLangs = new Set(); // 'en' | 'de'
+let importFilterMode = 'any';    // 'any' | 'all'
 
 // Tags tab state
 let tagsLoaded = false;
@@ -303,7 +306,7 @@ async function handleFormSubmit(e) {
   e.preventDefault();
   const payload = buildFormPayload();
   if (!payload.zh_text) { alert(t('vocab.zhRequired')); return; }
-  if (!payload.en_texts.length) { alert(t('vocab.enRequired')); return; }
+  if (!payload.en_texts.length && !payload.de_texts.length) { alert(t('vocab.translationRequired')); return; }
 
   try {
     if (editingWordId) {
@@ -764,39 +767,68 @@ async function loadImportSourceTags() {
   importSourceTagsLoaded = true;
   const list = $('import-tag-list');
   try {
-    const tags = await apiFetch('/api/import/source-tags');
-    list.innerHTML = '';
-    if (!tags || tags.length === 0) {
-      list.innerHTML = `<span class="text-sm text-gray-400">${escHtml(t('vocab.importNoTags'))}</span>`;
-      return;
-    }
-    for (const tag of tags) {
-      const pill = document.createElement('button');
-      pill.type = 'button';
-      pill.className = 'import-source-tag px-3 py-1 rounded-full text-sm font-medium border border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition';
-      pill.textContent = tag.name;
-      if (tag.description) pill.title = tag.description;
-      pill.addEventListener('click', () => selectImportSourceTag(tag, pill));
-      list.appendChild(pill);
-    }
+    importAllTags = await apiFetch('/api/import/source-tags');
+    renderImportTagPills();
   } catch (e) {
     list.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
   }
 }
 
-async function selectImportSourceTag(tag, pill) {
+function importTagMatchesFilter(tag) {
+  if (importFilterLangs.size === 0) return true;
+  if (importFilterMode === 'all') {
+    if (importFilterLangs.has('en') && !tag.with_en) return false;
+    if (importFilterLangs.has('de') && !tag.with_de) return false;
+    return true;
+  }
+  // any
+  if (importFilterLangs.has('en') && tag.with_en) return true;
+  if (importFilterLangs.has('de') && tag.with_de) return true;
+  return false;
+}
+
+function renderImportTagPills() {
+  const list = $('import-tag-list');
+  list.innerHTML = '';
+  const visible = importAllTags.filter(importTagMatchesFilter);
+  if (visible.length === 0) {
+    list.innerHTML = `<span class="text-sm text-gray-400">${escHtml(importAllTags.length === 0 ? t('vocab.importNoTags') : t('vocab.importNoTagsMatch'))}</span>`;
+    // If selected tag is now hidden, clear selection and preview.
+    if (importSelectedTag) {
+      importSelectedTag = '';
+      $('import-next-btn').disabled = true;
+      hide('import-preview');
+    }
+    return;
+  }
+  let selectedStillVisible = false;
+  for (const tag of visible) {
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.dataset.tagName = tag.name;
+    const isSelected = tag.name === importSelectedTag;
+    if (isSelected) selectedStillVisible = true;
+    pill.className = 'import-source-tag px-3 py-1 rounded-full text-sm font-medium border transition ' +
+      (isSelected
+        ? 'bg-blue-600 text-white border-blue-600'
+        : 'border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600');
+    pill.textContent = tag.name;
+    if (tag.description) pill.title = tag.description;
+    pill.addEventListener('click', () => selectImportSourceTag(tag, pill));
+    list.appendChild(pill);
+  }
+  if (!selectedStillVisible && importSelectedTag) {
+    importSelectedTag = '';
+    $('import-next-btn').disabled = true;
+    hide('import-preview');
+  }
+}
+
+async function selectImportSourceTag(tag) {
   importSelectedTag = tag.name;
   $('import-next-btn').disabled = true;
   hide('import-preview');
-
-  // Highlight selected pill
-  document.querySelectorAll('.import-source-tag').forEach(p => {
-    p.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
-    p.classList.add('border-gray-300', 'text-gray-600');
-  });
-  pill.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
-  pill.classList.remove('border-gray-300', 'text-gray-600');
-
+  renderImportTagPills();
   await loadImportPreview(tag.name, tag.description);
 }
 
@@ -949,6 +981,18 @@ async function executeImport() {
 function resetImportPanel() {
   importSelectedTag = '';
   importApplyTags = [];
+  importFilterLangs = new Set();
+  importFilterMode = 'any';
+  // Reset filter button styles
+  ['en', 'de'].forEach(lang => {
+    const btn = $('import-filter-' + lang);
+    if (btn) {
+      btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+      btn.classList.add('border-gray-300', 'text-gray-500');
+    }
+  });
+  const anyRadio = document.querySelector('input[name="import-filter-mode"][value="any"]');
+  if (anyRadio) anyRadio.checked = true;
   showImportStep(1);
   hide('import-preview');
   $('import-next-btn').disabled = true;
@@ -1181,6 +1225,32 @@ document.addEventListener('DOMContentLoaded', () => {
   $('tab-add').addEventListener('click', () => switchTab('add'));
   $('tab-import').addEventListener('click', () => switchTab('import'));
   $('tab-tags').addEventListener('click', () => switchTab('tags'));
+
+  // Import language filter toggle buttons
+  ['en', 'de'].forEach(lang => {
+    $('import-filter-' + lang).addEventListener('click', () => {
+      if (importFilterLangs.has(lang)) {
+        importFilterLangs.delete(lang);
+      } else {
+        importFilterLangs.add(lang);
+      }
+      const btn = $('import-filter-' + lang);
+      const active = importFilterLangs.has(lang);
+      btn.classList.toggle('bg-blue-600', active);
+      btn.classList.toggle('text-white', active);
+      btn.classList.toggle('border-blue-600', active);
+      btn.classList.toggle('border-gray-300', !active);
+      btn.classList.toggle('text-gray-500', !active);
+      if (importSourceTagsLoaded) renderImportTagPills();
+    });
+  });
+  document.querySelectorAll('input[name="import-filter-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      importFilterMode = radio.value;
+      if (importSourceTagsLoaded) renderImportTagPills();
+    });
+  });
+
   $('import-next-btn').addEventListener('click', () => showImportStep(2));
   $('import-back1-btn').addEventListener('click', () => showImportStep(1));
   $('import-next2-btn').addEventListener('click', () => {

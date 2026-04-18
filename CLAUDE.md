@@ -82,8 +82,8 @@ Update `README.md` whenever:
 
 ## Data invariants
 
-- Every zh word **must have at least one English translation**. `CreateWord` and `UpdateWord` enforce this
-  at the handler layer. Do not relax this constraint.
+- Every zh word **must have at least one translation in any language (EN or DE)**. `CreateWord` and `UpdateWord` enforce this
+  at the handler layer. A word with only DE translations and no EN is valid.
 - SM-2 progress rows are initialised for every word (zh and en) at creation time via `initSM2`.
   Quiz logic only reads/writes progress for zh words.
 
