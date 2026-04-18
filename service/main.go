@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
@@ -20,6 +21,39 @@ import (
 
 //go:embed frontend
 var frontendFS embed.FS
+
+type PageData struct {
+	Title       string
+	ActiveNav   string
+	ExtraHead   template.HTML
+	PageScripts []string
+}
+
+var templateCache map[string]*template.Template
+
+func initTemplates(fsys fs.FS) {
+	templateCache = make(map[string]*template.Template)
+	pages := []string{"train", "vocab", "stats", "mnemonics", "mismatches", "pinyin", "settings"}
+	for _, name := range pages {
+		t, err := template.ParseFS(fsys, "layout.html", name+".html")
+		if err != nil {
+			log.Fatalf("template parse error for %s: %v", name, err)
+		}
+		templateCache[name] = t
+	}
+}
+
+func renderTemplate(w http.ResponseWriter, name string, data PageData) {
+	t, ok := templateCache[name]
+	if !ok {
+		http.Error(w, "template not found", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		log.Printf("template execute error %s: %v", name, err)
+	}
+}
 
 func main() {
 	dbPath := os.Getenv("DB_PATH")
@@ -221,34 +255,64 @@ func main() {
 		log.Fatalf("Failed to create sub FS: %v", err)
 	}
 
+	initTemplates(sub)
 	fileServer := http.FileServer(http.FS(sub))
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "index.html")
 	})
 	r.Get("/vocab", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "vocab.html")
+		renderTemplate(w, "vocab", PageData{
+			Title:       "Vocabulary — Vocab Trainer",
+			ActiveNav:   "vocab",
+			PageScripts: []string{"hmm-builder.js", "vocab.js"},
+		})
 	})
 	r.Get("/mismatches", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "mismatches.html")
+		renderTemplate(w, "mismatches", PageData{
+			Title:       "Mismatches — Vocab Trainer",
+			ActiveNav:   "mismatches",
+			PageScripts: []string{"mismatches.js"},
+		})
 	})
 	r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "stats.html")
+		renderTemplate(w, "stats", PageData{
+			Title:       "Stats — Vocab Trainer",
+			ActiveNav:   "stats",
+			ExtraHead:   template.HTML(`<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>`),
+			PageScripts: []string{"stats.js"},
+		})
 	})
 	r.Get("/mnemonics", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "mnemonics.html")
+		renderTemplate(w, "mnemonics", PageData{
+			Title:       "Mnemonics — Vocab Trainer",
+			ActiveNav:   "mnemonics",
+			PageScripts: []string{"mnemonics.js"},
+		})
 	})
 	r.Get("/train", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "train.html")
+		renderTemplate(w, "train", PageData{
+			Title:       "Train — Vocab Trainer",
+			ActiveNav:   "train",
+			PageScripts: []string{"hmm-builder.js", "train.js"},
+		})
 	})
 	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "settings.html")
+		renderTemplate(w, "settings", PageData{
+			Title:       "Settings — Vocab Trainer",
+			ActiveNav:   "settings",
+			PageScripts: []string{"settings.js"},
+		})
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
 	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "pinyin.html")
+		renderTemplate(w, "pinyin", PageData{
+			Title:       "Pinyin Listening · Vocab Trainer",
+			ActiveNav:   "pinyin",
+			PageScripts: []string{"pinyin.js"},
+		})
 	})
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)
