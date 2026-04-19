@@ -14,7 +14,7 @@ import (
 func newAuthRouter(t *testing.T) http.Handler {
 	t.Helper()
 	s := openTestDB(t)
-	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost:8080")
+	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,6 +61,76 @@ func doWithCookie(t *testing.T, r http.Handler, method, path string, cookie *htt
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec
+}
+
+// ── NewAuthHandler ────────────────────────────────────────────────────────────
+
+func TestNewAuthHandler_NoSecret_Succeeds(t *testing.T) {
+	s := openTestDB(t)
+	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
+	if err != nil {
+		t.Fatalf("want no error with empty secret, got %v", err)
+	}
+}
+
+func TestNewAuthHandler_ValidSecret_Succeeds(t *testing.T) {
+	s := openTestDB(t)
+	secret := "a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2"
+	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", secret)
+	if err != nil {
+		t.Fatalf("want no error with valid secret, got %v", err)
+	}
+}
+
+func TestNewAuthHandler_InvalidHex_Errors(t *testing.T) {
+	s := openTestDB(t)
+	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", "notvalidhex!!")
+	if err == nil {
+		t.Fatal("want error for non-hex secret, got nil")
+	}
+}
+
+func TestNewAuthHandler_TooShortSecret_Errors(t *testing.T) {
+	s := openTestDB(t)
+	// 31 bytes = 62 hex chars — one byte short of the 32-byte minimum.
+	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aa"[:62])
+	if err == nil {
+		t.Fatal("want error for secret shorter than 32 bytes, got nil")
+	}
+}
+
+func TestNewAuthHandler_PersistentSecret_TokenSurvivesRestart(t *testing.T) {
+	s := openTestDB(t)
+	secret := "a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2"
+
+	// First "server instance": login and capture the session cookie.
+	buildRouter := func() http.Handler {
+		authH, err := handlers.NewAuthHandler(s, nil, "http://localhost:8080", secret)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := chi.NewRouter()
+		r.Use(authH.Middleware)
+		r.Post("/api/login", authH.Login)
+		r.Get("/api/protected", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		return r
+	}
+
+	r1 := buildRouter()
+	loginRec := loginReq(t, r1, "me@example.de", "I learn zh")
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login failed: %d %s", loginRec.Code, loginRec.Body)
+	}
+	cookie := sessionCookie(t, loginRec)
+
+	// Second "server instance" with the same secret: cookie must still work.
+	r2 := buildRouter()
+	rec := doWithCookie(t, r2, "GET", "/api/protected", cookie)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 after simulated restart with same secret, got %d", rec.Code)
+	}
 }
 
 // ── AuthStatus ────────────────────────────────────────────────────────────────

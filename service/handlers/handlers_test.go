@@ -80,7 +80,7 @@ func newRouter(s *db.Store) http.Handler {
 	mismatchH := &handlers.MismatchesHandler{Store: s}
 	importH := &handlers.ImportHandler{Store: s}
 	tagsH := &handlers.TagsHandler{Store: s}
-	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080")
+	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
 
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(2))

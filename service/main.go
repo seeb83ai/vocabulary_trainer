@@ -102,7 +102,8 @@ func main() {
 	}
 	log.Printf("App URL: %s", appURL)
 
-	authH, err := handlers.NewAuthHandler(store, emailSender, appURL)
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	authH, err := handlers.NewAuthHandler(store, emailSender, appURL, sessionSecret)
 	if err != nil {
 		log.Fatalf("Failed to initialise auth: %v", err)
 	}

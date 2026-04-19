@@ -54,10 +54,22 @@ type AuthHandler struct {
 // NewAuthHandler creates an AuthHandler backed by the given store.
 // emailSender may be nil (email disabled — accounts auto-verified on register).
 // appURL is used to build email verification links (e.g. "https://example.com").
-func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL string) (*AuthHandler, error) {
-	secret := make([]byte, 32)
-	if _, err := rand.Read(secret); err != nil {
-		return nil, fmt.Errorf("generate auth secret: %w", err)
+// secretHex is an optional hex-encoded 32-byte HMAC key (SESSION_SECRET env var).
+// If empty, a random key is generated — sessions will not survive server restarts.
+func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL, secretHex string) (*AuthHandler, error) {
+	var secret []byte
+	if secretHex != "" {
+		decoded, err := hex.DecodeString(secretHex)
+		if err != nil || len(decoded) < 32 {
+			return nil, fmt.Errorf("SESSION_SECRET must be a hex-encoded string of at least 32 bytes")
+		}
+		secret = decoded
+	} else {
+		log.Printf("Warning: SESSION_SECRET not set — sessions will not survive restarts")
+		secret = make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			return nil, fmt.Errorf("generate auth secret: %w", err)
+		}
 	}
 	return &AuthHandler{store: store, secret: secret, emailSender: emailSender, appURL: appURL}, nil
 }
