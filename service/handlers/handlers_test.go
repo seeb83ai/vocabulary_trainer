@@ -93,6 +93,7 @@ func newRouter(s *db.Store) http.Handler {
 	r.Post("/api/quiz/answer", quizH.Answer)
 	r.Post("/api/quiz/skip", quizH.Skip)
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
+	r.Post("/api/quiz/acknowledge-random", quizH.AcknowledgeRandom)
 	r.Post("/api/quiz/advance", quizH.Advance)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/langs", quizH.Langs)
@@ -1669,6 +1670,120 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 	rec = do(t, r, "GET", "/api/quiz/next", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 after cap reset, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── AcknowledgeRandom ─────────────────────────────────────────────────────────
+
+func TestAcknowledgeRandomHandler_MarksWordsDue(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+
+	// Seed 5 unseen words for user 2.
+	for i, zh := range []string{"一", "二", "三", "四", "五"} {
+		if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, EnTexts: []string{"word" + string(rune('a'+i))}}); err != nil {
+			t.Fatalf("CreateWord %s: %v", zh, i)
+		}
+	}
+
+	// due_today should be 0 before.
+	stats := do(t, r, "GET", "/api/quiz/stats", nil)
+	var s0 map[string]int
+	decodeJSON(t, stats, &s0)
+	if s0["due_today"] != 0 {
+		t.Fatalf("expected due_today=0 before, got %d", s0["due_today"])
+	}
+
+	// Acknowledge 3 random words.
+	rec := do(t, r, "POST", "/api/quiz/acknowledge-random", map[string]any{"count": 3})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["acknowledged"] != 3 {
+		t.Errorf("want acknowledged=3, got %d", resp["acknowledged"])
+	}
+
+	// due_today should now be 3.
+	stats = do(t, r, "GET", "/api/quiz/stats", nil)
+	var s1 map[string]int
+	decodeJSON(t, stats, &s1)
+	if s1["due_today"] != 3 {
+		t.Errorf("want due_today=3, got %d", s1["due_today"])
+	}
+}
+
+func TestAcknowledgeRandomHandler_CapsAtAvailable(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+
+	// Seed only 2 unseen words.
+	for _, zh := range []string{"甲", "乙"} {
+		if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, EnTexts: []string{"word"}}); err != nil {
+			t.Fatalf("CreateWord %s: %v", zh, err)
+		}
+	}
+
+	// Ask for 10, should only acknowledge the 2 available.
+	rec := do(t, r, "POST", "/api/quiz/acknowledge-random", map[string]any{"count": 10})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["acknowledged"] != 2 {
+		t.Errorf("want acknowledged=2, got %d", resp["acknowledged"])
+	}
+}
+
+func TestAcknowledgeRandomHandler_InvalidCount(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/acknowledge-random", map[string]any{"count": 0})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for count=0, got %d", rec.Code)
+	}
+}
+
+// ── Stats new_available with learning words present ───────────────────────────
+
+func TestStatsNewAvailable_WithLearningWords(t *testing.T) {
+	s := openTestDB(t)
+	// Cap of 5; seed 3 unseen words, acknowledge 1 (puts it in learning phase).
+	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 5}
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/quiz/stats", quizH.Stats)
+	ctx := context.Background()
+
+	ids := make([]int64, 3)
+	for i, zh := range []string{"红", "蓝", "绿"} {
+		wid, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, EnTexts: []string{"color"}})
+		if err != nil {
+			t.Fatalf("CreateWord: %v", err)
+		}
+		ids[i] = wid
+	}
+
+	// Acknowledge one word — it enters the learning phase (learning_new_word=1).
+	if err := s.AcknowledgeWord(ctx, int64(2), ids[0]); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// new_available should still reflect the 2 remaining unseen words,
+	// not be gated to 0 by the learning word.
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["new_available"] != 2 {
+		t.Errorf("want new_available=2 even with a learning word present, got %d", resp["new_available"])
 	}
 }
 
