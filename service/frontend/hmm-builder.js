@@ -318,11 +318,17 @@ Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${lo
     });
   });
 
-  // Show ✨ button if LLM is configured, and wire click handler.
+  // Show ✨ button if LLM is configured; disable with "coming soon" for free users.
   apiFetch('/api/config').then(cfg => {
-    if (!cfg || !cfg.llm_enabled) return;
+    if (!cfg || !cfg.llm_configured) return;
     const generateBtn = document.getElementById('hmm-llm-generate-btn');
     generateBtn.classList.remove('hidden');
+    if (!cfg.llm_available) {
+      generateBtn.disabled = true;
+      generateBtn.title = 'Coming soon — requires plus account';
+      generateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      return;
+    }
 
     generateBtn.addEventListener('click', async () => {
       const label = document.getElementById('hmm-llm-generate-label');

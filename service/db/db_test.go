@@ -2582,3 +2582,67 @@ func TestGetImportableSourceTags_WithDescription(t *testing.T) {
 		t.Errorf("expected description 'Basic greeting words', got %+v", tags)
 	}
 }
+
+// ── GetUserRole ───────────────────────────────────────────────────────────────
+
+func TestGetUserRole_SeedAdmin(t *testing.T) {
+	s := openTestDB(t)
+	role, err := s.GetUserRole(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if role != "admin" {
+		t.Errorf("user 1: want role admin, got %q", role)
+	}
+}
+
+func TestGetUserRole_SeedPlus(t *testing.T) {
+	s := openTestDB(t)
+	role, err := s.GetUserRole(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if role != "plus" {
+		t.Errorf("user 2: want role plus, got %q", role)
+	}
+}
+
+func TestGetUserRole_NewUserDefaultsFree(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateUser(context.Background(), "new@example.com", "hash", "tok-new", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := s.GetUserRole(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if role != "free" {
+		t.Errorf("new user: want role free, got %q", role)
+	}
+}
+
+func TestGetUserRole_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	role, err := s.GetUserRole(context.Background(), 99999)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if role != "free" {
+		t.Errorf("unknown user: want free, got %q", role)
+	}
+}
+
+func TestGetUserByEmail_IncludesRole(t *testing.T) {
+	s := openTestDB(t)
+	user, err := s.GetUserByEmail(context.Background(), "admin@example.de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("admin user not found")
+	}
+	if user.Role != "admin" {
+		t.Errorf("admin user: want role admin, got %q", user.Role)
+	}
+}

@@ -108,16 +108,14 @@ func main() {
 		log.Fatalf("Failed to initialise auth: %v", err)
 	}
 
-	var translateH *handlers.TranslateHandler
+	translateH := &handlers.TranslateHandler{Store: store}
 	if key := os.Getenv("DEEPL_API_KEY"); key != "" {
 		lang := os.Getenv("DEEPL_TARGET_LANGUAGE")
 		if lang == "" {
 			lang = "EN"
 		}
-		translateH = &handlers.TranslateHandler{
-			APIKey:     key,
-			TargetLang: strings.ToUpper(lang),
-		}
+		translateH.APIKey = key
+		translateH.TargetLang = strings.ToUpper(lang)
 		log.Printf("DeepL translation enabled: target=%s", strings.ToUpper(lang))
 	}
 
@@ -151,11 +149,7 @@ func main() {
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 	hanziH := &handlers.HanziHandler{Store: store}
-	hmmDeepLKey := ""
-	if translateH != nil {
-		hmmDeepLKey = translateH.APIKey
-	}
-	hmmH := &handlers.HMMHandler{Store: store, DeepLAPIKey: hmmDeepLKey}
+	hmmH := &handlers.HMMHandler{Store: store, DeepLAPIKey: translateH.APIKey}
 	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
 	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDirs: pinyinAudioDirs}
 
@@ -245,8 +239,8 @@ func main() {
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
-		r.Get("/config", handlers.Config(translateH != nil, llmH != nil))
-		if translateH != nil {
+		r.Get("/config", translateH.Config(translateH.APIKey != "", llmH != nil))
+		if translateH.APIKey != "" {
 			r.Post("/translate", translateH.Translate)
 		}
 	})

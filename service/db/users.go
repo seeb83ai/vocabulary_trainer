@@ -14,8 +14,8 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (*models.User,
 	var u models.User
 	var verified int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, COALESCE(email_verified,0) FROM users WHERE email = ?`, email).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &verified)
+		`SELECT id, email, password_hash, COALESCE(email_verified,0), COALESCE(role,'free') FROM users WHERE email = ?`, email).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &verified, &u.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -31,8 +31,8 @@ func (s *Store) GetUserByID(ctx context.Context, id int64) (*models.User, error)
 	var u models.User
 	var verified int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, COALESCE(email_verified,0) FROM users WHERE id = ?`, id).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &verified)
+		`SELECT id, email, password_hash, COALESCE(email_verified,0), COALESCE(role,'free') FROM users WHERE id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &verified, &u.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -41,6 +41,22 @@ func (s *Store) GetUserByID(ctx context.Context, id int64) (*models.User, error)
 	}
 	u.EmailVerified = verified == 1
 	return &u, nil
+}
+
+// GetUserRole returns the role of the given user ("admin", "plus", or "free").
+// Returns "free" if the user is not found.
+func (s *Store) GetUserRole(ctx context.Context, userID int64) (string, error) {
+	var role string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(role,'free') FROM users WHERE id = ?`, userID).
+		Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "free", nil
+	}
+	if err != nil {
+		return "free", fmt.Errorf("get user role: %w", err)
+	}
+	return role, nil
 }
 
 // CreateUser inserts a new unverified user and returns its ID.
@@ -62,11 +78,11 @@ func (s *Store) SetUserEmailVerified(ctx context.Context, token string) (*models
 	var u models.User
 	var verified int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, COALESCE(email_verified,0)
+		`SELECT id, email, password_hash, COALESCE(email_verified,0), COALESCE(role,'free')
 		 FROM users
 		 WHERE verification_token = ?
 		   AND verification_expires_at > datetime('now')`, token).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &verified)
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &verified, &u.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

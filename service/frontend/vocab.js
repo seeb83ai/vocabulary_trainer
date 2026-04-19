@@ -499,8 +499,15 @@ async function fetchAndFillPinyin(zh) {
 async function initTranslateButton() {
   try {
     const cfg = await apiFetch('/api/config');
-    if (cfg && cfg.deepl_enabled) {
+    if (!cfg) return;
+    const btn = $('translate-btn');
+    if (cfg.deepl_available) {
       show('translate-btn');
+    } else if (cfg.deepl_configured) {
+      show('translate-btn');
+      btn.disabled = true;
+      btn.title = 'Coming soon — requires plus account';
+      btn.classList.add('opacity-50', 'cursor-not-allowed');
     }
   } catch (_) {}
 }

@@ -30,6 +30,12 @@ type llmGenerateResponse struct {
 const llmSystemPrompt = `You are a creative writing assistant for the Hanzi Movie Method, a mnemonic system for memorizing Chinese characters. Your task is to write exactly one short, vivid scene. Respond with only the scene text — no preamble, no numbering, no labels, no explanation.`
 
 func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
+	role, err := h.Store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
+	if err != nil || (role != "plus" && role != "admin") {
+		writeError(w, http.StatusForbidden, "feature requires plus account")
+		return
+	}
+
 	id, err := parseID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid word id")

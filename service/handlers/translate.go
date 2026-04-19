@@ -9,11 +9,13 @@ import (
 	"strings"
 
 	"github.com/mozillazg/go-pinyin"
+	"vocabulary_trainer/db"
 )
 
 type TranslateHandler struct {
 	APIKey     string
 	TargetLang string
+	Store      *db.Store
 }
 
 type translateRequest struct {
@@ -41,6 +43,17 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 	if req.ZhText == "" && req.EnText == "" {
 		writeError(w, http.StatusBadRequest, "provide zh_text or en_text")
 		return
+	}
+
+	// Pinyin-only path (both zh and en provided) is available to all users.
+	// DeepL translation requires plus or admin role.
+	pinyinOnly := req.ZhText != "" && req.EnText != ""
+	if !pinyinOnly {
+		role, err := h.Store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
+		if err != nil || (role != "plus" && role != "admin") {
+			writeError(w, http.StatusForbidden, "feature requires plus account")
+			return
+		}
 	}
 
 	resp := translateResponse{ZhText: req.ZhText, EnText: req.EnText}
@@ -97,11 +110,18 @@ func Pinyin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"pinyin": toPinyin(req.ZhText)})
 }
 
-func Config(deeplEnabled, llmEnabled bool) http.HandlerFunc {
+// Config returns feature availability for the current user.
+// *_configured: whether the API key/service is set up server-side.
+// *_available:  configured AND the user's role allows access (plus or admin).
+func (h *TranslateHandler) Config(deeplConfigured, llmConfigured bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		role, _ := h.Store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
+		canUse := role == "plus" || role == "admin"
 		writeJSON(w, http.StatusOK, map[string]bool{
-			"deepl_enabled": deeplEnabled,
-			"llm_enabled":   llmEnabled,
+			"deepl_configured": deeplConfigured,
+			"deepl_available":  deeplConfigured && canUse,
+			"llm_configured":   llmConfigured,
+			"llm_available":    llmConfigured && canUse,
 		})
 	}
 }

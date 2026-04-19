@@ -75,15 +75,20 @@ func clearHMMLibrary(t *testing.T, s *db.Store) {
 }
 
 func newRouter(s *db.Store) http.Handler {
+	return newRouterWithUserID(s, 2)
+}
+
+func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	wordsH := &handlers.WordsHandler{Store: s}
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
 	mismatchH := &handlers.MismatchesHandler{Store: s}
 	importH := &handlers.ImportHandler{Store: s}
 	tagsH := &handlers.TagsHandler{Store: s}
 	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
+	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN"}
 
 	r := chi.NewRouter()
-	r.Use(handlers.WithUserID(2))
+	r.Use(handlers.WithUserID(userID))
 	r.Post("/api/login", authH.Login)
 	r.Post("/api/register", authH.Register)
 	r.Get("/api/verify-email", authH.VerifyEmail)
@@ -118,6 +123,8 @@ func newRouter(s *db.Store) http.Handler {
 	r.Post("/api/import", importH.Import)
 	r.Get("/api/tags/details", tagsH.Details)
 	r.Put("/api/tags/{name}", tagsH.Update)
+	r.Get("/api/config", translateH.Config(true, true))
+	r.Post("/api/translate", translateH.Translate)
 	return r
 }
 
@@ -3032,5 +3039,105 @@ func TestTagUpdate_InvalidBody(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── Role gating ───────────────────────────────────────────────────────────────
+
+// TestConfig_PlusUserSeesAvailable verifies that user 2 (plus) gets deepl_available=true.
+func TestConfig_PlusUserSeesAvailable(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouterWithUserID(s, 2)
+	rec := do(t, r, http.MethodGet, "/api/config", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var cfg map[string]bool
+	decodeJSON(t, rec, &cfg)
+	if !cfg["deepl_available"] {
+		t.Error("plus user: deepl_available should be true")
+	}
+	if !cfg["llm_available"] {
+		t.Error("plus user: llm_available should be true")
+	}
+}
+
+// TestConfig_FreeUserSeesConfiguredButNotAvailable verifies free users see configured=true, available=false.
+func TestConfig_FreeUserSeesConfiguredButNotAvailable(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	freeID, err := s.CreateUser(ctx, "free@example.com", "hash", "tok-free", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouterWithUserID(s, freeID)
+	rec := do(t, r, http.MethodGet, "/api/config", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var cfg map[string]bool
+	decodeJSON(t, rec, &cfg)
+	if !cfg["deepl_configured"] {
+		t.Error("free user: deepl_configured should be true (key is set)")
+	}
+	if cfg["deepl_available"] {
+		t.Error("free user: deepl_available should be false")
+	}
+	if !cfg["llm_configured"] {
+		t.Error("free user: llm_configured should be true")
+	}
+	if cfg["llm_available"] {
+		t.Error("free user: llm_available should be false")
+	}
+}
+
+// TestTranslate_FreeUserForbidden verifies free users cannot call the translate endpoint.
+func TestTranslate_FreeUserForbidden(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	freeID, err := s.CreateUser(ctx, "free2@example.com", "hash", "tok-free2", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouterWithUserID(s, freeID)
+	rec := do(t, r, http.MethodPost, "/api/translate", map[string]string{"zh_text": "你好"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("free user translate: want 403, got %d", rec.Code)
+	}
+}
+
+// TestTranslate_PinyinOnlyAllowedForFreeUser verifies that the pinyin-only path
+// (both zh_text and en_text provided) is not blocked for free users.
+func TestTranslate_PinyinOnlyAllowedForFreeUser(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	freeID, err := s.CreateUser(ctx, "free3@example.com", "hash", "tok-free3", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouterWithUserID(s, freeID)
+	rec := do(t, r, http.MethodPost, "/api/translate", map[string]string{
+		"zh_text": "你好",
+		"en_text": "hello",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("free user pinyin-only: want 200, got %d", rec.Code)
+	}
+	var resp map[string]string
+	decodeJSON(t, rec, &resp)
+	if resp["pinyin"] == "" {
+		t.Error("expected non-empty pinyin in response")
+	}
+}
+
+// TestTranslate_PlusUserAllowed verifies plus users can call translate.
+func TestTranslate_PlusUserAllowed(t *testing.T) {
+	s := openTestDB(t)
+	// user 2 is plus; the actual DeepL call will fail (no real key),
+	// so we only check that we don't get 403.
+	r := newRouterWithUserID(s, 2)
+	rec := do(t, r, http.MethodPost, "/api/translate", map[string]string{"zh_text": "你好"})
+	if rec.Code == http.StatusForbidden {
+		t.Fatal("plus user should not be forbidden from translate")
 	}
 }

@@ -18,6 +18,7 @@ type User struct {
 	Email         string `json:"email"`
 	PasswordHash  string `json:"-"`
 	EmailVerified bool   `json:"email_verified"`
+	Role          string `json:"role"`
 }
 
 type Word struct {
