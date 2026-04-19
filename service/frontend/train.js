@@ -58,6 +58,16 @@ function applyTierPills() {
   }
 }
 
+let obTagsLoaded = false;
+function showEmptyState() {
+  show('empty-state');
+  if (!obTagsLoaded) {
+    obTagsLoaded = true;
+    // obLoadTags is defined inside DOMContentLoaded; call lazily via event
+    document.dispatchEvent(new CustomEvent('ob:loadtags'));
+  }
+}
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
@@ -102,7 +112,7 @@ async function loadNextCard() {
 
   if (latestStats) {
     if (latestStats.total === 0) {
-      show('empty-state');
+      showEmptyState();
       return;
     }
     if (latestStats.due_today === 0 && (latestStats.hmm_due_today || 0) === 0 && (!latestStats.new_available || skipNewWords)) {
@@ -137,7 +147,7 @@ async function loadNextCard() {
       const statsUrl = fbQs ? `/api/quiz/stats?${fbQs}` : '/api/quiz/stats';
       const stats = latestStats || await apiFetch(statsUrl).catch(() => null);
       if (!stats || stats.total === 0) {
-        show('empty-state');
+        showEmptyState();
       } else {
         setText('success-stats', t('stats.attemptsAndMistakes', { attempts: stats.today_attempts, mistakes: stats.today_mistakes }));
         document.querySelectorAll('.advance-btn').forEach(btn => {
@@ -787,6 +797,171 @@ document.addEventListener('DOMContentLoaded', () => {
     applyModeButtons();
     applyTierPills();
   });
+
+  // Onboarding import (shown when user has zero words)
+  let obAllTags = [];
+  let obSelectedTag = '';
+  let obFilterLangs = new Set();
+  let obFilterMode = 'any';
+
+  function obTagMatchesFilter(tag) {
+    if (obFilterLangs.size === 0) return true;
+    if (obFilterMode === 'all') {
+      if (obFilterLangs.has('en') && !tag.with_en) return false;
+      if (obFilterLangs.has('de') && !tag.with_de) return false;
+      return true;
+    }
+    if (obFilterLangs.has('en') && tag.with_en) return true;
+    if (obFilterLangs.has('de') && tag.with_de) return true;
+    return false;
+  }
+
+  function obRenderTagPills() {
+    const list = $('ob-tag-list');
+    list.innerHTML = '';
+    const visible = obAllTags.filter(obTagMatchesFilter);
+    if (visible.length === 0) {
+      list.innerHTML = `<span class="text-sm text-gray-400">${escHtml(obAllTags.length === 0 ? t('vocab.importNoTags') : t('vocab.importNoTagsMatch'))}</span>`;
+      if (obSelectedTag) { obSelectedTag = ''; $('ob-next-btn').disabled = true; hide('ob-preview'); }
+      return;
+    }
+    let selectedStillVisible = false;
+    for (const tag of visible) {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      const isSelected = tag.name === obSelectedTag;
+      if (isSelected) selectedStillVisible = true;
+      pill.className = 'px-3 py-1 rounded-full text-sm font-medium border transition ' +
+        (isSelected ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600');
+      pill.textContent = tag.name;
+      if (tag.description) pill.title = tag.description;
+      pill.addEventListener('click', () => obSelectTag(tag));
+      list.appendChild(pill);
+    }
+    if (!selectedStillVisible && obSelectedTag) { obSelectedTag = ''; $('ob-next-btn').disabled = true; hide('ob-preview'); }
+  }
+
+  async function obSelectTag(tag) {
+    obSelectedTag = tag.name;
+    $('ob-next-btn').disabled = true;
+    hide('ob-preview');
+    obRenderTagPills();
+    const descEl = $('ob-preview-desc');
+    const statsEl = $('ob-preview-stats');
+    const tableWrap = $('ob-preview-table-wrap');
+    const tbody = $('ob-preview-tbody');
+    statsEl.textContent = t('vocab.importLoading');
+    descEl.classList.add('hidden');
+    tableWrap.classList.add('hidden');
+    tbody.innerHTML = '';
+    show('ob-preview');
+    try {
+      const data = await apiFetch('/api/import/preview?tag=' + encodeURIComponent(tag.name));
+      if (tag.description) { descEl.textContent = tag.description; descEl.classList.remove('hidden'); }
+      if (data.total === 0) { statsEl.textContent = t('vocab.importPreviewEmpty'); $('ob-next-btn').disabled = true; return; }
+      const parts = [`${data.total} ${t('vocab.importPreviewWords')}`];
+      if (data.with_en > 0) parts.push(`${data.with_en} EN`);
+      if (data.with_de > 0) parts.push(`${data.with_de} DE`);
+      statsEl.textContent = parts.join(' · ');
+      const hasDe = (data.examples || []).some(e => e.de_texts && e.de_texts.length > 0);
+      for (const ex of (data.examples || [])) {
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-gray-100 last:border-0';
+        const en = (ex.en_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+        const de = (ex.de_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+        tr.innerHTML = `<td class="py-1 px-2 font-medium">${escHtml(ex.zh_text)}</td><td class="py-1 px-2 text-gray-500">${escHtml(ex.pinyin)}</td><td class="py-1 px-2 text-gray-700">${en}</td><td class="py-1 px-2 text-gray-500">${hasDe ? de : ''}</td>`;
+        tbody.appendChild(tr);
+      }
+      tableWrap.classList.remove('hidden');
+      $('ob-next-btn').disabled = false;
+    } catch (e) {
+      statsEl.textContent = e.message;
+      $('ob-next-btn').disabled = true;
+    }
+  }
+
+  function obShowStep(n) {
+    [1, 2, 3].forEach(i => {
+      const el = $('ob-step' + i);
+      if (el) el.classList.toggle('hidden', i !== n);
+    });
+  }
+
+  async function obLoadTags() {
+    const list = $('ob-tag-list');
+    try {
+      obAllTags = await apiFetch('/api/import/source-tags');
+      obRenderTagPills();
+    } catch (e) {
+      list.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
+    }
+  }
+
+  async function obExecuteImport() {
+    const btn = $('ob-submit-btn');
+    const statusEl = $('ob-status');
+    btn.disabled = true;
+    btn.textContent = t('vocab.importing');
+    statusEl.className = 'mt-3 text-sm text-gray-500';
+    statusEl.textContent = '';
+    show('ob-status');
+    try {
+      const result = await apiFetch('/api/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tag: obSelectedTag,
+          import_en: $('ob-import-en').checked,
+          import_de: $('ob-import-de').checked,
+          apply_tags: [],
+        }),
+      });
+      const startCount = parseInt($('ob-start-count').value) || result.imported;
+      await apiFetch('/api/quiz/acknowledge-random', {
+        method: 'POST',
+        body: JSON.stringify({ count: startCount }),
+      }).catch(() => {});
+      const skippedNote = result.skipped > 0 ? `, ${t('vocab.importSkipped')} ${result.skipped} ${t('vocab.importAlreadyOwned')}` : '';
+      statusEl.className = 'mt-3 text-sm text-green-600';
+      statusEl.textContent = `${t('vocab.importDone')} ${result.imported} ${t('vocab.importWords2')}${skippedNote}.`;
+      setTimeout(() => {
+        hide('empty-state');
+        loadNextCard();
+      }, 1200);
+    } catch (e) {
+      statusEl.className = 'mt-3 text-sm text-red-500';
+      statusEl.textContent = e.message;
+      btn.disabled = false;
+      btn.textContent = t('vocab.import');
+    }
+  }
+
+  // Wire up onboarding filter buttons
+  ['en', 'de'].forEach(lang => {
+    $('ob-filter-' + lang).addEventListener('click', () => {
+      const btn = $('ob-filter-' + lang);
+      if (obFilterLangs.has(lang)) {
+        obFilterLangs.delete(lang);
+        btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+        btn.classList.add('border-gray-300', 'text-gray-500');
+      } else {
+        obFilterLangs.add(lang);
+        btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
+        btn.classList.remove('border-gray-300', 'text-gray-500');
+      }
+      obRenderTagPills();
+    });
+  });
+  document.querySelectorAll('input[name="ob-filter-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => { obFilterMode = radio.value; obRenderTagPills(); });
+  });
+  $('ob-next-btn').addEventListener('click', () => obShowStep(2));
+  $('ob-back1-btn').addEventListener('click', () => obShowStep(1));
+  $('ob-next2-btn').addEventListener('click', () => obShowStep(3));
+  $('ob-back2-btn').addEventListener('click', () => obShowStep(2));
+  $('ob-submit-btn').addEventListener('click', obExecuteImport);
+
+  document.addEventListener('ob:loadtags', obLoadTags, { once: false });
 
   loadNextCard();
 });

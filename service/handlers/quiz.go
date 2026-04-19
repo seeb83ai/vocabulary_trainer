@@ -477,25 +477,16 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	h.mu.Unlock()
 	newAvailable := 0
 	// When drilling a specific tier, don't introduce new words (they have no tier yet).
-	// Also skip new words if there are still words in the learning ("new") phase
-	// for the current selection — finish learning those first.
 	if bucket == "" && newToday < cap {
-		learningCount, err := h.Store.CountLearningNewWords(r.Context(), UserIDFromContext(r.Context()), tags)
+		n, err := h.Store.CountUnseenZhWords(r.Context(), UserIDFromContext(r.Context()), tags)
 		if err != nil {
 			internalError(w, err)
 			return
 		}
-		if learningCount == 0 {
-			n, err := h.Store.CountUnseenZhWords(r.Context(), UserIDFromContext(r.Context()), tags)
-			if err != nil {
-				internalError(w, err)
-				return
-			}
-			if remaining := cap - newToday; n > remaining {
-				n = remaining
-			}
-			newAvailable = n
+		if remaining := cap - newToday; n > remaining {
+			n = remaining
 		}
+		newAvailable = n
 	}
 	hmmStats, err := h.Store.GetHMMStats(r.Context(), UserIDFromContext(r.Context()), nil)
 	if err != nil {
@@ -531,6 +522,28 @@ func (h *QuizHandler) DueDateDistribution(w http.ResponseWriter, r *http.Request
 		dates = []models.DueDateCount{}
 	}
 	writeJSON(w, http.StatusOK, models.DueDateDistributionResponse{Dates: dates})
+}
+
+// AcknowledgeRandom marks up to n random unseen zh words as due now, bypassing
+// the new-word introduction flow. Used after onboarding import.
+func (h *QuizHandler) AcknowledgeRandom(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Count int `json:"count"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Count <= 0 {
+		writeError(w, http.StatusBadRequest, "count must be positive")
+		return
+	}
+	n, err := h.Store.AcknowledgeRandomWords(r.Context(), UserIDFromContext(r.Context()), req.Count)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"acknowledged": n})
 }
 
 // Advance pulls forward the due dates of n seen zh words so they become due now,

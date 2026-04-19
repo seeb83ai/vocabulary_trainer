@@ -91,6 +91,30 @@ func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error
 	return nil
 }
 
+// AcknowledgeRandomWords marks up to n random unseen zh words as due now so they
+// appear immediately in the quiz without going through the new-word introduction flow.
+// Returns the number of words actually acknowledged.
+func (s *Store) AcknowledgeRandomWords(ctx context.Context, userID int64, n int) (int, error) {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE sm2_progress
+		SET total_attempts = 1,
+		    first_seen_date = date('now'),
+		    due_date        = CURRENT_TIMESTAMP
+		WHERE word_id IN (
+			SELECT w.id FROM words w
+			JOIN sm2_progress p ON p.word_id = w.id
+			WHERE w.language = 'zh' AND w.user_id = ?
+			  AND p.first_seen_date IS NULL
+			ORDER BY RANDOM()
+			LIMIT ?
+		)`, userID, n)
+	if err != nil {
+		return 0, fmt.Errorf("acknowledge random words: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return int(affected), nil
+}
+
 // GetStats returns due-today count, total word count (zh words only), and the number of
 // new words introduced today (globally, not filtered by tag).
 func (s *Store) GetStats(ctx context.Context, userID int64, tags []string, bucket string) (dueToday, total, newToday int, err error) {

@@ -193,6 +193,7 @@ func main() {
 		r.Get("/quiz/langs", quizH.Langs)
 		r.Post("/quiz/skip", quizH.Skip)
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)
+		r.Post("/quiz/acknowledge-random", quizH.AcknowledgeRandom)
 		r.Post("/quiz/advance", quizH.Advance)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)

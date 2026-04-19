@@ -59,14 +59,106 @@
   <main class="flex-1 flex items-start justify-center px-4 py-10">
     <div class="w-full max-w-lg">
 
-      <!-- Empty state (no vocabulary added yet) -->
-      <div id="empty-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-5xl mb-4">📚</div>
-        <h2 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="empty.title">No vocabulary yet</h2>
-        <p class="text-gray-500 mb-6" data-i18n="empty.msg">Add some words to start training.</p>
-        <a href="/vocab" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition" data-i18n="empty.addBtn">
-          Add Vocabulary
-        </a>
+      <!-- Empty state (no vocabulary added yet) — inline import onboarding -->
+      <div id="empty-state" class="hidden bg-white rounded-2xl shadow p-8">
+        <div class="text-center mb-6">
+          <div class="text-5xl mb-3">📚</div>
+          <h2 class="text-xl font-semibold text-gray-700 mb-1" data-i18n="empty.title">No vocabulary yet</h2>
+          <p class="text-gray-500 text-sm" data-i18n="empty.importMsg">Import a word list to get started — it only takes a moment.</p>
+        </div>
+
+        <!-- Step 1: pick a source tag -->
+        <div id="ob-step1">
+          <p class="text-sm font-medium text-gray-700 mb-2" data-i18n="vocab.importPickTag">Select a tag to import from the shared library:</p>
+          <div class="flex flex-wrap items-center gap-2 mb-3 text-sm">
+            <span class="text-gray-500 font-medium" data-i18n="vocab.importFilterLangs">Filter:</span>
+            <button id="ob-filter-en" type="button"
+              class="px-2.5 py-1 rounded-full border text-xs font-medium border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 transition"
+              data-i18n="vocab.english">English</button>
+            <button id="ob-filter-de" type="button"
+              class="px-2.5 py-1 rounded-full border text-xs font-medium border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 transition"
+              data-i18n="vocab.german">German</button>
+            <span class="text-gray-300 select-none">|</span>
+            <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+              <input type="radio" name="ob-filter-mode" value="any" checked class="w-3 h-3 text-blue-600 focus:ring-blue-500">
+              <span data-i18n="vocab.importFilterAny">Any</span>
+            </label>
+            <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+              <input type="radio" name="ob-filter-mode" value="all" class="w-3 h-3 text-blue-600 focus:ring-blue-500">
+              <span data-i18n="vocab.importFilterAll">All</span>
+            </label>
+          </div>
+          <div id="ob-tag-list" class="flex flex-wrap gap-2 mb-3">
+            <span class="text-sm text-gray-400" data-i18n="vocab.importLoadingTags">Loading tags…</span>
+          </div>
+          <div id="ob-preview" class="hidden text-sm text-gray-600 bg-gray-50 rounded-lg p-3 mb-3 space-y-2">
+            <div id="ob-preview-desc" class="hidden font-medium text-gray-700"></div>
+            <div id="ob-preview-stats"></div>
+            <div id="ob-preview-table-wrap" class="hidden overflow-x-auto max-h-48 overflow-y-auto rounded border border-gray-200">
+              <table class="w-full text-xs">
+                <thead class="bg-gray-100 sticky top-0">
+                  <tr>
+                    <th class="py-1.5 px-2 text-left font-medium text-gray-600" data-i18n="vocab.chinese">Chinese</th>
+                    <th class="py-1.5 px-2 text-left font-medium text-gray-600" data-i18n="vocab.pinyin">Pinyin</th>
+                    <th class="py-1.5 px-2 text-left font-medium text-gray-600" data-i18n="vocab.english">English</th>
+                    <th class="py-1.5 px-2 text-left font-medium text-gray-600" data-i18n="vocab.german">German</th>
+                  </tr>
+                </thead>
+                <tbody id="ob-preview-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+          <button id="ob-next-btn" disabled
+            class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+            data-i18n="vocab.next">Next</button>
+        </div>
+
+        <!-- Step 2: choose languages -->
+        <div id="ob-step2" class="hidden">
+          <p class="text-sm text-gray-600 mb-3" data-i18n="vocab.importPickLangs">Which translations do you want to import?</p>
+          <div class="space-y-2 mb-4">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" id="ob-import-en" checked class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+              <span data-i18n="vocab.english">English</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input type="checkbox" id="ob-import-de" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+              <span data-i18n="vocab.german">German</span>
+            </label>
+          </div>
+          <div class="flex gap-3">
+            <button id="ob-back1-btn"
+              class="text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+              data-i18n="vocab.back">Back</button>
+            <button id="ob-next2-btn"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg transition"
+              data-i18n="vocab.next">Next</button>
+          </div>
+        </div>
+
+        <!-- Step 3: how many to start + confirm -->
+        <div id="ob-step3" class="hidden">
+          <div class="mb-5">
+            <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="empty.howManyLabel">How many random words do you want to start training with today?</label>
+            <select id="ob-start-count"
+              class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+              <option value="0" data-i18n="empty.allWords">All</option>
+            </select>
+          </div>
+          <div class="flex gap-3">
+            <button id="ob-back2-btn"
+              class="text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+              data-i18n="vocab.back">Back</button>
+            <button id="ob-submit-btn"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition"
+              data-i18n="vocab.import">Import</button>
+          </div>
+          <div id="ob-status" class="hidden mt-3 text-sm"></div>
+        </div>
       </div>
 
       <!-- Success state (all words reviewed for today) -->

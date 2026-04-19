@@ -1608,6 +1608,48 @@ func TestAdvanceDueDates_FewerThanN(t *testing.T) {
 
 // ── GetTranslationLanguages ───────────────────────────────────────────────────
 
+// ── AcknowledgeRandomWords ────────────────────────────────────────────────────
+
+func TestAcknowledgeRandomWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed 5 unseen words for user 2.
+	for i := 0; i < 5; i++ {
+		req := models.CreateWordRequest{ZhText: string(rune('一' + i)), EnTexts: []string{"word"}}
+		if _, err := s.CreateWord(ctx, 2, req); err != nil {
+			t.Fatalf("CreateWord: %v", err)
+		}
+	}
+
+	// Acknowledge 3 random words.
+	n, err := s.AcknowledgeRandomWords(ctx, 2, 3)
+	if err != nil {
+		t.Fatalf("AcknowledgeRandomWords: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("want 3 acknowledged, got %d", n)
+	}
+
+	// due_today should now be 3.
+	due, _, _, err := s.GetStats(ctx, 2, nil, "")
+	if err != nil {
+		t.Fatalf("GetStats: %v", err)
+	}
+	if due != 3 {
+		t.Errorf("want due_today=3, got %d", due)
+	}
+
+	// Asking for more than available should cap at the remaining unseen count (2).
+	n2, err := s.AcknowledgeRandomWords(ctx, 2, 10)
+	if err != nil {
+		t.Fatalf("AcknowledgeRandomWords second call: %v", err)
+	}
+	if n2 != 2 {
+		t.Errorf("want 2 acknowledged (remaining unseen), got %d", n2)
+	}
+}
+
 func TestGetTranslationLanguages_EmptyDB(t *testing.T) {
 	s := openTestDB(t)
 	langs, err := s.GetTranslationLanguages(context.Background())

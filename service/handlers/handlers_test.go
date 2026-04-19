@@ -93,6 +93,7 @@ func newRouter(s *db.Store) http.Handler {
 	r.Post("/api/quiz/answer", quizH.Answer)
 	r.Post("/api/quiz/skip", quizH.Skip)
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
+	r.Post("/api/quiz/acknowledge-random", quizH.AcknowledgeRandom)
 	r.Post("/api/quiz/advance", quizH.Advance)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/langs", quizH.Langs)
