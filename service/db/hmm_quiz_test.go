@@ -26,6 +26,7 @@ func clearAllHMMNames(t *testing.T, db *sql.DB) {
 }
 
 // seedHMMLibrary sets up exactly 4 named entries: one of each entity type.
+// Uses user_id = 1 (the initial user seeded by migration v20).
 func seedHMMLibrary(t *testing.T, db *sql.DB) {
 	t.Helper()
 	clearAllHMMNames(t, db)
@@ -33,7 +34,7 @@ func seedHMMLibrary(t *testing.T, db *sql.DB) {
 		`UPDATE hmm_actors SET actor_name = 'Bruce Lee' WHERE initial = 'b'`,
 		`UPDATE hmm_locations SET location_name = 'Grand Canyon' WHERE final_key = 'an'`,
 		`UPDATE hmm_tone_rooms SET room_name = 'Entrance' WHERE tone = 1`,
-		`INSERT OR IGNORE INTO hmm_props (radical, prop_name) VALUES ('一', 'razor blade')`,
+		`INSERT OR IGNORE INTO hmm_props (user_id, radical, prop_name) VALUES (1, '一', 'razor blade')`,
 		`UPDATE hmm_props SET prop_name = 'razor blade' WHERE radical = '一'`,
 	}
 	for _, s := range stmts {
@@ -43,11 +44,13 @@ func seedHMMLibrary(t *testing.T, db *sql.DB) {
 	}
 }
 
+const testUserID = int64(2)
+
 func TestEnsureHMMProgress(t *testing.T) {
 	store := openTestDB(t)
 	seedHMMLibrary(t, store.db)
 
-	if err := store.EnsureHMMProgress(context.Background()); err != nil {
+	if err := store.EnsureHMMProgress(context.Background(), testUserID); err != nil {
 		t.Fatalf("EnsureHMMProgress: %v", err)
 	}
 
@@ -58,7 +61,7 @@ func TestEnsureHMMProgress(t *testing.T) {
 		{"tone_room", "1"},
 		{"prop", "一"},
 	} {
-		prog, err := store.GetHMMProgress(context.Background(), key.typ, key.key)
+		prog, err := store.GetHMMProgress(context.Background(), testUserID, key.typ, key.key)
 		if err != nil {
 			t.Fatalf("GetHMMProgress %s/%s: %v", key.typ, key.key, err)
 		}
@@ -68,7 +71,7 @@ func TestEnsureHMMProgress(t *testing.T) {
 	}
 
 	// Named entries should have first_seen_date set
-	prog, err := store.GetHMMProgress(context.Background(), "actor", "b")
+	prog, err := store.GetHMMProgress(context.Background(), testUserID, "actor", "b")
 	if err != nil {
 		t.Fatalf("GetHMMProgress actor/b: %v", err)
 	}
@@ -77,7 +80,7 @@ func TestEnsureHMMProgress(t *testing.T) {
 	}
 
 	// Unnamed entries (e.g. initial 'p' with empty actor_name) should have no row
-	prog, err = store.GetHMMProgress(context.Background(), "actor", "p")
+	prog, err = store.GetHMMProgress(context.Background(), testUserID, "actor", "p")
 	if err != nil {
 		t.Fatalf("GetHMMProgress actor/p: %v", err)
 	}
@@ -86,7 +89,7 @@ func TestEnsureHMMProgress(t *testing.T) {
 	}
 
 	// Calling EnsureHMMProgress again is safe (INSERT OR IGNORE keeps existing rows)
-	if err := store.EnsureHMMProgress(context.Background()); err != nil {
+	if err := store.EnsureHMMProgress(context.Background(), testUserID); err != nil {
 		t.Fatalf("EnsureHMMProgress second call: %v", err)
 	}
 }
@@ -95,11 +98,11 @@ func TestGetHMMProgress_RoundTrip(t *testing.T) {
 	store := openTestDB(t)
 	seedHMMLibrary(t, store.db)
 
-	if err := store.EnsureHMMProgress(context.Background()); err != nil {
+	if err := store.EnsureHMMProgress(context.Background(), testUserID); err != nil {
 		t.Fatalf("EnsureHMMProgress: %v", err)
 	}
 
-	prog, err := store.GetHMMProgress(context.Background(), "actor", "b")
+	prog, err := store.GetHMMProgress(context.Background(), testUserID, "actor", "b")
 	if err != nil {
 		t.Fatalf("GetHMMProgress: %v", err)
 	}
@@ -119,7 +122,7 @@ func TestGetHMMProgress_RoundTrip(t *testing.T) {
 	}
 
 	// Read back
-	got, err := store.GetHMMProgress(context.Background(), "actor", "b")
+	got, err := store.GetHMMProgress(context.Background(), testUserID, "actor", "b")
 	if err != nil {
 		t.Fatalf("GetHMMProgress after update: %v", err)
 	}
@@ -138,11 +141,11 @@ func TestGetHMMStats(t *testing.T) {
 	store := openTestDB(t)
 	seedHMMLibrary(t, store.db)
 
-	if err := store.EnsureHMMProgress(context.Background()); err != nil {
+	if err := store.EnsureHMMProgress(context.Background(), testUserID); err != nil {
 		t.Fatalf("EnsureHMMProgress: %v", err)
 	}
 
-	stats, err := store.GetHMMStats(context.Background(), nil)
+	stats, err := store.GetHMMStats(context.Background(), testUserID, nil)
 	if err != nil {
 		t.Fatalf("GetHMMStats: %v", err)
 	}
@@ -157,7 +160,7 @@ func TestGetHMMStats(t *testing.T) {
 	}
 
 	// Type filter: only actors
-	stats, err = store.GetHMMStats(context.Background(), []string{models.HMMEntityActor})
+	stats, err = store.GetHMMStats(context.Background(), testUserID, []string{models.HMMEntityActor})
 	if err != nil {
 		t.Fatalf("GetHMMStats actor filter: %v", err)
 	}

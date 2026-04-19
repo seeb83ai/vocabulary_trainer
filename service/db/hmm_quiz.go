@@ -18,11 +18,13 @@ const hmmNameFilter = `(
   )`
 
 // hmmBaseJoins is the shared LEFT JOIN fragment for all HMM quiz queries.
+// Callers must supply p.user_id in the WHERE clause so each JOIN matches the
+// same user's library entries (user_id is part of the PK on every hmm_* table).
 const hmmBaseJoins = `
-LEFT JOIN hmm_actors     a  ON p.entity_type = 'actor'     AND a.initial              = p.entity_key
-LEFT JOIN hmm_locations  l  ON p.entity_type = 'location'  AND l.final_key             = p.entity_key
-LEFT JOIN hmm_tone_rooms tr ON p.entity_type = 'tone_room' AND CAST(tr.tone AS TEXT)   = p.entity_key
-LEFT JOIN hmm_props      pr ON p.entity_type = 'prop'      AND pr.radical              = p.entity_key`
+LEFT JOIN hmm_actors     a  ON p.entity_type = 'actor'     AND a.initial              = p.entity_key AND a.user_id      = p.user_id
+LEFT JOIN hmm_locations  l  ON p.entity_type = 'location'  AND l.final_key             = p.entity_key AND l.user_id      = p.user_id
+LEFT JOIN hmm_tone_rooms tr ON p.entity_type = 'tone_room' AND CAST(tr.tone AS TEXT)   = p.entity_key AND tr.user_id     = p.user_id
+LEFT JOIN hmm_props      pr ON p.entity_type = 'prop'      AND pr.radical              = p.entity_key AND pr.user_id     = p.user_id`
 
 // hmmPrompt builds the human-readable prompt for a card.
 func hmmPrompt(entityType, entityKey string) string {
@@ -46,20 +48,20 @@ func hmmPrompt(entityType, entityKey string) string {
 }
 
 // EnsureHMMProgress inserts missing progress rows for all library entries that
-// have a non-empty name. Safe to call repeatedly (INSERT OR IGNORE).
-func (s *Store) EnsureHMMProgress(ctx context.Context) error {
+// have a non-empty name for the given user. Safe to call repeatedly (INSERT OR IGNORE).
+func (s *Store) EnsureHMMProgress(ctx context.Context, userID int64) error {
 	type seedQuery struct {
 		typ   string
 		query string
 	}
 	seeds := []seedQuery{
-		{"actor", `SELECT initial FROM hmm_actors WHERE actor_name != ''`},
-		{"location", `SELECT final_key FROM hmm_locations WHERE location_name != ''`},
-		{"tone_room", `SELECT CAST(tone AS TEXT) FROM hmm_tone_rooms WHERE room_name != ''`},
-		{"prop", `SELECT radical FROM hmm_props WHERE prop_name != ''`},
+		{"actor", `SELECT initial FROM hmm_actors WHERE actor_name != '' AND user_id = ?`},
+		{"location", `SELECT final_key FROM hmm_locations WHERE location_name != '' AND user_id = ?`},
+		{"tone_room", `SELECT CAST(tone AS TEXT) FROM hmm_tone_rooms WHERE room_name != '' AND user_id = ?`},
+		{"prop", `SELECT radical FROM hmm_props WHERE prop_name != '' AND user_id = ?`},
 	}
 	for _, s2 := range seeds {
-		rows, err := s.db.QueryContext(ctx, s2.query)
+		rows, err := s.db.QueryContext(ctx, s2.query, userID)
 		if err != nil {
 			return fmt.Errorf("ensure hmm_progress %s: %w", s2.typ, err)
 		}
@@ -78,8 +80,8 @@ func (s *Store) EnsureHMMProgress(ctx context.Context) error {
 		}
 		for _, key := range keys {
 			if _, err := s.db.ExecContext(ctx,
-				`INSERT OR IGNORE INTO hmm_progress (entity_type, entity_key, first_seen_date) VALUES (?, ?, date('now'))`,
-				s2.typ, key); err != nil {
+				`INSERT OR IGNORE INTO hmm_progress (user_id, entity_type, entity_key, first_seen_date) VALUES (?, ?, ?, date('now'))`,
+				userID, s2.typ, key); err != nil {
 				return fmt.Errorf("insert hmm_progress %s/%s: %w", s2.typ, key, err)
 			}
 		}
@@ -87,9 +89,9 @@ func (s *Store) EnsureHMMProgress(ctx context.Context) error {
 	return nil
 }
 
-// GetNextDueHMMCard returns the next mnemonic library entry to review.
+// GetNextDueHMMCard returns the next mnemonic library entry to review for the given user.
 // Used by the word training page to interleave HMM reviews.
-func (s *Store) GetNextDueHMMCard(ctx context.Context, types []string) (*models.HMMQuizCard, *models.HMMProgress, error) {
+func (s *Store) GetNextDueHMMCard(ctx context.Context, userID int64, types []string) (*models.HMMQuizCard, *models.HMMProgress, error) {
 	typeFilter := ""
 	var typeArgs []any
 	if len(types) > 0 {
@@ -109,12 +111,12 @@ SELECT p.entity_type, p.entity_key,
        p.total_correct, p.total_attempts, p.learning, p.streak_bonus,
        COALESCE(p.first_seen_date, '')
 FROM hmm_progress p` + hmmBaseJoins + `
-WHERE ` + hmmNameFilter + typeFilter + ` %s
+WHERE p.user_id = ? AND ` + hmmNameFilter + typeFilter + ` %s
 ORDER BY p.due_date ASC
 LIMIT 1`
 
 	tryQuery := func(extra string) (*models.HMMQuizCard, *models.HMMProgress, error) {
-		args := append([]any{}, typeArgs...)
+		args := append([]any{userID}, typeArgs...)
 		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, extra), args...)
 		var card models.HMMQuizCard
 		var prog models.HMMProgress
@@ -134,6 +136,7 @@ LIMIT 1`
 		if err != nil {
 			return nil, nil, fmt.Errorf("get next due hmm card: %w", err)
 		}
+		prog.UserID = userID
 		card.Prompt = hmmPrompt(card.EntityType, card.EntityKey)
 		card.DueDate = parseDateTime(dueDate)
 		card.IntervalDays = prog.IntervalDays
@@ -158,8 +161,8 @@ LIMIT 1`
 	return tryQuery(todayBound)
 }
 
-// GetHMMProgress loads the progress record for a specific entity.
-func (s *Store) GetHMMProgress(ctx context.Context, entityType, entityKey string) (*models.HMMProgress, error) {
+// GetHMMProgress loads the progress record for a specific entity and user.
+func (s *Store) GetHMMProgress(ctx context.Context, userID int64, entityType, entityKey string) (*models.HMMProgress, error) {
 	var p models.HMMProgress
 	var dueDate string
 	var learningInt int
@@ -167,12 +170,13 @@ func (s *Store) GetHMMProgress(ctx context.Context, entityType, entityKey string
 		`SELECT entity_type, entity_key, repetitions, easiness, interval_days, due_date,
 		        total_correct, total_attempts, learning, streak_bonus,
 		        COALESCE(first_seen_date, '')
-		 FROM hmm_progress WHERE entity_type = ? AND entity_key = ?`,
-		entityType, entityKey).
+		 FROM hmm_progress WHERE user_id = ? AND entity_type = ? AND entity_key = ?`,
+		userID, entityType, entityKey).
 		Scan(&p.EntityType, &p.EntityKey, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
 			&p.TotalCorrect, &p.TotalAttempts, &learningInt, &p.StreakBonus, &p.FirstSeenDate)
 	p.DueDate = parseDateTime(dueDate)
 	p.Learning = learningInt == 1
+	p.UserID = userID
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -192,11 +196,11 @@ func (s *Store) UpdateHMMProgress(ctx context.Context, p models.HMMProgress) err
 		`UPDATE hmm_progress
 		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
 		     total_correct = ?, total_attempts = ?, learning = ?, streak_bonus = ?
-		 WHERE entity_type = ? AND entity_key = ?`,
+		 WHERE user_id = ? AND entity_type = ? AND entity_key = ?`,
 		p.Repetitions, p.Easiness, p.IntervalDays,
 		p.DueDate.UTC().Format("2006-01-02 15:04:05"),
 		p.TotalCorrect, p.TotalAttempts, learningInt, p.StreakBonus,
-		p.EntityType, p.EntityKey)
+		p.UserID, p.EntityType, p.EntityKey)
 	if err != nil {
 		return fmt.Errorf("update hmm progress: %w", err)
 	}
@@ -208,8 +212,8 @@ func (s *Store) UpdateHMMProgress(ctx context.Context, p models.HMMProgress) err
 }
 
 // GetHMMStats returns the number of entries due today and the total number of
-// named entries with progress rows. Optionally filtered by entity types.
-func (s *Store) GetHMMStats(ctx context.Context, types []string) (models.HMMQuizStats, error) {
+// named entries with progress rows for the given user. Optionally filtered by entity types.
+func (s *Store) GetHMMStats(ctx context.Context, userID int64, types []string) (models.HMMQuizStats, error) {
 	typeFilter := ""
 	var typeArgs []any
 	if len(types) > 0 {
@@ -222,17 +226,17 @@ func (s *Store) GetHMMStats(ctx context.Context, types []string) (models.HMMQuiz
 	}
 
 	baseQuery := `FROM hmm_progress p` + hmmBaseJoins + `
-WHERE ` + hmmNameFilter + typeFilter
+WHERE p.user_id = ? AND ` + hmmNameFilter + typeFilter
 
 	var stats models.HMMQuizStats
 
-	totalArgs := append([]any{}, typeArgs...)
+	totalArgs := append([]any{userID}, typeArgs...)
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) `+baseQuery, totalArgs...).Scan(&stats.Total); err != nil {
 		return stats, fmt.Errorf("count hmm total: %w", err)
 	}
 
-	dueArgs := append([]any{}, typeArgs...)
+	dueArgs := append([]any{userID}, typeArgs...)
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) `+baseQuery+` AND p.due_date < date('now', '+1 day')`,
 		dueArgs...).Scan(&stats.DueToday); err != nil {

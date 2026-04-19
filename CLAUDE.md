@@ -43,7 +43,7 @@ Before marking any task done:
 2. `npm test` — no failures (if JS was changed).
 3. New route registered in **both** `service/main.go` and `newRouter()` in `handlers_test.go`.
 4. `README.md` updated if user-visible behaviour changed.
-5. No SQL outside `service/db/db.go`.
+5. No SQL outside `service/db/` package.
 6. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
 
 ### What must be tested
@@ -68,7 +68,7 @@ Update `README.md` whenever:
 - **No extra abstractions.** Don't add interfaces, wrapper types, middleware layers, or utility helpers
   unless they are used in at least two places.
 - Match the style of the surrounding code exactly (package layout, error handling pattern, SQL style).
-- SQL queries stay in `service/db/db.go` — no SQL anywhere else.
+- SQL queries stay in `service/db/` — no SQL anywhere else. Each file in that package owns a logical domain (see File map).
 - All datetime columns are scanned as `string` and parsed with `parseDateTime()` — never scan directly into `time.Time`.
 - `db.SetMaxOpenConns(1)` is intentional (SQLite WAL). Collect all rows and call `rows.Close()` **before**
   issuing any follow-up query in the same function to avoid deadlocks.
@@ -82,8 +82,8 @@ Update `README.md` whenever:
 
 ## Data invariants
 
-- Every zh word **must have at least one English translation**. `CreateWord` and `UpdateWord` enforce this
-  at the handler layer. Do not relax this constraint.
+- Every zh word **must have at least one translation in any language (EN or DE)**. `CreateWord` and `UpdateWord` enforce this
+  at the handler layer. A word with only DE translations and no EN is valid.
 - SM-2 progress rows are initialised for every word (zh and en) at creation time via `initSM2`.
   Quiz logic only reads/writes progress for zh words.
 
@@ -114,30 +114,77 @@ Never rename or drop tables.
 - Static frontend files are embedded in the binary via `//go:embed frontend` (from `service/main.go`). No separate build step.
 - The import tools (`service/cmd/import`, `service/cmd/import-hsk`) call `db.Migrate()` for schema setup and can run
   independently of the main server.
-- To add a new frontend page: create `service/frontend/<name>.html` (copy `<head>` + `<nav>` from `stats.html`), create `service/frontend/<name>.js`, add `r.Get("/<name>", ...)` in `main.go`. The `//go:embed frontend` directive picks up new files automatically — no build step. Add both files to the File map below.
+- To add a new frontend page: create `service/frontend/<name>.html` (copy structure from `layout.html`), create `service/frontend/<name>.js`, add `r.Get("/<name>", ...)` in `main.go`. The `//go:embed frontend` directive picks up new files automatically — no build step. Add both files to the File map below.
 - All configuration is env vars read in `service/main.go`. Always provide a documented default and log the effective value on startup. Optional external features (API keys, etc.) gate route registration on a nil/empty check — see the LLM/DeepL/Auth handlers for the pattern. Do not use the `flag` package in `main.go`; it is only for standalone CLI tools in `service/cmd/`.
 
 ## File map
 
+### Core
 | Path | Purpose |
 |---|---|
-| `service/main.go` | Router setup, embed directive, `DB_PATH` env var |
-| `service/db/migrate.go` | Version-based schema migrations (`Migrate()`, `migrations` slice) |
-| `service/db/db.go` | All SQL — Store methods, `parseDateTime`, `upsertWord`, `initSM2` |
-| `service/handlers/words.go` | CRUD + `AddTranslation` handler, shared `writeJSON`/`writeError`/`parseID` |
-| `service/handlers/quiz.go` | `Next`, `Answer`, `Stats` handlers |
+| `service/main.go` | Router setup, embed directive, env var configuration |
 | `service/models/models.go` | All shared structs and mode constants |
 | `service/sm2/sm2.go` | SM-2 algorithm, `CheckAnswer`, `expandVariants`, `normalize` |
 | `service/sm2/pinyin.go` | Pinyin tone mark conversion, answer parsing (`NumberedToToneMark`, `CheckPinyinAnswer`) |
+
+### Database (`service/db/`)
+| Path | Purpose |
+|---|---|
+| `service/db/db.go` | `Store`, `Open`, `Close`, `parseDateTime`, `upsertWord`, `initSM2` |
+| `service/db/migrate.go` | Version-based schema migrations (`Migrate()`, `migrations` slice) |
+| `service/db/users.go` | User CRUD, email verification, password update |
+| `service/db/words.go` | Word CRUD, translation links, `GetNextCard`, `tierFilter`, `validSortExprs` |
+| `service/db/tags.go` | Tag management — `GetAllTags`, `GetTagDetails`, `UpsertTagMeta`, `GetImportableSourceTags` |
+| `service/db/quiz.go` | SM-2 progress, `GetStats`, confusion pairs, due-date counts |
+| `service/db/stats.go` | `RecordDailyStat`, `GetDailyStatsHistory`, `GetWordStats`, `AdvanceDueDates` |
+| `service/db/hanzi.go` | Hanzi decomposition queries, zh-text translation lookups, `StoreTranslationForZhChar` |
+| `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
+
+### Handlers (`service/handlers/`)
+| Path | Purpose |
+|---|---|
+| `service/handlers/words.go` | CRUD + `AddTranslation` handler, shared `writeJSON`/`writeError`/`parseID` |
+| `service/handlers/quiz.go` | `Next`, `Answer`, `Stats` handlers |
+| `service/handlers/tags.go` | Tag detail and meta handlers |
+| `service/handlers/auth.go` | Registration, login, email verification, password change |
 | `service/handlers/pinyin_quiz.go` | `PinyinQuizHandler`: `Next`, `Answer`, `Stats`, `ServeAudio` |
-| `service/cmd/import/main.go` | Standalone vocabulary import tool |
-| `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
+| `service/handlers/hmm.go` | HMM library (actors, locations, rooms, props) handlers |
+| `service/handlers/hmm_quiz.go` | HMM quiz `Next`, `Answer`, `Stats` handlers |
+| `service/handlers/hanzi.go` | Hanzi decomposition API handler |
+| `service/handlers/llm.go` | LLM-assisted features (scene generation, fill-translation) |
+| `service/handlers/translate.go` | DeepL translation proxy handler |
+| `service/handlers/mismatches.go` | Mismatch detection handler |
+| `service/handlers/import.go` | Word list import handler |
+| `service/handlers/audio.go` | TTS audio serving handler |
+
+### Frontend (`service/frontend/`)
+| Path | Purpose |
+|---|---|
 | `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`) |
+| `service/frontend/i18n.js` | Internationalisation helpers |
 | `service/frontend/train.js` | Training page state machine |
-| `service/frontend/pinyin.js` | Pinyin listening training state machine |
-| `service/frontend/pinyin.html` | Pinyin listening training page |
 | `service/frontend/vocab.js` | Vocabulary management logic |
+| `service/frontend/stats.js` | Stats page logic |
+| `service/frontend/settings.js` | Settings page logic |
+| `service/frontend/pinyin.js` | Pinyin listening training state machine |
+| `service/frontend/mnemonics.js` | HMM mnemonics page logic |
+| `service/frontend/mismatches.js` | Mismatch review page logic |
+| `service/frontend/hmm-builder.js` | HMM scene builder component |
+| `service/frontend/layout.html` | Shared nav/head template (copy into new pages) |
+
+### CLI tools
+| Path | Purpose |
+|---|---|
+| `service/cmd/import/main.go` | Standalone vocabulary import tool |
+| `service/cmd/import-hsk/main.go` | Import HSK word lists |
+| `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
+| `service/cmd/import-hanzi/main.go` | Import hanzi decomposition dataset |
+| `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
+
+### Deployment
+| Path | Purpose |
+|---|---|
 | `deploy/nginx.conf` | Sample nginx reverse-proxy config |
 | `deploy/vocab-trainer.service` | systemd unit (auto-restarts on binary change via `WatchPaths`) |
 | `.github/workflows/test.yml` | CI: runs Go + JS tests on every push/PR |

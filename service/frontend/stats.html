@@ -1,34 +1,5 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stats — Vocab Trainer</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body class="bg-gray-100 min-h-screen flex flex-col">
-
-  <!-- Navigation -->
-  <nav class="bg-white shadow-sm border-b border-gray-200">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between">
-      <span class="text-xl font-bold text-gray-800" data-i18n="nav.title">词汇训练 · Vocab Trainer</span>
-      <button id="nav-menu-btn" class="sm:hidden p-1 rounded text-gray-500 hover:text-gray-800 transition" aria-label="Open navigation menu">☰</button>
-      <div id="nav-menu" class="hidden sm:flex sm:flex-row sm:items-center sm:gap-4">
-        <a href="/" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.train">Train</a>
-        <a href="/pinyin" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.pinyin">Pinyin</a>
-        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.vocabulary">Vocabulary</a>
-        <a href="/mnemonics" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mnemonics">Mnemonics</a>
-        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mismatches">Mismatches</a>
-        <a href="/stats" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5" data-i18n="nav.stats">Stats</a>
-        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="en">🇬🇧</option>
-          <option value="zh">🇨🇳</option>
-        </select>
-        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition" data-i18n="nav.signOut">Sign out</button>
-      </div>
-    </div>
-  </nav>
+{{template "layout" .}}
+{{define "content"}}
 
   <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-8">
 
@@ -194,8 +165,4 @@
 
   </main>
 
-  <script src="i18n.js"></script>
-  <script src="app.js"></script>
-  <script src="stats.js"></script>
-</body>
-</html>
+{{end}}

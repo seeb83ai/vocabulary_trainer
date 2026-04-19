@@ -16,6 +16,17 @@ let selectedTierFilter = '';
 let dueFilter = '';
 let missingLangFilter = '';
 
+// Import tab state
+let importSelectedTag = '';
+let importApplyTags = [];
+let importSourceTagsLoaded = false;
+let importAllTags = [];          // full tag list from server
+let importFilterLangs = new Set(); // 'en' | 'de'
+let importFilterMode = 'any';    // 'any' | 'all'
+
+// Tags tab state
+let tagsLoaded = false;
+
 async function loadWords() {
   const params = new URLSearchParams({
     q: searchQuery,
@@ -295,7 +306,7 @@ async function handleFormSubmit(e) {
   e.preventDefault();
   const payload = buildFormPayload();
   if (!payload.zh_text) { alert(t('vocab.zhRequired')); return; }
-  if (!payload.en_texts.length) { alert(t('vocab.enRequired')); return; }
+  if (!payload.en_texts.length && !payload.de_texts.length) { alert(t('vocab.translationRequired')); return; }
 
   try {
     if (editingWordId) {
@@ -358,6 +369,8 @@ async function loadTags() {
   } catch (_) {
     allTags = [];
   }
+  // Invalidate tags panel so it re-fetches with fresh details on next visit.
+  tagsLoaded = false;
   renderFilterTags();
 }
 
@@ -729,6 +742,353 @@ function buildDownload(words, cols, format) {
   return { content: lines.join('\n'), mime: 'text/csv', ext: 'csv' };
 }
 
+// ── Import tab ────────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  const tabs = ['add', 'import', 'tags'];
+  tabs.forEach(tab => {
+    const active = tab === name;
+    $('panel-' + tab).classList.toggle('hidden', !active);
+    $('tab-' + tab).classList.toggle('border-blue-600', active);
+    $('tab-' + tab).classList.toggle('text-blue-600', active);
+    $('tab-' + tab).classList.toggle('border-transparent', !active);
+    $('tab-' + tab).classList.toggle('text-gray-500', !active);
+  });
+
+  if (name === 'import' && !importSourceTagsLoaded) {
+    loadImportSourceTags();
+  }
+  if (name === 'tags' && !tagsLoaded) {
+    loadTagDetails();
+  }
+}
+
+async function loadImportSourceTags() {
+  importSourceTagsLoaded = true;
+  const list = $('import-tag-list');
+  try {
+    importAllTags = await apiFetch('/api/import/source-tags');
+    renderImportTagPills();
+  } catch (e) {
+    list.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
+  }
+}
+
+function importTagMatchesFilter(tag) {
+  if (importFilterLangs.size === 0) return true;
+  if (importFilterMode === 'all') {
+    if (importFilterLangs.has('en') && !tag.with_en) return false;
+    if (importFilterLangs.has('de') && !tag.with_de) return false;
+    return true;
+  }
+  // any
+  if (importFilterLangs.has('en') && tag.with_en) return true;
+  if (importFilterLangs.has('de') && tag.with_de) return true;
+  return false;
+}
+
+function renderImportTagPills() {
+  const list = $('import-tag-list');
+  list.innerHTML = '';
+  const visible = importAllTags.filter(importTagMatchesFilter);
+  if (visible.length === 0) {
+    list.innerHTML = `<span class="text-sm text-gray-400">${escHtml(importAllTags.length === 0 ? t('vocab.importNoTags') : t('vocab.importNoTagsMatch'))}</span>`;
+    // If selected tag is now hidden, clear selection and preview.
+    if (importSelectedTag) {
+      importSelectedTag = '';
+      $('import-next-btn').disabled = true;
+      hide('import-preview');
+    }
+    return;
+  }
+  let selectedStillVisible = false;
+  for (const tag of visible) {
+    const pill = document.createElement('button');
+    pill.type = 'button';
+    pill.dataset.tagName = tag.name;
+    const isSelected = tag.name === importSelectedTag;
+    if (isSelected) selectedStillVisible = true;
+    pill.className = 'import-source-tag px-3 py-1 rounded-full text-sm font-medium border transition ' +
+      (isSelected
+        ? 'bg-blue-600 text-white border-blue-600'
+        : 'border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600');
+    pill.textContent = tag.name;
+    if (tag.description) pill.title = tag.description;
+    pill.addEventListener('click', () => selectImportSourceTag(tag, pill));
+    list.appendChild(pill);
+  }
+  if (!selectedStillVisible && importSelectedTag) {
+    importSelectedTag = '';
+    $('import-next-btn').disabled = true;
+    hide('import-preview');
+  }
+}
+
+async function selectImportSourceTag(tag) {
+  importSelectedTag = tag.name;
+  $('import-next-btn').disabled = true;
+  hide('import-preview');
+  renderImportTagPills();
+  await loadImportPreview(tag.name, tag.description);
+}
+
+async function loadImportPreview(tagName, tagDescription) {
+  const descEl = $('import-preview-desc');
+  const statsEl = $('import-preview-stats');
+  const tableWrap = $('import-preview-table-wrap');
+  const tbody = $('import-preview-tbody');
+
+  statsEl.textContent = t('vocab.importLoading');
+  descEl.classList.add('hidden');
+  tableWrap.classList.add('hidden');
+  tbody.innerHTML = '';
+  show('import-preview');
+
+  try {
+    const data = await apiFetch('/api/import/preview?tag=' + encodeURIComponent(tagName));
+
+    // Description line
+    if (tagDescription) {
+      descEl.textContent = tagDescription;
+      descEl.classList.remove('hidden');
+    } else {
+      descEl.classList.add('hidden');
+    }
+
+    if (data.total === 0) {
+      statsEl.textContent = t('vocab.importPreviewEmpty');
+      $('import-next-btn').disabled = true;
+      return;
+    }
+
+    // Stats line: "123 words · 120 EN · 45 DE"
+    const parts = [`${data.total} ${t('vocab.importPreviewWords')}`];
+    if (data.with_en > 0) parts.push(`${data.with_en} EN`);
+    if (data.with_de > 0) parts.push(`${data.with_de} DE`);
+    statsEl.textContent = parts.join(' · ');
+
+    // Example table (up to 50 rows)
+    const hasDe = (data.examples || []).some(e => e.de_texts && e.de_texts.length > 0);
+    for (const ex of (data.examples || [])) {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-gray-100 last:border-0';
+      const en = (ex.en_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+      const de = (ex.de_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+      tr.innerHTML = `
+        <td class="py-1 px-2 font-medium">${escHtml(ex.zh_text)}</td>
+        <td class="py-1 px-2 text-gray-500">${escHtml(ex.pinyin)}</td>
+        <td class="py-1 px-2 text-gray-700">${en}</td>
+        <td class="py-1 px-2 text-gray-500">${hasDe ? de : ''}</td>`;
+      tbody.appendChild(tr);
+    }
+    tableWrap.classList.remove('hidden');
+    $('import-next-btn').disabled = false;
+  } catch (e) {
+    statsEl.textContent = e.message;
+    $('import-next-btn').disabled = true;
+  }
+}
+
+function showImportStep(n) {
+  [1, 2, 3].forEach(i => {
+    const el = $('import-step' + i);
+    if (el) el.classList.toggle('hidden', i !== n);
+  });
+}
+
+function renderImportApplyTags() {
+  const container = $('import-apply-tags');
+  container.innerHTML = '';
+  for (const tag of importApplyTags) {
+    const pill = document.createElement('span');
+    pill.className = 'inline-flex items-center bg-gray-200 text-gray-700 text-sm px-2 py-0.5 rounded-full';
+    pill.innerHTML = `${escHtml(tag)} <button type="button" class="ml-1 text-gray-400 hover:text-red-500 leading-none">&times;</button>`;
+    pill.querySelector('button').addEventListener('click', () => {
+      importApplyTags = importApplyTags.filter(t => t !== tag);
+      renderImportApplyTags();
+    });
+    container.appendChild(pill);
+  }
+}
+
+function addImportTag(tag) {
+  tag = tag.trim();
+  if (!tag || importApplyTags.includes(tag)) return;
+  importApplyTags.push(tag);
+  renderImportApplyTags();
+  $('import-tag-input').value = '';
+  $('import-tag-autocomplete').classList.add('hidden');
+}
+
+function showImportTagAutocomplete(query) {
+  const dropdown = $('import-tag-autocomplete');
+  const q = query.toLowerCase();
+  const matches = allTags.filter(tag => tag.toLowerCase().includes(q) && !importApplyTags.includes(tag));
+  if (query && !allTags.includes(query) && !importApplyTags.includes(query)) {
+    matches.push(query);
+  }
+  if (!matches.length) { dropdown.classList.add('hidden'); return; }
+  dropdown.innerHTML = '';
+  dropdown.classList.remove('hidden');
+  for (const m of matches) {
+    const item = document.createElement('div');
+    item.className = 'px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer';
+    item.textContent = m === query && !allTags.includes(query) ? t('vocab.createTag', { tag: m }) : m;
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      addImportTag(m);
+    });
+    dropdown.appendChild(item);
+  }
+}
+
+async function executeImport() {
+  const btn = $('import-submit-btn');
+  const statusEl = $('import-status');
+  btn.disabled = true;
+  btn.textContent = t('vocab.importing');
+  statusEl.className = 'mt-3 text-sm text-gray-500';
+  statusEl.textContent = '';
+  show('import-status');
+
+  try {
+    const result = await apiFetch('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tag: importSelectedTag,
+        import_en: $('import-en').checked,
+        import_de: $('import-de').checked,
+        apply_tags: [...importApplyTags],
+      }),
+    });
+    const skippedNote = result.skipped > 0
+      ? `, ${t('vocab.importSkipped')} ${result.skipped} ${t('vocab.importAlreadyOwned')}`
+      : '';
+    statusEl.className = 'mt-3 text-sm text-green-600';
+    statusEl.textContent = `${t('vocab.importDone')} ${result.imported} ${t('vocab.importWords2')}${skippedNote}.`;
+    loadTags();
+    loadWords();
+  } catch (e) {
+    statusEl.className = 'mt-3 text-sm text-red-500';
+    statusEl.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = t('vocab.import');
+  }
+}
+
+function resetImportPanel() {
+  importSelectedTag = '';
+  importApplyTags = [];
+  importFilterLangs = new Set();
+  importFilterMode = 'any';
+  // Reset filter button styles
+  ['en', 'de'].forEach(lang => {
+    const btn = $('import-filter-' + lang);
+    if (btn) {
+      btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
+      btn.classList.add('border-gray-300', 'text-gray-500');
+    }
+  });
+  const anyRadio = document.querySelector('input[name="import-filter-mode"][value="any"]');
+  if (anyRadio) anyRadio.checked = true;
+  showImportStep(1);
+  hide('import-preview');
+  $('import-next-btn').disabled = true;
+  hide('import-status');
+  if ($('import-en')) $('import-en').checked = true;
+  if ($('import-de')) $('import-de').checked = false;
+}
+
+// ── Tags tab ───────────────────────────────────────────────────────────────────
+
+async function loadTagDetails() {
+  tagsLoaded = true;
+  const container = $('tags-list');
+  try {
+    const tags = await apiFetch('/api/tags/details');
+    container.innerHTML = '';
+    if (!tags || tags.length === 0) {
+      container.innerHTML = `<span class="text-sm text-gray-400">${escHtml(t('vocab.tagsEmpty'))}</span>`;
+      return;
+    }
+    for (const tag of tags) {
+      container.appendChild(buildTagRow(tag));
+    }
+  } catch (e) {
+    container.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
+  }
+}
+
+function buildTagRow(tag) {
+  const row = document.createElement('div');
+  row.className = 'flex flex-col sm:flex-row sm:items-center gap-2 py-2 border-b border-gray-100 last:border-0';
+  row.dataset.tagName = tag.name;
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'text-sm font-medium text-gray-700 w-32 flex-none';
+  nameSpan.textContent = tag.name;
+
+  const descInput = document.createElement('input');
+  descInput.type = 'text';
+  descInput.className = 'flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  descInput.placeholder = t('vocab.tagsDescPlaceholder');
+  descInput.value = tag.description || '';
+  descInput.maxLength = 200;
+
+  const toggleLabel = document.createElement('label');
+  toggleLabel.className = 'flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer flex-none';
+
+  const toggleInput = document.createElement('input');
+  toggleInput.type = 'checkbox';
+  toggleInput.className = 'w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500';
+  toggleInput.checked = tag.importable;
+
+  const toggleText = document.createElement('span');
+  toggleText.dataset.i18n = 'vocab.tagsImportable';
+  toggleText.textContent = t('vocab.tagsImportable');
+
+  toggleLabel.append(toggleInput, toggleText);
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 rounded-lg border border-blue-200 hover:border-blue-400 transition flex-none';
+  saveBtn.textContent = t('vocab.save');
+
+  const statusSpan = document.createElement('span');
+  statusSpan.className = 'text-xs text-green-600 hidden flex-none';
+  statusSpan.textContent = t('vocab.tagsSaved');
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      await saveTagMeta(tag.name, descInput.value.trim(), toggleInput.checked);
+      statusSpan.classList.remove('hidden');
+      setTimeout(() => statusSpan.classList.add('hidden'), 2000);
+    } catch (e) {
+      statusSpan.className = 'text-xs text-red-500 flex-none';
+      statusSpan.textContent = e.message;
+      statusSpan.classList.remove('hidden');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  row.append(nameSpan, descInput, toggleLabel, saveBtn, statusSpan);
+  return row;
+}
+
+async function saveTagMeta(name, description, importable) {
+  await apiFetch('/api/tags/' + encodeURIComponent(name), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description, importable }),
+  });
+}
+
+// ── End tags tab ───────────────────────────────────────────────────────────────
+
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
   loadTags();
@@ -859,6 +1219,65 @@ document.addEventListener('DOMContentLoaded', () => {
   $('dl-confirm-btn').addEventListener('click', executeDownload);
   $('download-modal').addEventListener('click', e => {
     if (e.target === $('download-modal')) hide('download-modal');
+  });
+
+  // Import tab
+  $('tab-add').addEventListener('click', () => switchTab('add'));
+  $('tab-import').addEventListener('click', () => switchTab('import'));
+  $('tab-tags').addEventListener('click', () => switchTab('tags'));
+
+  // Import language filter toggle buttons
+  ['en', 'de'].forEach(lang => {
+    $('import-filter-' + lang).addEventListener('click', () => {
+      if (importFilterLangs.has(lang)) {
+        importFilterLangs.delete(lang);
+      } else {
+        importFilterLangs.add(lang);
+      }
+      const btn = $('import-filter-' + lang);
+      const active = importFilterLangs.has(lang);
+      btn.classList.toggle('bg-blue-600', active);
+      btn.classList.toggle('text-white', active);
+      btn.classList.toggle('border-blue-600', active);
+      btn.classList.toggle('border-gray-300', !active);
+      btn.classList.toggle('text-gray-500', !active);
+      if (importSourceTagsLoaded) renderImportTagPills();
+    });
+  });
+  document.querySelectorAll('input[name="import-filter-mode"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      importFilterMode = radio.value;
+      if (importSourceTagsLoaded) renderImportTagPills();
+    });
+  });
+
+  $('import-next-btn').addEventListener('click', () => showImportStep(2));
+  $('import-back1-btn').addEventListener('click', () => showImportStep(1));
+  $('import-next2-btn').addEventListener('click', () => {
+    importApplyTags = importSelectedTag ? [importSelectedTag] : [];
+    renderImportApplyTags();
+    showImportStep(3);
+  });
+  $('import-back2-btn').addEventListener('click', () => showImportStep(2));
+  $('import-submit-btn').addEventListener('click', executeImport);
+
+  $('import-tag-input').addEventListener('input', () => {
+    const v = $('import-tag-input').value.trim();
+    if (v) {
+      showImportTagAutocomplete(v);
+    } else {
+      $('import-tag-autocomplete').classList.add('hidden');
+    }
+  });
+  $('import-tag-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const v = $('import-tag-input').value.trim();
+      if (v) addImportTag(v);
+    }
+  });
+  $('import-tag-input').addEventListener('blur', () => {
+    setTimeout(() => $('import-tag-autocomplete').classList.add('hidden'), 150);
   });
 
   // Re-render dynamic text when UI language changes

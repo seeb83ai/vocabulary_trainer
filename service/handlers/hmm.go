@@ -21,7 +21,7 @@ type HMMHandler struct {
 // ── Library endpoints ───────────────────────────────────────────────────
 
 func (h *HMMHandler) GetActors(w http.ResponseWriter, r *http.Request) {
-	actors, err := h.Store.GetHMMActors(r.Context())
+	actors, err := h.Store.GetHMMActors(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch actors")
 		return
@@ -41,7 +41,7 @@ func (h *HMMHandler) UpdateActor(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if err := h.Store.UpdateHMMActor(r.Context(), initial, strings.TrimSpace(body.ActorName)); err != nil {
+	if err := h.Store.UpdateHMMActor(r.Context(), UserIDFromContext(r.Context()), initial, strings.TrimSpace(body.ActorName)); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -49,7 +49,7 @@ func (h *HMMHandler) UpdateActor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HMMHandler) GetLocations(w http.ResponseWriter, r *http.Request) {
-	locs, err := h.Store.GetHMMLocations(r.Context())
+	locs, err := h.Store.GetHMMLocations(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch locations")
 		return
@@ -69,7 +69,7 @@ func (h *HMMHandler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if err := h.Store.UpdateHMMLocation(r.Context(), finalKey, strings.TrimSpace(body.LocationName)); err != nil {
+	if err := h.Store.UpdateHMMLocation(r.Context(), UserIDFromContext(r.Context()), finalKey, strings.TrimSpace(body.LocationName)); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -77,7 +77,7 @@ func (h *HMMHandler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HMMHandler) GetToneRooms(w http.ResponseWriter, r *http.Request) {
-	rooms, err := h.Store.GetHMMToneRooms(r.Context())
+	rooms, err := h.Store.GetHMMToneRooms(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch tone rooms")
 		return
@@ -101,7 +101,7 @@ func (h *HMMHandler) UpdateToneRoom(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if err := h.Store.UpdateHMMToneRoom(r.Context(), tone, strings.TrimSpace(body.RoomName)); err != nil {
+	if err := h.Store.UpdateHMMToneRoom(r.Context(), UserIDFromContext(r.Context()), tone, strings.TrimSpace(body.RoomName)); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -109,7 +109,7 @@ func (h *HMMHandler) UpdateToneRoom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *HMMHandler) GetProps(w http.ResponseWriter, r *http.Request) {
-	props, err := h.Store.GetHMMProps(r.Context())
+	props, err := h.Store.GetHMMProps(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch props")
 		return
@@ -131,7 +131,7 @@ func (h *HMMHandler) UpsertProp(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "radical is required")
 		return
 	}
-	if err := h.Store.UpsertHMMProp(r.Context(), body.Radical, strings.TrimSpace(body.PropName)); err != nil {
+	if err := h.Store.UpsertHMMProp(r.Context(), UserIDFromContext(r.Context()), body.Radical, strings.TrimSpace(body.PropName)); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -140,7 +140,7 @@ func (h *HMMHandler) UpsertProp(w http.ResponseWriter, r *http.Request) {
 
 func (h *HMMHandler) DeleteProp(w http.ResponseWriter, r *http.Request) {
 	radical := chi.URLParam(r, "radical")
-	if err := h.Store.DeleteHMMProp(r.Context(), radical); err != nil {
+	if err := h.Store.DeleteHMMProp(r.Context(), UserIDFromContext(r.Context()), radical); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -155,7 +155,7 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid word id")
 		return
 	}
-	word, err := h.Store.GetWordByID(r.Context(), id)
+	word, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to fetch word")
 		return
@@ -277,16 +277,16 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if initial != "" {
-		resp.Actor, _ = h.Store.GetHMMActorByInitial(ctx, initial)
+		resp.Actor, _ = h.Store.GetHMMActorByInitial(ctx, UserIDFromContext(ctx), initial)
 	}
 	if final != "" {
-		resp.Location, _ = h.Store.GetHMMLocationByFinal(ctx, final)
+		resp.Location, _ = h.Store.GetHMMLocationByFinal(ctx, UserIDFromContext(ctx), final)
 	}
 	if tone >= 1 && tone <= 5 {
-		resp.ToneRoom, _ = h.Store.GetHMMToneRoom(ctx, tone)
+		resp.ToneRoom, _ = h.Store.GetHMMToneRoom(ctx, UserIDFromContext(ctx), tone)
 	}
 	if len(radicals) > 0 {
-		resp.Props, _ = h.Store.GetHMMPropsByRadicals(ctx, radicals)
+		resp.Props, _ = h.Store.GetHMMPropsByRadicals(ctx, UserIDFromContext(ctx), radicals)
 	}
 	if resp.Props == nil {
 		resp.Props = []models.HMMProp{}
@@ -307,7 +307,7 @@ func (h *HMMHandler) SaveScene(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid word id")
 		return
 	}
-	word, err := h.Store.GetWordByID(r.Context(), id)
+	word, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil || word == nil {
 		writeError(w, http.StatusNotFound, "word not found")
 		return
@@ -326,7 +326,7 @@ func (h *HMMHandler) SaveScene(w http.ResponseWriter, r *http.Request) {
 		initial, final, tone = parsePinyin(*word.Pinyin)
 	}
 
-	if err := h.Store.SaveHMMSceneWithLibrary(r.Context(), id, initial, final, tone, req); err != nil {
+	if err := h.Store.SaveHMMSceneWithLibrary(r.Context(), UserIDFromContext(r.Context()), id, initial, final, tone, req); err != nil {
 		log.Printf("Error: failed to save scene: %s\n", err)
 		writeError(w, http.StatusInternalServerError, "failed to save scene")
 		return
@@ -345,7 +345,12 @@ func (h *HMMHandler) DeleteScene(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid word id")
 		return
 	}
-	if err := h.Store.DeleteHMMScene(r.Context(), id); err != nil {
+	word, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
+	if err != nil || word == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+	if err := h.Store.DeleteHMMScene(r.Context(), UserIDFromContext(r.Context()), id); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to delete scene")
 		return
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 	"vocabulary_trainer/db"
@@ -14,7 +15,18 @@ import (
 	"vocabulary_trainer/models"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 )
+
+// TestMain sets migration credential env vars once for the entire test binary
+// so all in-memory DBs get consistent user seeds regardless of the host environment.
+func TestMain(m *testing.M) {
+	os.Setenv("ADMIN_EMAIL", "admin@example.de")
+	os.Setenv("ADMIN_PASSWORD", "I am the admin")
+	os.Setenv("USER_EMAIL", "me@example.de")
+	os.Setenv("USER_PASSWORD", "I learn zh")
+	os.Exit(m.Run())
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -35,28 +47,28 @@ func openTestDB(t *testing.T) *db.Store {
 func clearHMMLibrary(t *testing.T, s *db.Store) {
 	t.Helper()
 	ctx := context.Background()
-	actors, err := s.GetHMMActors(ctx)
+	actors, err := s.GetHMMActors(ctx, int64(2))
 	if err != nil {
 		t.Fatalf("clearHMMLibrary GetHMMActors: %v", err)
 	}
 	for _, a := range actors {
 		if a.ActorName != "" {
-			if err := s.UpdateHMMActor(ctx, a.Initial, ""); err != nil {
+			if err := s.UpdateHMMActor(ctx, int64(2), a.Initial, ""); err != nil {
 				t.Fatalf("clearHMMLibrary UpdateHMMActor %s: %v", a.Initial, err)
 			}
 		}
 	}
 	for tone := 1; tone <= 5; tone++ {
-		if err := s.UpdateHMMToneRoom(ctx, tone, ""); err != nil {
+		if err := s.UpdateHMMToneRoom(ctx, int64(2), tone, ""); err != nil {
 			t.Fatalf("clearHMMLibrary tone %d: %v", tone, err)
 		}
 	}
-	props, err := s.GetHMMProps(ctx)
+	props, err := s.GetHMMProps(ctx, int64(2))
 	if err != nil {
 		t.Fatalf("clearHMMLibrary GetHMMProps: %v", err)
 	}
 	for _, p := range props {
-		if err := s.DeleteHMMProp(ctx, p.Radical); err != nil {
+		if err := s.DeleteHMMProp(ctx, int64(2), p.Radical); err != nil {
 			t.Fatalf("clearHMMLibrary DeleteHMMProp %s: %v", p.Radical, err)
 		}
 	}
@@ -66,8 +78,17 @@ func newRouter(s *db.Store) http.Handler {
 	wordsH := &handlers.WordsHandler{Store: s}
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
 	mismatchH := &handlers.MismatchesHandler{Store: s}
+	importH := &handlers.ImportHandler{Store: s}
+	tagsH := &handlers.TagsHandler{Store: s}
+	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080")
 
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Post("/api/login", authH.Login)
+	r.Post("/api/register", authH.Register)
+	r.Get("/api/verify-email", authH.VerifyEmail)
+	r.Get("/api/me", authH.Me)
+	r.Post("/api/change-password", authH.ChangePassword)
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/answer", quizH.Answer)
 	r.Post("/api/quiz/skip", quizH.Skip)
@@ -91,6 +112,11 @@ func newRouter(s *db.Store) http.Handler {
 			r.Post("/review", wordsH.MarkReview)
 		})
 	})
+	r.Get("/api/import/source-tags", importH.SourceTags)
+	r.Get("/api/import/preview", importH.Preview)
+	r.Post("/api/import", importH.Import)
+	r.Get("/api/tags/details", tagsH.Details)
+	r.Put("/api/tags/{name}", tagsH.Update)
 	return r
 }
 
@@ -118,13 +144,28 @@ func decodeJSON(t *testing.T, rec *httptest.ResponseRecorder, v any) {
 
 func seedWord(t *testing.T, s *db.Store, zhText, pinyin string, enTexts []string) int64 {
 	t.Helper()
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  zhText,
 		Pinyin:  pinyin,
 		EnTexts: enTexts,
 	})
 	if err != nil {
 		t.Fatalf("seedWord: %v", err)
+	}
+	return id
+}
+
+func seedWordFull(t *testing.T, s *db.Store, userID int64, zhText, pinyin string, enTexts, deTexts, tags []string) int64 {
+	t.Helper()
+	id, err := s.CreateWord(context.Background(), userID, models.CreateWordRequest{
+		ZhText:  zhText,
+		Pinyin:  pinyin,
+		EnTexts: enTexts,
+		DeTexts: deTexts,
+		Tags:    tags,
+	})
+	if err != nil {
+		t.Fatalf("seedWordFull: %v", err)
 	}
 	return id
 }
@@ -169,7 +210,7 @@ func TestQuizNext_ReturnsCard(t *testing.T) {
 func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	s := openTestDB(t)
 	// Word with no pinyin — zh_pinyin_to_en must never be returned
-	_, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "", // no pinyin
 		EnTexts: []string{"hello"},
@@ -252,13 +293,14 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 	}
 
 	// Acknowledge id1 so it counts as today's introduced word.
-	if err := s.AcknowledgeWord(ctx, id1); err != nil {
+	if err := s.AcknowledgeWord(ctx, int64(2), id1); err != nil {
 		t.Fatalf("AcknowledgeWord id1: %v", err)
 	}
 
 	// Build a router with maxNew=1 (cap is now reached).
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 1}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Get("/api/quiz/stats", quizH.Stats)
 
@@ -498,13 +540,24 @@ func TestWordsCreate_MissingZhText(t *testing.T) {
 	}
 }
 
-func TestWordsCreate_MissingEnTexts(t *testing.T) {
+func TestWordsCreate_NoTranslations(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText: "你好",
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
+	}
+}
+
+func TestWordsCreate_DeOnlyValid(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:  "你好",
+		DeTexts: []string{"Hallo"},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Errorf("want 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -1523,14 +1576,14 @@ func TestAdvanceHandler_AdvancesWords(t *testing.T) {
 
 	// Seed a word, acknowledge it (marks as seen, due_date = now), then skip
 	// it forward so it has a future due date.
-	wid, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "测试", EnTexts: []string{"test"}})
+	wid, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "测试", EnTexts: []string{"test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AcknowledgeWord(ctx, wid); err != nil {
+	if err := s.AcknowledgeWord(ctx, int64(2), wid); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SkipWord(ctx, wid, 1); err != nil {
+	if err := s.SkipWord(ctx, int64(2), wid, 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1550,12 +1603,13 @@ func TestStatsHandlerNewAvailable(t *testing.T) {
 	// Use MaxNewPerDay=0 so new words are blocked by default.
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 0}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Post("/api/quiz/advance", quizH.Advance)
 	ctx := context.Background()
 
 	// Seed an unseen word.
-	if _, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "未见", EnTexts: []string{"unseen"}}); err != nil {
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "未见", EnTexts: []string{"unseen"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1589,12 +1643,13 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 	// Use a handler with MaxNewPerDay=0 so new words are normally blocked.
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 0}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/advance", quizH.Advance)
 	ctx := context.Background()
 
 	// Seed a word (unseen).
-	if _, err := s.CreateWord(ctx, models.CreateWordRequest{ZhText: "新词", EnTexts: []string{"new word"}}); err != nil {
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "新词", EnTexts: []string{"new word"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1755,13 +1810,13 @@ func TestDueDateDistribution_TagFilter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create two words with different tags
-	id1, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id1, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText: "猫", Pinyin: "māo", EnTexts: []string{"cat"}, Tags: []string{"animals"},
 	})
 	if err != nil {
 		t.Fatalf("create word 1: %v", err)
 	}
-	id2, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id2, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText: "书", Pinyin: "shū", EnTexts: []string{"book"}, Tags: []string{"objects"},
 	})
 	if err != nil {
@@ -1827,6 +1882,7 @@ func newPinyinRouter(t *testing.T, s *db.Store) http.Handler {
 	t.Helper()
 	pinyinH := &handlers.PinyinQuizHandler{Store: s, PinyinAudioDirs: []string{t.TempDir()}}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Get("/api/pinyin-quiz/next", pinyinH.Next)
 	r.Post("/api/pinyin-quiz/answer", pinyinH.Answer)
 	r.Get("/api/pinyin-quiz/stats", pinyinH.Stats)
@@ -1844,7 +1900,7 @@ func seedPinyinSounds(t *testing.T, store *db.Store) {
 		{Initial: "p", Final: "a", Tone: 1, Syllable: "pa", Filename: "pa1.mp3", Tag: "b_p_m_f"},
 	}
 	for _, snd := range sounds {
-		if _, err := store.InsertPinyinSound(context.Background(), snd); err != nil {
+		if _, err := store.InsertPinyinSound(context.Background(), 2, snd); err != nil {
 			t.Fatalf("seedPinyinSounds: %v", err)
 		}
 	}
@@ -2024,7 +2080,7 @@ func TestQuizLangs_AfterInsertEN(t *testing.T) {
 func TestQuizLangs_ENandDE(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -2055,7 +2111,7 @@ func TestQuizLangs_ENandDE(t *testing.T) {
 func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -2086,7 +2142,7 @@ func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -2119,7 +2175,7 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	id, err := s.CreateWord(ctx, models.CreateWordRequest{
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -2152,7 +2208,7 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -2213,7 +2269,7 @@ func TestWordsList_MissingLangDE(t *testing.T) {
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
 	// Word with both EN and DE.
-	_, err := s.CreateWord(ctx, models.CreateWordRequest{
+	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -2252,5 +2308,614 @@ func TestWordsList_MissingLangEmpty_ReturnsAll(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if resp.Total != 2 {
 		t.Errorf("no missing_lang filter: want 2 results, got %d", resp.Total)
+	}
+}
+
+// ── Auth: Register ─────────────────────────────────────────────────────────────
+
+func TestRegister_OK(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "new@example.com", "password": "securepass1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var body map[string]any
+	decodeJSON(t, rec, &body)
+	if body["auto_login"] != true {
+		t.Errorf("expected auto_login=true (nil email sender), got %v", body["auto_login"])
+	}
+	if rec.Result().Cookies() == nil {
+		t.Error("expected session cookie to be set")
+	}
+}
+
+func TestRegister_DuplicateEmail(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	payload := map[string]string{"email": "new@example.com", "password": "securepass1"}
+	do(t, r, "POST", "/api/register", payload)
+	rec := do(t, r, "POST", "/api/register", payload)
+	if rec.Code != http.StatusConflict {
+		t.Errorf("want 409, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestRegister_ShortPassword(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "a@b.com", "password": "short",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestRegister_InvalidEmail(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "notanemail", "password": "securepass1",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── Auth: VerifyEmail ──────────────────────────────────────────────────────────
+
+func TestVerifyEmail_BadToken(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/verify-email?token=badtoken", nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d", rec.Code)
+	}
+	loc := rec.Header().Get("Location")
+	if loc != "/?error=invalid_token" {
+		t.Errorf("want redirect to /?error=invalid_token, got %q", loc)
+	}
+}
+
+func TestVerifyEmail_MissingToken(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/verify-email", nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d", rec.Code)
+	}
+}
+
+func TestVerifyEmail_OK(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Create unverified user with a known token
+	token := "testtoken1234567890abcdef12345678"
+	expiresAt := time.Now().Add(24 * time.Hour)
+	_, err := s.CreateUser(context.Background(), "verify@example.com", "$2a$10$placeholder", token, expiresAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "GET", "/api/verify-email?token="+token, nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d: %s", rec.Code, rec.Body)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/train" {
+		t.Errorf("want redirect to /train, got %q", loc)
+	}
+}
+
+// ── Auth: Login ────────────────────────────────────────────────────────────────
+
+func TestLogin_UnverifiedEmail(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Register creates an unverified user if emailSender != nil, but here
+	// we nil emailSender so Register auto-verifies. Create directly instead.
+	token := "unverifiedtoken1234567890123456"
+	expiresAt := time.Now().Add(24 * time.Hour)
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	_, err := s.CreateUser(context.Background(), "unverified@example.com", string(hash), token, expiresAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "POST", "/api/login", map[string]string{
+		"email": "unverified@example.com", "password": "password123",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d: %s", rec.Code, rec.Body)
+	}
+	var body map[string]string
+	decodeJSON(t, rec, &body)
+	if body["error"] != "email_not_verified" {
+		t.Errorf("expected email_not_verified error, got %q", body["error"])
+	}
+}
+
+// ── Auth: Me ───────────────────────────────────────────────────────────────────
+
+func TestMe_OK(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/me", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var body map[string]any
+	decodeJSON(t, rec, &body)
+	if body["email"] == "" || body["email"] == nil {
+		t.Error("expected non-empty email in response")
+	}
+}
+
+// ── Auth: ChangePassword ───────────────────────────────────────────────────────
+
+func TestChangePassword_OK(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// user ID 2 is "me@example.de" / "I learn zh" from TestMain env
+	rec := do(t, r, "POST", "/api/change-password", map[string]string{
+		"current_password": "I learn zh",
+		"new_password":     "newpassword123",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestChangePassword_WrongCurrent(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/change-password", map[string]string{
+		"current_password": "wrongpassword",
+		"new_password":     "newpassword123",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestChangePassword_ShortNew(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/change-password", map[string]string{
+		"current_password": "I learn zh",
+		"new_password":     "short",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── GET /api/import/source-tags ───────────────────────────────────────────────
+
+func TestImportSourceTags_ReturnsTags(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
+	// User 2 has a different tag — should not appear
+	seedWordFull(t, s, 2, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK2"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/source-tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 || tags[0].Name != "HSK1" {
+		t.Errorf("want [{Name:HSK1 ...}], got %v", tags)
+	}
+	if !tags[0].Importable {
+		t.Errorf("expected importable=true by default")
+	}
+	if !tags[0].WithEn {
+		t.Errorf("expected with_en=true for tag with EN translations")
+	}
+	if tags[0].WithDe {
+		t.Errorf("expected with_de=false when no DE translations")
+	}
+}
+
+func TestImportSourceTags_WithDeFlag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"hallo"}, []string{"greetings"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"greetings"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/source-tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 {
+		t.Fatalf("want 1 tag, got %d", len(tags))
+	}
+	if !tags[0].WithEn {
+		t.Errorf("expected with_en=true")
+	}
+	if !tags[0].WithDe {
+		t.Errorf("expected with_de=true when at least one word has DE")
+	}
+}
+
+func TestImportSourceTags_EmptyWhenNoWords(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/import/source-tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 0 {
+		t.Errorf("want empty, got %v", tags)
+	}
+}
+
+func TestImportSourceTags_HidesNonImportable(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"public"})
+	seedWordFull(t, s, 1, "秘密", "", []string{"secret"}, nil, []string{"private"})
+	// Mark private tag as not importable.
+	if err := s.UpsertTagMeta(context.Background(), int64(1), "private", "", false); err != nil {
+		t.Fatalf("UpsertTagMeta: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/source-tags", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 || tags[0].Name != "public" {
+		t.Errorf("want only [public], got %v", tags)
+	}
+}
+
+// ── GET /api/import/preview ───────────────────────────────────────────────────
+
+func TestImportPreview_ValidTag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"hallo"}, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/preview?tag=HSK1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Tag      string `json:"tag"`
+		Total    int    `json:"total"`
+		WithEn   int    `json:"with_en"`
+		WithDe   int    `json:"with_de"`
+		Examples []struct {
+			ZhText  string   `json:"zh_text"`
+			Pinyin  string   `json:"pinyin"`
+			EnTexts []string `json:"en_texts"`
+			DeTexts []string `json:"de_texts"`
+		} `json:"examples"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Tag != "HSK1" {
+		t.Errorf("want tag HSK1, got %q", resp.Tag)
+	}
+	if resp.Total != 3 {
+		t.Errorf("want total 3, got %d", resp.Total)
+	}
+	if resp.WithEn != 3 {
+		t.Errorf("want with_en=3, got %d", resp.WithEn)
+	}
+	if resp.WithDe != 1 {
+		t.Errorf("want with_de=1, got %d", resp.WithDe)
+	}
+	if len(resp.Examples) != 3 {
+		t.Errorf("want 3 examples, got %d", len(resp.Examples))
+	}
+	if len(resp.Examples) > 50 {
+		t.Errorf("want at most 50 examples, got %d", len(resp.Examples))
+	}
+	// First example should have zh_text and en_texts populated.
+	if resp.Examples[0].ZhText == "" {
+		t.Error("expected non-empty zh_text in first example")
+	}
+	if len(resp.Examples[0].EnTexts) == 0 {
+		t.Error("expected en_texts in first example")
+	}
+}
+
+func TestImportPreview_UnknownTag(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/import/preview?tag=nonexistent", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Total int `json:"total"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 0 {
+		t.Errorf("want total 0, got %d", resp.Total)
+	}
+}
+
+func TestImportPreview_MissingTag(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/import/preview", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── POST /api/import ──────────────────────────────────────────────────────────
+
+func TestImport_Basic(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  false,
+		"apply_tags": []string{"HSK1"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Imported int `json:"imported"`
+		Skipped  int `json:"skipped"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 3 {
+		t.Errorf("want imported=3, got %d", resp.Imported)
+	}
+	if resp.Skipped != 0 {
+		t.Errorf("want skipped=0, got %d", resp.Skipped)
+	}
+
+	// Verify words now exist for user 2
+	listRec := do(t, r, "GET", "/api/words/?tags=HSK1", nil)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list: want 200, got %d: %s", listRec.Code, listRec.Body)
+	}
+	var listResp struct {
+		Total int `json:"total"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if listResp.Total != 3 {
+		t.Errorf("want 3 words in user list, got %d", listResp.Total)
+	}
+}
+
+func TestImport_SkipsDuplicates(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+	// User 2 already has 你好
+	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, nil)
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  false,
+		"apply_tags": []string{"HSK1"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Imported int `json:"imported"`
+		Skipped  int `json:"skipped"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 1 {
+		t.Errorf("want imported=1, got %d", resp.Imported)
+	}
+	if resp.Skipped != 1 {
+		t.Errorf("want skipped=1, got %d", resp.Skipped)
+	}
+}
+
+func TestImport_DeFlag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"Hallo"}, []string{"HSK1"})
+
+	r := newRouter(s)
+	// Import with DE
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  true,
+		"apply_tags": []string{"HSK1"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct{ Imported int `json:"imported"` }
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 1 {
+		t.Fatalf("want imported=1, got %d", resp.Imported)
+	}
+
+	// Fetch the word and verify DE translation is present
+	listRec := do(t, r, "GET", "/api/words/?tags=HSK1", nil)
+	var listResp struct {
+		Words []struct {
+			DeTexts []string `json:"de_texts"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if len(listResp.Words) == 0 {
+		t.Fatal("no words returned")
+	}
+	if len(listResp.Words[0].DeTexts) == 0 {
+		t.Error("expected DE translations to be imported")
+	}
+}
+
+func TestImport_DeFlagFalse(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"Hallo"}, []string{"HSK1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  false,
+		"apply_tags": []string{},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	listRec := do(t, r, "GET", "/api/words/", nil)
+	var listResp struct {
+		Words []struct {
+			DeTexts []string `json:"de_texts"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if len(listResp.Words) == 0 {
+		t.Fatal("no words returned")
+	}
+	if len(listResp.Words[0].DeTexts) != 0 {
+		t.Errorf("expected no DE translations, got %v", listResp.Words[0].DeTexts)
+	}
+}
+
+func TestImport_ApplyCustomTags(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "HSK1",
+		"import_en":  true,
+		"import_de":  false,
+		"apply_tags": []string{"HSK1", "my-review"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Verify both tags are on the imported word
+	listRec := do(t, r, "GET", "/api/words/?tags=my-review", nil)
+	var listResp struct{ Total int `json:"total"` }
+	decodeJSON(t, listRec, &listResp)
+	if listResp.Total != 1 {
+		t.Errorf("want 1 word tagged my-review, got %d", listResp.Total)
+	}
+}
+
+func TestImport_MissingTag(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"import_en":  true,
+		"apply_tags": []string{},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── GET /api/tags/details ─────────────────────────────────────────────────────
+
+func TestTagDetails_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/tags/details", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 0 {
+		t.Errorf("want empty, got %v", tags)
+	}
+}
+
+func TestTagDetails_ReturnsTags(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"greetings"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/tags/details", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 1 || tags[0].Name != "greetings" {
+		t.Fatalf("want [{greetings ...}], got %v", tags)
+	}
+	if tags[0].Description != "" {
+		t.Errorf("expected empty description, got %q", tags[0].Description)
+	}
+	if !tags[0].Importable {
+		t.Errorf("expected importable=true by default")
+	}
+}
+
+func TestTagDetails_DoesNotReturnOtherUserTags(t *testing.T) {
+	s := openTestDB(t)
+	// User 1 has a tag; user 2 (current user in tests) has none.
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"library"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/tags/details", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var tags []models.TagDetail
+	decodeJSON(t, rec, &tags)
+	if len(tags) != 0 {
+		t.Errorf("want 0 tags for user 2, got %v", tags)
+	}
+}
+
+// ── PUT /api/tags/{name} ──────────────────────────────────────────────────────
+
+func TestTagUpdate_SetsDescriptionAndImportable(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"hsk1"})
+
+	r := newRouter(s)
+	rec := do(t, r, "PUT", "/api/tags/hsk1", map[string]any{
+		"description": "HSK level 1 words",
+		"importable":  false,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Verify via GET /api/tags/details.
+	rec2 := do(t, r, "GET", "/api/tags/details", nil)
+	var tags []models.TagDetail
+	decodeJSON(t, rec2, &tags)
+	if len(tags) != 1 {
+		t.Fatalf("want 1 tag, got %d", len(tags))
+	}
+	if tags[0].Description != "HSK level 1 words" {
+		t.Errorf("expected description 'HSK level 1 words', got %q", tags[0].Description)
+	}
+	if tags[0].Importable {
+		t.Errorf("expected importable=false after update")
+	}
+}
+
+func TestTagUpdate_InvalidBody(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	req := httptest.NewRequest("PUT", "/api/tags/hsk1", bytes.NewBufferString("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
 	}
 }

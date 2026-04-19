@@ -2,10 +2,22 @@ package db
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
+
+	"golang.org/x/crypto/bcrypt"
 )
+
+// TestMain sets migration credential env vars once for the entire test binary.
+func TestMain(m *testing.M) {
+	os.Setenv("ADMIN_EMAIL", "admin@example.de")
+	os.Setenv("ADMIN_PASSWORD", "I am the admin")
+	os.Setenv("USER_EMAIL", "me@example.de")
+	os.Setenv("USER_PASSWORD", "I learn zh")
+	os.Exit(m.Run())
+}
 
 // openTestDB creates an in-memory SQLite store for tests.
 func openTestDB(t *testing.T) *Store {
@@ -21,7 +33,7 @@ func openTestDB(t *testing.T) *Store {
 // seedWord inserts one full vocabulary entry and returns the zh word ID.
 func seedWord(t *testing.T, s *Store, zhText, pinyin string, enTexts []string) int64 {
 	t.Helper()
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  zhText,
 		Pinyin:  pinyin,
 		EnTexts: enTexts,
@@ -54,7 +66,7 @@ func TestCreateWord_Idempotent(t *testing.T) {
 func TestCreateWord_MultipleTranslations(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "吃饭", "chī fàn", []string{"eat", "have a meal"})
-	wd, err := s.GetWordByID(context.Background(), id)
+	wd, err := s.GetWordByID(context.Background(), int64(2),id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +79,7 @@ func TestCreateWord_MultipleTranslations(t *testing.T) {
 
 func TestGetWordByID_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	wd, err := s.GetWordByID(context.Background(), 9999)
+	wd, err := s.GetWordByID(context.Background(), int64(2),9999)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +91,7 @@ func TestGetWordByID_NotFound(t *testing.T) {
 func TestGetWordByID_ContainsZhAndPinyin(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	wd, err := s.GetWordByID(context.Background(), id)
+	wd, err := s.GetWordByID(context.Background(), int64(2),id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +106,7 @@ func TestGetWordByID_ContainsZhAndPinyin(t *testing.T) {
 func TestGetWordByID_SM2FieldsPresent(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "再见", "zàijiàn", []string{"goodbye"})
-	wd, err := s.GetWordByID(context.Background(), id)
+	wd, err := s.GetWordByID(context.Background(), int64(2),id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +124,7 @@ func TestGetWords_ReturnsAll(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "", "", "")
+	words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 20, "", "", nil, false, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +140,7 @@ func TestGetWords_SearchByZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "你好", 1, 20, "", "", nil, false, false, "", "", "")
+	words, total, err := s.GetWords(context.Background(), int64(2), "你好", 1, 20, "", "", nil, false, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +156,7 @@ func TestGetWords_SearchByEnText(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	words, total, err := s.GetWords(context.Background(), "thank", 1, 20, "", "", nil, false, false, "", "", "")
+	words, total, err := s.GetWords(context.Background(), int64(2), "thank", 1, 20, "", "", nil, false, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +170,7 @@ func TestGetWords_Pagination(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		seedWord(t, s, string(rune(0x4e00+i)), "", []string{"word"})
 	}
-	words, total, err := s.GetWords(context.Background(), "", 1, 3, "", "", nil, false, false, "", "", "")
+	words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 3, "", "", nil, false, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +181,7 @@ func TestGetWords_Pagination(t *testing.T) {
 		t.Errorf("page 1 per_page 3: want 3 results, got %d", len(words))
 	}
 
-	words2, _, err := s.GetWords(context.Background(), "", 2, 3, "", "", nil, false, false, "", "", "")
+	words2, _, err := s.GetWords(context.Background(), int64(2), "", 2, 3, "", "", nil, false, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +195,7 @@ func TestGetWords_Pagination(t *testing.T) {
 func TestUpdateWord_ChangesZhText(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "妳好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello (female)"},
@@ -191,7 +203,7 @@ func TestUpdateWord_ChangesZhText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
 	if wd.ZhText != "妳好" {
 		t.Errorf("ZhText: want 妳好, got %q", wd.ZhText)
 	}
@@ -202,7 +214,7 @@ func TestUpdateWord_ChangesZhText(t *testing.T) {
 
 func TestUpdateWord_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.UpdateWord(context.Background(), 9999, models.UpdateWordRequest{
+	err := s.UpdateWord(context.Background(), int64(2), 9999, models.UpdateWordRequest{
 		ZhText:  "test",
 		EnTexts: []string{"test"},
 	})
@@ -216,10 +228,10 @@ func TestUpdateWord_NotFound(t *testing.T) {
 func TestDeleteWord_Removes(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	if err := s.DeleteWord(context.Background(), id); err != nil {
+	if err := s.DeleteWord(context.Background(), int64(2),id); err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
 	if wd != nil {
 		t.Error("word should be gone after delete")
 	}
@@ -227,7 +239,7 @@ func TestDeleteWord_Removes(t *testing.T) {
 
 func TestDeleteWord_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.DeleteWord(context.Background(), 9999)
+	err := s.DeleteWord(context.Background(), int64(2),9999)
 	if err == nil {
 		t.Error("expected error when deleting non-existent word")
 	}
@@ -238,10 +250,10 @@ func TestDeleteWord_NotFound(t *testing.T) {
 func TestAddTranslation_AddsNewEN(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	if err := s.AddTranslation(context.Background(), id, "hi"); err != nil {
+	if err := s.AddTranslation(context.Background(), int64(2), id, "hi"); err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
 	found := false
 	for _, e := range wd.EnTexts {
 		if e == "hi" {
@@ -256,9 +268,9 @@ func TestAddTranslation_AddsNewEN(t *testing.T) {
 func TestAddTranslation_Idempotent(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	s.AddTranslation(context.Background(), id, "hi")
-	s.AddTranslation(context.Background(), id, "hi") // second call is no-op
-	wd, _ := s.GetWordByID(context.Background(), id)
+	s.AddTranslation(context.Background(), int64(2), id, "hi")
+	s.AddTranslation(context.Background(), int64(2), id, "hi") // second call is no-op
+	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
 	count := 0
 	for _, e := range wd.EnTexts {
 		if e == "hi" {
@@ -272,7 +284,7 @@ func TestAddTranslation_Idempotent(t *testing.T) {
 
 func TestAddTranslation_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.AddTranslation(context.Background(), 9999, "hello")
+	err := s.AddTranslation(context.Background(), int64(2), 9999, "hello")
 	if err == nil {
 		t.Error("expected error for unknown zh word id")
 	}
@@ -282,7 +294,7 @@ func TestAddTranslation_NotFound(t *testing.T) {
 
 func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 	s := openTestDB(t)
-	w, p, err := s.GetNextCard(context.Background(), nil, 100, "", false)
+	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +306,7 @@ func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	w, p, err := s.GetNextCard(context.Background(), nil, 100, "", false)
+	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +327,7 @@ func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
 	// GetNextCard should return the word but NOT set first_seen_date.
-	w, _, err := s.GetNextCard(ctx, nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +353,7 @@ func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, past, id2)
 	_ = id1
 
-	w, _, err := s.GetNextCard(ctx, nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +375,7 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
 
 	// With maxNew=1 the daily cap is reached; only id1 (already introduced) should be returned.
-	w, _, err := s.GetNextCard(ctx, nil, 1, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 1, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +387,7 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	}
 
 	// With maxNew=5 new words are still allowed; any of the three words may be returned.
-	w2, _, err := s.GetNextCard(ctx, nil, 5, "", false)
+	w2, _, err := s.GetNextCard(ctx, int64(2), nil, 5, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +408,7 @@ func TestGetNextCard_SkipNewExcludesUnseenWords(t *testing.T) {
 	seedWord(t, s, "二", "", []string{"two"})
 
 	// With skipNew=true, only the already-seen word should be returned.
-	w, _, err := s.GetNextCard(ctx, nil, 100, "", true)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +435,7 @@ func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
 
 	// Even though the daily cap (100) is not reached, the unseen word must not
 	// be returned while a learning word exists.
-	w, _, err := s.GetNextCard(ctx, nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +488,7 @@ func TestUpdateSM2Progress_Persists(t *testing.T) {
 
 func TestGetStats_Empty(t *testing.T) {
 	s := openTestDB(t)
-	due, total, _, err := s.GetStats(context.Background(), nil, "")
+	due, total, _, err := s.GetStats(context.Background(), int64(2), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,7 +500,7 @@ func TestGetStats_Empty(t *testing.T) {
 func TestGetStats_CountsOnlyZh(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello", "hi"})
-	_, total, _, err := s.GetStats(context.Background(), nil, "")
+	_, total, _, err := s.GetStats(context.Background(), int64(2), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +523,7 @@ func TestGetStats_DueTodayCount(t *testing.T) {
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, future, id1)
 
-	due, _, _, err := s.GetStats(ctx, nil, "")
+	due, _, _, err := s.GetStats(ctx, int64(2), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +541,7 @@ func TestGetStats_NewTodayCount(t *testing.T) {
 	// Stamp one word as introduced today.
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
 
-	_, _, newToday, err := s.GetStats(ctx, nil, "")
+	_, _, newToday, err := s.GetStats(ctx, int64(2), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,7 +584,7 @@ func TestGetTranslationsForWord_EmptyWhenNone(t *testing.T) {
 
 func seedWordWithTags(t *testing.T, s *Store, zhText, pinyin string, enTexts, tags []string) int64 {
 	t.Helper()
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  zhText,
 		Pinyin:  pinyin,
 		EnTexts: enTexts,
@@ -587,7 +599,7 @@ func seedWordWithTags(t *testing.T, s *Store, zhText, pinyin string, enTexts, ta
 func TestCreateWord_WithTags(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"greetings", "HSK1"})
-	wd, err := s.GetWordByID(context.Background(), id)
+	wd, err := s.GetWordByID(context.Background(), int64(2),id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +614,7 @@ func TestCreateWord_WithTags(t *testing.T) {
 func TestUpdateWord_ReplacesTags(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"old-tag"})
-	err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -611,11 +623,11 @@ func TestUpdateWord_ReplacesTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
 	if len(wd.Tags) != 1 || wd.Tags[0] != "new-tag" {
 		t.Errorf("expected [new-tag], got %v", wd.Tags)
 	}
-	tags, _ := s.GetAllTags(context.Background())
+	tags, _ := s.GetAllTags(context.Background(), int64(2))
 	for _, tg := range tags {
 		if tg == "old-tag" {
 			t.Error("orphan tag 'old-tag' should have been cleaned up")
@@ -629,7 +641,7 @@ func TestGetWords_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "吃饭", "chī fàn", []string{"eat"}, []string{"food"})
 	seedWordWithTags(t, s, "谢谢", "xiè xiè", []string{"thanks"}, []string{"greetings"})
 
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings"}, false, false, "", "", "")
+	words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 20, "", "", []string{"greetings"}, false, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,7 +659,7 @@ func TestGetWords_FilterByMultipleTags_OR(t *testing.T) {
 	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 	seedWordWithTags(t, s, "书", "", []string{"book"}, []string{"school"})
 
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", []string{"greetings", "food"}, false, false, "", "", "")
+	words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 20, "", "", []string{"greetings", "food"}, false, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,7 +682,7 @@ func TestGetNextCard_DoesNotReturnFutureCards(t *testing.T) {
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_date = date('now') WHERE word_id = ?`, future, id)
 
-	w, _, err := s.GetNextCard(ctx, nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -689,7 +701,7 @@ func TestGetNextCard_ReturnsTodayNotYetOverdue(t *testing.T) {
 	soon := time.Now().UTC().Add(5 * time.Minute).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_date = date('now') WHERE word_id = ?`, soon, id)
 
-	w, _, err := s.GetNextCard(ctx, nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -706,7 +718,7 @@ func TestGetNextCard_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	id2 := seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 
-	w, _, err := s.GetNextCard(context.Background(), []string{"food"}, 100, "", false)
+	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"food"}, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -722,7 +734,7 @@ func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 
-	w, _, err := s.GetNextCard(context.Background(), []string{"nonexistent"}, 100, "", false)
+	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"nonexistent"}, 100, "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -736,7 +748,7 @@ func TestGetStats_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 
-	_, total, _, err := s.GetStats(context.Background(), []string{"food"}, "")
+	_, total, _, err := s.GetStats(context.Background(), int64(2), []string{"food"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -748,7 +760,7 @@ func TestGetStats_FilterByTag(t *testing.T) {
 func TestGetAllTags(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"B-tag", "A-tag"})
-	tags, err := s.GetAllTags(context.Background())
+	tags, err := s.GetAllTags(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -757,13 +769,44 @@ func TestGetAllTags(t *testing.T) {
 	}
 }
 
+func TestGetAllTags_UserIsolation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	// User 2 owns words with tags (user 2 is created by openTestDB)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"user2-tag"})
+	// Create user 3 and give them their own word+tag
+	user3ID, err := s.CreateUser(ctx, "user3@example.com", "hash", "tok-u3", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateWord(ctx, user3ID, models.CreateWordRequest{
+		ZhText: "再见", EnTexts: []string{"goodbye"}, Tags: []string{"user3-tag"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tags2, err := s.GetAllTags(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags2) != 1 || tags2[0] != "user2-tag" {
+		t.Errorf("user 2 should only see user2-tag, got %v", tags2)
+	}
+	tags3, err := s.GetAllTags(ctx, user3ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags3) != 1 || tags3[0] != "user3-tag" {
+		t.Errorf("user 3 should only see user3-tag, got %v", tags3)
+	}
+}
+
 func TestDeleteWord_CleansOrphanTags(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"unique-tag"})
-	if err := s.DeleteWord(context.Background(), id); err != nil {
+	if err := s.DeleteWord(context.Background(), int64(2), id); err != nil {
 		t.Fatal(err)
 	}
-	tags, _ := s.GetAllTags(context.Background())
+	tags, _ := s.GetAllTags(context.Background(), int64(2))
 	if len(tags) != 0 {
 		t.Errorf("expected no tags after deleting only word, got %v", tags)
 	}
@@ -804,7 +847,7 @@ func TestLookupConfusion_ZhToEn_Found(t *testing.T) {
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	confusedWithID, found, err := s.LookupConfusion(context.Background(), zhID, "Buch", "zh_to_en", []string{"en"})
+	confusedWithID, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Buch", "zh_to_en", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -820,7 +863,7 @@ func TestLookupConfusion_ZhToEn_NoMatch(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
-	_, found, err := s.LookupConfusion(context.Background(), zhID, "Tisch", "zh_to_en", []string{"en"})
+	_, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Tisch", "zh_to_en", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -834,7 +877,7 @@ func TestLookupConfusion_EnToZh_Found(t *testing.T) {
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 	zhID := seedWord(t, s, "五", "", []string{"five"})
 
-	confusedWithID, found, err := s.LookupConfusion(context.Background(), zhID, "书", "en_to_zh", nil)
+	confusedWithID, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "书", "en_to_zh", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -850,7 +893,7 @@ func TestLookupConfusion_SameWord_NotFound(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
-	_, found, err := s.LookupConfusion(context.Background(), zhID, "Schuh", "zh_to_en", []string{"en"})
+	_, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Schuh", "zh_to_en", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -871,7 +914,7 @@ func TestUpsertConfusion_IncrementsCount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	items, err := s.GetConfusions(context.Background())
+	items, err := s.GetConfusions(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -893,7 +936,7 @@ func TestGetConfusions_LastSeenUpdated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	items, err := s.GetConfusions(context.Background())
+	items, err := s.GetConfusions(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -910,7 +953,7 @@ func TestLookupConfusion_ZhPinyinToEn_Found(t *testing.T) {
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	confusedWithID, found, err := s.LookupConfusion(context.Background(), zhID, "Buch", "zh_pinyin_to_en", []string{"en"})
+	confusedWithID, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Buch", "zh_pinyin_to_en", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -927,7 +970,7 @@ func TestLookupConfusion_InvalidMode_NotFound(t *testing.T) {
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	_, found, err := s.LookupConfusion(context.Background(), zhID, "Buch", "invalid_mode", []string{"en"})
+	_, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Buch", "invalid_mode", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -940,7 +983,7 @@ func TestLookupConfusion_EmptyAnswer_NotFound(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
-	_, found, err := s.LookupConfusion(context.Background(), zhID, "", "zh_to_en", []string{"en"})
+	_, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "", "zh_to_en", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -958,7 +1001,7 @@ func TestCountLearningNewWords_BeforePresented(t *testing.T) {
 	// Newly created word: learning_new_word=1 (default), first_seen_date=NULL
 	wordId := seedWord(t, s, "一", "", []string{"one"})
 
-	count, err := s.CountLearningNewWords(ctx, nil)
+	count, err := s.CountLearningNewWords(ctx, int64(2), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,9 +1010,9 @@ func TestCountLearningNewWords_BeforePresented(t *testing.T) {
 		t.Errorf("want 0 learning word (unseen), got %d", count)
 	}
 
-	s.AcknowledgeWord(ctx, wordId)
+	s.AcknowledgeWord(ctx, int64(2), wordId)
 
-	count, err = s.CountLearningNewWords(ctx, nil)
+	count, err = s.CountLearningNewWords(ctx, int64(2), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -987,7 +1030,7 @@ func TestCountLearningNewWords_GraduatedNotCounted(t *testing.T) {
 	// Graduate the word (learning_new_word=0)
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET learning_new_word = 0 WHERE word_id = ?`, id)
 
-	count, err := s.CountLearningNewWords(ctx, nil)
+	count, err := s.CountLearningNewWords(ctx, int64(2), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1003,7 +1046,7 @@ func TestAcknowledgeWord_SetsLearningPhase(t *testing.T) {
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	if err := s.AcknowledgeWord(ctx, id); err != nil {
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1024,8 +1067,8 @@ func TestAcknowledgeWord_Idempotent(t *testing.T) {
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	s.AcknowledgeWord(ctx, id)
-	if err := s.AcknowledgeWord(ctx, id); err != nil {
+	s.AcknowledgeWord(ctx, int64(2), id)
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Errorf("second AcknowledgeWord should not error: %v", err)
 	}
 
@@ -1043,7 +1086,7 @@ func TestSkipWord_AdvancesDueDateByNDays(t *testing.T) {
 	id := seedWord(t, s, "一", "", []string{"one"})
 
 	before := time.Now().UTC()
-	if err := s.SkipWord(ctx, id, 7); err != nil {
+	if err := s.SkipWord(ctx, int64(2), id, 7); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1061,7 +1104,7 @@ func TestSkipWord_AdvancesDueDateByNDays(t *testing.T) {
 
 func TestSkipWord_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.SkipWord(context.Background(), 9999, 7)
+	err := s.SkipWord(context.Background(), int64(2), 9999, 7)
 	if err == nil {
 		t.Error("expected error for unknown word id")
 	}
@@ -1076,11 +1119,11 @@ func TestDeleteWord_SharedTagRetained(t *testing.T) {
 	id1 := seedWordWithTags(t, s, "一", "", []string{"one"}, []string{"shared-tag"})
 	seedWordWithTags(t, s, "二", "", []string{"two"}, []string{"shared-tag"})
 
-	if err := s.DeleteWord(ctx, id1); err != nil {
+	if err := s.DeleteWord(ctx, int64(2), id1); err != nil {
 		t.Fatal(err)
 	}
 
-	tags, _ := s.GetAllTags(ctx)
+	tags, _ := s.GetAllTags(ctx, int64(2))
 	found := false
 	for _, tg := range tags {
 		if tg == "shared-tag" {
@@ -1101,7 +1144,7 @@ func TestGetConfusions_PopulatesEnTexts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	items, err := s.GetConfusions(context.Background())
+	items, err := s.GetConfusions(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1162,7 +1205,7 @@ func TestGetConfusionDetail_ReturnsTranslationsForSelectedLangs(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	idA, err := s.CreateWord(ctx, models.CreateWordRequest{
+	idA, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "人",
 		Pinyin:  "rén",
 		EnTexts: []string{"person"},
@@ -1171,7 +1214,7 @@ func TestGetConfusionDetail_ReturnsTranslationsForSelectedLangs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	idB, err := s.CreateWord(ctx, models.CreateWordRequest{
+	idB, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "点",
 		Pinyin:  "diǎn",
 		EnTexts: []string{"dot"},
@@ -1214,7 +1257,7 @@ func TestUpsertConfusion_DifferentModesSeparateRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	items, err := s.GetConfusions(context.Background())
+	items, err := s.GetConfusions(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1232,11 +1275,11 @@ func TestDeleteWord_CascadesToConfusionPairs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.DeleteWord(context.Background(), idA); err != nil {
+	if err := s.DeleteWord(context.Background(), int64(2),idA); err != nil {
 		t.Fatal(err)
 	}
 
-	items, err := s.GetConfusions(context.Background())
+	items, err := s.GetConfusions(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1251,11 +1294,11 @@ func TestMarkWordForReview_SetsFlag(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	if err := s.MarkWordForReview(context.Background(), id); err != nil {
+	if err := s.MarkWordForReview(context.Background(), int64(2),id); err != nil {
 		t.Fatalf("MarkWordForReview: %v", err)
 	}
 
-	wd, err := s.GetWordByID(context.Background(), id)
+	wd, err := s.GetWordByID(context.Background(), int64(2),id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1266,7 +1309,7 @@ func TestMarkWordForReview_SetsFlag(t *testing.T) {
 
 func TestMarkWordForReview_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.MarkWordForReview(context.Background(), 9999)
+	err := s.MarkWordForReview(context.Background(), int64(2),9999)
 	if err == nil {
 		t.Error("expected error for missing word, got nil")
 	}
@@ -1276,11 +1319,11 @@ func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	if err := s.MarkWordForReview(context.Background(), id); err != nil {
+	if err := s.MarkWordForReview(context.Background(), int64(2),id); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	if err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1288,7 +1331,7 @@ func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
 		t.Fatalf("UpdateWord: %v", err)
 	}
 
-	wd, err := s.GetWordByID(context.Background(), id)
+	wd, err := s.GetWordByID(context.Background(), int64(2),id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1302,11 +1345,11 @@ func TestGetWords_ReviewOnlyFilter(t *testing.T) {
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 
-	if err := s.MarkWordForReview(context.Background(), id1); err != nil {
+	if err := s.MarkWordForReview(context.Background(), int64(2),id1); err != nil {
 		t.Fatal(err)
 	}
 
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "desc", nil, true, false, "", "", "")
+	words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 20, "", "desc", nil, true, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1330,7 +1373,7 @@ func TestGetWords_HideUnseenFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	words, total, err := s.GetWords(ctx, "", 1, 20, "", "desc", nil, false, true, "", "", "")
+	words, total, err := s.GetWords(ctx, int64(2), "", 1, 20, "", "desc", nil, false, true, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1355,17 +1398,17 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
 		t.Fatalf("RecordDailyStat(correct): %v", err)
 	}
-	if _, err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
 		t.Fatalf("RecordDailyStat(correct): %v", err)
 	}
-	if _, err := s.RecordDailyStat(ctx, false); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(2), false); err != nil {
 		t.Fatalf("RecordDailyStat(wrong): %v", err)
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx)
+	stats, err := s.GetDailyStatsHistory(ctx, int64(2))
 	if err != nil {
 		t.Fatalf("GetDailyStatsHistory: %v", err)
 	}
@@ -1393,12 +1436,12 @@ func TestRecordDailyStat_StreakResets(t *testing.T) {
 
 	// wrong, correct, correct, wrong, correct
 	for _, correct := range []bool{false, true, true, false, true} {
-		if _, err := s.RecordDailyStat(ctx, correct); err != nil {
+		if _, err := s.RecordDailyStat(ctx, int64(2), correct); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx)
+	stats, err := s.GetDailyStatsHistory(ctx, int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1414,13 +1457,13 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 	// Insert rows for multiple dates manually
 	for _, d := range []string{"2026-02-10", "2026-02-12", "2026-02-11"} {
 		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO daily_stats (date, attempts, mistakes, correct_streak, current_streak)
-			 VALUES (?, 10, 2, 3, 0)`, d); err != nil {
+			`INSERT INTO daily_stats (user_id, date, attempts, mistakes, correct_streak, current_streak)
+			 VALUES (2, ?, 10, 2, 3, 0)`, d); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	stats, err := s.GetDailyStatsHistory(ctx)
+	stats, err := s.GetDailyStatsHistory(ctx, int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1434,7 +1477,7 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 
 func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
 	s := openTestDB(t)
-	stats, err := s.GetDailyStatsHistory(context.Background())
+	stats, err := s.GetDailyStatsHistory(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1450,7 +1493,7 @@ func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
 
 func TestGetTodaySessionInfo_NoRows(t *testing.T) {
 	s := openTestDB(t)
-	attempts, mistakes, available, err := s.GetTodaySessionInfo(context.Background())
+	attempts, mistakes, available, err := s.GetTodaySessionInfo(context.Background(), int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1475,11 +1518,11 @@ func TestGetTodaySessionInfo_WithData(t *testing.T) {
 	}
 
 	// Record a daily stat (1 correct answer).
-	if _, err := s.RecordDailyStat(ctx, true); err != nil {
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
 		t.Fatal(err)
 	}
 
-	attempts, mistakes, available, err := s.GetTodaySessionInfo(ctx)
+	attempts, mistakes, available, err := s.GetTodaySessionInfo(ctx, int64(2))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1513,7 +1556,7 @@ func TestAdvanceDueDates_AdvancesNWords(t *testing.T) {
 	}
 
 	// Advance 3 words (the 3rd earliest due date is +3 days).
-	nowDue, err := s.AdvanceDueDates(ctx, 3)
+	nowDue, err := s.AdvanceDueDates(ctx, int64(2), 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1554,7 +1597,7 @@ func TestAdvanceDueDates_FewerThanN(t *testing.T) {
 	}
 
 	// Request 10 but only 2 available — should return 0 without error.
-	nowDue, err := s.AdvanceDueDates(ctx, 10)
+	nowDue, err := s.AdvanceDueDates(ctx, int64(2), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1591,7 +1634,7 @@ func TestGetTranslationLanguages_OnlyEN(t *testing.T) {
 func TestGetTranslationLanguages_ENandDE(t *testing.T) {
 	s := openTestDB(t)
 	// Create a word with both EN and DE translations.
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1617,7 +1660,7 @@ func TestGetTranslationLanguages_ENandDE(t *testing.T) {
 
 func TestGetTranslationsForWord_DE(t *testing.T) {
 	s := openTestDB(t)
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -1642,7 +1685,7 @@ func TestGetTranslationsForWord_DE(t *testing.T) {
 
 func TestGetTranslationsForWord_DEvsEN_NoMix(t *testing.T) {
 	s := openTestDB(t)
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "吃",
 		Pinyin:  "chī",
 		EnTexts: []string{"eat"},
@@ -1674,7 +1717,7 @@ func TestGetWords_MissingLangEN(t *testing.T) {
 	// Word with EN only (no DE).
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	// Word with both EN and DE.
-	_, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -1685,7 +1728,7 @@ func TestGetWords_MissingLangEN(t *testing.T) {
 	}
 
 	// Filter words missing DE — should return only 你好.
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "", "", "de")
+	words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 20, "", "", nil, false, false, "", "", "de")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1700,18 +1743,18 @@ func TestGetWords_MissingLangEN(t *testing.T) {
 func TestGetWords_MissingLangDE(t *testing.T) {
 	s := openTestDB(t)
 	// Word missing EN (raw insert to bypass CreateWord EN requirement).
-	s.db.Exec(`INSERT INTO words (text, language) VALUES ('孤独', 'zh')`)
+	s.db.Exec(`INSERT INTO words (text, language, user_id) VALUES ('孤独', 'zh', 2)`)
 	var zhID int64
 	s.db.QueryRow(`SELECT id FROM words WHERE text = '孤独'`).Scan(&zhID)
 	s.db.Exec(`INSERT INTO sm2_progress (word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus) VALUES (?, 0, 2.5, 1, CURRENT_TIMESTAMP, 0, 0, 0)`, zhID)
 	// DE word linked to it.
-	s.db.Exec(`INSERT INTO words (text, language) VALUES ('Einsamkeit', 'de')`)
+	s.db.Exec(`INSERT INTO words (text, language, user_id) VALUES ('Einsamkeit', 'de', 2)`)
 	var deID int64
 	s.db.QueryRow(`SELECT id FROM words WHERE text = 'Einsamkeit'`).Scan(&deID)
 	s.db.Exec(`INSERT INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`, deID, zhID)
 
 	// Word with both EN and DE.
-	s.CreateWord(context.Background(), models.CreateWordRequest{
+	s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1719,7 +1762,7 @@ func TestGetWords_MissingLangDE(t *testing.T) {
 	})
 
 	// Filter missing EN — should return only 孤独.
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "", "", "en")
+	words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 20, "", "", nil, false, false, "", "", "en")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1735,7 +1778,7 @@ func TestGetWords_MissingLangEmpty_ReturnsAll(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "", []string{"hello"})
 	seedWord(t, s, "再见", "", []string{"goodbye"})
-	words, total, err := s.GetWords(context.Background(), "", 1, 20, "", "", nil, false, false, "", "", "")
+	words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 20, "", "", nil, false, false, "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1750,7 +1793,7 @@ func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	// Save with the exact same ZhText — should not cause a UNIQUE constraint error.
-	err := s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello", "hi"},
@@ -1758,7 +1801,7 @@ func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateWord with unchanged ZhText should not fail: %v", err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
 	if wd.ZhText != "你好" {
 		t.Errorf("ZhText should be unchanged, got %q", wd.ZhText)
 	}
@@ -1771,7 +1814,7 @@ func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
 
 func TestCreateWord_WithDeTexts(t *testing.T) {
 	s := openTestDB(t)
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
 		EnTexts: []string{"hello"},
@@ -1780,7 +1823,7 @@ func TestCreateWord_WithDeTexts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd, err := s.GetWordByID(context.Background(), id)
+	wd, err := s.GetWordByID(context.Background(), int64(2),id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1791,7 +1834,7 @@ func TestCreateWord_WithDeTexts(t *testing.T) {
 
 func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 	s := openTestDB(t)
-	id, err := s.CreateWord(context.Background(), models.CreateWordRequest{
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -1801,7 +1844,7 @@ func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = s.UpdateWord(context.Background(), id, models.UpdateWordRequest{
+	err = s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
 		EnTexts: []string{"goodbye"},
@@ -1810,7 +1853,7 @@ func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
 	if len(wd.DeTexts) != 2 {
 		t.Errorf("expected 2 DeTexts after update, got %d: %v", len(wd.DeTexts), wd.DeTexts)
 	}
@@ -1821,12 +1864,270 @@ func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 	}
 }
 
+// ── Migration v20: users table + initial user ─────────────────────────────────
+
+func TestMigration_v20_UsersTableExists(t *testing.T) {
+	s := openTestDB(t)
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'`).Scan(&count); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if count != 1 {
+		t.Error("users table should exist after migration v20")
+	}
+}
+
+func TestMigration_v20_BothUsersSeeded(t *testing.T) {
+	s := openTestDB(t)
+
+	var adminHash, meHash string
+	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE email = 'admin@example.de'`).Scan(&adminHash); err != nil {
+		t.Fatalf("query admin user: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(adminHash), []byte("I am the admin")); err != nil {
+		t.Errorf("admin password hash does not match 'I am the admin': %v", err)
+	}
+
+	if err := s.db.QueryRow(`SELECT password_hash FROM users WHERE email = 'me@example.de'`).Scan(&meHash); err != nil {
+		t.Fatalf("query initial user: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(meHash), []byte("I learn zh")); err != nil {
+		t.Errorf("me password hash does not match 'I learn zh': %v", err)
+	}
+}
+
+func TestMigration_v20_AdminIsUserID1(t *testing.T) {
+	s := openTestDB(t)
+	var id int64
+	if err := s.db.QueryRow(`SELECT id FROM users WHERE email = 'admin@example.de'`).Scan(&id); err != nil {
+		t.Fatalf("query admin id: %v", err)
+	}
+	if id != 1 {
+		t.Errorf("expected admin user id=1, got %d", id)
+	}
+}
+
+func TestMigration_v20_IdempotentOnFreshDB(t *testing.T) {
+	s := openTestDB(t)
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected exactly 2 users after migration, got %d", count)
+	}
+}
+
+// ── Migration v21: words.user_id + template seeding ──────────────────────────
+
+func TestMigration_v21_WordsHaveUserIDColumn(t *testing.T) {
+	s := openTestDB(t)
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('words') WHERE name = 'user_id'`).Scan(&count); err != nil {
+		t.Fatalf("pragma_table_info: %v", err)
+	}
+	if count != 1 {
+		t.Error("words table should have a user_id column after migration v21")
+	}
+}
+
+func TestMigration_v21_CreateWordSetsUserID(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "测试", "cè shì", []string{"test"})
+
+	var userID int64
+	if err := s.db.QueryRow(`SELECT user_id FROM words WHERE id = ?`, id).Scan(&userID); err != nil {
+		t.Fatalf("query word user_id: %v", err)
+	}
+	if userID != 2 {
+		t.Errorf("expected user_id=2 for word created via CreateWord, got %d", userID)
+	}
+}
+
+// ── Migration v21: template seeding from initial user ────────────────────────
+// (Only meaningful when running against a real DB that has data before v21;
+// on a fresh in-memory DB the initial user has no words to copy, so we verify
+// the column and schema are correct and that the seeding path doesn't error.)
+
+func TestMigration_v21_TemplateWordsAreSubsetOfAllWords(t *testing.T) {
+	s := openTestDB(t)
+	// Insert a template word (admin user, id=1) and a regular word (me user, id=2).
+	seedTemplateWord(t, s, "学习", "xuéxí", []string{"study"}, nil)
+	seedWord(t, s, "工作", "gōngzuò", []string{"work"})
+
+	var templateCount, totalCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id = 1`).Scan(&templateCount); err != nil {
+		t.Fatalf("count template words: %v", err)
+	}
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words`).Scan(&totalCount); err != nil {
+		t.Fatalf("count all words: %v", err)
+	}
+	if templateCount > totalCount {
+		t.Errorf("template words (%d) must not exceed total words (%d)", templateCount, totalCount)
+	}
+}
+
+// ── ImportTemplateWords ───────────────────────────────────────────────────────
+
+func seedTemplateWord(t *testing.T, s *Store, zhText, pinyin string, enTexts []string, tags []string) int64 {
+	t.Helper()
+	id, err := s.CreateWord(context.Background(), int64(1), models.CreateWordRequest{
+		ZhText:  zhText,
+		Pinyin:  pinyin,
+		EnTexts: enTexts,
+		Tags:    tags,
+	})
+	if err != nil {
+		t.Fatalf("seedTemplateWord %q: %v", zhText, err)
+	}
+	return id
+}
+
+func insertTestUser(t *testing.T, s *Store, email string) int64 {
+	t.Helper()
+	res, err := s.db.Exec(`INSERT INTO users (email, password_hash) VALUES (?, 'x')`, email)
+	if err != nil {
+		t.Fatalf("insert test user %q: %v", email, err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+func TestImportTemplateWords_CopiesWordsForUser(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "苹果", "píngguǒ", []string{"apple"}, nil)
+
+	userID := insertTestUser(t, s, "test@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatalf("count user words: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected user to have words after ImportTemplateWords")
+	}
+}
+
+func TestImportTemplateWords_CreatesSM2Progress(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "猫", "māo", []string{"cat"}, nil)
+
+	userID := insertTestUser(t, s, "test2@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	var count int
+	if err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM sm2_progress sp
+		JOIN words w ON w.id = sp.word_id
+		WHERE w.user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatalf("count sm2_progress: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected sm2_progress rows for imported words")
+	}
+}
+
+func TestImportTemplateWords_CopiesTranslations(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "书", "shū", []string{"book"}, nil)
+
+	userID := insertTestUser(t, s, "test3@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	// The zh word imported for the user should have a translation linked to an en word.
+	var count int
+	if err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM translations t
+		JOIN words zh ON zh.id = t.zh_word_id AND zh.user_id = ?
+		JOIN words en ON en.id = t.en_word_id
+	`, userID).Scan(&count); err != nil {
+		t.Fatalf("count translations: %v", err)
+	}
+	if count == 0 {
+		t.Error("expected translations to be copied for imported words")
+	}
+}
+
+func TestImportTemplateWords_Idempotent(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "水", "shuǐ", []string{"water"}, nil)
+
+	userID := insertTestUser(t, s, "test4@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("first ImportTemplateWords: %v", err)
+	}
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("second ImportTemplateWords: %v", err)
+	}
+
+	// Should still have only one zh word per template.
+	var count int
+	if err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM words WHERE user_id = ? AND language = 'zh'`, userID).Scan(&count); err != nil {
+		t.Fatalf("count zh words: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 zh word after idempotent import, got %d", count)
+	}
+}
+
+func TestImportTemplateWords_TemplatesUnchanged(t *testing.T) {
+	s := openTestDB(t)
+	seedTemplateWord(t, s, "火", "huǒ", []string{"fire"}, nil)
+
+	userID := insertTestUser(t, s, "test5@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	// Template words (user_id=1, admin) must still exist after import.
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id = 1 AND language = 'zh'`).Scan(&count); err != nil {
+		t.Fatalf("count template zh words: %v", err)
+	}
+	if count == 0 {
+		t.Error("template words should remain after ImportTemplateWords")
+	}
+}
+
+func TestImportTemplateWords_NoSM2ForTemplates(t *testing.T) {
+	s := openTestDB(t)
+	tmplID := seedTemplateWord(t, s, "地", "dì", []string{"earth", "ground"}, nil)
+
+	// Count sm2_progress for the template word before import (CreateWord creates one).
+	var before int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sm2_progress WHERE word_id = ?`, tmplID).Scan(&before); err != nil {
+		t.Fatalf("count sm2_progress before import: %v", err)
+	}
+
+	userID := insertTestUser(t, s, "test6@example.com")
+	if err := s.ImportTemplateWords(context.Background(), userID); err != nil {
+		t.Fatalf("ImportTemplateWords: %v", err)
+	}
+
+	// ImportTemplateWords must not modify the template word's sm2_progress.
+	var after int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sm2_progress WHERE word_id = ?`, tmplID).Scan(&after); err != nil {
+		t.Fatalf("count sm2_progress after import: %v", err)
+	}
+	if after != before {
+		t.Errorf("import changed template sm2_progress count: before=%d, after=%d", before, after)
+	}
+}
+
 func TestLookupConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
 	// 人 → EN "person", DE "Person"
-	targetID, err := s.CreateWord(ctx, models.CreateWordRequest{
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "人",
 		Pinyin:  "rén",
 		EnTexts: []string{"person"},
@@ -1837,7 +2138,7 @@ func TestLookupConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 	}
 
 	// 点 → EN "dot", DE "Uhr"
-	otherID, err := s.CreateWord(ctx, models.CreateWordRequest{
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "点",
 		Pinyin:  "diǎn",
 		EnTexts: []string{"dot"},
@@ -1848,7 +2149,7 @@ func TestLookupConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 	}
 
 	// Typing "Uhr" (DE translation of 点) while answering for 人 should detect a confusion.
-	confusedWithID, found, err := s.LookupConfusion(ctx, targetID, "Uhr", "zh_to_en", []string{"en", "de"})
+	confusedWithID, found, err := s.LookupConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_en", []string{"en", "de"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1864,7 +2165,7 @@ func TestLookupConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	targetID, err := s.CreateWord(ctx, models.CreateWordRequest{
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "狗",
 		Pinyin:  "gǒu",
 		EnTexts: []string{"dog"},
@@ -1874,7 +2175,7 @@ func TestLookupConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	otherID, err := s.CreateWord(ctx, models.CreateWordRequest{
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "好",
 		Pinyin:  "hǎo",
 		EnTexts: []string{"good"},
@@ -1884,7 +2185,7 @@ func TestLookupConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	confusedWithID, found, err := s.LookupConfusion(ctx, targetID, "good", "zh_to_en", []string{"en"})
+	confusedWithID, found, err := s.LookupConfusion(ctx, int64(2), targetID, "good", "zh_to_en", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1900,7 +2201,7 @@ func TestLookupConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	targetID, err := s.CreateWord(ctx, models.CreateWordRequest{
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "人",
 		Pinyin:  "rén",
 		EnTexts: []string{"person"},
@@ -1910,7 +2211,7 @@ func TestLookupConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = s.CreateWord(ctx, models.CreateWordRequest{
+	_, err = s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "点",
 		Pinyin:  "diǎn",
 		EnTexts: []string{"dot"},
@@ -1921,11 +2222,321 @@ func TestLookupConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 	}
 
 	// With langs=["en"] only, typing "Uhr" (DE) should not produce a confusion.
-	_, found, err := s.LookupConfusion(ctx, targetID, "Uhr", "zh_to_en", []string{"en"})
+	_, found, err := s.LookupConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_en", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if found {
 		t.Error("DE answer should not match when only EN is selected")
+	}
+}
+
+// ── CreateUser ────────────────────────────────────────────────────────────────
+
+func TestCreateUser_ReturnsID(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateUser(context.Background(), "testuser@example.com", "hash", "token123", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id <= 0 {
+		t.Errorf("expected positive user ID, got %d", id)
+	}
+}
+
+func TestCreateUser_EmailNotVerified(t *testing.T) {
+	s := openTestDB(t)
+	_, err := s.CreateUser(context.Background(), "unverified@example.com", "hash", "tok", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := s.GetUserByEmail(context.Background(), "unverified@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("user not found after creation")
+	}
+	if user.EmailVerified {
+		t.Error("new user should not be email_verified")
+	}
+}
+
+// ── GetUserByID ────────────────────────────────────────────────────────────────
+
+func TestGetUserByID_Found(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateUser(context.Background(), "byid@example.com", "hash", "tok2", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := s.GetUserByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("expected user, got nil")
+	}
+	if user.Email != "byid@example.com" {
+		t.Errorf("email: want byid@example.com, got %q", user.Email)
+	}
+}
+
+func TestGetUserByID_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	user, err := s.GetUserByID(context.Background(), 99999)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user != nil {
+		t.Error("expected nil for missing user ID")
+	}
+}
+
+// ── SetUserEmailVerified ───────────────────────────────────────────────────────
+
+func TestSetUserEmailVerified_OK(t *testing.T) {
+	s := openTestDB(t)
+	token := "validtoken12345678901234567890ab"
+	_, err := s.CreateUser(context.Background(), "verify@example.com", "hash", token, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	user, err := s.SetUserEmailVerified(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user == nil {
+		t.Fatal("expected user after verification, got nil")
+	}
+	if !user.EmailVerified {
+		t.Error("user should be email_verified after verification")
+	}
+
+	// Token must be consumed — second call returns nil
+	user2, err := s.SetUserEmailVerified(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user2 != nil {
+		t.Error("second verification with same token should return nil")
+	}
+}
+
+func TestSetUserEmailVerified_UnknownToken(t *testing.T) {
+	s := openTestDB(t)
+	user, err := s.SetUserEmailVerified(context.Background(), "nosuchtoken")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user != nil {
+		t.Error("expected nil for unknown token")
+	}
+}
+
+func TestSetUserEmailVerified_ExpiredToken(t *testing.T) {
+	s := openTestDB(t)
+	token := "expiredtoken1234567890123456789"
+	_, err := s.CreateUser(context.Background(), "expired@example.com", "hash", token, time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	user, err := s.SetUserEmailVerified(context.Background(), token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user != nil {
+		t.Error("expected nil for expired token")
+	}
+}
+
+// ── UpdateUserPassword ────────────────────────────────────────────────────────
+
+func TestUpdateUserPassword_OK(t *testing.T) {
+	s := openTestDB(t)
+	id, err := s.CreateUser(context.Background(), "pwchange@example.com", "oldhash", "tok3", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpdateUserPassword(context.Background(), id, "newhash"); err != nil {
+		t.Fatal(err)
+	}
+
+	user, err := s.GetUserByID(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.PasswordHash != "newhash" {
+		t.Errorf("expected newhash, got %q", user.PasswordHash)
+	}
+}
+
+func TestInitPinyinProgressForUser(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Create a real user (openTestDB seeds users 1 and 2; create user 3 here)
+	userID, err := s.CreateUser(ctx, "pinyin-test@example.com", "hash", "tok-pinyin", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert two pinyin sounds directly
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO pinyin_sounds (initial, final, tone, syllable, filename, tag) VALUES
+		 ('b', 'a', 1, 'ba', 'ba1.mp3', ''),
+		 ('p', 'a', 2, 'pa', 'pa2.mp3', '')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.InitPinyinProgressForUser(ctx, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pinyin_progress WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 progress rows, got %d", count)
+	}
+
+	// Calling again must be idempotent
+	if err := s.InitPinyinProgressForUser(ctx, userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pinyin_progress WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("idempotent: expected 2 progress rows, got %d", count)
+	}
+}
+
+// ── Tag metadata tests ────────────────────────────────────────────────────────
+
+func TestGetTagDetails_Empty(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	tags, err := s.GetTagDetails(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetTagDetails: %v", err)
+	}
+	if len(tags) != 0 {
+		t.Errorf("expected 0 tags, got %d", len(tags))
+	}
+}
+
+func TestUpsertTagMeta_AndGetTagDetails(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed a word with a tag so the tag appears in GetTagDetails.
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:  "测试",
+		EnTexts: []string{"test"},
+		Tags:    []string{"hsk1"},
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	// Initially description is empty, importable defaults to true.
+	tags, err := s.GetTagDetails(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetTagDetails: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(tags))
+	}
+	if tags[0].Name != "hsk1" {
+		t.Errorf("expected name hsk1, got %q", tags[0].Name)
+	}
+	if tags[0].Description != "" {
+		t.Errorf("expected empty description, got %q", tags[0].Description)
+	}
+	if !tags[0].Importable {
+		t.Errorf("expected importable=true by default")
+	}
+
+	// Update meta.
+	if err := s.UpsertTagMeta(ctx, int64(2), "hsk1", "HSK level 1 vocabulary", false); err != nil {
+		t.Fatalf("UpsertTagMeta: %v", err)
+	}
+
+	tags, err = s.GetTagDetails(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetTagDetails after upsert: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(tags))
+	}
+	if tags[0].Description != "HSK level 1 vocabulary" {
+		t.Errorf("expected updated description, got %q", tags[0].Description)
+	}
+	if tags[0].Importable {
+		t.Errorf("expected importable=false after update")
+	}
+}
+
+func TestGetImportableSourceTags_FiltersImportable(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed two tags for user 1 (source/library user).
+	for _, tag := range []string{"hsk1", "hsk2"} {
+		if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
+			ZhText:  tag + "字",
+			EnTexts: []string{tag + " word"},
+			Tags:    []string{tag},
+		}); err != nil {
+			t.Fatalf("CreateWord %s: %v", tag, err)
+		}
+	}
+
+	// Mark hsk2 as not importable.
+	if err := s.UpsertTagMeta(ctx, int64(1), "hsk2", "", false); err != nil {
+		t.Fatalf("UpsertTagMeta: %v", err)
+	}
+
+	tags, err := s.GetImportableSourceTags(ctx, int64(1))
+	if err != nil {
+		t.Fatalf("GetImportableSourceTags: %v", err)
+	}
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 importable tag, got %d", len(tags))
+	}
+	if tags[0].Name != "hsk1" {
+		t.Errorf("expected hsk1, got %q", tags[0].Name)
+	}
+}
+
+func TestGetImportableSourceTags_WithDescription(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
+		ZhText:  "你好",
+		EnTexts: []string{"hello"},
+		Tags:    []string{"greetings"},
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+	if err := s.UpsertTagMeta(ctx, int64(1), "greetings", "Basic greeting words", true); err != nil {
+		t.Fatalf("UpsertTagMeta: %v", err)
+	}
+
+	tags, err := s.GetImportableSourceTags(ctx, int64(1))
+	if err != nil {
+		t.Fatalf("GetImportableSourceTags: %v", err)
+	}
+	if len(tags) != 1 || tags[0].Description != "Basic greeting words" {
+		t.Errorf("expected description 'Basic greeting words', got %+v", tags)
 	}
 }

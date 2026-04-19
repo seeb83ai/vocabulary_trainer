@@ -10,267 +10,287 @@
 
   <!-- Navigation -->
   <nav class="bg-white shadow-sm border-b border-gray-200">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between">
-      <span class="text-xl font-bold text-gray-800" data-i18n="nav.title">词汇训练 · Vocab Trainer</span>
-      <button id="nav-menu-btn" class="sm:hidden p-1 rounded text-gray-500 hover:text-gray-800 transition" aria-label="Open navigation menu">☰</button>
-      <div id="nav-menu" class="hidden sm:flex sm:flex-row sm:items-center sm:gap-4">
-        <a href="/" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5" data-i18n="nav.train">Train</a>
-        <a href="/pinyin" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.pinyin">Pinyin</a>
-        <a href="/vocab" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.vocabulary">Vocabulary</a>
-        <a href="/mnemonics" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mnemonics">Mnemonics</a>
-        <a href="/mismatches" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.mismatches">Mismatches</a>
-        <a href="/stats" class="text-gray-500 hover:text-gray-800 font-medium" data-i18n="nav.stats">Stats</a>
-        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="en">🇬🇧</option>
-          <option value="zh">🇨🇳</option>
-        </select>
-        <button id="logout-btn" onclick="logout()" class="hidden text-gray-400 hover:text-gray-700 text-sm font-medium transition" data-i18n="nav.signOut">Sign out</button>
-      </div>
+    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
+      <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="en">🇬🇧</option>
+        <option value="zh">🇨🇳</option>
+      </select>
     </div>
   </nav>
 
-  <!-- Stats bar -->
-  <div class="bg-blue-50 border-b border-blue-100">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-6 text-sm text-blue-700">
-      <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.dueToday">Due today:</span> <strong id="stats-due">—</strong></span>
-      <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.totalWords">Total words:</span> <strong id="stats-total">—</strong></span>
-      <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.newToday">New today:</span> <strong id="stats-new">—</strong></span>
-    </div>
-  </div>
-
-  <!-- Mode selector -->
-  <div class="bg-white border-b border-gray-200">
-    <!-- Desktop: all chips -->
-    <div class="hidden sm:flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap">
-      <button data-mode="progressive"     class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.progressive">Progressive</button>
-      <button data-mode="random"          class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.random">Random</button>
-      <button data-mode="en_to_zh"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.en_to_zh">EN → ZH</button>
-      <button data-mode="zh_to_en"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.zh_to_en">ZH → EN</button>
-      <button data-mode="zh_pinyin_to_en" class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.zh_pinyin_to_en">ZH + Pinyin → EN</button>
-    </div>
-    <!-- Mobile: selected chip + level chip + edit trigger -->
-    <div class="flex sm:hidden max-w-2xl mx-auto px-4 py-2 items-center gap-2">
-      <span id="mode-mobile-label" class="px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white"></span>
-      <span id="level-mobile-label" class="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600"></span>
-      <button id="open-filter-overlay" class="ml-auto text-xs text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition" data-i18n="filter.edit">▼ Edit</button>
-    </div>
-  </div>
-
-  <!-- Tier filter (desktop only; mobile uses overlay) -->
-  <div id="tier-filter-bar" class="hidden sm:block bg-white border-b border-gray-200">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-2 flex-wrap items-center">
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.level">Level:</span>
-      <button data-bucket="" class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.all">All</button>
-      <button data-bucket="new"    class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.new">New</button>
-      <button data-bucket="0-49"   class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.struggling">Struggling</button>
-      <button data-bucket="50-69"  class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.learning">Learning</button>
-      <button data-bucket="70-84"  class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.practicing">Practicing</button>
-      <button data-bucket="85-100" class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.mastered">Mastered</button>
-    </div>
-  </div>
-
-  <!-- Language filter (desktop only; mobile uses overlay) -->
-  <div id="lang-filter-bar" class="hidden">
-    <div id="lang-chips-desktop" class="sm:flex bg-white border-b border-gray-200 max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.langs">Languages:</span>
-    </div>
-  </div>
-
-  <!-- Tag filter (desktop only; mobile uses overlay) -->
-  <div id="tag-filter-bar" class="hidden sm:block bg-white border-b border-gray-20">
-    <div id="tag-chips-desktop" class="hidden sm:flex bg-white border-b border-gray-200 max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.tags">Tags:</span>
-    </div>
-  </div>
-
   <!-- Main content -->
-  <main class="flex-1 flex items-start justify-center px-4 py-10">
-    <div class="w-full max-w-lg">
+  <main class="flex-1 flex items-center justify-center px-4 py-10">
+    <div class="w-full max-w-md">
 
-      <!-- Empty state (no vocabulary added yet) -->
-      <div id="empty-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-5xl mb-4">📚</div>
-        <h2 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="empty.title">No vocabulary yet</h2>
-        <p class="text-gray-500 mb-6" data-i18n="empty.msg">Add some words to start training.</p>
-        <a href="/vocab" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition" data-i18n="empty.addBtn">
-          Add Vocabulary
-        </a>
+      <!-- HIBP warning banner (shown after login with compromised password) -->
+      <div id="hibp-warning" class="hidden mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4">
+        <p class="text-amber-800 text-sm font-medium mb-2">⚠️ Your password has appeared in a data breach. We recommend changing it.</p>
+        <a href="/settings" class="inline-block text-sm bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-1.5 rounded-lg transition">Change Password</a>
       </div>
 
-      <!-- Success state (all words reviewed for today) -->
-      <div id="success-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-5xl mb-4">🎉</div>
-        <h2 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="success.title">All done for today!</h2>
-        <p id="success-stats" class="text-gray-500 mb-6"></p>
-        <div class="mb-5">
-          <p class="text-sm font-medium text-gray-600 mb-3" data-i18n="success.learnMore">Learn more words?</p>
-          <div class="flex gap-3 justify-center">
-            <button data-advance="10" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">10</button>
-            <button data-advance="20" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">20</button>
-            <button data-advance="30" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">30</button>
-          </div>
+      <!-- Card -->
+      <div class="bg-white rounded-2xl shadow p-8">
+
+        <!-- Tabs -->
+        <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-8">
+          <button id="tab-signin" onclick="showTab('signin')" class="flex-1 py-2 rounded-lg text-sm font-medium transition bg-white text-gray-800 shadow-sm">Sign In</button>
+          <button id="tab-register" onclick="showTab('register')" class="flex-1 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Create Account</button>
         </div>
-        <label class="flex items-center justify-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-          <input type="checkbox" id="reset-cap-checkbox" class="rounded">
-          <span data-i18n="success.alsoNew">Also introduce new words today</span>
-        </label>
-      </div>
 
-      <!-- Error state -->
-      <div id="error-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-4xl mb-4">⚠️</div>
-        <p id="error-msg" class="text-red-600"></p>
-      </div>
+        <!-- Sign In panel -->
+        <div id="panel-signin">
+          <h2 class="text-lg font-semibold text-gray-800 mb-6">Welcome back</h2>
 
-      <!-- Card area -->
-      <div id="card-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-8">
-          <div id="mode-label" class="text-sm font-medium text-blue-600 uppercase tracking-wider mb-6"></div>
+          <div id="signin-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+          <div id="signin-info" class="hidden mb-4 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2"></div>
 
-          <div class="flex items-center gap-3 mb-3">
-            <div id="prompt-word" class="text-4xl font-bold text-gray-800 break-words flex-1"></div>
-            <button id="play-btn" type="button" class="hidden text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
-          </div>
-          <div id="pinyin-hint" class="hidden text-xl text-gray-500 mb-6"></div>
-          <div id="translations-hint" class="hidden text-2x1 text-gray-400 mb-4"></div>
-          <div id="hmm-type-badge" class="hidden inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2"></div>
-          <div id="hmm-actor-hint" class="hidden text-sm text-gray-400 mb-4"></div>
-
-          <form id="answer-form" class="mt-6">
-            <input
-              id="answer-input"
-              type="text"
-              autocomplete="off"
-              autocorrect="off"
-              spellcheck="false"
-              placeholder="Type your answer…"
-              data-i18n-placeholder="card.placeholder"
-              class="w-full border border-gray-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-            >
-            <button
-              type="submit"
-              class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
-              data-i18n="card.submit"
-            >
-              Submit
+          <form id="signin-form" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="signin-email">Email</label>
+              <input id="signin-email" type="email" required autocomplete="email"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="signin-password">Password</label>
+              <input id="signin-password" type="password" required autocomplete="current-password"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button type="submit" id="signin-btn"
+              class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-base transition">
+              Sign In
             </button>
           </form>
+
+          <p class="mt-5 text-center text-sm text-gray-500">
+            New here?
+            <button onclick="showTab('register')" class="text-blue-600 hover:underline font-medium">Create an account</button>
+          </p>
         </div>
-      </div>
 
-      <!-- New word introduction area (progressive mode) -->
-      <div id="new-word-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-8 text-center">
-          <div class="text-sm font-medium text-emerald-600 uppercase tracking-wider mb-6" data-i18n="newWord.label">New Word</div>
-          <div class="flex items-center justify-center gap-3 mb-3">
-            <div id="new-word-zh" class="text-4xl font-bold text-gray-800"></div>
-            <button id="new-word-play-btn" type="button" class="text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
-          </div>
-          <div id="new-word-pinyin" class="text-xl text-gray-500 mb-4"></div>
-          <div id="new-word-en" class="text-lg text-gray-700 mb-4"></div>
+        <!-- Register panel -->
+        <div id="panel-register" class="hidden">
+          <h2 class="text-lg font-semibold text-gray-800 mb-6">Create your account</h2>
 
-          <div class="flex gap-3">
-            <button id="new-word-skip-btn" class="flex-1 border border-gray-300 hover:border-gray-400 text-gray-600 font-semibold py-3 rounded-xl text-lg transition" data-i18n="newWord.skip">
-              Skip (7 days)
-            </button>
-            <button id="new-word-got-it-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition" data-i18n="newWord.gotIt">
-              Got it
-            </button>
-          </div>
-          <button id="new-word-no-new-btn" class="mt-3 w-full text-sm text-gray-400 hover:text-gray-600 py-2 transition" data-i18n="newWord.noNew">
-            No new words for now
-          </button>
-        </div>
-      </div>
+          <div id="register-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
 
-      <!-- Result area -->
-      <div id="result-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-8 text-center">
-          <div id="result-icon" class="text-3xl font-bold mb-4"></div>
-
-          <div id="word-breakdown" class="hidden mb-2"></div>
-          <button id="add-translation-btn" class="hidden"></button>
-
-          <button
-            id="needs-review-btn"
-            class="w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition"
-            data-i18n="result.flagReview"
-          >
-            Flag for Review
-          </button>
-          <button
-            id="next-btn"
-            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
-            data-i18n="result.next"
-          >
-            Next →
-          </button>
-
-          <div id="result-hmm" class="hidden mb-2 text-left"></div>
-
-          <div id="result-decompose" class="hidden mb-2 text-left">
-            <button id="result-decompose-toggle" type="button" class="text-sm text-gray-400 hover:text-gray-600 transition"></button>
-            <div id="result-decompose-content" class="hidden mt-2"></div>
+          <!-- Pending verification screen -->
+          <div id="register-pending" class="hidden text-center py-4">
+            <div class="text-4xl mb-4">📧</div>
+            <h3 class="text-base font-semibold text-gray-800 mb-2">Check your inbox</h3>
+            <p class="text-sm text-gray-500">We sent a confirmation link to <strong id="register-pending-email"></strong>. Click it to activate your account.</p>
           </div>
 
-          <div class="flex justify-center gap-6 text-sm text-gray-500 mb-8 mt-3">
-            <div class="text-center">
-              <span id="next-due-info"></span>
-              <div id="bucket-info" class="hidden text-xs text-gray-400 mt-0.5"></div>
+          <form id="register-form" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-email">Email</label>
+              <input id="reg-email" type="email" required autocomplete="email"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
-            <div class="text-center">
-              <span id="attempt-stats"></span>
-              <div id="streak-info" class="hidden text-xs text-gray-400 mt-0.5"></div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-password">Password <span class="text-gray-400 font-normal">(min. 8 characters)</span></label>
+              <input id="reg-password" type="password" required autocomplete="new-password" minlength="8"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
-          </div>
-        </div>
-      </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-confirm">Confirm Password</label>
+              <input id="reg-confirm" type="password" required autocomplete="new-password"
+                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button type="submit" id="register-btn"
+              class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-base transition">
+              Create Account
+            </button>
+          </form>
 
+          <p class="mt-5 text-center text-sm text-gray-500">
+            Already have an account?
+            <button onclick="showTab('signin')" class="text-blue-600 hover:underline font-medium">Sign in</button>
+          </p>
+        </div>
+
+      </div>
     </div>
   </main>
 
-  <!-- Mobile filter overlay (bottom sheet) -->
-  <div id="filter-overlay" class="hidden fixed inset-0 z-50 sm:hidden" role="dialog" aria-modal="true">
-    <div id="filter-overlay-backdrop" class="absolute inset-0 bg-black/50"></div>
-    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-xl max-h-[80vh] overflow-y-auto">
-      <div class="p-5">
-        <div class="mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.quizMode">Quiz Mode</div>
-          <div class="flex flex-wrap gap-2">
-            <button data-mode="progressive"     class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.progressive">Progressive</button>
-            <button data-mode="random"          class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.random">Random</button>
-            <button data-mode="en_to_zh"        class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.en_to_zh">EN → ZH</button>
-            <button data-mode="zh_to_en"        class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.zh_to_en">ZH → EN</button>
-            <button data-mode="zh_pinyin_to_en" class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.zh_pinyin_to_en">ZH + Pinyin → EN</button>
-          </div>
-        </div>
-        <div class="mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.level">Level</div>
-          <div class="flex flex-wrap gap-2">
-            <button data-bucket="" class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.all">All</button>
-            <button data-bucket="new"    class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.new">New</button>
-            <button data-bucket="0-49"   class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.struggling">Struggling</button>
-            <button data-bucket="50-69"  class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.learning">Learning</button>
-            <button data-bucket="70-84"  class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.practicing">Practicing</button>
-            <button data-bucket="85-100" class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.mastered">Mastered</button>
-          </div>
-        </div>
-        <div id="overlay-langs-section" class="hidden mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.langs">Languages</div>
-          <div id="overlay-lang-chips" class="flex flex-wrap gap-2"></div>
-        </div>
-        <div id="overlay-tags-section" class="hidden">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.tags">Tags</div>
-          <div id="overlay-tag-chips" class="flex flex-wrap gap-2"></div>
-        </div>
-        <button id="filter-overlay-close" class="mt-5 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2.5 rounded-xl text-sm transition" data-i18n="filter.done">Done</button>
-      </div>
-    </div>
-  </div>
+  <script>
+    // Redirect to /train if already authenticated
+    fetch('/api/auth/status').then(r => r.json()).then(d => {
+      if (d.auth) {
+        // Check actual session by calling /api/me (requires valid cookie)
+        fetch('/api/me').then(r => {
+          if (r.ok) window.location.replace('/train');
+        });
+      }
+    }).catch(() => {});
 
-  <script src="i18n.js"></script>
-  <script src="app.js"></script>
-  <script src="hmm-builder.js"></script>
-  <script src="train.js"></script>
+    // Switch to register tab if URL hash is #register
+    if (location.hash === '#register') showTab('register');
+
+    function showTab(tab) {
+      const isSignin = tab === 'signin';
+      document.getElementById('tab-signin').className =
+        'flex-1 py-2 rounded-lg text-sm font-medium transition ' +
+        (isSignin ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800');
+      document.getElementById('tab-register').className =
+        'flex-1 py-2 rounded-lg text-sm font-medium transition ' +
+        (!isSignin ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800');
+      document.getElementById('panel-signin').classList.toggle('hidden', !isSignin);
+      document.getElementById('panel-register').classList.toggle('hidden', isSignin);
+      history.replaceState(null, '', isSignin ? '/' : '/#register');
+    }
+
+    // HIBP k-anonymity check
+    async function isPasswordPwned(password) {
+      if (!crypto?.subtle) return false;
+      try {
+        const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(password));
+        const hex = Array.from(new Uint8Array(buf))
+          .map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+        const prefix = hex.slice(0, 5), suffix = hex.slice(5);
+        const res = await fetch('https://api.pwnedpasswords.com/range/' + prefix,
+          { headers: { 'Add-Padding': 'true' } });
+        const text = await res.text();
+        return text.split('\r\n').some(l => l.split(':')[0] === suffix);
+      } catch {
+        return false;
+      }
+    }
+
+    // Sign In
+    document.getElementById('signin-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = document.getElementById('signin-error');
+      const infoEl = document.getElementById('signin-info');
+      errEl.classList.add('hidden');
+      infoEl.classList.add('hidden');
+      const btn = document.getElementById('signin-btn');
+      btn.disabled = true;
+      btn.textContent = 'Signing in…';
+
+      const email = document.getElementById('signin-email').value.trim();
+      const password = document.getElementById('signin-password').value;
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (data.error === 'email_not_verified') {
+            infoEl.textContent = 'Please check your inbox and click the confirmation link to activate your account.';
+            infoEl.classList.remove('hidden');
+          } else {
+            errEl.textContent = data.error || 'Login failed. Please try again.';
+            errEl.classList.remove('hidden');
+          }
+          btn.disabled = false;
+          btn.textContent = 'Sign In';
+          return;
+        }
+
+        // Login successful — check HIBP in background, then redirect
+        const pwned = await isPasswordPwned(password);
+        if (pwned) {
+          document.getElementById('hibp-warning').classList.remove('hidden');
+          btn.disabled = false;
+          btn.textContent = 'Sign In';
+          return;
+        }
+
+        window.location.replace('/train');
+      } catch {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    });
+
+    // Register
+    document.getElementById('register-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const errEl = document.getElementById('register-error');
+      errEl.classList.add('hidden');
+      const btn = document.getElementById('register-btn');
+
+      const email = document.getElementById('reg-email').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const confirm = document.getElementById('reg-confirm').value;
+
+      if (password !== confirm) {
+        errEl.textContent = 'Passwords do not match.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      if (password.length < 8) {
+        errEl.textContent = 'Password must be at least 8 characters.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Checking password…';
+
+      const pwned = await isPasswordPwned(password);
+      if (pwned) {
+        errEl.textContent = 'This password has appeared in a data breach. Please choose a different password.';
+        errEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
+        return;
+      }
+
+      btn.textContent = 'Creating account…';
+
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          errEl.textContent = data.error || 'Registration failed. Please try again.';
+          errEl.classList.remove('hidden');
+          btn.disabled = false;
+          btn.textContent = 'Create Account';
+          return;
+        }
+
+        if (data.auto_login) {
+          window.location.replace(data.redirect || '/train');
+          return;
+        }
+
+        // Show pending verification screen
+        document.getElementById('register-form').classList.add('hidden');
+        document.getElementById('register-pending-email').textContent = email;
+        document.getElementById('register-pending').classList.remove('hidden');
+      } catch {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
+      }
+    });
+
+    // Show error from URL params (e.g. ?error=invalid_token from email verification)
+    const urlParams = new URLSearchParams(location.search);
+    const urlError = urlParams.get('error');
+    if (urlError) {
+      const errEl = document.getElementById('signin-error');
+      if (urlError === 'invalid_token') {
+        errEl.textContent = 'This verification link is invalid or has expired. Please register again.';
+      } else {
+        errEl.textContent = 'An error occurred. Please try again.';
+      }
+      errEl.classList.remove('hidden');
+    }
+  </script>
 </body>
 </html>

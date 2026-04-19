@@ -13,6 +13,13 @@ const (
 
 // DB-layer structs
 
+type User struct {
+	ID            int64  `json:"id"`
+	Email         string `json:"email"`
+	PasswordHash  string `json:"-"`
+	EmailVerified bool   `json:"email_verified"`
+}
+
 type Word struct {
 	ID        int64
 	Text      string
@@ -216,6 +223,19 @@ type PinyinDailyStatsResponse struct {
 	Days []PinyinDailyStatEntry `json:"days"`
 }
 
+type TagDetail struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Importable  bool   `json:"importable"`
+	WithEn      bool   `json:"with_en,omitempty"`
+	WithDe      bool   `json:"with_de,omitempty"`
+}
+
+type UpsertTagMetaRequest struct {
+	Description string `json:"description"`
+	Importable  bool   `json:"importable"`
+}
+
 type DueDateCount struct {
 	Date  string `json:"date"`
 	Count int    `json:"count"`
@@ -318,6 +338,7 @@ const (
 )
 
 type HMMProgress struct {
+	UserID        int64
 	EntityType    string
 	EntityKey     string
 	Repetitions   int

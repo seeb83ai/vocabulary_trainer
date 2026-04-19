@@ -36,7 +36,7 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	word, err := h.Store.GetWordByID(r.Context(), id)
+	word, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil || word == nil {
 		writeError(w, http.StatusNotFound, "word not found")
 		return

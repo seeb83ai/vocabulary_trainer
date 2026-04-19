@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"vocabulary_trainer/db"
+	"vocabulary_trainer/email"
 	"vocabulary_trainer/handlers"
 	"vocabulary_trainer/llm"
 
@@ -19,6 +21,39 @@ import (
 
 //go:embed frontend
 var frontendFS embed.FS
+
+type PageData struct {
+	Title       string
+	ActiveNav   string
+	ExtraHead   template.HTML
+	PageScripts []string
+}
+
+var templateCache map[string]*template.Template
+
+func initTemplates(fsys fs.FS) {
+	templateCache = make(map[string]*template.Template)
+	pages := []string{"train", "vocab", "stats", "mnemonics", "mismatches", "pinyin", "settings"}
+	for _, name := range pages {
+		t, err := template.ParseFS(fsys, "layout.html", name+".html")
+		if err != nil {
+			log.Fatalf("template parse error for %s: %v", name, err)
+		}
+		templateCache[name] = t
+	}
+}
+
+func renderTemplate(w http.ResponseWriter, name string, data PageData) {
+	t, ok := templateCache[name]
+	if !ok {
+		http.Error(w, "template not found", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+		log.Printf("template execute error %s: %v", name, err)
+	}
+}
 
 func main() {
 	dbPath := os.Getenv("DB_PATH")
@@ -50,12 +85,26 @@ func main() {
 	}
 	log.Printf("TTS enabled: audio=%s", audioDir)
 
-	authH, err := handlers.NewAuthHandler(os.Getenv("AUTH_USER"), os.Getenv("AUTH_PASSWORD"))
+	emailSender := email.NewSenderFromEnv()
+	if emailSender != nil {
+		log.Printf("Email enabled: SMTP configured")
+	} else {
+		log.Printf("Email disabled: SMTP not configured (accounts auto-verified)")
+	}
+
+	appURL := os.Getenv("APP_URL")
+	if appURL == "" {
+		port0 := os.Getenv("PORT")
+		if port0 == "" {
+			port0 = "8080"
+		}
+		appURL = "http://localhost:" + port0
+	}
+	log.Printf("App URL: %s", appURL)
+
+	authH, err := handlers.NewAuthHandler(store, emailSender, appURL)
 	if err != nil {
 		log.Fatalf("Failed to initialise auth: %v", err)
-	}
-	if authH != nil {
-		log.Printf("Auth enabled: user=%s", os.Getenv("AUTH_USER"))
 	}
 
 	var translateH *handlers.TranslateHandler
@@ -96,6 +145,8 @@ func main() {
 	log.Printf("Pinyin audio dirs: %v", pinyinAudioDirs)
 
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
+	importH := &handlers.ImportHandler{Store: store}
+	tagsH := &handlers.TagsHandler{Store: store}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 	hanziH := &handlers.HanziHandler{Store: store}
@@ -125,17 +176,17 @@ func main() {
 			next.ServeHTTP(w, r)
 		})
 	})
-	if authH != nil {
-		r.Use(authH.Middleware)
-	}
+	r.Use(authH.Middleware)
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/auth/status", handlers.AuthStatus(authH))
-		if authH != nil {
-			r.Post("/login", authH.Login)
-			r.Post("/logout", authH.Logout)
-		}
+		r.Post("/login", authH.Login)
+		r.Post("/logout", authH.Logout)
+		r.Post("/register", authH.Register)
+		r.Get("/verify-email", authH.VerifyEmail)
+		r.Get("/me", authH.Me)
+		r.Post("/change-password", authH.ChangePassword)
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
 		r.Get("/quiz/langs", quizH.Langs)
@@ -165,6 +216,11 @@ func main() {
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
+		r.Get("/import/source-tags", importH.SourceTags)
+		r.Get("/import/preview", importH.Preview)
+		r.Post("/import", importH.Import)
+		r.Get("/tags/details", tagsH.Details)
+		r.Put("/tags/{name}", tagsH.Update)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
 		r.Get("/hanzi/decompose", hanziH.Decompose)
@@ -199,28 +255,64 @@ func main() {
 		log.Fatalf("Failed to create sub FS: %v", err)
 	}
 
+	initTemplates(sub)
 	fileServer := http.FileServer(http.FS(sub))
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "index.html")
 	})
 	r.Get("/vocab", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "vocab.html")
+		renderTemplate(w, "vocab", PageData{
+			Title:       "Vocabulary — Vocab Trainer",
+			ActiveNav:   "vocab",
+			PageScripts: []string{"hmm-builder.js", "vocab.js"},
+		})
 	})
 	r.Get("/mismatches", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "mismatches.html")
+		renderTemplate(w, "mismatches", PageData{
+			Title:       "Mismatches — Vocab Trainer",
+			ActiveNav:   "mismatches",
+			PageScripts: []string{"mismatches.js"},
+		})
 	})
 	r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "stats.html")
+		renderTemplate(w, "stats", PageData{
+			Title:       "Stats — Vocab Trainer",
+			ActiveNav:   "stats",
+			ExtraHead:   template.HTML(`<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>`),
+			PageScripts: []string{"stats.js"},
+		})
 	})
 	r.Get("/mnemonics", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "mnemonics.html")
+		renderTemplate(w, "mnemonics", PageData{
+			Title:       "Mnemonics — Vocab Trainer",
+			ActiveNav:   "mnemonics",
+			PageScripts: []string{"mnemonics.js"},
+		})
+	})
+	r.Get("/train", func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "train", PageData{
+			Title:       "Train — Vocab Trainer",
+			ActiveNav:   "train",
+			PageScripts: []string{"hmm-builder.js", "train.js"},
+		})
+	})
+	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "settings", PageData{
+			Title:       "Settings — Vocab Trainer",
+			ActiveNav:   "settings",
+			PageScripts: []string{"settings.js"},
+		})
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "login.html")
+		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
 	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
-		serveFileFromFS(w, r, sub, "pinyin.html")
+		renderTemplate(w, "pinyin", PageData{
+			Title:       "Pinyin Listening · Vocab Trainer",
+			ActiveNav:   "pinyin",
+			PageScripts: []string{"pinyin.js"},
+		})
 	})
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		fileServer.ServeHTTP(w, r)

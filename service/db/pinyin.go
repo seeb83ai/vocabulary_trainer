@@ -10,8 +10,8 @@ import (
 	"vocabulary_trainer/models"
 )
 
-// InsertPinyinSound inserts a pinyin sound and initialises its progress row.
-func (s *Store) InsertPinyinSound(ctx context.Context, sound models.PinyinSound) (int64, error) {
+// InsertPinyinSound inserts a pinyin sound and initialises its progress row for the given user.
+func (s *Store) InsertPinyinSound(ctx context.Context, userID int64, sound models.PinyinSound) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO pinyin_sounds (initial, final, tone, syllable, filename, tag)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
@@ -37,11 +37,24 @@ func (s *Store) InsertPinyinSound(ctx context.Context, sound models.PinyinSound)
 	// (alphabetical) order. Spread over the last hour.
 	dueDate := time.Now().UTC().Add(-time.Duration(rand.Intn(3600)) * time.Second).Format("2006-01-02 15:04:05")
 	_, err = s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO pinyin_progress (sound_id, due_date) VALUES (?, ?)`, id, dueDate)
+		`INSERT OR IGNORE INTO pinyin_progress (user_id, sound_id, due_date) VALUES (?, ?, ?)`, userID, id, dueDate)
 	if err != nil {
 		return 0, fmt.Errorf("init pinyin progress: %w", err)
 	}
 	return id, nil
+}
+
+// InitPinyinProgressForUser creates pinyin_progress rows for all existing sounds
+// for the given user, skipping any that already exist.
+func (s *Store) InitPinyinProgressForUser(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO pinyin_progress (user_id, sound_id, due_date)
+		 SELECT ?, id, datetime('now', '-' || (abs(random()) % 3600) || ' seconds')
+		 FROM pinyin_sounds`, userID)
+	if err != nil {
+		return fmt.Errorf("init pinyin progress for user: %w", err)
+	}
+	return nil
 }
 
 // GetPinyinSoundByID returns a single pinyin sound by ID.
@@ -98,7 +111,7 @@ func (s *Store) GetPinyinToneVariants(ctx context.Context, syllable string) ([]m
 
 // GetNextPinyinCard returns the next pinyin sound to study using the same
 // 3-tier priority as GetNextCard: overdue → non-retry-window → retry-window.
-func (s *Store) GetNextPinyinCard(ctx context.Context, tags []string, skipNew bool) (*models.PinyinSound, *models.SM2Progress, error) {
+func (s *Store) GetNextPinyinCard(ctx context.Context, userID int64, tags []string, skipNew bool) (*models.PinyinSound, *models.SM2Progress, error) {
 	tagFilter := ""
 	var tagArgs []any
 	if len(tags) > 0 {
@@ -120,13 +133,13 @@ func (s *Store) GetNextPinyinCard(ctx context.Context, tags []string, skipNew bo
 		       p.sound_id, p.repetitions, p.easiness, p.interval_days, p.due_date,
 		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning
 		FROM pinyin_sounds s
-		JOIN pinyin_progress p ON p.sound_id = s.id
+		JOIN pinyin_progress p ON p.sound_id = s.id AND p.user_id = ?
 		WHERE 1=1` + tagFilter + newFilter + ` %s
 		ORDER BY p.due_date ASC
 		LIMIT 1`
 
 	tryQuery := func(extra string) (*models.PinyinSound, *models.SM2Progress, error) {
-		args := append([]any{}, tagArgs...)
+		args := append([]any{userID}, tagArgs...)
 		row := s.db.QueryRowContext(ctx, fmt.Sprintf(query, extra), args...)
 		var ps models.PinyinSound
 		var prog models.SM2Progress
@@ -254,15 +267,15 @@ func (s *Store) GetPinyinDistractors(ctx context.Context, target models.PinyinSo
 	return distractors, nil
 }
 
-// GetPinyinProgress returns the SM2 progress for a pinyin sound.
-func (s *Store) GetPinyinProgress(ctx context.Context, soundID int64) (*models.SM2Progress, error) {
+// GetPinyinProgress returns the SM2 progress for a pinyin sound and user.
+func (s *Store) GetPinyinProgress(ctx context.Context, userID, soundID int64) (*models.SM2Progress, error) {
 	var p models.SM2Progress
 	var dueDate string
 	var learning int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT sound_id, repetitions, easiness, interval_days, due_date,
 		        total_correct, total_attempts, streak_bonus, learning
-		 FROM pinyin_progress WHERE sound_id = ?`, soundID).
+		 FROM pinyin_progress WHERE user_id = ? AND sound_id = ?`, userID, soundID).
 		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
 			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning)
 	p.DueDate = parseDateTime(dueDate)
@@ -276,8 +289,8 @@ func (s *Store) GetPinyinProgress(ctx context.Context, soundID int64) (*models.S
 	return &p, nil
 }
 
-// UpdatePinyinProgress saves updated progress for a pinyin sound.
-func (s *Store) UpdatePinyinProgress(ctx context.Context, p models.SM2Progress) error {
+// UpdatePinyinProgress saves updated progress for a pinyin sound and user.
+func (s *Store) UpdatePinyinProgress(ctx context.Context, userID int64, p models.SM2Progress) error {
 	learningInt := 0
 	if p.LearningNewWord {
 		learningInt = 1
@@ -286,10 +299,10 @@ func (s *Store) UpdatePinyinProgress(ctx context.Context, p models.SM2Progress) 
 		`UPDATE pinyin_progress
 		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
 		     total_correct = ?, total_attempts = ?, streak_bonus = ?, learning = ?
-		 WHERE sound_id = ?`,
+		 WHERE user_id = ? AND sound_id = ?`,
 		p.Repetitions, p.Easiness, p.IntervalDays,
 		p.DueDate.UTC().Format("2006-01-02 15:04:05"),
-		p.TotalCorrect, p.TotalAttempts, p.StreakBonus, learningInt, p.WordID)
+		p.TotalCorrect, p.TotalAttempts, p.StreakBonus, learningInt, userID, p.WordID)
 	if err != nil {
 		return fmt.Errorf("update pinyin progress: %w", err)
 	}
@@ -300,19 +313,19 @@ func (s *Store) UpdatePinyinProgress(ctx context.Context, p models.SM2Progress) 
 	return nil
 }
 
-// AcknowledgePinyinSound marks a sound as "seen" by setting first_seen_date.
-func (s *Store) AcknowledgePinyinSound(ctx context.Context, soundID int64) error {
+// AcknowledgePinyinSound marks a sound as "seen" by setting first_seen_date for the given user.
+func (s *Store) AcknowledgePinyinSound(ctx context.Context, userID, soundID int64) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE pinyin_progress SET first_seen_date = date('now')
-		 WHERE sound_id = ? AND first_seen_date IS NULL`, soundID)
+		 WHERE user_id = ? AND sound_id = ? AND first_seen_date IS NULL`, userID, soundID)
 	if err != nil {
 		return fmt.Errorf("acknowledge pinyin sound: %w", err)
 	}
 	return nil
 }
 
-// GetPinyinStats returns due/total/mastered counts, optionally filtered by tags.
-func (s *Store) GetPinyinStats(ctx context.Context, tags []string) (due, total int, err error) {
+// GetPinyinStats returns due/total counts for the given user, optionally filtered by tags.
+func (s *Store) GetPinyinStats(ctx context.Context, userID int64, tags []string) (due, total int, err error) {
 	tagFilter := ""
 	var tagArgs []any
 	if len(tags) > 0 {
@@ -324,11 +337,11 @@ func (s *Store) GetPinyinStats(ctx context.Context, tags []string) (due, total i
 		tagFilter = ` AND s.tag IN (` + strings.Join(placeholders, ",") + `)`
 	}
 
-	args := append([]any{}, tagArgs...)
+	args := append([]any{userID}, tagArgs...)
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM pinyin_progress p
 		 JOIN pinyin_sounds s ON s.id = p.sound_id
-		 WHERE p.due_date <= CURRENT_TIMESTAMP AND p.first_seen_date IS NOT NULL`+tagFilter, args...).Scan(&due)
+		 WHERE p.user_id = ? AND p.due_date <= CURRENT_TIMESTAMP AND p.first_seen_date IS NOT NULL`+tagFilter, args...).Scan(&due)
 	if err != nil {
 		return 0, 0, fmt.Errorf("count pinyin due: %w", err)
 	}
@@ -362,14 +375,14 @@ func (s *Store) ListPinyinTags(ctx context.Context) ([]string, error) {
 	return tags, nil
 }
 
-// UpsertPinyinConfusion increments the confusion count between two sounds.
-func (s *Store) UpsertPinyinConfusion(ctx context.Context, soundID, confusedWithID int64) error {
+// UpsertPinyinConfusion increments the confusion count between two sounds for the given user.
+func (s *Store) UpsertPinyinConfusion(ctx context.Context, userID, soundID, confusedWithID int64) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO pinyin_confusions (sound_id, confused_with_id, count, last_seen)
-		 VALUES (?, ?, 1, CURRENT_TIMESTAMP)
-		 ON CONFLICT(sound_id, confused_with_id) DO UPDATE
+		`INSERT INTO pinyin_confusions (user_id, sound_id, confused_with_id, count, last_seen)
+		 VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
+		 ON CONFLICT(user_id, sound_id, confused_with_id) DO UPDATE
 		 SET count = count + 1, last_seen = CURRENT_TIMESTAMP`,
-		soundID, confusedWithID)
+		userID, soundID, confusedWithID)
 	if err != nil {
 		return fmt.Errorf("upsert pinyin confusion: %w", err)
 	}
@@ -414,10 +427,10 @@ func ShufflePinyinOptions(opts []models.PinyinOption) {
 
 // RecordPinyinDailyStat upserts today's pinyin_daily_stats row after an answer.
 // tone must be 1–5.
-func (s *Store) RecordPinyinDailyStat(ctx context.Context, correct bool, tone int) error {
+func (s *Store) RecordPinyinDailyStat(ctx context.Context, userID int64, correct bool, tone int) error {
 	var soundsSeen int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM pinyin_progress WHERE first_seen_date IS NOT NULL`).Scan(&soundsSeen); err != nil {
+		`SELECT COUNT(*) FROM pinyin_progress WHERE user_id = ? AND first_seen_date IS NOT NULL`, userID).Scan(&soundsSeen); err != nil {
 		return fmt.Errorf("count pinyin sounds seen: %w", err)
 	}
 	mistakeInc := 0
@@ -437,24 +450,24 @@ func (s *Store) RecordPinyinDailyStat(ctx context.Context, correct bool, tone in
 	toneCol := fmt.Sprintf("tone%d_%s", tone, suffix)
 
 	query := fmt.Sprintf(`
-		INSERT INTO pinyin_daily_stats (date, attempts, mistakes, sounds_seen, %s)
-		VALUES (date('now'), 1, ?, ?, 1)
-		ON CONFLICT(date) DO UPDATE SET
+		INSERT INTO pinyin_daily_stats (user_id, date, attempts, mistakes, sounds_seen, %s)
+		VALUES (?, date('now'), 1, ?, ?, 1)
+		ON CONFLICT(user_id, date) DO UPDATE SET
 			attempts    = attempts + 1,
 			mistakes    = mistakes + ?,
 			sounds_seen = ?,
 			%s          = %s + 1`,
 		toneCol, toneCol, toneCol)
 
-	_, err := s.db.ExecContext(ctx, query, mistakeInc, soundsSeen, mistakeInc, soundsSeen)
+	_, err := s.db.ExecContext(ctx, query, userID, mistakeInc, soundsSeen, mistakeInc, soundsSeen)
 	if err != nil {
 		return fmt.Errorf("upsert pinyin daily stat: %w", err)
 	}
 	return nil
 }
 
-// GetPinyinDailyStatsHistory returns all pinyin daily stats ordered by date ascending.
-func (s *Store) GetPinyinDailyStatsHistory(ctx context.Context) ([]models.PinyinDailyStat, error) {
+// GetPinyinDailyStatsHistory returns all pinyin daily stats for the given user ordered by date ascending.
+func (s *Store) GetPinyinDailyStatsHistory(ctx context.Context, userID int64) ([]models.PinyinDailyStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT date, attempts, mistakes, sounds_seen,
 		       tone1_correct, tone1_wrong,
@@ -462,7 +475,7 @@ func (s *Store) GetPinyinDailyStatsHistory(ctx context.Context) ([]models.Pinyin
 		       tone3_correct, tone3_wrong,
 		       tone4_correct, tone4_wrong,
 		       tone5_correct, tone5_wrong
-		FROM pinyin_daily_stats ORDER BY date ASC`)
+		FROM pinyin_daily_stats WHERE user_id = ? ORDER BY date ASC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get pinyin daily stats: %w", err)
 	}

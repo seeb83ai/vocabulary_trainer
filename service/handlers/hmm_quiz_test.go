@@ -15,6 +15,7 @@ func hmmQuizRouter(t *testing.T) (http.Handler, *handlers.HMMQuizHandler) {
 	store := openTestDB(t)
 	h := &handlers.HMMQuizHandler{Store: store}
 	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
 	r.Post("/api/hmm-quiz/answer", h.Answer)
 	return r, h
 }
@@ -26,24 +27,24 @@ func clearAllHMMNames(t *testing.T, h *handlers.HMMQuizHandler) {
 	t.Helper()
 	ctx := context.Background()
 	// Blank all actors that have names (migration seeds "null" → "Jackie Chan")
-	actors, err := h.Store.GetHMMActors(ctx)
+	actors, err := h.Store.GetHMMActors(ctx, int64(2))
 	if err != nil {
 		t.Fatalf("clearAllHMMNames GetHMMActors: %v", err)
 	}
 	for _, a := range actors {
 		if a.ActorName != "" {
-			if err := h.Store.UpdateHMMActor(ctx, a.Initial, ""); err != nil {
+			if err := h.Store.UpdateHMMActor(ctx, int64(2), a.Initial, ""); err != nil {
 				t.Fatalf("clearAllHMMNames UpdateHMMActor %s: %v", a.Initial, err)
 			}
 		}
 	}
 	for tone := 1; tone <= 5; tone++ {
-		if err := h.Store.UpdateHMMToneRoom(ctx, tone, ""); err != nil {
+		if err := h.Store.UpdateHMMToneRoom(ctx, int64(2), tone, ""); err != nil {
 			t.Fatalf("clearAllHMMNames tone %d: %v", tone, err)
 		}
 	}
 	for _, radical := range []string{"一", "二"} {
-		_ = h.Store.UpsertHMMProp(ctx, radical, "")
+		_ = h.Store.UpsertHMMProp(ctx, int64(2), radical, "")
 	}
 }
 
@@ -53,10 +54,10 @@ func seedHMMActorEntry(t *testing.T, h *handlers.HMMQuizHandler, initial, name s
 	t.Helper()
 	ctx := context.Background()
 	clearAllHMMNames(t, h)
-	if err := h.Store.UpdateHMMActor(ctx, initial, name); err != nil {
+	if err := h.Store.UpdateHMMActor(ctx, int64(2), initial, name); err != nil {
 		t.Fatalf("UpdateHMMActor: %v", err)
 	}
-	if err := h.Store.EnsureHMMProgress(ctx); err != nil {
+	if err := h.Store.EnsureHMMProgress(ctx, int64(2)); err != nil {
 		t.Fatalf("EnsureHMMProgress: %v", err)
 	}
 }

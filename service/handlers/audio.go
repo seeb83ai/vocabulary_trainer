@@ -28,7 +28,7 @@ func (h *AudioHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 
 	// Generate lazily if the file doesn't exist yet
 	if _, err := os.Stat(mp3Path); os.IsNotExist(err) {
-		wd, err := h.Store.GetWordByID(r.Context(), id)
+		wd, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 		if err != nil {
 			internalError(w, err)
 			return
