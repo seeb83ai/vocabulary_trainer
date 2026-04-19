@@ -136,8 +136,18 @@
           </div>
         </div>
 
-        <!-- Step 3: how many to start + confirm -->
+        <!-- Step 3: tags + how many to start + confirm -->
         <div id="ob-step3" class="hidden">
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="vocab.importApplyTags">Tags to apply to imported words:</label>
+            <div id="ob-apply-tags" class="flex flex-wrap gap-1 mb-2"></div>
+            <div class="relative">
+              <input id="ob-tag-input" type="text" placeholder="Add tag…" data-i18n-placeholder="vocab.addTag"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autocomplete="off">
+              <div id="ob-tag-autocomplete" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto"></div>
+            </div>
+          </div>
           <div class="mb-5">
             <label class="block text-sm font-medium text-gray-700 mb-2" data-i18n="empty.howManyLabel">How many random words do you want to start training with today?</label>
             <select id="ob-start-count"

@@ -803,6 +803,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let obSelectedTag = '';
   let obFilterLangs = new Set();
   let obFilterMode = 'any';
+  let obApplyTags = [];
 
   function obTagMatchesFilter(tag) {
     if (obFilterLangs.size === 0) return true;
@@ -913,7 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
           tag: obSelectedTag,
           import_en: $('ob-import-en').checked,
           import_de: $('ob-import-de').checked,
-          apply_tags: [],
+          apply_tags: [...obApplyTags],
         }),
       });
       const startCount = parseInt($('ob-start-count').value) || result.imported;
@@ -935,6 +936,55 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.textContent = t('vocab.import');
     }
   }
+
+  function obRenderApplyTags() {
+    const container = $('ob-apply-tags');
+    container.innerHTML = '';
+    for (const tag of obApplyTags) {
+      const pill = document.createElement('span');
+      pill.className = 'inline-flex items-center bg-gray-200 text-gray-700 text-sm px-2 py-0.5 rounded-full';
+      pill.innerHTML = `${escHtml(tag)} <button type="button" class="ml-1 text-gray-400 hover:text-red-500 leading-none">&times;</button>`;
+      pill.querySelector('button').addEventListener('click', () => {
+        obApplyTags = obApplyTags.filter(t => t !== tag);
+        obRenderApplyTags();
+      });
+      container.appendChild(pill);
+    }
+  }
+
+  function obAddTag(tag) {
+    tag = tag.trim();
+    if (!tag || obApplyTags.includes(tag)) return;
+    obApplyTags.push(tag);
+    obRenderApplyTags();
+    $('ob-tag-input').value = '';
+    $('ob-tag-autocomplete').classList.add('hidden');
+  }
+
+  function obShowTagAutocomplete(query) {
+    const dropdown = $('ob-tag-autocomplete');
+    const q = query.toLowerCase();
+    const tagNames = obAllTags.map(t => t.name);
+    const matches = tagNames.filter(n => n.toLowerCase().includes(q) && !obApplyTags.includes(n));
+    if (query && !tagNames.includes(query) && !obApplyTags.includes(query)) matches.push(query);
+    if (!matches.length) { dropdown.classList.add('hidden'); return; }
+    dropdown.innerHTML = '';
+    dropdown.classList.remove('hidden');
+    for (const m of matches) {
+      const item = document.createElement('div');
+      item.className = 'px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer';
+      item.textContent = m === query && !tagNames.includes(query) ? t('vocab.createTag', { tag: m }) : m;
+      item.addEventListener('mousedown', e => { e.preventDefault(); obAddTag(m); });
+      dropdown.appendChild(item);
+    }
+  }
+
+  $('ob-tag-input').addEventListener('input', e => obShowTagAutocomplete(e.target.value));
+  $('ob-tag-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); obAddTag(e.target.value); }
+    if (e.key === 'Escape') $('ob-tag-autocomplete').classList.add('hidden');
+  });
+  $('ob-tag-input').addEventListener('blur', () => setTimeout(() => $('ob-tag-autocomplete').classList.add('hidden'), 150));
 
   // Wire up onboarding filter buttons
   ['en', 'de'].forEach(lang => {
