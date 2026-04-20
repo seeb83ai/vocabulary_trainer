@@ -89,6 +89,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mnemonics := r.URL.Query().Get("mnemonics") != "false"
+	trainComponents := r.URL.Query().Get("trainComponents") == "1"
 
 	// Ensure progress rows exist for any newly-named library entries.
 	if err := h.Store.EnsureHMMProgress(r.Context(), UserIDFromContext(r.Context())); err != nil {
@@ -96,28 +97,74 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Interleave due HMM mnemonic cards (unless user excluded mnemonics).
+	// Fetch HMM mnemonic candidate.
+	var hmmCard *models.HMMQuizCard
 	if mnemonics {
-		hmmCard, _, hmmErr := h.Store.GetNextDueHMMCard(r.Context(), UserIDFromContext(r.Context()), nil)
+		var hmmErr error
+		hmmCard, _, hmmErr = h.Store.GetNextDueHMMCard(r.Context(), UserIDFromContext(r.Context()), nil)
 		if hmmErr != nil {
 			writeError(w, http.StatusInternalServerError, hmmErr.Error())
 			return
 		}
-		if hmmCard != nil {
-			serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
-			if serveHMM {
-				writeJSON(w, http.StatusOK, models.QuizCard{
-					CardType:     "hmm",
-					EntityType:   hmmCard.EntityType,
-					EntityKey:    hmmCard.EntityKey,
-					Prompt:       hmmCard.Prompt,
-					Category:     hmmCard.Category,
-					Hint:         hmmCard.Hint,
-					DueDate:      hmmCard.DueDate,
-					IntervalDays: hmmCard.IntervalDays,
-				})
-				return
+	}
+
+	// Fetch component candidate.
+	var compCard *struct {
+		Character  string
+		Definition string
+		DueDate    time.Time
+	}
+	if trainComponents {
+		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()))
+		if ccErr != nil {
+			writeError(w, http.StatusInternalServerError, ccErr.Error())
+			return
+		}
+		if cc != nil {
+			compCard = &struct {
+				Character  string
+				Definition string
+				DueDate    time.Time
+			}{
+				Character:  cc.Character,
+				Definition: cc.Definition,
+				DueDate:    db.ParseDateTime(cc.Progress.DueDate),
 			}
+		}
+	}
+
+	// Pick the card with the lowest due_date across word, HMM, and component.
+	// HMM check.
+	if hmmCard != nil {
+		serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
+		if compCard != nil && serveHMM {
+			serveHMM = hmmCard.DueDate.Before(compCard.DueDate) || hmmCard.DueDate.Equal(compCard.DueDate)
+		}
+		if serveHMM {
+			writeJSON(w, http.StatusOK, models.QuizCard{
+				CardType:     "hmm",
+				EntityType:   hmmCard.EntityType,
+				EntityKey:    hmmCard.EntityKey,
+				Prompt:       hmmCard.Prompt,
+				Category:     hmmCard.Category,
+				Hint:         hmmCard.Hint,
+				DueDate:      hmmCard.DueDate,
+				IntervalDays: hmmCard.IntervalDays,
+			})
+			return
+		}
+	}
+
+	// Component check.
+	if compCard != nil {
+		serveComp := word == nil || compCard.DueDate.Before(progress.DueDate)
+		if serveComp {
+			writeJSON(w, http.StatusOK, models.QuizCard{
+				CardType: "component",
+				Prompt:   compCard.Character,
+				DueDate:  compCard.DueDate,
+			})
+			return
 		}
 	}
 
@@ -504,17 +551,29 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		hmmDueToday = hmmStats.DueToday
 		hmmTotal = hmmStats.Total
 	}
+	compDueToday := 0
+	compTotal := 0
+	if r.URL.Query().Get("trainComponents") == "1" {
+		var cErr error
+		compDueToday, compTotal, cErr = h.Store.GetComponentCounts(r.Context(), UserIDFromContext(r.Context()))
+		if cErr != nil {
+			writeError(w, http.StatusInternalServerError, cErr.Error())
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]int{
-		"due_today":            due,
-		"total":                total,
-		"new_today":            newToday,
-		"max_new_per_day":      h.MaxNewPerDay,
-		"today_attempts":       todayAttempts,
-		"today_mistakes":       todayMistakes,
-		"available_to_advance": availableToAdvance,
-		"new_available":        newAvailable,
-		"hmm_due_today":        hmmDueToday,
-		"hmm_total":            hmmTotal,
+		"due_today":              due,
+		"total":                  total,
+		"new_today":              newToday,
+		"max_new_per_day":        h.MaxNewPerDay,
+		"today_attempts":         todayAttempts,
+		"today_mistakes":         todayMistakes,
+		"available_to_advance":   availableToAdvance,
+		"new_available":          newAvailable,
+		"hmm_due_today":          hmmDueToday,
+		"hmm_total":              hmmTotal,
+		"components_due_today":   compDueToday,
+		"components_total":       compTotal,
 	})
 }
 

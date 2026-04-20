@@ -253,6 +253,40 @@ type DailyStatEntry struct {
 	BucketMastered   int    `json:"bucket_mastered"`
 }
 
+// ComponentProgress tracks SM-2 state for a single hanzi component per user.
+type ComponentProgress struct {
+	UserID        int64   `json:"user_id"`
+	Character     string  `json:"character"`
+	Repetitions   int     `json:"repetitions"`
+	Easiness      float64 `json:"easiness"`
+	IntervalDays  int     `json:"interval_days"`
+	DueDate       string  `json:"due_date"`
+	TotalCorrect  int     `json:"total_correct"`
+	TotalAttempts int     `json:"total_attempts"`
+	FirstSeenDate *string `json:"first_seen_date,omitempty"`
+}
+
+type ComponentDailyStat struct {
+	Date    string `json:"date"`
+	Correct int    `json:"correct"`
+	Wrong   int    `json:"wrong"`
+}
+
+type ComponentAnswerRequest struct {
+	Character string `json:"character"`
+	Answer    string `json:"answer"`
+}
+
+type ComponentAnswerResponse struct {
+	Correct       bool      `json:"correct"`
+	CorrectAnswer string    `json:"correct_answer"`
+	NextDue       time.Time `json:"next_due"`
+	IntervalDays  int       `json:"interval_days"`
+	TotalCorrect  int       `json:"total_correct"`
+	TotalAttempts int       `json:"total_attempts"`
+	Repetitions   int       `json:"repetitions"`
+}
+
 type HanziDecomposition struct {
 	Character     string               `json:"character"`
 	Definition    string               `json:"definition,omitempty"`

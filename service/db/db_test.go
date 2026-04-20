@@ -2663,3 +2663,151 @@ func TestGetUserByEmail_IncludesRole(t *testing.T) {
 		t.Errorf("admin user: want role admin, got %q", user.Role)
 	}
 }
+
+// ── Component tests ───────────────────────────────────────────────────────────
+
+// seedHanziDecomposition inserts a row in hanzi_decomposition for testing.
+func seedHanziDecomposition(t *testing.T, s *Store, character, definition string) {
+	t.Helper()
+	_, err := s.db.Exec(
+		`INSERT OR REPLACE INTO hanzi_decomposition (character, definition) VALUES (?, ?)`,
+		character, definition,
+	)
+	if err != nil {
+		t.Fatalf("seedHanziDecomposition %q: %v", character, err)
+	}
+}
+
+func TestInitComponentsForWord_InsertsKnownCharacters(t *testing.T) {
+	s := openTestDB(t)
+	seedHanziDecomposition(t, s, "女", "woman; female")
+	seedHanziDecomposition(t, s, "子", "child; son")
+
+	err := s.InitComponentsForWord(context.Background(), int64(2), "女子", time.Now())
+	if err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM component_progress WHERE user_id = 2`).Scan(&count)
+	if count != 2 {
+		t.Errorf("want 2 component rows, got %d", count)
+	}
+}
+
+func TestInitComponentsForWord_SkipsUnknownCharacters(t *testing.T) {
+	s := openTestDB(t)
+	// No hanzi_decomposition entries seeded → should not insert anything.
+	err := s.InitComponentsForWord(context.Background(), int64(2), "女子", time.Now())
+	if err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM component_progress WHERE user_id = 2`).Scan(&count)
+	if count != 0 {
+		t.Errorf("want 0 component rows, got %d", count)
+	}
+}
+
+func TestInitComponentsForWord_Idempotent(t *testing.T) {
+	s := openTestDB(t)
+	seedHanziDecomposition(t, s, "女", "woman")
+
+	for i := 0; i < 3; i++ {
+		if err := s.InitComponentsForWord(context.Background(), int64(2), "女", time.Now()); err != nil {
+			t.Fatalf("InitComponentsForWord iteration %d: %v", i, err)
+		}
+	}
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM component_progress WHERE user_id = 2`).Scan(&count)
+	if count != 1 {
+		t.Errorf("want 1 component row (idempotent), got %d", count)
+	}
+}
+
+func TestGetNextComponentCard_ReturnsNilWhenEmpty(t *testing.T) {
+	s := openTestDB(t)
+	card, err := s.GetNextComponentCard(context.Background(), int64(2))
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card != nil {
+		t.Errorf("want nil card when no components, got %+v", card)
+	}
+}
+
+func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
+	s := openTestDB(t)
+	seedHanziDecomposition(t, s, "女", "woman; female")
+	past := time.Now().Add(-24 * time.Hour)
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", past); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	card, err := s.GetNextComponentCard(context.Background(), int64(2))
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("want a card, got nil")
+	}
+	if card.Character != "女" {
+		t.Errorf("want character 女, got %q", card.Character)
+	}
+	if card.Definition == "" {
+		t.Error("want non-empty definition")
+	}
+}
+
+func TestRecordComponentAnswer_UpdatesProgress(t *testing.T) {
+	s := openTestDB(t)
+	seedHanziDecomposition(t, s, "女", "woman")
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", time.Now().Add(-time.Hour)); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	p, _, err := s.RecordComponentAnswer(context.Background(), int64(2), "女", true)
+	if err != nil {
+		t.Fatalf("RecordComponentAnswer: %v", err)
+	}
+	if p.TotalCorrect != 1 {
+		t.Errorf("want TotalCorrect=1, got %d", p.TotalCorrect)
+	}
+	if p.TotalAttempts != 1 {
+		t.Errorf("want TotalAttempts=1, got %d", p.TotalAttempts)
+	}
+}
+
+func TestRecordComponentStat_IncreasesCount(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.RecordComponentStat(context.Background(), int64(2), true); err != nil {
+		t.Fatalf("RecordComponentStat: %v", err)
+	}
+	var correct int
+	s.db.QueryRow(`SELECT correct FROM component_stats WHERE user_id = 2 AND date = date('now')`).Scan(&correct)
+	if correct != 1 {
+		t.Errorf("want correct=1, got %d", correct)
+	}
+}
+
+func TestGetComponentCounts_ReturnsCorrectCounts(t *testing.T) {
+	s := openTestDB(t)
+	seedHanziDecomposition(t, s, "女", "woman")
+	past := time.Now().Add(-24 * time.Hour)
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", past); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+	// Mark as seen so it counts toward due_today.
+	s.db.Exec(`UPDATE component_progress SET first_seen_date = date('now') WHERE character = '女' AND user_id = 2`)
+
+	due, total, err := s.GetComponentCounts(context.Background(), int64(2))
+	if err != nil {
+		t.Fatalf("GetComponentCounts: %v", err)
+	}
+	if due != 1 {
+		t.Errorf("want due=1, got %d", due)
+	}
+	if total != 1 {
+		t.Errorf("want total=1, got %d", total)
+	}
+}

@@ -86,6 +86,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	tagsH := &handlers.TagsHandler{Store: s}
 	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
 	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN"}
+	componentH := &handlers.ComponentHandler{Store: s}
 
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(userID))
@@ -125,6 +126,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Put("/api/tags/{name}", tagsH.Update)
 	r.Get("/api/config", translateH.Config(true, true))
 	r.Post("/api/translate", translateH.Translate)
+	r.Post("/api/component/answer", componentH.Answer)
+	r.Get("/api/component/stats", componentH.Stats)
 	return r
 }
 
@@ -3229,5 +3232,165 @@ func TestTranslate_PlusUserAllowed(t *testing.T) {
 	rec := do(t, r, http.MethodPost, "/api/translate", map[string]string{"zh_text": "你好"})
 	if rec.Code == http.StatusForbidden {
 		t.Fatal("plus user should not be forbidden from translate")
+	}
+}
+
+// ── Component handler tests ───────────────────────────────────────────────────
+
+func TestComponentAnswer_CorrectAnswer(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Add component for user 2.
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", time.Now().Add(-time.Hour)); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "woman",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if correct, _ := resp["correct"].(bool); !correct {
+		t.Errorf("want correct=true")
+	}
+}
+
+func TestComponentAnswer_WrongAnswer(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", time.Now().Add(-time.Hour)); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "man",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if correct, _ := resp["correct"].(bool); correct {
+		t.Errorf("want correct=false")
+	}
+}
+
+func TestComponentAnswer_AlternativeSemicolon(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "曰", "to speak; to say"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "曰", time.Now().Add(-time.Hour)); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	for _, answer := range []string{"to speak", "to say"} {
+		r := newRouter(s)
+		rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+			"character": "曰",
+			"answer":    answer,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer %q: want 200, got %d", answer, rec.Code)
+		}
+		var resp map[string]any
+		decodeJSON(t, rec, &resp)
+		if correct, _ := resp["correct"].(bool); !correct {
+			t.Errorf("answer %q: want correct=true", answer)
+		}
+	}
+}
+
+func TestComponentAnswer_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "X",
+		"answer":    "something",
+	})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestComponentStats_ReturnsEmptyDays(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/component/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	days, ok := resp["days"]
+	if !ok {
+		t.Fatal("want 'days' key in response")
+	}
+	if days == nil {
+		t.Fatal("want non-nil days")
+	}
+}
+
+func TestQuizNext_ReturnsComponentCard(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Component is in the past (overdue), no regular words exist.
+	past := time.Now().Add(-48 * time.Hour)
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", past); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if card["card_type"] != "component" {
+		t.Errorf("want card_type=component, got %v", card["card_type"])
+	}
+	if card["prompt"] != "女" {
+		t.Errorf("want prompt=女, got %v", card["prompt"])
+	}
+}
+
+func TestQuizStats_IncludesComponentCounts(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	past := time.Now().Add(-24 * time.Hour)
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", past); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+	// Mark seen so it counts in due_today.
+	s.SetComponentSeenForTest(context.Background(), int64(2), "女")
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/stats?trainComponents=1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if v, _ := resp["components_total"].(float64); int(v) != 1 {
+		t.Errorf("want components_total=1, got %v", resp["components_total"])
+	}
+	if v, _ := resp["components_due_today"].(float64); int(v) != 1 {
+		t.Errorf("want components_due_today=1, got %v", resp["components_due_today"])
 	}
 }

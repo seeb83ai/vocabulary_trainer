@@ -35,8 +35,13 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// parseDateTime parses SQLite datetime strings into time.Time.
+// ParseDateTime parses SQLite datetime strings into time.Time.
 // SQLite stores datetimes as "2006-01-02 15:04:05" or RFC3339; handle both.
+func ParseDateTime(s string) time.Time {
+	return parseDateTime(s)
+}
+
+// parseDateTime is the package-internal implementation.
 func parseDateTime(s string) time.Time {
 	for _, layout := range []string{
 		time.RFC3339,
