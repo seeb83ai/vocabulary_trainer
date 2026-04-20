@@ -76,28 +76,60 @@ func backfillComponents(db *sql.DB) error {
 	}
 
 	for _, e := range entries {
-		for _, r := range []rune(e.text) {
-			if !unicode.Is(unicode.Han, r) {
-				continue
-			}
+		if err := insertComponentsForEntry(db, e.userID, e.text, e.dueDate); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// insertComponentsForEntry inserts component_progress rows for all components
+// extracted from the decompositions of each Han rune in zhText.
+func insertComponentsForEntry(db *sql.DB, userID int64, zhText, dueDate string) error {
+	for _, r := range []rune(zhText) {
+		if !unicode.Is(unicode.Han, r) {
+			continue
+		}
+		var decomp sql.NullString
+		err := db.QueryRow(
+			`SELECT decomposition FROM hanzi_decomposition WHERE character = ?`,
+			string(r),
+		).Scan(&decomp)
+		if err == sql.ErrNoRows || !decomp.Valid || decomp.String == "" {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("backfill decomp lookup %q: %w", string(r), err)
+		}
+		for _, comp := range extractComponentsV36(decomp.String) {
 			var def string
 			err := db.QueryRow(
 				`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`,
-				string(r),
+				string(comp),
 			).Scan(&def)
 			if err == sql.ErrNoRows || def == "" {
 				continue
 			}
 			if err != nil {
-				return fmt.Errorf("backfill components lookup %q: %w", string(r), err)
+				return fmt.Errorf("backfill component def lookup %q: %w", string(comp), err)
 			}
 			if _, err := db.Exec(
 				`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
-				e.userID, string(r), e.dueDate,
+				userID, string(comp), dueDate,
 			); err != nil {
-				return fmt.Errorf("backfill components insert %q: %w", string(r), err)
+				return fmt.Errorf("backfill component insert %q: %w", string(comp), err)
 			}
 		}
 	}
 	return nil
+}
+
+func extractComponentsV36(decomposition string) []rune {
+	var out []rune
+	for _, r := range decomposition {
+		if !idsOperatorRune(r) && r != '？' && r != '?' {
+			out = append(out, r)
+		}
+	}
+	return out
 }

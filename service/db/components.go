@@ -10,8 +10,10 @@ import (
 	"vocabulary_trainer/sm2"
 )
 
-// InitComponentsForWord adds a component_progress row for every Han rune in
-// zhText that exists in hanzi_decomposition (with a non-empty definition).
+// InitComponentsForWord adds a component_progress row for every component
+// extracted from the hanzi decomposition of each Han rune in zhText.
+// The components come from hanzi_decomposition.decomposition (one level deep),
+// filtered to only those with a non-empty definition.
 // Rows are INSERT OR IGNORE so calling this multiple times is safe.
 // dueDate is copied from the origin zh word's sm2_progress.due_date.
 func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error {
@@ -20,22 +22,37 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 		if !unicode.Is(unicode.Han, r) {
 			continue
 		}
-		var def string
+		// Step 1: look up the decomposition of this character.
+		var decomp sql.NullString
 		err := s.db.QueryRowContext(ctx,
-			`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`,
+			`SELECT decomposition FROM hanzi_decomposition WHERE character = ?`,
 			string(r),
-		).Scan(&def)
-		if err == sql.ErrNoRows || def == "" {
+		).Scan(&decomp)
+		if err == sql.ErrNoRows || !decomp.Valid || decomp.String == "" {
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("component lookup %q: %w", string(r), err)
+			return fmt.Errorf("decomp lookup %q: %w", string(r), err)
 		}
-		if _, err := s.db.ExecContext(ctx,
-			`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
-			userID, string(r), dueDateStr,
-		); err != nil {
-			return fmt.Errorf("init component %q: %w", string(r), err)
+		// Step 2: extract actual component characters (filters IDS operators and placeholders).
+		for _, comp := range extractComponents(decomp.String) {
+			var def string
+			err := s.db.QueryRowContext(ctx,
+				`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`,
+				string(comp),
+			).Scan(&def)
+			if err == sql.ErrNoRows || def == "" {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("component def lookup %q: %w", string(comp), err)
+			}
+			if _, err := s.db.ExecContext(ctx,
+				`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
+				userID, string(comp), dueDateStr,
+			); err != nil {
+				return fmt.Errorf("init component %q: %w", string(comp), err)
+			}
 		}
 	}
 	return nil
@@ -236,6 +253,14 @@ func (s *Store) SetComponentSeenForTest(ctx context.Context, userID int64, chara
 	s.db.ExecContext(ctx, //nolint:errcheck
 		`UPDATE component_progress SET first_seen_date = date('now') WHERE user_id = ? AND character = ?`,
 		userID, character)
+}
+
+// InsertComponentProgressForTest inserts a component_progress row directly.
+// Intended for use in tests only.
+func (s *Store) InsertComponentProgressForTest(ctx context.Context, userID int64, character string, dueDate time.Time) {
+	s.db.ExecContext(ctx, //nolint:errcheck
+		`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
+		userID, character, dueDate.UTC().Format("2006-01-02 15:04:05"))
 }
 
 // GetComponentCounts returns the number of components due today and the total

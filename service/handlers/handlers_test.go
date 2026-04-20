@@ -3242,10 +3242,8 @@ func TestComponentAnswer_CorrectAnswer(t *testing.T) {
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	// Add component for user 2.
-	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", time.Now().Add(-time.Hour)); err != nil {
-		t.Fatalf("InitComponentsForWord: %v", err)
-	}
+	// Insert component directly — the handler test is about answer checking, not InitComponentsForWord.
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
 
 	r := newRouter(s)
 	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
@@ -3267,9 +3265,7 @@ func TestComponentAnswer_WrongAnswer(t *testing.T) {
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", time.Now().Add(-time.Hour)); err != nil {
-		t.Fatalf("InitComponentsForWord: %v", err)
-	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
 
 	r := newRouter(s)
 	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
@@ -3291,9 +3287,7 @@ func TestComponentAnswer_AlternativeSemicolon(t *testing.T) {
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "曰", "to speak; to say"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := s.InitComponentsForWord(context.Background(), int64(2), "曰", time.Now().Add(-time.Hour)); err != nil {
-		t.Fatalf("InitComponentsForWord: %v", err)
-	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "曰", time.Now().Add(-time.Hour))
 
 	for _, answer := range []string{"to speak", "to say"} {
 		r := newRouter(s)
@@ -3347,11 +3341,9 @@ func TestQuizNext_ReturnsComponentCard(t *testing.T) {
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	// Component is in the past (overdue), no regular words exist.
+	// Insert component directly — overdue, no regular words exist.
 	past := time.Now().Add(-48 * time.Hour)
-	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", past); err != nil {
-		t.Fatalf("InitComponentsForWord: %v", err)
-	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", past)
 
 	r := newRouter(s)
 	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
@@ -3374,10 +3366,8 @@ func TestQuizStats_IncludesComponentCounts(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	past := time.Now().Add(-24 * time.Hour)
-	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", past); err != nil {
-		t.Fatalf("InitComponentsForWord: %v", err)
-	}
-	// Mark seen so it counts in due_today.
+	// Insert component directly — this test is about stats, not InitComponentsForWord.
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", past)
 	s.SetComponentSeenForTest(context.Background(), int64(2), "女")
 
 	r := newRouter(s)

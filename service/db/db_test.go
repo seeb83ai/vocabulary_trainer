@@ -2666,24 +2666,42 @@ func TestGetUserByEmail_IncludesRole(t *testing.T) {
 
 // ── Component tests ───────────────────────────────────────────────────────────
 
-// seedHanziDecomposition inserts a row in hanzi_decomposition for testing.
-func seedHanziDecomposition(t *testing.T, s *Store, character, definition string) {
+// seedHanziDef inserts or updates only the definition for a character in hanzi_decomposition.
+func seedHanziDef(t *testing.T, s *Store, character, definition string) {
 	t.Helper()
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO hanzi_decomposition (character, definition) VALUES (?, ?)`,
+		`INSERT INTO hanzi_decomposition (character, definition) VALUES (?, ?)
+		 ON CONFLICT(character) DO UPDATE SET definition = excluded.definition`,
 		character, definition,
 	)
 	if err != nil {
-		t.Fatalf("seedHanziDecomposition %q: %v", character, err)
+		t.Fatalf("seedHanziDef %q: %v", character, err)
 	}
 }
 
+// seedHanziDecomp inserts or updates only the decomposition for a character in hanzi_decomposition.
+func seedHanziDecomp(t *testing.T, s *Store, character, decomp string) {
+	t.Helper()
+	_, err := s.db.Exec(
+		`INSERT INTO hanzi_decomposition (character, decomposition) VALUES (?, ?)
+		 ON CONFLICT(character) DO UPDATE SET decomposition = excluded.decomposition`,
+		character, decomp,
+	)
+	if err != nil {
+		t.Fatalf("seedHanziDecomp %q: %v", character, err)
+	}
+}
+
+// TestInitComponentsForWord_InsertsKnownCharacters verifies that components
+// extracted from a word's hanzi decomposition are inserted into component_progress.
+// "好" decomposes to ⿰女子, so components 女 and 子 (both with definitions) should be inserted.
 func TestInitComponentsForWord_InsertsKnownCharacters(t *testing.T) {
 	s := openTestDB(t)
-	seedHanziDecomposition(t, s, "女", "woman; female")
-	seedHanziDecomposition(t, s, "子", "child; son")
+	seedHanziDecomp(t, s, "好", "⿰女子")
+	seedHanziDef(t, s, "女", "woman; female")
+	seedHanziDef(t, s, "子", "child; son")
 
-	err := s.InitComponentsForWord(context.Background(), int64(2), "女子", time.Now())
+	err := s.InitComponentsForWord(context.Background(), int64(2), "好", time.Now())
 	if err != nil {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
@@ -2691,14 +2709,16 @@ func TestInitComponentsForWord_InsertsKnownCharacters(t *testing.T) {
 	var count int
 	s.db.QueryRow(`SELECT COUNT(*) FROM component_progress WHERE user_id = 2`).Scan(&count)
 	if count != 2 {
-		t.Errorf("want 2 component rows, got %d", count)
+		t.Errorf("want 2 component rows (女 and 子), got %d", count)
 	}
 }
 
-func TestInitComponentsForWord_SkipsUnknownCharacters(t *testing.T) {
+// TestInitComponentsForWord_SkipsNoDecomp verifies that characters with no
+// decomposition entry are skipped (no component_progress rows inserted).
+func TestInitComponentsForWord_SkipsNoDecomp(t *testing.T) {
 	s := openTestDB(t)
-	// No hanzi_decomposition entries seeded → should not insert anything.
-	err := s.InitComponentsForWord(context.Background(), int64(2), "女子", time.Now())
+	// No hanzi_decomposition entries at all → should not insert anything.
+	err := s.InitComponentsForWord(context.Background(), int64(2), "好", time.Now())
 	if err != nil {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
@@ -2709,12 +2729,33 @@ func TestInitComponentsForWord_SkipsUnknownCharacters(t *testing.T) {
 	}
 }
 
+// TestInitComponentsForWord_SkipsComponentsWithNoDefinition verifies that
+// components without a definition are not inserted.
+func TestInitComponentsForWord_SkipsComponentsWithNoDefinition(t *testing.T) {
+	s := openTestDB(t)
+	seedHanziDecomp(t, s, "好", "⿰女子")
+	// Decomposition exists for 好 but neither 女 nor 子 has a definition.
+
+	err := s.InitComponentsForWord(context.Background(), int64(2), "好", time.Now())
+	if err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM component_progress WHERE user_id = 2`).Scan(&count)
+	if count != 0 {
+		t.Errorf("want 0 component rows, got %d", count)
+	}
+}
+
+// TestInitComponentsForWord_Idempotent verifies that repeated calls do not
+// create duplicate component_progress rows.
 func TestInitComponentsForWord_Idempotent(t *testing.T) {
 	s := openTestDB(t)
-	seedHanziDecomposition(t, s, "女", "woman")
+	seedHanziDecomp(t, s, "好", "⿰女子")
+	seedHanziDef(t, s, "女", "woman") // 子 has no definition, so only 女 is inserted.
 
 	for i := 0; i < 3; i++ {
-		if err := s.InitComponentsForWord(context.Background(), int64(2), "女", time.Now()); err != nil {
+		if err := s.InitComponentsForWord(context.Background(), int64(2), "好", time.Now()); err != nil {
 			t.Fatalf("InitComponentsForWord iteration %d: %v", i, err)
 		}
 	}
@@ -2736,11 +2777,14 @@ func TestGetNextComponentCard_ReturnsNilWhenEmpty(t *testing.T) {
 	}
 }
 
+// TestGetNextComponentCard_ReturnsDueCard verifies that a component inserted
+// via the two-step lookup (word→decomposition→components) is returned as due.
 func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
 	s := openTestDB(t)
-	seedHanziDecomposition(t, s, "女", "woman; female")
+	seedHanziDecomp(t, s, "好", "⿰女子")
+	seedHanziDef(t, s, "女", "woman; female")
 	past := time.Now().Add(-24 * time.Hour)
-	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", past); err != nil {
+	if err := s.InitComponentsForWord(context.Background(), int64(2), "好", past); err != nil {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
@@ -2761,10 +2805,9 @@ func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
 
 func TestRecordComponentAnswer_UpdatesProgress(t *testing.T) {
 	s := openTestDB(t)
-	seedHanziDecomposition(t, s, "女", "woman")
-	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", time.Now().Add(-time.Hour)); err != nil {
-		t.Fatalf("InitComponentsForWord: %v", err)
-	}
+	seedHanziDef(t, s, "女", "woman")
+	// Insert directly — this test is about RecordComponentAnswer, not InitComponentsForWord.
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
 
 	p, _, err := s.RecordComponentAnswer(context.Background(), int64(2), "女", true)
 	if err != nil {
@@ -2792,11 +2835,10 @@ func TestRecordComponentStat_IncreasesCount(t *testing.T) {
 
 func TestGetComponentCounts_ReturnsCorrectCounts(t *testing.T) {
 	s := openTestDB(t)
-	seedHanziDecomposition(t, s, "女", "woman")
+	seedHanziDef(t, s, "女", "woman")
 	past := time.Now().Add(-24 * time.Hour)
-	if err := s.InitComponentsForWord(context.Background(), int64(2), "女", past); err != nil {
-		t.Fatalf("InitComponentsForWord: %v", err)
-	}
+	// Insert directly — this test is about GetComponentCounts, not InitComponentsForWord.
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", past)
 	// Mark as seen so it counts toward due_today.
 	s.db.Exec(`UPDATE component_progress SET first_seen_date = date('now') WHERE character = '女' AND user_id = 2`)
 
