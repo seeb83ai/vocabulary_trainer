@@ -87,54 +87,67 @@ func (s *Store) UpsertTagMeta(ctx context.Context, userID int64, name, descripti
 }
 
 // GetImportableSourceTags returns tags for userID where importable = 1, ordered alphabetically.
-// Each TagDetail includes WithEn/WithDe flags indicating whether any zh word in the tag
-// has at least one EN or DE translation respectively.
+// Each TagDetail includes AvailableLangs listing every translation language present for that tag.
 func (s *Store) GetImportableSourceTags(ctx context.Context, userID int64) ([]models.TagDetail, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT
-		  tg.name,
-		  tg.description,
-		  tg.importable,
-		  EXISTS (
-		    SELECT 1 FROM word_tags wt2
-		    JOIN words zh ON zh.id = wt2.word_id AND zh.user_id = ? AND zh.language = 'zh'
-		    JOIN translations tr ON tr.zh_word_id = zh.id
-		    JOIN words en ON en.id = tr.en_word_id AND en.language = 'en'
-		    WHERE wt2.tag_id = tg.id
-		  ) AS with_en,
-		  EXISTS (
-		    SELECT 1 FROM word_tags wt3
-		    JOIN words zh ON zh.id = wt3.word_id AND zh.user_id = ? AND zh.language = 'zh'
-		    JOIN translations tr ON tr.zh_word_id = zh.id
-		    JOIN words de ON de.id = tr.en_word_id AND de.language = 'de'
-		    WHERE wt3.tag_id = tg.id
-		  ) AS with_de
+		SELECT tg.name, tg.description, tg.importable
 		FROM tags tg
 		JOIN word_tags wt ON wt.tag_id = tg.id
 		JOIN words w ON w.id = wt.word_id
 		WHERE w.user_id = ? AND tg.importable = 1
 		GROUP BY tg.id
-		ORDER BY tg.name`, userID, userID, userID)
+		ORDER BY tg.name`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get importable source tags: %w", err)
 	}
 	defer rows.Close()
 	var out []models.TagDetail
+	tagIndex := map[string]int{}
 	for rows.Next() {
 		var td models.TagDetail
-		var imp, withEn, withDe int
-		if err := rows.Scan(&td.Name, &td.Description, &imp, &withEn, &withDe); err != nil {
+		var imp int
+		if err := rows.Scan(&td.Name, &td.Description, &imp); err != nil {
 			return nil, err
 		}
 		td.Importable = imp != 0
-		td.WithEn = withEn != 0
-		td.WithDe = withDe != 0
+		td.AvailableLangs = []string{}
+		tagIndex[td.Name] = len(out)
 		out = append(out, td)
 	}
-	if out == nil {
-		out = []models.TagDetail{}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
-	return out, rows.Err()
+	rows.Close()
+
+	if len(out) == 0 {
+		return out, nil
+	}
+
+	// Fetch all distinct translation languages per tag in one query.
+	langRows, err := s.db.QueryContext(ctx, `
+		SELECT tg.name, tr_w.language
+		FROM tags tg
+		JOIN word_tags wt ON wt.tag_id = tg.id
+		JOIN words zh ON zh.id = wt.word_id AND zh.user_id = ? AND zh.language = 'zh'
+		JOIN translations tr ON tr.zh_word_id = zh.id
+		JOIN words tr_w ON tr_w.id = tr.translation_word_id
+		WHERE tg.importable = 1
+		GROUP BY tg.name, tr_w.language
+		ORDER BY tg.name, tr_w.language`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get importable source tag langs: %w", err)
+	}
+	defer langRows.Close()
+	for langRows.Next() {
+		var tagName, lang string
+		if err := langRows.Scan(&tagName, &lang); err != nil {
+			return nil, err
+		}
+		if idx, ok := tagIndex[tagName]; ok {
+			out[idx].AvailableLangs = append(out[idx].AvailableLangs, lang)
+		}
+	}
+	return out, langRows.Err()
 }
 
 func (s *Store) getTagsForWord(ctx context.Context, wordID int64) ([]string, error) {

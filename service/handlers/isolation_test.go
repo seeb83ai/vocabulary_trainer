@@ -77,7 +77,7 @@ func seedWordForUser(t *testing.T, s *db.Store, userID int64, zhText, pinyin str
 	id, err := s.CreateWord(context.Background(), userID, models.CreateWordRequest{
 		ZhText:  zhText,
 		Pinyin:  pinyin,
-		EnTexts: enTexts,
+		Translations: map[string][]string{"en": enTexts},
 	})
 	if err != nil {
 		t.Fatalf("seedWordForUser(user=%d, %q): %v", userID, zhText, err)
@@ -188,7 +188,7 @@ func TestIsolation_UpdateWord_CannotUpdateOtherUsersWord(t *testing.T) {
 	rec := do(t, r2, "PUT", fmt.Sprintf("/api/words/%d/", idA), models.UpdateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
-		EnTexts: []string{"see you"},
+		Translations: map[string][]string{"en": {"see you"}},
 	})
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("user2 update user1 word: want 404, got %d", rec.Code)
@@ -439,7 +439,7 @@ func TestIsolation_CreateWord_WordOnlyVisibleToCreator(t *testing.T) {
 	rec := do(t, r1, "POST", "/api/words/", models.CreateWordRequest{
 		ZhText:  "学习",
 		Pinyin:  "xuéxí",
-		EnTexts: []string{"to study"},
+		Translations: map[string][]string{"en": {"to study"}},
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("user1 create word: want 201, got %d: %s", rec.Code, rec.Body)
@@ -482,7 +482,7 @@ func TestIsolation_QuizAnswer_CannotAnswerOtherUsersWord(t *testing.T) {
 	// User 2 tries to submit an answer for user 1's word.
 	rec := do(t, r2, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: idA,
-		Mode:   models.ModeZhToEn,
+		Mode:   models.ModeZhToTransl,
 		Answer: "goodbye",
 	})
 	// The handler looks up the word by user_id; it returns 404 for other users' words.
@@ -725,7 +725,7 @@ func TestIsolation_Mismatches_OnlyOwnConfusions(t *testing.T) {
 	// User 1 has two words with a confusion pair between them.
 	id1A := seedWordForUser(t, s, 1, "鞋", "xié", []string{"shoe"})
 	id1B := seedWordForUser(t, s, 1, "书", "shū", []string{"book"})
-	if err := s.UpsertConfusion(ctx, id1A, id1B, "zh_to_en"); err != nil {
+	if err := s.UpsertConfusion(ctx, id1A, id1B, "zh_to_transl"); err != nil {
 		t.Fatalf("UpsertConfusion: %v", err)
 	}
 

@@ -4,11 +4,11 @@ import "time"
 
 // Mode constants for quiz card types
 const (
-	ModeEnToZh       = "en_to_zh"
-	ModeZhToEn       = "zh_to_en"
-	ModeZhPinyinToEn = "zh_pinyin_to_en"
-	ModeProgressive  = "progressive"
-	ModeNewWord      = "new_word"
+	ModeTranslToZh       = "transl_to_zh"
+	ModeZhToTransl       = "zh_to_transl"
+	ModeZhPinyinToTransl = "zh_pinyin_to_transl"
+	ModeProgressive      = "progressive"
+	ModeNewWord          = "new_word"
 )
 
 // DB-layer structs
@@ -44,15 +44,14 @@ type SM2Progress struct {
 // API request/response structs
 
 type QuizCard struct {
-	WordID          int64     `json:"word_id"`
-	Mode            string    `json:"mode"`
-	Prompt          string    `json:"prompt"`
-	Pinyin          *string   `json:"pinyin"`
-	EnTexts         []string  `json:"en_texts,omitempty"`
-	DeTexts         []string  `json:"de_texts,omitempty"`
-	DueDate         time.Time `json:"due_date"`
-	IntervalDays    int       `json:"interval_days"`
-	LearningNewWord bool      `json:"learning_new_word"`
+	WordID          int64               `json:"word_id"`
+	Mode            string              `json:"mode"`
+	Prompt          string              `json:"prompt"`
+	Pinyin          *string             `json:"pinyin"`
+	Translations    map[string][]string `json:"translations,omitempty"`
+	DueDate         time.Time           `json:"due_date"`
+	IntervalDays    int                 `json:"interval_days"`
+	LearningNewWord bool                `json:"learning_new_word"`
 	// HMM mnemonic card fields (card_type="hmm"); zero-value for word cards.
 	CardType   string `json:"card_type,omitempty"`
 	EntityType string `json:"entity_type,omitempty"`
@@ -69,78 +68,74 @@ type AnswerRequest struct {
 }
 
 type AnswerResponse struct {
-	Correct         bool             `json:"correct"`
-	CorrectAnswers  []string         `json:"correct_answers"`
-	ZhText          string           `json:"zh_text"`
-	Pinyin          *string          `json:"pinyin"`
-	EnTexts         []string         `json:"en_texts"`
-	DeTexts         []string         `json:"de_texts,omitempty"`
-	NextDue         time.Time        `json:"next_due"`
-	IntervalDays    int              `json:"interval_days"`
-	TotalCorrect    int              `json:"total_correct"`
-	TotalAttempts   int              `json:"total_attempts"`
-	StreakBonus     int              `json:"streak_bonus"`
-	Repetitions     int              `json:"repetitions"`
-	GraduateReps    int              `json:"graduate_reps,omitempty"`
-	LearningNewWord bool             `json:"learning_new_word"`
-	Graduated       bool             `json:"graduated,omitempty"`
-	ConfusedWith    *ConfusionDetail `json:"confused_with,omitempty"`
-	SessionStreak   int              `json:"session_streak,omitempty"`
-	Tier            string           `json:"tier,omitempty"`
-	PrevTier        string           `json:"prev_tier,omitempty"`
-	SceneText       string           `json:"scene_text,omitempty"`
+	Correct         bool                `json:"correct"`
+	CorrectAnswers  []string            `json:"correct_answers"`
+	ZhText          string              `json:"zh_text"`
+	Pinyin          *string             `json:"pinyin"`
+	Translations    map[string][]string `json:"translations"`
+	NextDue         time.Time           `json:"next_due"`
+	IntervalDays    int                 `json:"interval_days"`
+	TotalCorrect    int                 `json:"total_correct"`
+	TotalAttempts   int                 `json:"total_attempts"`
+	StreakBonus      int                `json:"streak_bonus"`
+	Repetitions     int                 `json:"repetitions"`
+	GraduateReps    int                 `json:"graduate_reps,omitempty"`
+	LearningNewWord bool                `json:"learning_new_word"`
+	Graduated       bool                `json:"graduated,omitempty"`
+	ConfusedWith    *ConfusionDetail    `json:"confused_with,omitempty"`
+	SessionStreak   int                 `json:"session_streak,omitempty"`
+	Tier            string              `json:"tier,omitempty"`
+	PrevTier        string              `json:"prev_tier,omitempty"`
+	SceneText       string              `json:"scene_text,omitempty"`
 }
 
 type CreateWordRequest struct {
-	ZhText        string   `json:"zh_text"`
-	Pinyin        string   `json:"pinyin"`
-	EnTexts       []string `json:"en_texts"`
-	DeTexts       []string `json:"de_texts"`
-	Tags          []string `json:"tags"`
-	StartTraining bool     `json:"start_training"`
+	ZhText        string              `json:"zh_text"`
+	Pinyin        string              `json:"pinyin"`
+	Translations  map[string][]string `json:"translations"`
+	Tags          []string            `json:"tags"`
+	StartTraining bool                `json:"start_training"`
 }
 
 type UpdateWordRequest struct {
-	ZhText        string   `json:"zh_text"`
-	Pinyin        string   `json:"pinyin"`
-	EnTexts       []string `json:"en_texts"`
-	DeTexts       []string `json:"de_texts"`
-	Tags          []string `json:"tags"`
-	StartTraining bool     `json:"start_training"`
+	ZhText       string              `json:"zh_text"`
+	Pinyin       string              `json:"pinyin"`
+	Translations map[string][]string `json:"translations"`
+	Tags         []string            `json:"tags"`
+	StartTraining bool               `json:"start_training"`
 }
 
 type WordDetail struct {
-	ID              int64     `json:"id"`
-	ZhText          string    `json:"zh_text"`
-	Pinyin          *string   `json:"pinyin"`
-	EnTexts         []string  `json:"en_texts"`
-	DeTexts         []string  `json:"de_texts"`
-	CreatedAt       time.Time `json:"created_at"`
-	Repetitions     int       `json:"repetitions"`
-	Easiness        float64   `json:"easiness"`
-	IntervalDays    int       `json:"interval_days"`
-	TotalCorrect    int       `json:"total_correct"`
-	TotalAttempts   int       `json:"total_attempts"`
-	StreakBonus     int       `json:"streak_bonus"`
-	DueDate         time.Time `json:"due_date"`
-	Tags            []string  `json:"tags"`
-	NeedsReview     bool      `json:"needs_review"`
-	LearningNewWord bool      `json:"learning_new_word"`
-	SceneText       string    `json:"scene_text,omitempty"`
+	ID              int64               `json:"id"`
+	ZhText          string              `json:"zh_text"`
+	Pinyin          *string             `json:"pinyin"`
+	Translations    map[string][]string `json:"translations"`
+	CreatedAt       time.Time           `json:"created_at"`
+	Repetitions     int                 `json:"repetitions"`
+	Easiness        float64             `json:"easiness"`
+	IntervalDays    int                 `json:"interval_days"`
+	TotalCorrect    int                 `json:"total_correct"`
+	TotalAttempts   int                 `json:"total_attempts"`
+	StreakBonus     int                 `json:"streak_bonus"`
+	DueDate         time.Time           `json:"due_date"`
+	Tags            []string            `json:"tags"`
+	NeedsReview     bool                `json:"needs_review"`
+	LearningNewWord bool                `json:"learning_new_word"`
+	SceneText       string              `json:"scene_text,omitempty"`
 }
 
 type ConfusionDetail struct {
-	ZhWordID            int64     `json:"zh_word_id"`
-	ZhText              string    `json:"zh_text"`
-	ZhPinyin            *string   `json:"zh_pinyin"`
-	ZhEnTexts           []string  `json:"zh_en_texts"`
-	ConfusedWithID      int64     `json:"confused_with_id"`
-	ConfusedWithText    string    `json:"confused_with_text"`
-	ConfusedWithPinyin  *string   `json:"confused_with_pinyin"`
-	ConfusedWithEnTexts []string  `json:"confused_with_en_texts"`
-	Mode                string    `json:"mode"`
-	Count               int       `json:"count"`
-	LastSeen            time.Time `json:"last_seen"`
+	ZhWordID               int64               `json:"zh_word_id"`
+	ZhText                 string              `json:"zh_text"`
+	ZhPinyin               *string             `json:"zh_pinyin"`
+	ZhTranslations         map[string][]string `json:"zh_translations"`
+	ConfusedWithID         int64               `json:"confused_with_id"`
+	ConfusedWithText       string              `json:"confused_with_text"`
+	ConfusedWithPinyin     *string             `json:"confused_with_pinyin"`
+	ConfusedWithTranslations map[string][]string `json:"confused_with_translations"`
+	Mode                   string              `json:"mode"`
+	Count                  int                 `json:"count"`
+	LastSeen               time.Time           `json:"last_seen"`
 }
 
 type WordListResponse struct {
@@ -175,15 +170,15 @@ type WordStatsResponse struct {
 }
 
 type WordStatDetail struct {
-	WordID      int64    `json:"word_id"`
-	ZhText      string   `json:"zh_text"`
-	Pinyin      *string  `json:"pinyin"`
-	EnTexts     []string `json:"en_texts"`
-	Correct     int      `json:"total_correct"`
-	Attempts    int      `json:"total_attempts"`
-	StreakBonus int      `json:"streak_bonus"`
-	Accuracy    float64  `json:"accuracy"`
-	Easiness    float64  `json:"easiness"`
+	WordID       int64               `json:"word_id"`
+	ZhText       string              `json:"zh_text"`
+	Pinyin       *string             `json:"pinyin"`
+	Translations map[string][]string `json:"translations"`
+	Correct      int                 `json:"total_correct"`
+	Attempts     int                 `json:"total_attempts"`
+	StreakBonus  int                 `json:"streak_bonus"`
+	Accuracy     float64             `json:"accuracy"`
+	Easiness     float64             `json:"easiness"`
 }
 
 type PinyinDailyStat struct {
@@ -225,11 +220,10 @@ type PinyinDailyStatsResponse struct {
 }
 
 type TagDetail struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Importable  bool   `json:"importable"`
-	WithEn      bool   `json:"with_en,omitempty"`
-	WithDe      bool   `json:"with_de,omitempty"`
+	Name           string   `json:"name"`
+	Description    string   `json:"description"`
+	Importable     bool     `json:"importable"`
+	AvailableLangs []string `json:"available_langs,omitempty"`
 }
 
 type UpsertTagMetaRequest struct {

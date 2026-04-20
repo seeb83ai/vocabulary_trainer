@@ -284,7 +284,7 @@ func (s *Store) LookupConfusion(ctx context.Context, userID, zhWordID int64, ans
 	var err error
 
 	switch mode {
-	case "zh_to_en", "zh_pinyin_to_en":
+	case "zh_to_transl", "zh_pinyin_to_transl":
 		// Find the zh word linked to a translation word whose text matches the answer,
 		// restricted to the languages the user has selected and owned by the same user.
 		if len(langs) == 0 {
@@ -300,14 +300,14 @@ func (s *Store) LookupConfusion(ctx context.Context, userID, zhWordID int64, ans
 		args = append(args, zhWordID, userID)
 		err = s.db.QueryRowContext(ctx, `
 			SELECT t.zh_word_id FROM words w
-			JOIN translations t ON t.en_word_id = w.id
+			JOIN translations t ON t.translation_word_id = w.id
 			JOIN words wz ON wz.id = t.zh_word_id
 			WHERE LOWER(TRIM(w.text)) = ?
 			  AND w.language IN (`+strings.Join(placeholders, ",")+`)
 			  AND t.zh_word_id != ?
 			  AND wz.user_id = ?
 			LIMIT 1`, args...).Scan(&confusedWithID)
-	case "en_to_zh":
+	case "transl_to_zh":
 		// Find a ZH word whose text matches the answer, owned by the same user.
 		err = s.db.QueryRowContext(ctx, `
 			SELECT id FROM words
@@ -368,17 +368,23 @@ func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID
 	if len(langs) == 0 {
 		langs = []string{"en"}
 	}
+	d.ZhTranslations = map[string][]string{}
+	d.ConfusedWithTranslations = map[string][]string{}
 	for _, lang := range langs {
 		texts, ferr := s.getTranslationTextsForZhWord(ctx, zhWordID, lang)
 		if ferr != nil {
 			return nil, ferr
 		}
-		d.ZhEnTexts = append(d.ZhEnTexts, texts...)
+		if len(texts) > 0 {
+			d.ZhTranslations[lang] = texts
+		}
 		texts, ferr = s.getTranslationTextsForZhWord(ctx, confusedWithID, lang)
 		if ferr != nil {
 			return nil, ferr
 		}
-		d.ConfusedWithEnTexts = append(d.ConfusedWithEnTexts, texts...)
+		if len(texts) > 0 {
+			d.ConfusedWithTranslations[lang] = texts
+		}
 	}
 	return &d, nil
 }
@@ -419,13 +425,23 @@ func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.Confu
 	rows.Close() // release before per-row queries
 
 	for i := range items {
-		items[i].ZhEnTexts, err = s.getTranslationTextsForZhWord(ctx, items[i].ZhWordID, "en")
-		if err != nil {
-			return nil, err
-		}
-		items[i].ConfusedWithEnTexts, err = s.getTranslationTextsForZhWord(ctx, items[i].ConfusedWithID, "en")
-		if err != nil {
-			return nil, err
+		items[i].ZhTranslations = map[string][]string{}
+		items[i].ConfusedWithTranslations = map[string][]string{}
+		for _, lang := range []string{"en", "de"} {
+			texts, ferr := s.getTranslationTextsForZhWord(ctx, items[i].ZhWordID, lang)
+			if ferr != nil {
+				return nil, ferr
+			}
+			if len(texts) > 0 {
+				items[i].ZhTranslations[lang] = texts
+			}
+			texts, ferr = s.getTranslationTextsForZhWord(ctx, items[i].ConfusedWithID, lang)
+			if ferr != nil {
+				return nil, ferr
+			}
+			if len(texts) > 0 {
+				items[i].ConfusedWithTranslations[lang] = texts
+			}
 		}
 	}
 	if items == nil {

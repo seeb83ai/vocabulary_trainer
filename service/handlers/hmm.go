@@ -211,12 +211,12 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 
 		// 2. For the remainder, load cached EN and DE translations from the DB.
 		if len(needTranslation) > 0 {
-			if enDefs, _ := h.Store.GetEnTranslationsByZhTexts(r.Context(), needTranslation); enDefs != nil {
+			if enDefs, _ := h.Store.GetTranslationsByZhTexts(r.Context(), needTranslation, "en"); enDefs != nil {
 				for ch, v := range enDefs {
 					radicalDefs[ch] = v
 				}
 			}
-			if deDefs, _ := h.Store.GetDeTranslationsByZhTexts(r.Context(), needTranslation); deDefs != nil {
+			if deDefs, _ := h.Store.GetTranslationsByZhTexts(r.Context(), needTranslation, "de"); deDefs != nil {
 				radicalDeDefs = deDefs
 			}
 

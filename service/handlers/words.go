@@ -75,39 +75,29 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "pinyin too long (max 200 characters)")
 		return
 	}
-	var filtered []string
-	for _, t := range req.EnTexts {
-		if s := strings.TrimSpace(t); s != "" {
-			filtered = append(filtered, s)
+	cleaned := map[string][]string{}
+	for lang, texts := range req.Translations {
+		for _, t := range texts {
+			if s := strings.TrimSpace(t); s != "" {
+				cleaned[lang] = append(cleaned[lang], s)
+			}
 		}
-	}
-	if len(filtered) > 20 {
-		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
-		return
-	}
-	for _, t := range filtered {
-		if utf8.RuneCountInString(t) > 500 {
-			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
+		if len(cleaned[lang]) > 20 {
+			writeError(w, http.StatusBadRequest, "too many translations (max 20)")
 			return
 		}
-	}
-	var filteredDe []string
-	for _, t := range req.DeTexts {
-		if s := strings.TrimSpace(t); s != "" {
-			filteredDe = append(filteredDe, s)
+		for _, t := range cleaned[lang] {
+			if utf8.RuneCountInString(t) > 500 {
+				writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
+				return
+			}
 		}
 	}
-	if len(filteredDe) > 20 {
-		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
-		return
+	totalTranslations := 0
+	for _, texts := range cleaned {
+		totalTranslations += len(texts)
 	}
-	for _, t := range filteredDe {
-		if utf8.RuneCountInString(t) > 500 {
-			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
-			return
-		}
-	}
-	if len(filtered) == 0 && len(filteredDe) == 0 {
+	if totalTranslations == 0 {
 		writeError(w, http.StatusBadRequest, "at least one translation is required")
 		return
 	}
@@ -121,8 +111,7 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	req.EnTexts = filtered
-	req.DeTexts = filteredDe
+	req.Translations = cleaned
 
 	id, err := h.Store.CreateWord(r.Context(), UserIDFromContext(r.Context()), req)
 	if err != nil {
@@ -184,39 +173,29 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "pinyin too long (max 200 characters)")
 		return
 	}
-	var filtered []string
-	for _, t := range req.EnTexts {
-		if s := strings.TrimSpace(t); s != "" {
-			filtered = append(filtered, s)
+	cleaned := map[string][]string{}
+	for lang, texts := range req.Translations {
+		for _, t := range texts {
+			if s := strings.TrimSpace(t); s != "" {
+				cleaned[lang] = append(cleaned[lang], s)
+			}
 		}
-	}
-	if len(filtered) > 20 {
-		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
-		return
-	}
-	for _, t := range filtered {
-		if utf8.RuneCountInString(t) > 500 {
-			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
+		if len(cleaned[lang]) > 20 {
+			writeError(w, http.StatusBadRequest, "too many translations (max 20)")
 			return
 		}
-	}
-	var filteredDe []string
-	for _, t := range req.DeTexts {
-		if s := strings.TrimSpace(t); s != "" {
-			filteredDe = append(filteredDe, s)
+		for _, t := range cleaned[lang] {
+			if utf8.RuneCountInString(t) > 500 {
+				writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
+				return
+			}
 		}
 	}
-	if len(filteredDe) > 20 {
-		writeError(w, http.StatusBadRequest, "too many translations (max 20)")
-		return
+	totalTranslations := 0
+	for _, texts := range cleaned {
+		totalTranslations += len(texts)
 	}
-	for _, t := range filteredDe {
-		if utf8.RuneCountInString(t) > 500 {
-			writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
-			return
-		}
-	}
-	if len(filtered) == 0 && len(filteredDe) == 0 {
+	if totalTranslations == 0 {
 		writeError(w, http.StatusBadRequest, "at least one translation is required")
 		return
 	}
@@ -230,8 +209,7 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	req.EnTexts = filtered
-	req.DeTexts = filteredDe
+	req.Translations = cleaned
 
 	if err := h.Store.UpdateWord(r.Context(), UserIDFromContext(r.Context()), id, req); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -265,18 +243,22 @@ func (h *WordsHandler) AddTranslation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		EnText string `json:"en_text"`
+		Text string `json:"text"`
+		Lang string `json:"lang"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	body.EnText = strings.TrimSpace(body.EnText)
-	if body.EnText == "" {
-		writeError(w, http.StatusBadRequest, "en_text is required")
+	body.Text = strings.TrimSpace(body.Text)
+	if body.Text == "" {
+		writeError(w, http.StatusBadRequest, "text is required")
 		return
 	}
-	if err := h.Store.AddTranslation(r.Context(), UserIDFromContext(r.Context()), id, body.EnText); err != nil {
+	if body.Lang == "" {
+		body.Lang = "en"
+	}
+	if err := h.Store.AddTranslation(r.Context(), UserIDFromContext(r.Context()), id, body.Lang, body.Text); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return

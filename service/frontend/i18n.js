@@ -25,14 +25,14 @@ const I18N = {
     // Quiz modes
     'mode.progressive': 'Progressive',
     'mode.random': 'Random',
-    'mode.en_to_zh': 'EN → ZH',
-    'mode.zh_to_en': 'ZH → EN',
-    'mode.zh_pinyin_to_en': 'ZH + Pinyin → EN',
+    'mode.transl_to_zh': 'To Chinese',
+    'mode.zh_to_transl': 'Chinese',
+    'mode.zh_pinyin_to_transl': 'Chinese + Pinyin',
 
     // Mode labels (result display)
-    'modeLabel.en_to_zh': 'English → Chinese',
-    'modeLabel.zh_to_en': 'Chinese → English',
-    'modeLabel.zh_pinyin_to_en': 'Chinese + Pinyin → English',
+    'modeLabel.transl_to_zh': 'To Chinese',
+    'modeLabel.zh_to_transl': 'Chinese',
+    'modeLabel.zh_pinyin_to_transl': 'Chinese + Pinyin',
     'modeLabel.new_word': 'New Word',
 
     // Tier/Level labels
@@ -409,14 +409,14 @@ const I18N = {
     // Quiz modes
     'mode.progressive': '渐进',
     'mode.random': '随机',
-    'mode.en_to_zh': '英→中',
-    'mode.zh_to_en': '中→英',
-    'mode.zh_pinyin_to_en': '中+拼音→英',
+    'mode.transl_to_zh': '译中文',
+    'mode.zh_to_transl': '中文',
+    'mode.zh_pinyin_to_transl': '中文＋拼音',
 
     // Mode labels (result display)
-    'modeLabel.en_to_zh': '英语 → 中文',
-    'modeLabel.zh_to_en': '中文 → 英语',
-    'modeLabel.zh_pinyin_to_en': '中文 + 拼音 → 英语',
+    'modeLabel.transl_to_zh': '译中文',
+    'modeLabel.zh_to_transl': '中文',
+    'modeLabel.zh_pinyin_to_transl': '中文＋拼音',
     'modeLabel.new_word': '新词',
 
     // Tier/Level labels

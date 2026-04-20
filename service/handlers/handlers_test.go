@@ -153,9 +153,9 @@ func decodeJSON(t *testing.T, rec *httptest.ResponseRecorder, v any) {
 func seedWord(t *testing.T, s *db.Store, zhText, pinyin string, enTexts []string) int64 {
 	t.Helper()
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  zhText,
-		Pinyin:  pinyin,
-		EnTexts: enTexts,
+		ZhText:       zhText,
+		Pinyin:       pinyin,
+		Translations: map[string][]string{"en": enTexts},
 	})
 	if err != nil {
 		t.Fatalf("seedWord: %v", err)
@@ -165,12 +165,15 @@ func seedWord(t *testing.T, s *db.Store, zhText, pinyin string, enTexts []string
 
 func seedWordFull(t *testing.T, s *db.Store, userID int64, zhText, pinyin string, enTexts, deTexts, tags []string) int64 {
 	t.Helper()
+	tr := map[string][]string{"en": enTexts}
+	if len(deTexts) > 0 {
+		tr["de"] = deTexts
+	}
 	id, err := s.CreateWord(context.Background(), userID, models.CreateWordRequest{
-		ZhText:  zhText,
-		Pinyin:  pinyin,
-		EnTexts: enTexts,
-		DeTexts: deTexts,
-		Tags:    tags,
+		ZhText:       zhText,
+		Pinyin:       pinyin,
+		Translations: tr,
+		Tags:         tags,
 	})
 	if err != nil {
 		t.Fatalf("seedWordFull: %v", err)
@@ -221,7 +224,7 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "", // no pinyin
-		EnTexts: []string{"hello"},
+		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -232,7 +235,7 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 		rec := do(t, r, "GET", "/api/quiz/next", nil)
 		var card models.QuizCard
 		decodeJSON(t, rec, &card)
-		if card.Mode == models.ModeZhPinyinToEn {
+		if card.Mode == models.ModeZhPinyinToTransl {
 			t.Error("zh_pinyin_to_en should not be returned when pinyin is absent")
 		}
 	}
@@ -257,7 +260,7 @@ func TestQuizNext_ModeParam(t *testing.T) {
 
 	r := newRouter(s)
 
-	for _, mode := range []string{models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn} {
+	for _, mode := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl} {
 		rec := do(t, r, "GET", "/api/quiz/next?mode="+mode, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("mode=%s: want 200, got %d: %s", mode, rec.Code, rec.Body)
@@ -276,7 +279,7 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	validModes := map[string]bool{models.ModeEnToZh: true, models.ModeZhToEn: true, models.ModeZhPinyinToEn: true}
+	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true}
 	if !validModes[card.Mode] {
 		t.Errorf("invalid mode param: got unexpected mode %s", card.Mode)
 	}
@@ -344,7 +347,7 @@ func TestQuizAnswer_Correct(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: id,
-		Mode:   models.ModeZhToEn,
+		Mode:   models.ModeZhToTransl,
 		Answer: "hello",
 	})
 	if rec.Code != http.StatusOK {
@@ -370,7 +373,7 @@ func TestQuizAnswer_Wrong(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: id,
-		Mode:   models.ModeZhToEn,
+		Mode:   models.ModeZhToTransl,
 		Answer: "wrong",
 	})
 	if rec.Code != http.StatusOK {
@@ -393,7 +396,7 @@ func TestQuizAnswer_EnToZh(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: id,
-		Mode:   models.ModeEnToZh,
+		Mode:   models.ModeTranslToZh,
 		Answer: "你好",
 	})
 	var resp models.AnswerResponse
@@ -407,7 +410,7 @@ func TestQuizAnswer_WordNotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: 9999,
-		Mode:   models.ModeZhToEn,
+		Mode:   models.ModeZhToTransl,
 		Answer: "hello",
 	})
 	if rec.Code != http.StatusNotFound {
@@ -448,7 +451,7 @@ func TestQuizAnswer_ResponseContainsZhAndEN(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: id,
-		Mode:   models.ModeZhToEn,
+		Mode:   models.ModeZhToTransl,
 		Answer: "wrong",
 	})
 	var resp models.AnswerResponse
@@ -456,8 +459,8 @@ func TestQuizAnswer_ResponseContainsZhAndEN(t *testing.T) {
 	if resp.ZhText != "你好" {
 		t.Errorf("ZhText: want 你好, got %q", resp.ZhText)
 	}
-	if len(resp.EnTexts) == 0 {
-		t.Error("EnTexts should be populated in response")
+	if len(resp.Translations["en"]) == 0 {
+		t.Error("Translations[en] should be populated in response")
 	}
 }
 
@@ -526,7 +529,7 @@ func TestWordsCreate_Valid(t *testing.T) {
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
-		EnTexts: []string{"goodbye"},
+		Translations: map[string][]string{"en": {"goodbye"}},
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("want 201, got %d: %s", rec.Code, rec.Body)
@@ -541,7 +544,7 @@ func TestWordsCreate_Valid(t *testing.T) {
 func TestWordsCreate_MissingZhText(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		EnTexts: []string{"hello"},
+		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
@@ -562,7 +565,7 @@ func TestWordsCreate_DeOnlyValid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:  "你好",
-		DeTexts: []string{"Hallo"},
+		Translations: map[string][]string{"de": {"Hallo"}},
 	})
 	if rec.Code != http.StatusCreated {
 		t.Errorf("want 201, got %d: %s", rec.Code, rec.Body.String())
@@ -587,7 +590,7 @@ func TestWordsCreate_StartTraining(t *testing.T) {
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:        "学习",
 		Pinyin:        "xuéxí",
-		EnTexts:       []string{"to study"},
+		Translations: map[string][]string{"en": {"to study"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusCreated {
@@ -613,7 +616,7 @@ func TestWordsUpdate_StartTraining(t *testing.T) {
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
 		ZhText:        "你好",
 		Pinyin:        "nǐ hǎo",
-		EnTexts:       []string{"hello"},
+		Translations: map[string][]string{"en": {"hello"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusOK {
@@ -670,7 +673,7 @@ func TestWordsUpdate_Valid(t *testing.T) {
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
 		ZhText:  "你好吗",
 		Pinyin:  "nǐ hǎo ma",
-		EnTexts: []string{"how are you"},
+		Translations: map[string][]string{"en": {"how are you"}},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
@@ -686,7 +689,7 @@ func TestWordsUpdate_NotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "PUT", "/api/words/9999", models.UpdateWordRequest{
 		ZhText:  "test",
-		EnTexts: []string{"test"},
+		Translations: map[string][]string{"en": {"test"}},
 	})
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("want 404, got %d", rec.Code)
@@ -699,7 +702,7 @@ func TestWordsUpdate_MissingZhText(t *testing.T) {
 	r := newRouter(s)
 
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		EnTexts: []string{"hello"},
+		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
@@ -741,7 +744,7 @@ func TestWordsAddTranslation_Valid(t *testing.T) {
 	r := newRouter(s)
 
 	rec := do(t, r, "POST", fmt.Sprintf("/api/words/%d/translations", id),
-		map[string]string{"en_text": "hi"})
+		map[string]string{"text": "hi", "lang": "en"})
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
 	}
@@ -751,13 +754,13 @@ func TestWordsAddTranslation_Valid(t *testing.T) {
 	var wd models.WordDetail
 	decodeJSON(t, rec, &wd)
 	found := false
-	for _, e := range wd.EnTexts {
+	for _, e := range wd.Translations["en"] {
 		if e == "hi" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("'hi' not found in EnTexts after AddTranslation: %v", wd.EnTexts)
+		t.Errorf("'hi' not found in EnTexts after AddTranslation: %v", wd.Translations["en"])
 	}
 }
 
@@ -767,7 +770,7 @@ func TestWordsAddTranslation_EmptyText(t *testing.T) {
 	r := newRouter(s)
 
 	rec := do(t, r, "POST", fmt.Sprintf("/api/words/%d/translations", id),
-		map[string]string{"en_text": ""})
+		map[string]string{"text": "", "lang": "en"})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
 	}
@@ -776,7 +779,7 @@ func TestWordsAddTranslation_EmptyText(t *testing.T) {
 func TestWordsAddTranslation_NotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words/9999/translations",
-		map[string]string{"en_text": "hello"})
+		map[string]string{"text": "hello", "lang": "en"})
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("want 404, got %d", rec.Code)
 	}
@@ -787,7 +790,7 @@ func TestWordsAddTranslation_Idempotent(t *testing.T) {
 	id := seedWord(t, s, "你好", "", []string{"hello"})
 	r := newRouter(s)
 
-	body := map[string]string{"en_text": "hi"}
+	body := map[string]string{"text": "hi", "lang": "en"}
 	do(t, r, "POST", fmt.Sprintf("/api/words/%d/translations", id), body)
 	rec := do(t, r, "POST", fmt.Sprintf("/api/words/%d/translations", id), body)
 	if rec.Code != http.StatusNoContent {
@@ -798,7 +801,7 @@ func TestWordsAddTranslation_Idempotent(t *testing.T) {
 	var wd models.WordDetail
 	decodeJSON(t, rec, &wd)
 	count := 0
-	for _, e := range wd.EnTexts {
+	for _, e := range wd.Translations["en"] {
 		if e == "hi" {
 			count++
 		}
@@ -873,7 +876,7 @@ func TestMismatches_RecordedOnWrongAnswer(t *testing.T) {
 	// Answer 鞋 with "Buch" (which belongs to 书)
 	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
 		"word_id": xieID,
-		"mode":    "zh_to_en",
+		"mode":    "zh_to_transl",
 		"answer":  "Buch",
 	})
 	if rec.Code != http.StatusOK {
@@ -911,7 +914,7 @@ func TestMismatches_NoConfusionWhenAnswerUnknown(t *testing.T) {
 	// "Tisch" is not in the vocabulary — wrong but not a known confusion
 	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
 		"word_id": xieID,
-		"mode":    "zh_to_en",
+		"mode":    "zh_to_transl",
 		"answer":  "Tisch",
 	})
 	if rec.Code != http.StatusOK {
@@ -942,7 +945,7 @@ func TestMismatches_NoConfusionOnCorrectAnswer(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
 		"word_id": xieID,
-		"mode":    "zh_to_en",
+		"mode":    "zh_to_transl",
 		"answer":  "Schuh",
 	})
 	if rec.Code != http.StatusOK {
@@ -974,7 +977,7 @@ func TestMismatches_EnToZh_Recorded(t *testing.T) {
 	// Given prompt "Buch" (en_to_zh), user types "五" instead of "书"
 	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
 		"word_id": buchwID,
-		"mode":    "en_to_zh",
+		"mode":    "transl_to_zh",
 		"answer":  "五",
 	})
 	if rec.Code != http.StatusOK {
@@ -1006,7 +1009,7 @@ func TestMismatches_CountIncrementsOnRepeat(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
 			"word_id": xieID,
-			"mode":    "zh_to_en",
+			"mode":    "zh_to_transl",
 			"answer":  "Buch",
 		})
 		if rec.Code != http.StatusOK {
@@ -1044,8 +1047,8 @@ func TestQuizNext_ProgressiveNewWord(t *testing.T) {
 	if card.Prompt != "你好" {
 		t.Errorf("prompt should be zh text, got %q", card.Prompt)
 	}
-	if len(card.EnTexts) != 2 {
-		t.Errorf("en_texts should have 2 entries, got %d", len(card.EnTexts))
+	if len(card.Translations["en"]) != 2 {
+		t.Errorf("en_texts should have 2 entries, got %d", len(card.Translations["en"]))
 	}
 }
 
@@ -1067,7 +1070,7 @@ func TestQuizNext_ProgressiveAfterAcknowledge(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	if card.Mode != models.ModeEnToZh {
+	if card.Mode != models.ModeTranslToZh {
 		t.Errorf("after acknowledge (0 correct): want en_to_zh, got %s", card.Mode)
 	}
 }
@@ -1095,11 +1098,11 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		attempts int
 		wantMode string
 	}{
-		{0, 1, models.ModeEnToZh},        // attempts < 3 → en_to_zh
-		{1, 10, models.ModeEnToZh},       // accuracy 10% < 50% → en_to_zh
-		{6, 10, models.ModeZhPinyinToEn}, // accuracy 60% < 70% → zh_pinyin_to_en
-		{3, 4, models.ModeZhPinyinToEn},  // accuracy 75% but attempts < 10 → zh_pinyin_to_en
-		{8, 10, models.ModeZhToEn},       // accuracy 80%, attempts >= 10 → zh_to_en
+		{0, 1, models.ModeTranslToZh},        // attempts < 3 → en_to_zh
+		{1, 10, models.ModeTranslToZh},       // accuracy 10% < 50% → en_to_zh
+		{6, 10, models.ModeZhPinyinToTransl}, // accuracy 60% < 70% → zh_pinyin_to_en
+		{3, 4, models.ModeZhPinyinToTransl},  // accuracy 75% but attempts < 10 → zh_pinyin_to_en
+		{8, 10, models.ModeZhToTransl},       // accuracy 80%, attempts >= 10 → zh_to_en
 	}
 	for _, tt := range tests {
 		setProgress(tt.correct, tt.attempts)
@@ -1114,9 +1117,9 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 	// accuracy >= 85% and attempts >= 10: random (any valid mode)
 	setProgress(9, 10)
 	validModes := map[string]bool{
-		models.ModeEnToZh:       true,
-		models.ModeZhToEn:       true,
-		models.ModeZhPinyinToEn: true,
+		models.ModeTranslToZh:       true,
+		models.ModeZhToTransl:       true,
+		models.ModeZhPinyinToTransl: true,
 	}
 	for i := 0; i < 30; i++ {
 		p, _ := s.GetSM2Progress(ctx, id)
@@ -1251,7 +1254,7 @@ func TestMarkReview_ClearedOnUpdate(t *testing.T) {
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
-		EnTexts: []string{"hello"},
+		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("PUT: want 200, got %d: %s", rec.Code, rec.Body)
@@ -1295,7 +1298,7 @@ func TestWordList_HideUnseenFilter(t *testing.T) {
 	// Submit an answer for id1 to mark it as seen (increments total_attempts)
 	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: id1,
-		Mode:   "zh_to_en",
+		Mode:   "zh_to_transl",
 		Answer: "hello",
 	})
 
@@ -1348,7 +1351,7 @@ func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
 	// Submit an answer to trigger daily stat recording
 	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
 		"word_id": 1,
-		"mode":    "zh_to_en",
+		"mode":    "zh_to_transl",
 		"answer":  "cat",
 	})
 	if rec.Code != http.StatusOK {
@@ -1398,7 +1401,7 @@ func TestDailyStats_BucketCounts(t *testing.T) {
 
 	// Answer 猫 correctly once — still learning_new_word=1 → bucket "new"
 	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
-		"word_id": catID, "mode": "zh_to_en", "answer": "cat",
+		"word_id": catID, "mode": "zh_to_transl", "answer": "cat",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("answer cat: want 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1406,7 +1409,7 @@ func TestDailyStats_BucketCounts(t *testing.T) {
 
 	// Answer 狗 wrong once — still learning_new_word=1 → bucket "new"
 	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
-		"word_id": dogID, "mode": "zh_to_en", "answer": "wrong",
+		"word_id": dogID, "mode": "zh_to_transl", "answer": "wrong",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("answer dog: want 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1472,7 +1475,7 @@ func TestWordStats_WithData(t *testing.T) {
 	// Answer 猫 correctly 3 times
 	for i := 0; i < 3; i++ {
 		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
-			"word_id": 1, "mode": "zh_to_en", "answer": "cat",
+			"word_id": 1, "mode": "zh_to_transl", "answer": "cat",
 		})
 		if rec.Code != http.StatusOK {
 			t.Fatalf("answer cat: want 200, got %d", rec.Code)
@@ -1480,14 +1483,14 @@ func TestWordStats_WithData(t *testing.T) {
 	}
 	// Answer 狗 wrong once, correct once
 	do(t, r, "POST", "/api/quiz/answer", map[string]any{
-		"word_id": 2, "mode": "zh_to_en", "answer": "wrong",
+		"word_id": 2, "mode": "zh_to_transl", "answer": "wrong",
 	})
 	do(t, r, "POST", "/api/quiz/answer", map[string]any{
-		"word_id": 2, "mode": "zh_to_en", "answer": "dog",
+		"word_id": 2, "mode": "zh_to_transl", "answer": "dog",
 	})
 	// Answer 鱼 correct once
 	do(t, r, "POST", "/api/quiz/answer", map[string]any{
-		"word_id": 3, "mode": "zh_to_en", "answer": "fish",
+		"word_id": 3, "mode": "zh_to_transl", "answer": "fish",
 	})
 
 	rec := do(t, r, "GET", "/api/quiz/word-stats", nil)
@@ -1513,7 +1516,7 @@ func TestWordStats_WithData(t *testing.T) {
 	}
 	// Verify en_texts are populated
 	for _, w := range resp.MostPract {
-		if len(w.EnTexts) == 0 {
+		if len(w.Translations["en"]) == 0 {
 			t.Errorf("most_practiced word %d missing en_texts", w.WordID)
 		}
 	}
@@ -1584,7 +1587,7 @@ func TestAdvanceHandler_AdvancesWords(t *testing.T) {
 
 	// Seed a word, acknowledge it (marks as seen, due_date = now), then skip
 	// it forward so it has a future due date.
-	wid, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "测试", EnTexts: []string{"test"}})
+	wid, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "测试", Translations: map[string][]string{"en": {"test"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1617,7 +1620,7 @@ func TestStatsHandlerNewAvailable(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed an unseen word.
-	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "未见", EnTexts: []string{"unseen"}}); err != nil {
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "未见", Translations: map[string][]string{"en": {"unseen"}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1657,7 +1660,7 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed a word (unseen).
-	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "新词", EnTexts: []string{"new word"}}); err != nil {
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: "新词", Translations: map[string][]string{"en": {"new word"}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1689,7 +1692,7 @@ func TestAcknowledgeRandomHandler_MarksWordsDue(t *testing.T) {
 
 	// Seed 5 unseen words for user 2.
 	for i, zh := range []string{"一", "二", "三", "四", "五"} {
-		if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, EnTexts: []string{"word" + string(rune('a'+i))}}); err != nil {
+		if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, Translations: map[string][]string{"en": {"word" + string(rune('a'+i))}}}); err != nil {
 			t.Fatalf("CreateWord %s: %v", zh, i)
 		}
 	}
@@ -1729,7 +1732,7 @@ func TestAcknowledgeRandomHandler_CapsAtAvailable(t *testing.T) {
 
 	// Seed only 2 unseen words.
 	for _, zh := range []string{"甲", "乙"} {
-		if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, EnTexts: []string{"word"}}); err != nil {
+		if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, Translations: map[string][]string{"en": {"word"}}}); err != nil {
 			t.Fatalf("CreateWord %s: %v", zh, err)
 		}
 	}
@@ -1769,7 +1772,7 @@ func TestStatsNewAvailable_WithLearningWords(t *testing.T) {
 
 	ids := make([]int64, 3)
 	for i, zh := range []string{"红", "蓝", "绿"} {
-		wid, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, EnTexts: []string{"color"}})
+		wid, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{ZhText: zh, Translations: map[string][]string{"en": {"color"}}})
 		if err != nil {
 			t.Fatalf("CreateWord: %v", err)
 		}
@@ -1803,7 +1806,7 @@ func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:        "学",
-		EnTexts:       []string{"study"},
+		Translations: map[string][]string{"en": {"study"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusCreated {
@@ -1831,7 +1834,7 @@ func TestWordsCreate_ZhTextTooLong(t *testing.T) {
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:  long201,
-		EnTexts: []string{"ok"},
+		Translations: map[string][]string{"en": {"ok"}},
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for zh_text > 200 chars, got %d", rec.Code)
@@ -1845,8 +1848,8 @@ func TestWordsCreate_TooManyTranslations(t *testing.T) {
 		texts[i] = fmt.Sprintf("translation %d", i)
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "好",
-		EnTexts: texts,
+		ZhText:       "好",
+		Translations: map[string][]string{"en": texts},
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for > 20 translations, got %d", rec.Code)
@@ -1861,7 +1864,7 @@ func TestWordsCreate_TooManyTags(t *testing.T) {
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:  "好",
-		EnTexts: []string{"ok"},
+		Translations: map[string][]string{"en": {"ok"}},
 		Tags:    tags,
 	})
 	if rec.Code != http.StatusBadRequest {
@@ -1902,7 +1905,7 @@ func TestDueDateDistribution_AfterAnswer(t *testing.T) {
 	}
 	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
 		"word_id": id,
-		"mode":    "zh_to_en",
+		"mode":    "zh_to_transl",
 		"answer":  "cat",
 	})
 	if rec.Code != http.StatusOK {
@@ -1933,13 +1936,13 @@ func TestDueDateDistribution_TagFilter(t *testing.T) {
 
 	// Create two words with different tags
 	id1, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText: "猫", Pinyin: "māo", EnTexts: []string{"cat"}, Tags: []string{"animals"},
+		ZhText: "猫", Pinyin: "māo", Translations: map[string][]string{"en": {"cat"}}, Tags: []string{"animals"},
 	})
 	if err != nil {
 		t.Fatalf("create word 1: %v", err)
 	}
 	id2, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText: "书", Pinyin: "shū", EnTexts: []string{"book"}, Tags: []string{"objects"},
+		ZhText: "书", Pinyin: "shū", Translations: map[string][]string{"en": {"book"}}, Tags: []string{"objects"},
 	})
 	if err != nil {
 		t.Fatalf("create word 2: %v", err)
@@ -1959,7 +1962,7 @@ func TestDueDateDistribution_TagFilter(t *testing.T) {
 		}
 		rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
 			"word_id": wid,
-			"mode":    "zh_to_en",
+			"mode":    "zh_to_transl",
 			"answer":  "wrong",
 		})
 		if rec.Code != http.StatusOK {
@@ -2205,8 +2208,7 @@ func TestQuizLangs_ENandDE(t *testing.T) {
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
-		EnTexts: []string{"hello"},
-		DeTexts: []string{"hallo"},
+		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2236,8 +2238,7 @@ func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
-		EnTexts: []string{"hello"},
-		DeTexts: []string{"hallo"},
+		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2247,7 +2248,7 @@ func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 	// Answer with German when langs includes "de" — should be correct.
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: id,
-		Mode:   models.ModeZhToEn,
+		Mode:   models.ModeZhToTransl,
 		Answer: "hallo",
 		Langs:  []string{"en", "de"},
 	})
@@ -2267,8 +2268,7 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
-		EnTexts: []string{"goodbye"},
-		DeTexts: []string{"auf Wiedersehen"},
+		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2277,7 +2277,7 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: id,
-		Mode:   models.ModeZhToEn,
+		Mode:   models.ModeZhToTransl,
 		Answer: "wrong",
 		Langs:  []string{"en", "de"},
 	})
@@ -2286,11 +2286,11 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 	}
 	var resp models.AnswerResponse
 	decodeJSON(t, rec, &resp)
-	if len(resp.DeTexts) == 0 {
+	if len(resp.Translations["de"]) == 0 {
 		t.Error("DeTexts should be populated in response when word has DE translations")
 	}
-	if resp.DeTexts[0] != "auf Wiedersehen" {
-		t.Errorf("DeTexts[0]: want 'auf Wiedersehen', got %q", resp.DeTexts[0])
+	if resp.Translations["de"][0] != "auf Wiedersehen" {
+		t.Errorf("DeTexts[0]: want 'auf Wiedersehen', got %q", resp.Translations["de"][0])
 	}
 }
 
@@ -2300,8 +2300,7 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
-		EnTexts: []string{"hello"},
-		DeTexts: []string{"hallo"},
+		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2311,7 +2310,7 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 	// Answer with German when langs not specified (defaults to ["en"]) — should be wrong.
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: id,
-		Mode:   models.ModeZhToEn,
+		Mode:   models.ModeZhToTransl,
 		Answer: "hallo",
 		// Langs omitted → defaults to ["en"]
 	})
@@ -2333,8 +2332,7 @@ func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
-		EnTexts: []string{"hello"},
-		DeTexts: []string{"hallo"},
+		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2350,10 +2348,10 @@ func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 	if card.Mode != models.ModeNewWord {
 		t.Skipf("card is not new_word (mode=%s); test only applies to first introduction", card.Mode)
 	}
-	if len(card.EnTexts) == 0 {
+	if len(card.Translations["en"]) == 0 {
 		t.Error("EnTexts should be set on new_word card when langs includes en")
 	}
-	if len(card.DeTexts) == 0 {
+	if len(card.Translations["de"]) == 0 {
 		t.Error("DeTexts should be set on new_word card when langs includes de")
 	}
 }
@@ -2369,7 +2367,7 @@ func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
 		ZhText:  "你好",
 		Pinyin:  "nǐ hǎo",
-		EnTexts: []string{"hello", "hi"},
+		Translations: map[string][]string{"en": {"hello", "hi"}},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
@@ -2394,8 +2392,7 @@ func TestWordsList_MissingLangDE(t *testing.T) {
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:  "再见",
 		Pinyin:  "zàijiàn",
-		EnTexts: []string{"goodbye"},
-		DeTexts: []string{"auf Wiedersehen"},
+		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2630,11 +2627,19 @@ func TestImportSourceTags_ReturnsTags(t *testing.T) {
 	if !tags[0].Importable {
 		t.Errorf("expected importable=true by default")
 	}
-	if !tags[0].WithEn {
-		t.Errorf("expected with_en=true for tag with EN translations")
+	hasEn := false
+	for _, l := range tags[0].AvailableLangs {
+		if l == "en" {
+			hasEn = true
+		}
 	}
-	if tags[0].WithDe {
-		t.Errorf("expected with_de=false when no DE translations")
+	if !hasEn {
+		t.Errorf("expected available_langs to include 'en' for tag with EN translations")
+	}
+	for _, l := range tags[0].AvailableLangs {
+		if l == "de" {
+			t.Errorf("expected 'de' not in available_langs when no DE translations")
+		}
 	}
 }
 
@@ -2653,11 +2658,20 @@ func TestImportSourceTags_WithDeFlag(t *testing.T) {
 	if len(tags) != 1 {
 		t.Fatalf("want 1 tag, got %d", len(tags))
 	}
-	if !tags[0].WithEn {
-		t.Errorf("expected with_en=true")
+	hasEn, hasDe := false, false
+	for _, l := range tags[0].AvailableLangs {
+		if l == "en" {
+			hasEn = true
+		}
+		if l == "de" {
+			hasDe = true
+		}
 	}
-	if !tags[0].WithDe {
-		t.Errorf("expected with_de=true when at least one word has DE")
+	if !hasEn {
+		t.Errorf("expected available_langs to include 'en'")
+	}
+	if !hasDe {
+		t.Errorf("expected available_langs to include 'de' when at least one word has DE")
 	}
 }
 
@@ -2709,15 +2723,13 @@ func TestImportPreview_ValidTag(t *testing.T) {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
 	var resp struct {
-		Tag      string `json:"tag"`
-		Total    int    `json:"total"`
-		WithEn   int    `json:"with_en"`
-		WithDe   int    `json:"with_de"`
-		Examples []struct {
-			ZhText  string   `json:"zh_text"`
-			Pinyin  string   `json:"pinyin"`
-			EnTexts []string `json:"en_texts"`
-			DeTexts []string `json:"de_texts"`
+		Tag            string         `json:"tag"`
+		Total          int            `json:"total"`
+		AvailableLangs map[string]int `json:"available_langs"`
+		Examples       []struct {
+			ZhText       string              `json:"zh_text"`
+			Pinyin       string              `json:"pinyin"`
+			Translations map[string][]string `json:"translations"`
 		} `json:"examples"`
 	}
 	decodeJSON(t, rec, &resp)
@@ -2727,11 +2739,11 @@ func TestImportPreview_ValidTag(t *testing.T) {
 	if resp.Total != 3 {
 		t.Errorf("want total 3, got %d", resp.Total)
 	}
-	if resp.WithEn != 3 {
-		t.Errorf("want with_en=3, got %d", resp.WithEn)
+	if resp.AvailableLangs["en"] != 3 {
+		t.Errorf("want available_langs[en]=3, got %d", resp.AvailableLangs["en"])
 	}
-	if resp.WithDe != 1 {
-		t.Errorf("want with_de=1, got %d", resp.WithDe)
+	if resp.AvailableLangs["de"] != 1 {
+		t.Errorf("want available_langs[de]=1, got %d", resp.AvailableLangs["de"])
 	}
 	if len(resp.Examples) != 3 {
 		t.Errorf("want 3 examples, got %d", len(resp.Examples))
@@ -2739,12 +2751,11 @@ func TestImportPreview_ValidTag(t *testing.T) {
 	if len(resp.Examples) > 50 {
 		t.Errorf("want at most 50 examples, got %d", len(resp.Examples))
 	}
-	// First example should have zh_text and en_texts populated.
 	if resp.Examples[0].ZhText == "" {
 		t.Error("expected non-empty zh_text in first example")
 	}
-	if len(resp.Examples[0].EnTexts) == 0 {
-		t.Error("expected en_texts in first example")
+	if len(resp.Examples[0].Translations["en"]) == 0 {
+		t.Error("expected en translations in first example")
 	}
 }
 
@@ -2781,10 +2792,9 @@ func TestImport_Basic(t *testing.T) {
 
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/import", map[string]any{
-		"tag":        "HSK1",
-		"import_en":  true,
-		"import_de":  false,
-		"apply_tags": []string{"HSK1"},
+		"tag":          "HSK1",
+		"import_langs": []string{"en"},
+		"apply_tags":   []string{"HSK1"},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
@@ -2824,10 +2834,9 @@ func TestImport_SkipsDuplicates(t *testing.T) {
 
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/import", map[string]any{
-		"tag":        "HSK1",
-		"import_en":  true,
-		"import_de":  false,
-		"apply_tags": []string{"HSK1"},
+		"tag":          "HSK1",
+		"import_langs": []string{"en"},
+		"apply_tags":   []string{"HSK1"},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
@@ -2852,10 +2861,9 @@ func TestImport_DeFlag(t *testing.T) {
 	r := newRouter(s)
 	// Import with DE
 	rec := do(t, r, "POST", "/api/import", map[string]any{
-		"tag":        "HSK1",
-		"import_en":  true,
-		"import_de":  true,
-		"apply_tags": []string{"HSK1"},
+		"tag":          "HSK1",
+		"import_langs": []string{"en", "de"},
+		"apply_tags":   []string{"HSK1"},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
@@ -2870,14 +2878,14 @@ func TestImport_DeFlag(t *testing.T) {
 	listRec := do(t, r, "GET", "/api/words/?tags=HSK1", nil)
 	var listResp struct {
 		Words []struct {
-			DeTexts []string `json:"de_texts"`
+			Translations map[string][]string `json:"translations"`
 		} `json:"words"`
 	}
 	decodeJSON(t, listRec, &listResp)
 	if len(listResp.Words) == 0 {
 		t.Fatal("no words returned")
 	}
-	if len(listResp.Words[0].DeTexts) == 0 {
+	if len(listResp.Words[0].Translations["de"]) == 0 {
 		t.Error("expected DE translations to be imported")
 	}
 }
@@ -2888,10 +2896,9 @@ func TestImport_DeFlagFalse(t *testing.T) {
 
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/import", map[string]any{
-		"tag":        "HSK1",
-		"import_en":  true,
-		"import_de":  false,
-		"apply_tags": []string{},
+		"tag":          "HSK1",
+		"import_langs": []string{"en"},
+		"apply_tags":   []string{},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
@@ -2900,15 +2907,15 @@ func TestImport_DeFlagFalse(t *testing.T) {
 	listRec := do(t, r, "GET", "/api/words/", nil)
 	var listResp struct {
 		Words []struct {
-			DeTexts []string `json:"de_texts"`
+			Translations map[string][]string `json:"translations"`
 		} `json:"words"`
 	}
 	decodeJSON(t, listRec, &listResp)
 	if len(listResp.Words) == 0 {
 		t.Fatal("no words returned")
 	}
-	if len(listResp.Words[0].DeTexts) != 0 {
-		t.Errorf("expected no DE translations, got %v", listResp.Words[0].DeTexts)
+	if len(listResp.Words[0].Translations["de"]) != 0 {
+		t.Errorf("expected no DE translations, got %v", listResp.Words[0].Translations["de"])
 	}
 }
 
@@ -2918,10 +2925,9 @@ func TestImport_ApplyCustomTags(t *testing.T) {
 
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/import", map[string]any{
-		"tag":        "HSK1",
-		"import_en":  true,
-		"import_de":  false,
-		"apply_tags": []string{"HSK1", "my-review"},
+		"tag":          "HSK1",
+		"import_langs": []string{"en"},
+		"apply_tags":   []string{"HSK1", "my-review"},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
@@ -2939,8 +2945,8 @@ func TestImport_ApplyCustomTags(t *testing.T) {
 func TestImport_MissingTag(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/import", map[string]any{
-		"import_en":  true,
-		"apply_tags": []string{},
+		"import_langs": []string{"en"},
+		"apply_tags":   []string{},
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
@@ -3117,8 +3123,8 @@ func TestTranslate_PinyinOnlyAllowedForFreeUser(t *testing.T) {
 	}
 	r := newRouterWithUserID(s, freeID)
 	rec := do(t, r, http.MethodPost, "/api/translate", map[string]string{
-		"zh_text": "你好",
-		"en_text": "hello",
+		"zh_text":     "你好",
+		"source_text": "hello",
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("free user pinyin-only: want 200, got %d", rec.Code)

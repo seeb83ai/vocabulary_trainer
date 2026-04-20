@@ -151,12 +151,15 @@ describe('pagination logic', () => {
 // ── buildFormPayload (DOM-based) ───────────────────────────────────────────────
 // Simulate the DOM structure that vocab.html provides.
 
-function buildFormPayload(zhValue, pinyinValue, enValues, tags = [], startTraining = false) {
+function buildFormPayload(zhValue, pinyinValue, enValues, deValues = [], tags = [], startTraining = false) {
   // Mirrors the vocab.js buildFormPayload logic
   return {
     zh_text: zhValue.trim(),
     pinyin: pinyinValue.trim(),
-    en_texts: enValues.map(v => v.trim()).filter(Boolean),
+    translations: {
+      en: enValues.map(v => v.trim()).filter(Boolean),
+      de: deValues.map(v => v.trim()).filter(Boolean),
+    },
     tags: [...tags],
     start_training: startTraining,
   };
@@ -173,14 +176,14 @@ describe('buildFormPayload', () => {
     expect(p.pinyin).toBe('nǐ hǎo');
   });
 
-  it('filters empty en_texts', () => {
+  it('filters empty en translations', () => {
     const p = buildFormPayload('你好', '', ['hello', '  ', '']);
-    expect(p.en_texts).toEqual(['hello']);
+    expect(p.translations.en).toEqual(['hello']);
   });
 
-  it('allows multiple en_texts', () => {
+  it('allows multiple en translations', () => {
     const p = buildFormPayload('你好', '', ['hello', 'hi', 'hey']);
-    expect(p.en_texts).toHaveLength(3);
+    expect(p.translations.en).toHaveLength(3);
   });
 
   it('returns empty pinyin when not provided', () => {
@@ -189,7 +192,7 @@ describe('buildFormPayload', () => {
   });
 
   it('includes tags array', () => {
-    const p = buildFormPayload('你好', '', ['hello'], ['HSK1', 'greetings']);
+    const p = buildFormPayload('你好', '', ['hello'], [], ['HSK1', 'greetings']);
     expect(p.tags).toEqual(['HSK1', 'greetings']);
   });
 
@@ -204,7 +207,7 @@ describe('buildFormPayload', () => {
   });
 
   it('includes start_training when true', () => {
-    const p = buildFormPayload('你好', '', ['hello'], [], true);
+    const p = buildFormPayload('你好', '', ['hello'], [], [], true);
     expect(p.start_training).toBe(true);
   });
 });

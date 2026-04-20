@@ -14,8 +14,8 @@ import (
 var validSortExprs = map[string]string{
 	"zh":          "w.text",
 	"pinyin":      "w.pinyin",
-	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'en')",
-	"de":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'de')",
+	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'en')",
+	"de":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'de')",
 	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
 	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
 	"accuracy":    "CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
@@ -81,7 +81,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 	if missingLang == "en" || missingLang == "de" {
 		missingLangFilter = ` AND NOT EXISTS (
 			SELECT 1 FROM translations t
-			JOIN words tw ON t.en_word_id = tw.id
+			JOIN words tw ON t.translation_word_id = tw.id
 			WHERE t.zh_word_id = w.id AND tw.language = ?
 		)`
 		missingLangArgs = []any{missingLang}
@@ -126,7 +126,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		       OR w.pinyin LIKE '%' || ? || '%'
 		       OR EXISTS (
 		           SELECT 1 FROM words ew
-		           JOIN translations t ON t.en_word_id = ew.id AND t.zh_word_id = w.id
+		           JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
 		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + missingLangFilter + `
 		ORDER BY ` + orderClause + limitClause
@@ -176,24 +176,18 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 			ids[i] = w.ID
 			idIndex[w.ID] = i
 		}
-		enMap, err := s.batchLoadTranslationTexts(ctx, ids, "en")
-		if err != nil {
-			return nil, 0, err
+		for i := range words {
+			words[i].Translations = map[string][]string{}
 		}
-		deMap, err := s.batchLoadTranslationTexts(ctx, ids, "de")
-		if err != nil {
-			return nil, 0, err
-		}
-		for i, w := range words {
-			if t := enMap[w.ID]; t != nil {
-				words[i].EnTexts = t
-			} else {
-				words[i].EnTexts = []string{}
+		for _, lang := range []string{"en", "de"} {
+			langMap, err := s.batchLoadTranslationTexts(ctx, ids, lang)
+			if err != nil {
+				return nil, 0, err
 			}
-			if t := deMap[w.ID]; t != nil {
-				words[i].DeTexts = t
-			} else {
-				words[i].DeTexts = []string{}
+			for i, w := range words {
+				if t := langMap[w.ID]; t != nil {
+					words[i].Translations[lang] = t
+				}
 			}
 		}
 		if err := s.batchLoadTags(ctx, words, ids, idIndex); err != nil {
@@ -218,7 +212,7 @@ func (s *Store) batchLoadTranslationTexts(ctx context.Context, ids []int64, lang
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT t.zh_word_id, w.text FROM words w
-		 JOIN translations t ON t.en_word_id = w.id
+		 JOIN translations t ON t.translation_word_id = w.id
 		 WHERE w.language = ?
 		   AND t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
 		 ORDER BY w.text`, args...)
@@ -277,7 +271,7 @@ func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, id
 func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, lang string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text FROM words w
-		 JOIN translations t ON t.en_word_id = w.id
+		 JOIN translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?
 		 ORDER BY w.text`, zhID, lang)
 	if err != nil {
@@ -327,16 +321,16 @@ func (s *Store) GetWordByID(ctx context.Context, userID, id int64) (*models.Word
 	if err != nil {
 		return nil, fmt.Errorf("get word by id: %w", err)
 	}
-	enTexts, err := s.getTranslationTextsForZhWord(ctx, id, "en")
-	if err != nil {
-		return nil, err
+	wd.Translations = map[string][]string{}
+	for _, lang := range []string{"en", "de"} {
+		texts, err := s.getTranslationTextsForZhWord(ctx, id, lang)
+		if err != nil {
+			return nil, err
+		}
+		if len(texts) > 0 {
+			wd.Translations[lang] = texts
+		}
 	}
-	wd.EnTexts = enTexts
-	deTexts, err := s.getTranslationTextsForZhWord(ctx, id, "de")
-	if err != nil {
-		return nil, err
-	}
-	wd.DeTexts = deTexts
 	wd.Tags, err = s.getTagsForWord(ctx, id)
 	if err != nil {
 		return nil, err
@@ -362,41 +356,24 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 		return 0, err
 	}
 
-	for _, enText := range req.EnTexts {
-		enText = strings.TrimSpace(enText)
-		if enText == "" {
-			continue
-		}
-		enID, err := upsertWord(ctx, tx, enText, "en", nil, userID)
-		if err != nil {
-			return 0, err
-		}
-		if err := initSM2(ctx, tx, enID); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
-			enID, zhID); err != nil {
-			return 0, fmt.Errorf("link en translation: %w", err)
-		}
-	}
-
-	for _, deText := range req.DeTexts {
-		deText = strings.TrimSpace(deText)
-		if deText == "" {
-			continue
-		}
-		deID, err := upsertWord(ctx, tx, deText, "de", nil, userID)
-		if err != nil {
-			return 0, err
-		}
-		if err := initSM2(ctx, tx, deID); err != nil {
-			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
-			deID, zhID); err != nil {
-			return 0, fmt.Errorf("link de translation: %w", err)
+	for lang, texts := range req.Translations {
+		for _, text := range texts {
+			text = strings.TrimSpace(text)
+			if text == "" {
+				continue
+			}
+			transID, err := upsertWord(ctx, tx, text, lang, nil, userID)
+			if err != nil {
+				return 0, err
+			}
+			if err := initSM2(ctx, tx, transID); err != nil {
+				return 0, err
+			}
+			if _, err := tx.ExecContext(ctx,
+				`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
+				transID, zhID); err != nil {
+				return 0, fmt.Errorf("link %s translation: %w", lang, err)
+			}
 		}
 	}
 
@@ -457,41 +434,24 @@ func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req mode
 		return fmt.Errorf("delete translations: %w", err)
 	}
 
-	for _, enText := range req.EnTexts {
-		enText = strings.TrimSpace(enText)
-		if enText == "" {
-			continue
-		}
-		enID, err := upsertWord(ctx, tx, enText, "en", nil, userID)
-		if err != nil {
-			return err
-		}
-		if err := initSM2(ctx, tx, enID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
-			enID, id); err != nil {
-			return fmt.Errorf("link en translation: %w", err)
-		}
-	}
-
-	for _, deText := range req.DeTexts {
-		deText = strings.TrimSpace(deText)
-		if deText == "" {
-			continue
-		}
-		deID, err := upsertWord(ctx, tx, deText, "de", nil, userID)
-		if err != nil {
-			return err
-		}
-		if err := initSM2(ctx, tx, deID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
-			deID, id); err != nil {
-			return fmt.Errorf("link de translation: %w", err)
+	for lang, texts := range req.Translations {
+		for _, text := range texts {
+			text = strings.TrimSpace(text)
+			if text == "" {
+				continue
+			}
+			transID, err := upsertWord(ctx, tx, text, lang, nil, userID)
+			if err != nil {
+				return err
+			}
+			if err := initSM2(ctx, tx, transID); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx,
+				`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
+				transID, id); err != nil {
+				return fmt.Errorf("link %s translation: %w", lang, err)
+			}
 		}
 	}
 
@@ -505,16 +465,15 @@ func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req mode
 	return s.cleanOrphanTags(ctx)
 }
 
-// AddTranslation appends a single EN text as a new translation for the given zh word ID.
-// If the EN word already exists it is reused; if the link already exists it is a no-op.
-func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, enText string) error {
+// AddTranslation appends a single translation word in the given language for the given zh word ID.
+// If the translation word already exists it is reused; if the link already exists it is a no-op.
+func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, lang, text string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Verify the zh word exists
 	var exists int
 	if err := tx.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM words WHERE id = ? AND language = 'zh'`, zhID).Scan(&exists); err != nil {
@@ -524,16 +483,16 @@ func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, en
 		return sql.ErrNoRows
 	}
 
-	enID, err := upsertWord(ctx, tx, enText, "en", nil, userID)
+	transID, err := upsertWord(ctx, tx, text, lang, nil, userID)
 	if err != nil {
 		return err
 	}
-	if err := initSM2(ctx, tx, enID); err != nil {
+	if err := initSM2(ctx, tx, transID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
-		enID, zhID); err != nil {
+		`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
+		transID, zhID); err != nil {
 		return fmt.Errorf("link translation: %w", err)
 	}
 	return tx.Commit()
@@ -571,7 +530,7 @@ func (s *Store) MarkWordForReview(ctx context.Context, userID, id int64) error {
 func (s *Store) GetTranslationLanguages(ctx context.Context) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT DISTINCT w.language FROM words w
-		 JOIN translations t ON t.en_word_id = w.id
+		 JOIN translations t ON t.translation_word_id = w.id
 		 WHERE w.language != 'zh'
 		 ORDER BY w.language`)
 	if err != nil {
@@ -594,7 +553,7 @@ func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, target
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
 		 FROM words w
-		 JOIN translations t ON t.en_word_id = w.id
+		 JOIN translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
 	if err != nil {
 		return nil, fmt.Errorf("get translations: %w", err)

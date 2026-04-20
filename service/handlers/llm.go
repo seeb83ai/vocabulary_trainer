@@ -84,9 +84,13 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 		propsStr = strings.Join(props, ", ")
 	}
 
-	// zh_text and en_texts come from the DB — not from the request.
+	// zh_text and translations come from the DB — not from the request.
 	zhText := word.ZhText
-	enTexts := strings.Join(word.EnTexts, ", ")
+	var allTranslTexts []string
+	for _, texts := range word.Translations {
+		allTranslTexts = append(allTranslTexts, texts...)
+	}
+	enTexts := strings.Join(allTranslTexts, ", ")
 	if enTexts == "" {
 		enTexts = "unknown"
 	}

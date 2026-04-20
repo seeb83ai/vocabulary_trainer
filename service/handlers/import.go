@@ -15,25 +15,22 @@ type ImportHandler struct {
 }
 
 type importPreviewWord struct {
-	ZhText   string   `json:"zh_text"`
-	Pinyin   string   `json:"pinyin"`
-	EnTexts  []string `json:"en_texts"`
-	DeTexts  []string `json:"de_texts"`
+	ZhText       string              `json:"zh_text"`
+	Pinyin       string              `json:"pinyin"`
+	Translations map[string][]string `json:"translations"`
 }
 
 type importPreviewResponse struct {
-	Tag      string               `json:"tag"`
-	Total    int                  `json:"total"`
-	WithEn   int                  `json:"with_en"`
-	WithDe   int                  `json:"with_de"`
-	Examples []importPreviewWord  `json:"examples"`
+	Tag            string              `json:"tag"`
+	Total          int                 `json:"total"`
+	AvailableLangs map[string]int      `json:"available_langs"`
+	Examples       []importPreviewWord `json:"examples"`
 }
 
 type importRequest struct {
-	Tag       string   `json:"tag"`
-	ImportEn  bool     `json:"import_en"`
-	ImportDe  bool     `json:"import_de"`
-	ApplyTags []string `json:"apply_tags"`
+	Tag         string   `json:"tag"`
+	ImportLangs []string `json:"import_langs"`
+	ApplyTags   []string `json:"apply_tags"`
 }
 
 type importResponse struct {
@@ -68,38 +65,35 @@ func (h *ImportHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	withEn, withDe := 0, 0
+	availableLangs := map[string]int{}
 	examples := make([]importPreviewWord, 0, 50)
 	for _, w := range words {
-		if len(w.EnTexts) > 0 {
-			withEn++
-		}
-		if len(w.DeTexts) > 0 {
-			withDe++
+		for lang, texts := range w.Translations {
+			if len(texts) > 0 {
+				availableLangs[lang]++
+			}
 		}
 		if len(examples) < 50 {
 			pinyin := ""
 			if w.Pinyin != nil {
 				pinyin = *w.Pinyin
 			}
-			enTexts := w.EnTexts
-			if len(enTexts) > 3 {
-				enTexts = enTexts[:3]
-			}
-			deTexts := w.DeTexts
-			if len(deTexts) > 3 {
-				deTexts = deTexts[:3]
+			preview := map[string][]string{}
+			for lang, texts := range w.Translations {
+				if len(texts) > 3 {
+					texts = texts[:3]
+				}
+				preview[lang] = texts
 			}
 			examples = append(examples, importPreviewWord{
-				ZhText:  w.ZhText,
-				Pinyin:  pinyin,
-				EnTexts: enTexts,
-				DeTexts: deTexts,
+				ZhText:       w.ZhText,
+				Pinyin:       pinyin,
+				Translations: preview,
 			})
 		}
 	}
 
-	writeJSON(w, http.StatusOK, importPreviewResponse{Tag: tag, Total: total, WithEn: withEn, WithDe: withDe, Examples: examples})
+	writeJSON(w, http.StatusOK, importPreviewResponse{Tag: tag, Total: total, AvailableLangs: availableLangs, Examples: examples})
 }
 
 // Import fetches all words for the source user with the given tag and creates
@@ -170,26 +164,26 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 			pinyin = *sw.Pinyin
 		}
 
-		enTexts := sw.EnTexts
-		if !req.ImportEn {
-			enTexts = nil
+		importSet := map[string]bool{}
+		for _, l := range req.ImportLangs {
+			importSet[l] = true
 		}
-		deTexts := sw.DeTexts
-		if !req.ImportDe {
-			deTexts = nil
+		translations := map[string][]string{}
+		for lang, texts := range sw.Translations {
+			if len(req.ImportLangs) == 0 || importSet[lang] {
+				translations[lang] = texts
+			}
 		}
-		// Skip if no translations would be imported.
-		if len(enTexts) == 0 && len(deTexts) == 0 {
+		if len(translations) == 0 {
 			skipped++
 			continue
 		}
 
 		createReq := models.CreateWordRequest{
-			ZhText:  sw.ZhText,
-			Pinyin:  pinyin,
-			EnTexts: enTexts,
-			DeTexts: deTexts,
-			Tags:    cleanTags,
+			ZhText:       sw.ZhText,
+			Pinyin:       pinyin,
+			Translations: translations,
+			Tags:         cleanTags,
 		}
 
 		if _, err := h.Store.CreateWord(r.Context(), currentUserID, createReq); err != nil {

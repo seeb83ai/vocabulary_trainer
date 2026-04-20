@@ -429,7 +429,7 @@ func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 
 	// Copy translations.
 	tRows, err := tx.QueryContext(ctx,
-		`SELECT en_word_id, zh_word_id FROM translations
+		`SELECT translation_word_id, zh_word_id FROM translations
 		 WHERE zh_word_id IN (SELECT id FROM words WHERE user_id = 1)`)
 	if err != nil {
 		return fmt.Errorf("query template translations: %w", err)
@@ -455,7 +455,7 @@ func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 			continue
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
+			`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
 			newEnID, newZhID,
 		); err != nil {
 			return fmt.Errorf("insert user translation: %w", err)
