@@ -41,17 +41,22 @@
     </div>
   </div>
 
-  <!-- Language filter (desktop only; mobile uses overlay) -->
-  <div id="lang-filter-bar" class="hidden sm:block bg-white border-b border-gray-20">
-    <div id="lang-chips-desktop" class="sm:flex bg-white border-b border-gray-200 max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
+  <!-- Language + Mnemonics filter (desktop only; hidden on mobile — use overlay instead) -->
+  <div id="lang-filter-bar" class="hidden sm:block bg-white border-b border-gray-200">
+    <div id="lang-chips-desktop" class="flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
       <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.langs">Languages:</span>
+      <!-- lang pills injected here by applyLangChips() -->
+      <span class="text-gray-300 select-none mx-1">|</span>
+      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.mnemonics">Mnemonics:</span>
+      <button id="mnemonics-pill" class="px-2.5 py-0.5 rounded-full text-xs font-medium transition"></button>
     </div>
   </div>
 
-  <!-- Tag filter (desktop only; mobile uses overlay) -->
-  <div id="tag-filter-bar" class="hidden sm:block bg-white border-b border-gray-20">
-    <div id="tag-chips-desktop" class="hidden sm:flex bg-white border-b border-gray-200 max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
+  <!-- Tag filter (desktop only; hidden on mobile — use overlay instead) -->
+  <div id="tag-filter-bar" class="hidden sm:block bg-white border-b border-gray-200">
+    <div id="tag-chips-desktop" class="flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
       <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.tags">Tags:</span>
+      <!-- tag pills injected here by loadTrainTags() -->
     </div>
   </div>
 
@@ -306,7 +311,7 @@
   <!-- Mobile filter overlay (bottom sheet) -->
   <div id="filter-overlay" class="hidden fixed inset-0 z-50 sm:hidden" role="dialog" aria-modal="true">
     <div id="filter-overlay-backdrop" class="absolute inset-0 bg-black/50"></div>
-    <div class="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-xl max-h-[80vh] overflow-y-auto">
+    <div class="absolute top-10 left-0 right-0 bg-white rounded-t-2xl shadow-xl max-h-[80vh] overflow-y-auto">
       <div class="p-5">
         <div class="mb-5">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.quizMode">Quiz Mode</div>
@@ -328,6 +333,10 @@
             <button data-bucket="70-84"  class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.practicing">Practicing</button>
             <button data-bucket="85-100" class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.mastered">Mastered</button>
           </div>
+        </div>
+        <div class="mb-5">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.mnemonics">Mnemonics</div>
+          <button id="overlay-mnemonics-pill" class="px-4 py-2 rounded-full text-sm font-medium transition"></button>
         </div>
         <div id="overlay-langs-section" class="hidden mb-5">
           <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.langs">Languages</div>

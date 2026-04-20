@@ -88,32 +88,36 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mnemonics := r.URL.Query().Get("mnemonics") != "false"
+
 	// Ensure progress rows exist for any newly-named library entries.
 	if err := h.Store.EnsureHMMProgress(r.Context(), UserIDFromContext(r.Context())); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	// Interleave due HMM mnemonic cards.
-	hmmCard, _, hmmErr := h.Store.GetNextDueHMMCard(r.Context(), UserIDFromContext(r.Context()), nil)
-	if hmmErr != nil {
-		writeError(w, http.StatusInternalServerError, hmmErr.Error())
-		return
-	}
-	if hmmCard != nil {
-		serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
-		if serveHMM {
-			writeJSON(w, http.StatusOK, models.QuizCard{
-				CardType:     "hmm",
-				EntityType:   hmmCard.EntityType,
-				EntityKey:    hmmCard.EntityKey,
-				Prompt:       hmmCard.Prompt,
-				Category:     hmmCard.Category,
-				Hint:         hmmCard.Hint,
-				DueDate:      hmmCard.DueDate,
-				IntervalDays: hmmCard.IntervalDays,
-			})
+	// Interleave due HMM mnemonic cards (unless user excluded mnemonics).
+	if mnemonics {
+		hmmCard, _, hmmErr := h.Store.GetNextDueHMMCard(r.Context(), UserIDFromContext(r.Context()), nil)
+		if hmmErr != nil {
+			writeError(w, http.StatusInternalServerError, hmmErr.Error())
 			return
+		}
+		if hmmCard != nil {
+			serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
+			if serveHMM {
+				writeJSON(w, http.StatusOK, models.QuizCard{
+					CardType:     "hmm",
+					EntityType:   hmmCard.EntityType,
+					EntityKey:    hmmCard.EntityKey,
+					Prompt:       hmmCard.Prompt,
+					Category:     hmmCard.Category,
+					Hint:         hmmCard.Hint,
+					DueDate:      hmmCard.DueDate,
+					IntervalDays: hmmCard.IntervalDays,
+				})
+				return
+			}
 		}
 	}
 
@@ -488,10 +492,17 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		}
 		newAvailable = n
 	}
-	hmmStats, err := h.Store.GetHMMStats(r.Context(), UserIDFromContext(r.Context()), nil)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	mnemonics := r.URL.Query().Get("mnemonics") != "false"
+	hmmDueToday := 0
+	hmmTotal := 0
+	if mnemonics {
+		hmmStats, err := h.Store.GetHMMStats(r.Context(), UserIDFromContext(r.Context()), nil)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		hmmDueToday = hmmStats.DueToday
+		hmmTotal = hmmStats.Total
 	}
 	writeJSON(w, http.StatusOK, map[string]int{
 		"due_today":            due,
@@ -502,8 +513,8 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"today_mistakes":       todayMistakes,
 		"available_to_advance": availableToAdvance,
 		"new_available":        newAvailable,
-		"hmm_due_today":        hmmStats.DueToday,
-		"hmm_total":            hmmStats.Total,
+		"hmm_due_today":        hmmDueToday,
+		"hmm_total":            hmmTotal,
 	})
 }
 

@@ -13,6 +13,7 @@ let selectedMode = localStorage.getItem('quizMode') || 'random';
 let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 let selectedBucket = localStorage.getItem('quizBucket') || '';
 let selectedLangs = JSON.parse(localStorage.getItem('quizLangs') || '["en"]');
+let includeMnemonics = localStorage.getItem('quizMnemonics') !== 'false';
 let latestStats = null;
 let skipNewWords = false;
 
@@ -68,11 +69,27 @@ function showEmptyState() {
   }
 }
 
+function applyMnemonicPill() {
+  const active = includeMnemonics;
+  const cls = active
+    ? 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-blue-600 text-white'
+    : 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
+  const overlayCls = active
+    ? 'px-4 py-2 rounded-full text-sm font-medium transition bg-blue-600 text-white'
+    : 'px-4 py-2 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
+  const label = t('filter.mnemonicsOn');
+  const pill = $('mnemonics-pill');
+  if (pill) { pill.className = cls; pill.textContent = label; }
+  const overlayPill = $('overlay-mnemonics-pill');
+  if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
+}
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
     if (selectedTags.length) params.set('tags', selectedTags.join(','));
     if (selectedBucket) params.set('bucket', selectedBucket);
+    if (!includeMnemonics) params.set('mnemonics', 'false');
     const qs = params.toString();
     const statsUrl = qs ? `/api/quiz/stats?${qs}` : '/api/quiz/stats';
     const stats = await apiFetch(statsUrl);
@@ -133,6 +150,7 @@ async function loadNextCard() {
     if (selectedBucket) params.set('bucket', selectedBucket);
     if (selectedLangs.length) params.set('langs', selectedLangs.join(','));
     if (skipNewWords) params.set('skip_new', 'true');
+    if (!includeMnemonics) params.set('mnemonics', 'false');
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
@@ -571,37 +589,34 @@ async function loadDecomposition(zhText, containerId, toggleId) {
 }
 
 function applyLangChips(allLangs) {
-  const bar = $('lang-filter-bar');
   const desktopContainer = $('lang-chips-desktop');
   desktopContainer.querySelectorAll('.lang-pill').forEach(p => p.remove());
   const overlayContainer = $('overlay-lang-chips');
   overlayContainer.innerHTML = '';
 
   if (allLangs.length < 2) {
-    bar.classList.add('hidden');
     $('overlay-langs-section').classList.add('hidden');
-    return;
-  }
+  } else {
+    $('overlay-langs-section').classList.remove('hidden');
 
-  bar.classList.remove('hidden');
-  $('overlay-langs-section').classList.remove('hidden');
+    for (const lang of allLangs) {
+      const active = selectedLangs.includes(lang);
 
-  for (const lang of allLangs) {
-    const active = selectedLangs.includes(lang);
+      // Desktop chip — insert before the separator (third child: label, sep, mnemonics-pill)
+      const sep = desktopContainer.querySelector('span.text-gray-300');
+      const pill = document.createElement('button');
+      pill.className = `lang-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+      pill.textContent = lang.toUpperCase();
+      pill.addEventListener('click', () => toggleLang(lang, allLangs));
+      desktopContainer.insertBefore(pill, sep);
 
-    // Desktop chip
-    const pill = document.createElement('button');
-    pill.className = `lang-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-    pill.textContent = lang.toUpperCase();
-    pill.addEventListener('click', () => toggleLang(lang, allLangs));
-    desktopContainer.appendChild(pill);
-
-    // Overlay chip
-    const overlayPill = document.createElement('button');
-    overlayPill.className = `overlay-lang-btn px-3 py-1.5 rounded-full text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-    overlayPill.textContent = lang.toUpperCase();
-    overlayPill.addEventListener('click', () => toggleLang(lang, allLangs));
-    overlayContainer.appendChild(overlayPill);
+      // Overlay chip
+      const overlayPill = document.createElement('button');
+      overlayPill.className = `overlay-lang-btn px-3 py-1.5 rounded-full text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+      overlayPill.textContent = lang.toUpperCase();
+      overlayPill.addEventListener('click', () => toggleLang(lang, allLangs));
+      overlayContainer.appendChild(overlayPill);
+    }
   }
 }
 
@@ -637,21 +652,21 @@ async function loadTrainTags() {
   try {
     allTags = await apiFetch('/api/tags');
   } catch (_) {}
-  const bar = $('tag-filter-bar');
-  const desktopContainer = $('tag-chips-desktop');
-  desktopContainer.querySelectorAll('.tag-pill').forEach(p => p.remove());
-  if (allTags.length === 0) {
-    bar.classList.add('hidden');
-    $('overlay-tags-section').classList.add('hidden');
-    return;
-  }
-  // Tag bar is desktop-only; on mobile the overlay handles tag selection.
-  bar.classList.remove('hidden');
+
   // Remove stale tags from selection
   selectedTags = selectedTags.filter(t => allTags.includes(t));
   localStorage.setItem('quizTags', JSON.stringify(selectedTags));
 
-  // Desktop: render all tag chips
+  // Desktop: render tag pills into the tag bar
+  const tagBar = $('tag-filter-bar');
+  const desktopContainer = $('tag-chips-desktop');
+  desktopContainer.querySelectorAll('.tag-pill').forEach(p => p.remove());
+  if (allTags.length === 0) {
+    tagBar.classList.add('hidden');
+    $('overlay-tags-section').classList.add('hidden');
+    return;
+  }
+  tagBar.classList.remove('hidden');
   for (const tag of allTags) {
     const pill = document.createElement('button');
     const active = selectedTags.includes(tag);
@@ -695,8 +710,20 @@ async function loadTrainTags() {
 document.addEventListener('DOMContentLoaded', () => {
   applyModeButtons();
   applyTierPills();
+  applyMnemonicPill();
   loadLangs();
   loadTrainTags();
+
+  function toggleMnemonics() {
+    includeMnemonics = !includeMnemonics;
+    localStorage.setItem('quizMnemonics', includeMnemonics ? 'true' : 'false');
+    applyMnemonicPill();
+    loadNextCard();
+  }
+  const mnemonicsPill = $('mnemonics-pill');
+  if (mnemonicsPill) mnemonicsPill.addEventListener('click', toggleMnemonics);
+  const overlayMnemonicsPill = $('overlay-mnemonics-pill');
+  if (overlayMnemonicsPill) overlayMnemonicsPill.addEventListener('click', toggleMnemonics);
 
   document.querySelectorAll('.tier-pill').forEach(btn => {
     btn.addEventListener('click', () => {

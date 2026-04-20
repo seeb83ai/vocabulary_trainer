@@ -1562,6 +1562,90 @@ func TestStatsHandler_HmmDueTodayIncluded(t *testing.T) {
 	}
 }
 
+// ── mnemonics param ───────────────────────────────────────────────────────────
+
+// seedHMMCard names an actor so EnsureHMMProgress creates a due progress row.
+func seedHMMCard(t *testing.T, s *db.Store) {
+	t.Helper()
+	ctx := context.Background()
+	actors, err := s.GetHMMActors(ctx, int64(2))
+	if err != nil || len(actors) == 0 {
+		t.Skip("no actor slots available for HMM seeding")
+	}
+	if err := s.UpdateHMMActor(ctx, int64(2), actors[0].Initial, "TestActor"); err != nil {
+		t.Fatalf("seedHMMCard: %v", err)
+	}
+	if err := s.EnsureHMMProgress(ctx, int64(2)); err != nil {
+		t.Fatalf("seedHMMCard EnsureHMMProgress: %v", err)
+	}
+}
+
+func TestQuizNext_MnemonicsFalse_SkipsHMMCard(t *testing.T) {
+	s := openTestDB(t)
+	seedHMMCard(t, s)
+	// No vocabulary words — with mnemonics=true the HMM card would be served;
+	// with mnemonics=false we should get 404 "no words available".
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mnemonics=false", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	decodeJSON(t, rec, &body)
+	if body["error"] != "no words available" {
+		t.Errorf("unexpected error: %q", body["error"])
+	}
+}
+
+func TestQuizNext_MnemonicsTrue_ServesHMMCard(t *testing.T) {
+	s := openTestDB(t)
+	seedHMMCard(t, s)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.CardType != "hmm" {
+		t.Errorf("want card_type=hmm, got %q", card.CardType)
+	}
+}
+
+func TestQuizStats_MnemonicsFalse_HmmDueTodayZero(t *testing.T) {
+	s := openTestDB(t)
+	seedHMMCard(t, s)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/stats?mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if got := resp["hmm_due_today"]; got != 0 {
+		t.Errorf("hmm_due_today: want 0, got %d", got)
+	}
+}
+
+func TestQuizStats_MnemonicsTrue_HmmDueTodayNonZero(t *testing.T) {
+	s := openTestDB(t)
+	seedHMMCard(t, s)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if got := resp["hmm_due_today"]; got == 0 {
+		t.Error("hmm_due_today: want >0 after seeding an HMM card, got 0")
+	}
+}
+
 // ── /api/quiz/advance ─────────────────────────────────────────────────────────
 
 func TestAdvanceHandler_NoWordsAvailable(t *testing.T) {
