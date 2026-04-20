@@ -20,15 +20,15 @@ type TranslateHandler struct {
 
 type translateRequest struct {
 	ZhText     string `json:"zh_text"`
-	EnText     string `json:"en_text"`
+	SourceText string `json:"source_text"`
 	TargetLang string `json:"target_lang"`
 }
 
 type translateResponse struct {
-	ZhText  string   `json:"zh_text"`
-	Pinyin  string   `json:"pinyin"`
-	EnText  string   `json:"en_text"`
-	EnTexts []string `json:"en_texts,omitempty"`
+	ZhText       string   `json:"zh_text"`
+	Pinyin       string   `json:"pinyin"`
+	SourceText   string   `json:"source_text"`
+	Translations []string `json:"translations,omitempty"`
 }
 
 func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
@@ -38,16 +38,16 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.ZhText = strings.TrimSpace(req.ZhText)
-	req.EnText = strings.TrimSpace(req.EnText)
+	req.SourceText = strings.TrimSpace(req.SourceText)
 
-	if req.ZhText == "" && req.EnText == "" {
-		writeError(w, http.StatusBadRequest, "provide zh_text or en_text")
+	if req.ZhText == "" && req.SourceText == "" {
+		writeError(w, http.StatusBadRequest, "provide zh_text or source_text")
 		return
 	}
 
-	// Pinyin-only path (both zh and en provided) is available to all users.
+	// Pinyin-only path (both zh and source_text provided) is available to all users.
 	// DeepL translation requires plus or admin role.
-	pinyinOnly := req.ZhText != "" && req.EnText != ""
+	pinyinOnly := req.ZhText != "" && req.SourceText != ""
 	if !pinyinOnly {
 		role, err := h.Store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
 		if err != nil || (role != "plus" && role != "admin") {
@@ -56,14 +56,14 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp := translateResponse{ZhText: req.ZhText, EnText: req.EnText}
+	resp := translateResponse{ZhText: req.ZhText, SourceText: req.SourceText}
 
 	targetLang := h.TargetLang
 	if req.TargetLang != "" {
 		targetLang = strings.ToUpper(req.TargetLang)
 	}
 
-	if req.ZhText != "" && req.EnText == "" {
+	if req.ZhText != "" && req.SourceText == "" {
 		// Chinese provided → translate to target language (request multiple meanings)
 		instructions := []string{
 			"If this word has multiple distinct meanings in the target language, list up to 3 translations separated by ' / '. Only include genuinely different meanings, not synonyms.",
@@ -74,12 +74,12 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		parts := splitTranslations(translated[0])
-		resp.EnText = parts[0]
-		resp.EnTexts = parts
+		resp.SourceText = parts[0]
+		resp.Translations = parts
 		resp.Pinyin = toPinyin(req.ZhText)
-	} else if req.EnText != "" && req.ZhText == "" {
+	} else if req.SourceText != "" && req.ZhText == "" {
 		// Source language text provided → translate to Chinese
-		translated, err := deeplTranslate([]string{req.EnText}, "ZH", "", h.APIKey, nil)
+		translated, err := deeplTranslate([]string{req.SourceText}, "ZH", "", h.APIKey, nil)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
 			return

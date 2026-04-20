@@ -216,7 +216,7 @@ func (s *Store) getTranslationsByZhTexts(ctx context.Context, zhTexts []string, 
 		`SELECT w.text, MIN(e.text)
 		 FROM words w
 		 JOIN translations t ON t.zh_word_id = w.id
-		 JOIN words e ON e.id = t.en_word_id AND e.language = ?
+		 JOIN words e ON e.id = t.translation_word_id AND e.language = ?
 		 WHERE w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
 		 GROUP BY w.text`,
 		args...)
@@ -236,16 +236,10 @@ func (s *Store) getTranslationsByZhTexts(ctx context.Context, zhTexts []string, 
 	return result, rows.Err()
 }
 
-// GetEnTranslationsByZhTexts returns the first English translation for each
+// GetTranslationsByZhTexts returns the first translation in the given language for each
 // zh_text in the supplied slice, keyed by zh_text.
-func (s *Store) GetEnTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
-	return s.getTranslationsByZhTexts(ctx, zhTexts, "en")
-}
-
-// GetDeTranslationsByZhTexts returns the first German translation for each
-// zh_text in the supplied slice, keyed by zh_text.
-func (s *Store) GetDeTranslationsByZhTexts(ctx context.Context, zhTexts []string) (map[string]string, error) {
-	return s.getTranslationsByZhTexts(ctx, zhTexts, "de")
+func (s *Store) GetTranslationsByZhTexts(ctx context.Context, zhTexts []string, lang string) (map[string]string, error) {
+	return s.getTranslationsByZhTexts(ctx, zhTexts, lang)
 }
 
 // StoreTranslationForZhChar stores an EN or DE translation for a Chinese character.
@@ -297,7 +291,7 @@ func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, t
 	}
 
 	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`, transID, zhID,
+		`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`, transID, zhID,
 	); err != nil {
 		return fmt.Errorf("link %s translation: %w", lang, err)
 	}

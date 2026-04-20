@@ -197,7 +197,7 @@ func expandVariants(a string) []string {
 	return out
 }
 
-// MaskPinyin returns a masked pinyin hint for learning-phase en_to_zh cards.
+// MaskPinyin returns a masked pinyin hint for learning-phase transl_to_zh cards.
 // The masking level depends on totalCorrect:
 //
 //	0 → first char of each syllable visible, rest replaced with * per char ("nǐ hǎo" → "n** h**")
@@ -239,23 +239,23 @@ func MaskPinyin(pinyin string, totalCorrect int) string {
 
 // SelectProgressiveMode picks a quiz mode based on the word's accuracy (correct/attempts).
 // This implements the progressive training ladder:
-//   - attempts < 3                          → en_to_zh (not enough data)
-//   - accuracy < 50%                        → en_to_zh (still struggling)
-//   - accuracy < 70% or attempts < 10       → zh_pinyin_to_en (progressing; pinyin scaffold)
-//   - accuracy < 85%                        → zh_to_en (reliable; drop pinyin)
+//   - attempts < 3                          → transl_to_zh (not enough data)
+//   - accuracy < 50%                        → transl_to_zh (still struggling)
+//   - accuracy < 70% or attempts < 10       → zh_pinyin_to_transl (progressing; pinyin scaffold)
+//   - accuracy < 85%                        → zh_to_transl (reliable; drop pinyin)
 //   - accuracy ≥ 85% and attempts ≥ 10      → random (mastered)
 func SelectProgressiveMode(totalCorrect, totalAttempts, streakBonus int) string {
 	if totalAttempts < 3 {
-		return models.ModeEnToZh
+		return models.ModeTranslToZh
 	}
 	accuracy := float64(totalCorrect+streakBonus) / float64(totalAttempts)
 	switch {
 	case accuracy < 0.50:
-		return models.ModeEnToZh
+		return models.ModeTranslToZh
 	case accuracy < 0.70 || totalAttempts < 10:
-		return models.ModeZhPinyinToEn
+		return models.ModeZhPinyinToTransl
 	case accuracy < 0.85:
-		return models.ModeZhToEn
+		return models.ModeZhToTransl
 	default:
 		return SelectMode()
 	}
@@ -264,9 +264,9 @@ func SelectProgressiveMode(totalCorrect, totalAttempts, streakBonus int) string 
 // SelectMode randomly picks one of the three quiz modes with equal probability.
 func SelectMode() string {
 	modes := []string{
-		models.ModeEnToZh,
-		models.ModeZhToEn,
-		models.ModeZhPinyinToEn,
+		models.ModeTranslToZh,
+		models.ModeZhToTransl,
+		models.ModeZhPinyinToTransl,
 	}
 	return modes[rand.Intn(len(modes))]
 }

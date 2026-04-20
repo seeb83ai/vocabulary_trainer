@@ -400,9 +400,9 @@ func TestCheckAnswer_TrailingWhitespace(t *testing.T) {
 
 func TestSelectMode_ValidMode(t *testing.T) {
 	validModes := map[string]bool{
-		models.ModeEnToZh:       true,
-		models.ModeZhToEn:       true,
-		models.ModeZhPinyinToEn: true,
+		models.ModeTranslToZh:       true,
+		models.ModeZhToTransl:       true,
+		models.ModeZhPinyinToTransl: true,
 	}
 	for i := 0; i < 50; i++ {
 		m := SelectMode()
@@ -417,7 +417,7 @@ func TestSelectMode_AllModesReachable(t *testing.T) {
 	for i := 0; i < 300; i++ {
 		seen[SelectMode()] = true
 	}
-	for _, m := range []string{models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn} {
+	for _, m := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl} {
 		if !seen[m] {
 			t.Errorf("mode %q was never returned in 300 calls", m)
 		}
@@ -429,7 +429,7 @@ func TestSelectMode_AllModesReachable(t *testing.T) {
 func TestSelectProgressiveMode_ColdStart(t *testing.T) {
 	// < 3 attempts always returns en_to_zh regardless of accuracy
 	for _, tc := range []struct{ correct, attempts int }{{0, 0}, {1, 1}, {2, 2}} {
-		if m := SelectProgressiveMode(tc.correct, tc.attempts, 0); m != models.ModeEnToZh {
+		if m := SelectProgressiveMode(tc.correct, tc.attempts, 0); m != models.ModeTranslToZh {
 			t.Errorf("attempts=%d correct=%d: want en_to_zh, got %s", tc.attempts, tc.correct, m)
 		}
 	}
@@ -437,40 +437,40 @@ func TestSelectProgressiveMode_ColdStart(t *testing.T) {
 
 func TestSelectProgressiveMode_LowAccuracy(t *testing.T) {
 	// accuracy < 50% → en_to_zh
-	if m := SelectProgressiveMode(1, 3, 0); m != models.ModeEnToZh { // 33%
+	if m := SelectProgressiveMode(1, 3, 0); m != models.ModeTranslToZh { // 33%
 		t.Errorf("33%% accuracy: want en_to_zh, got %s", m)
 	}
-	if m := SelectProgressiveMode(4, 9, 0); m != models.ModeEnToZh { // 44%
+	if m := SelectProgressiveMode(4, 9, 0); m != models.ModeTranslToZh { // 44%
 		t.Errorf("44%% accuracy: want en_to_zh, got %s", m)
 	}
 }
 
 func TestSelectProgressiveMode_MidAccuracyFewAttempts(t *testing.T) {
 	// accuracy >= 50% but attempts < 10 → zh_pinyin_to_en
-	if m := SelectProgressiveMode(2, 3, 0); m != models.ModeZhPinyinToEn { // 67%, 3 attempts
+	if m := SelectProgressiveMode(2, 3, 0); m != models.ModeZhPinyinToTransl { // 67%, 3 attempts
 		t.Errorf("67%% 3 attempts: want zh_pinyin_to_en, got %s", m)
 	}
-	if m := SelectProgressiveMode(8, 9, 0); m != models.ModeZhPinyinToEn { // 89%, 9 attempts
+	if m := SelectProgressiveMode(8, 9, 0); m != models.ModeZhPinyinToTransl { // 89%, 9 attempts
 		t.Errorf("89%% 9 attempts: want zh_pinyin_to_en, got %s", m)
 	}
 }
 
 func TestSelectProgressiveMode_MidAccuracyEnoughAttempts(t *testing.T) {
 	// 50% <= accuracy < 70%, attempts >= 10 → zh_pinyin_to_en
-	if m := SelectProgressiveMode(5, 10, 0); m != models.ModeZhPinyinToEn { // 50%
+	if m := SelectProgressiveMode(5, 10, 0); m != models.ModeZhPinyinToTransl { // 50%
 		t.Errorf("50%% 10 attempts: want zh_pinyin_to_en, got %s", m)
 	}
-	if m := SelectProgressiveMode(6, 10, 0); m != models.ModeZhPinyinToEn { // 60%
+	if m := SelectProgressiveMode(6, 10, 0); m != models.ModeZhPinyinToTransl { // 60%
 		t.Errorf("60%% 10 attempts: want zh_pinyin_to_en, got %s", m)
 	}
 }
 
 func TestSelectProgressiveMode_HighAccuracyEnoughAttempts(t *testing.T) {
 	// 70% <= accuracy < 85%, attempts >= 10 → zh_to_en
-	if m := SelectProgressiveMode(7, 10, 0); m != models.ModeZhToEn { // 70%
+	if m := SelectProgressiveMode(7, 10, 0); m != models.ModeZhToTransl { // 70%
 		t.Errorf("70%% 10 attempts: want zh_to_en, got %s", m)
 	}
-	if m := SelectProgressiveMode(12, 15, 0); m != models.ModeZhToEn { // 80%
+	if m := SelectProgressiveMode(12, 15, 0); m != models.ModeZhToTransl { // 80%
 		t.Errorf("80%% 15 attempts: want zh_to_en, got %s", m)
 	}
 }
@@ -478,9 +478,9 @@ func TestSelectProgressiveMode_HighAccuracyEnoughAttempts(t *testing.T) {
 func TestSelectProgressiveMode_Mastered(t *testing.T) {
 	// accuracy >= 85% and attempts >= 10 → random valid mode
 	validModes := map[string]bool{
-		models.ModeEnToZh:       true,
-		models.ModeZhToEn:       true,
-		models.ModeZhPinyinToEn: true,
+		models.ModeTranslToZh:       true,
+		models.ModeZhToTransl:       true,
+		models.ModeZhPinyinToTransl: true,
 	}
 	for i := 0; i < 50; i++ {
 		m := SelectProgressiveMode(9, 10, 0) // 90%, 10 attempts
@@ -492,18 +492,18 @@ func TestSelectProgressiveMode_Mastered(t *testing.T) {
 
 func TestSelectProgressiveMode_HighAccuracyFewAttempts(t *testing.T) {
 	// accuracy >= 85% but attempts < 10 → zh_pinyin_to_en (not yet graduated)
-	if m := SelectProgressiveMode(3, 3, 0); m != models.ModeZhPinyinToEn { // 100%, 3 attempts
+	if m := SelectProgressiveMode(3, 3, 0); m != models.ModeZhPinyinToTransl { // 100%, 3 attempts
 		t.Errorf("100%% 3 attempts: want zh_pinyin_to_en, got %s", m)
 	}
 }
 
 func TestSelectProgressiveMode_WithStreakBonus(t *testing.T) {
 	// Raw accuracy 40% (4/10) with streak_bonus=1 → effective 50% → zh_pinyin_to_en
-	if m := SelectProgressiveMode(4, 10, 1); m != models.ModeZhPinyinToEn {
+	if m := SelectProgressiveMode(4, 10, 1); m != models.ModeZhPinyinToTransl {
 		t.Errorf("4/10 +1 bonus: want zh_pinyin_to_en, got %s", m)
 	}
 	// Raw accuracy 40% (4/10) with streak_bonus=3 → effective 70% → zh_to_en (needs >=10 attempts)
-	if m := SelectProgressiveMode(4, 10, 3); m != models.ModeZhToEn {
+	if m := SelectProgressiveMode(4, 10, 3); m != models.ModeZhToTransl {
 		t.Errorf("4/10 +3 bonus: want zh_to_en, got %s", m)
 	}
 }
@@ -658,9 +658,9 @@ func TestMaskPinyin_SingleRune(t *testing.T) {
 func TestSelectProgressiveMode_Exactly85Pct(t *testing.T) {
 	// 85/100 = exactly 85% with 100 attempts → random mode (mastered)
 	validModes := map[string]bool{
-		models.ModeEnToZh:       true,
-		models.ModeZhToEn:       true,
-		models.ModeZhPinyinToEn: true,
+		models.ModeTranslToZh:       true,
+		models.ModeZhToTransl:       true,
+		models.ModeZhPinyinToTransl: true,
 	}
 	seen := map[string]bool{}
 	for i := 0; i < 100; i++ {
@@ -677,7 +677,7 @@ func TestSelectProgressiveMode_Exactly85Pct(t *testing.T) {
 
 func TestSelectProgressiveMode_Below85Pct(t *testing.T) {
 	// 84/100 = 84% with 100 attempts → zh_to_en
-	if m := SelectProgressiveMode(84, 100, 0); m != models.ModeZhToEn {
+	if m := SelectProgressiveMode(84, 100, 0); m != models.ModeZhToTransl {
 		t.Errorf("84%% 100 attempts: want zh_to_en, got %s", m)
 	}
 }

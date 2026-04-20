@@ -248,36 +248,37 @@ func (s *Store) GetWordStats(ctx context.Context, userID int64) (*models.WordSta
 			args[i] = id
 		}
 		enRows, err := s.db.QueryContext(ctx,
-			`SELECT t.zh_word_id, ew.text FROM words ew
-			 JOIN translations t ON t.en_word_id = ew.id
+			`SELECT t.zh_word_id, ew.language, ew.text FROM words ew
+			 JOIN translations t ON t.translation_word_id = ew.id
 			 WHERE t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
 			 ORDER BY ew.text`, args...)
 		if err != nil {
 			return nil, fmt.Errorf("batch en texts for word stats: %w", err)
 		}
 		defer enRows.Close()
-		enMap := map[int64][]string{}
+		type langText struct{ lang, text string }
+		transMap := map[int64][]langText{}
 		for enRows.Next() {
 			var zhID int64
-			var text string
-			if err := enRows.Scan(&zhID, &text); err != nil {
+			var lang, text string
+			if err := enRows.Scan(&zhID, &lang, &text); err != nil {
 				return nil, err
 			}
-			enMap[zhID] = append(enMap[zhID], text)
+			transMap[zhID] = append(transMap[zhID], langText{lang, text})
 		}
 		if err := enRows.Err(); err != nil {
 			return nil, err
 		}
 		for i := range resp.Hardest {
-			resp.Hardest[i].EnTexts = enMap[resp.Hardest[i].WordID]
-			if resp.Hardest[i].EnTexts == nil {
-				resp.Hardest[i].EnTexts = []string{}
+			resp.Hardest[i].Translations = map[string][]string{}
+			for _, lt := range transMap[resp.Hardest[i].WordID] {
+				resp.Hardest[i].Translations[lt.lang] = append(resp.Hardest[i].Translations[lt.lang], lt.text)
 			}
 		}
 		for i := range resp.MostPract {
-			resp.MostPract[i].EnTexts = enMap[resp.MostPract[i].WordID]
-			if resp.MostPract[i].EnTexts == nil {
-				resp.MostPract[i].EnTexts = []string{}
+			resp.MostPract[i].Translations = map[string][]string{}
+			for _, lt := range transMap[resp.MostPract[i].WordID] {
+				resp.MostPract[i].Translations[lt.lang] = append(resp.MostPract[i].Translations[lt.lang], lt.text)
 			}
 		}
 	}

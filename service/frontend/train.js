@@ -169,8 +169,9 @@ async function loadNextCard() {
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
     const transLines = [];
-    if (currentCard.en_texts && currentCard.en_texts.length) transLines.push(currentCard.en_texts.map(escHtml).join(' · '));
-    if (currentCard.de_texts && currentCard.de_texts.length) transLines.push(currentCard.de_texts.map(escHtml).join(' · '));
+    for (const texts of Object.values(currentCard.translations || {})) {
+      if (texts && texts.length) transLines.push(texts.map(escHtml).join(' · '));
+    }
     $('new-word-en').innerHTML = transLines.join('<br>') || '—';
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
@@ -215,7 +216,7 @@ function showCard() {
     setText('prompt-word', currentCard.prompt);
 
     // Show play button only when the prompt is Chinese
-    const isZhPrompt = currentCard.mode === 'zh_to_en' || currentCard.mode === 'zh_pinyin_to_en';
+    const isZhPrompt = currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
     const playBtn = $('play-btn');
     if (isZhPrompt) {
       playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
@@ -231,10 +232,16 @@ function showCard() {
       hide('pinyin-hint');
     }
 
-    if (currentCard.mode === 'en_to_zh' && currentCard.en_texts && currentCard.en_texts.length > 1) {
-      const others = currentCard.en_texts.filter(t => t !== currentCard.prompt);
-      $('translations-hint').innerHTML = others.map(escHtml).join(' · ');
-      show('translations-hint');
+    if (currentCard.mode === 'transl_to_zh') {
+      // Show all translations across all languages except the one already shown as prompt.
+      const allTexts = Object.values(currentCard.translations || {}).flat();
+      const others = allTexts.filter(t => t !== currentCard.prompt);
+      if (others.length > 0) {
+        $('translations-hint').innerHTML = others.map(escHtml).join(' · ');
+        show('translations-hint');
+      } else {
+        hide('translations-hint');
+      }
     } else {
       hide('translations-hint');
     }
@@ -289,10 +296,7 @@ async function submitAnswer(e) {
     // Build breakdown for both correct and wrong answers
     const breakdown = $('word-breakdown');
     const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
-    const allTransTexts = [
-      ...(selectedLangs.includes('en') ? (result.en_texts || []) : []),
-      ...(selectedLangs.includes('de') ? (result.de_texts || []) : []),
-    ];
+    const allTransTexts = selectedLangs.flatMap(lang => (result.translations || {})[lang] || []);
     const correctBox = `
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('result.correctLabel'))}</div>
@@ -315,7 +319,7 @@ async function submitAnswer(e) {
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
             <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
             <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
-            <div class="text-gray-500 text-sm mt-0.5">${(cw.confused_with_en_texts || []).map(escHtml).join(' · ')}</div>
+            <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
           </div>` : '';
       breakdown.innerHTML = `
         <div class="mt-4 space-y-2 text-left">
@@ -338,7 +342,7 @@ async function submitAnswer(e) {
           try {
             await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
               method: 'POST',
-              body: JSON.stringify({ en_text: answer }),
+              body: JSON.stringify({ text: answer, lang: selectedLangs[0] || 'en' }),
             });
             addBtn.textContent = t('result.added');
             addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
@@ -807,13 +811,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function obTagMatchesFilter(tag) {
     if (obFilterLangs.size === 0) return true;
+    const langs = tag.available_langs || [];
     if (obFilterMode === 'all') {
-      if (obFilterLangs.has('en') && !tag.with_en) return false;
-      if (obFilterLangs.has('de') && !tag.with_de) return false;
+      for (const lang of obFilterLangs) {
+        if (!langs.includes(lang)) return false;
+      }
       return true;
     }
-    if (obFilterLangs.has('en') && tag.with_en) return true;
-    if (obFilterLangs.has('de') && tag.with_de) return true;
+    for (const lang of obFilterLangs) {
+      if (langs.includes(lang)) return true;
+    }
     return false;
   }
 
@@ -861,15 +868,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (tag.description) { descEl.textContent = tag.description; descEl.classList.remove('hidden'); }
       if (data.total === 0) { statsEl.textContent = t('vocab.importPreviewEmpty'); $('ob-next-btn').disabled = true; return; }
       const parts = [`${data.total} ${t('vocab.importPreviewWords')}`];
-      if (data.with_en > 0) parts.push(`${data.with_en} EN`);
-      if (data.with_de > 0) parts.push(`${data.with_de} DE`);
+      for (const [lang, count] of Object.entries(data.available_langs || {}).sort()) {
+        if (count > 0) parts.push(`${count} ${lang.toUpperCase()}`);
+      }
       statsEl.textContent = parts.join(' · ');
-      const hasDe = (data.examples || []).some(e => e.de_texts && e.de_texts.length > 0);
+      const hasDe = (data.examples || []).some(e => (e.translations || {})['de']?.length > 0);
       for (const ex of (data.examples || [])) {
         const tr = document.createElement('tr');
         tr.className = 'border-b border-gray-100 last:border-0';
-        const en = (ex.en_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
-        const de = (ex.de_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+        const exTransl = ex.translations || {};
+        const en = (exTransl['en'] || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+        const de = (exTransl['de'] || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
         tr.innerHTML = `<td class="py-1 px-2 font-medium">${escHtml(ex.zh_text)}</td><td class="py-1 px-2 text-gray-500">${escHtml(ex.pinyin)}</td><td class="py-1 px-2 text-gray-700">${en}</td><td class="py-1 px-2 text-gray-500">${hasDe ? de : ''}</td>`;
         tbody.appendChild(tr);
       }

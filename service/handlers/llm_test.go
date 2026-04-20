@@ -47,7 +47,7 @@ func buildLLMRouter(t *testing.T, client llm.Client) (http.Handler, int64) {
 	id, err := store.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:  "好",
 		Pinyin:  "hǎo",
-		EnTexts: []string{"good"},
+		Translations: map[string][]string{"en": {"good"}},
 	})
 	if err != nil {
 		t.Fatalf("CreateWord: %v", err)

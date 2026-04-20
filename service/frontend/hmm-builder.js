@@ -296,7 +296,7 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}, opts = 
     const propNames = [...container.querySelectorAll('.hmm-prop-input')]
       .map(el => el.value.trim()).filter(Boolean);
     const zhWord   = opts.zh  || '';
-    const enTexts  = (opts.en || []).join(', ') || '???';
+    const enTexts  = (opts.en || []).join(', ') || Object.values(opts.translations || {}).flat().join(', ') || '???';
     const propsStr = propNames.length ? propNames.join(', ') : '(none)';
 
     const prompt =

@@ -1,30 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// ── MODE_LABELS ───────────────────────────────────────────────────────────────
-
-const MODE_LABELS = {
-  'en_to_zh': 'English → Chinese',
-  'zh_to_en': 'Chinese → English',
-  'zh_pinyin_to_en': 'Chinese + Pinyin → English',
-};
-
-describe('MODE_LABELS', () => {
-  it('has entry for en_to_zh', () => {
-    expect(MODE_LABELS['en_to_zh']).toBe('English → Chinese');
-  });
-
-  it('has entry for zh_to_en', () => {
-    expect(MODE_LABELS['zh_to_en']).toBe('Chinese → English');
-  });
-
-  it('has entry for zh_pinyin_to_en', () => {
-    expect(MODE_LABELS['zh_pinyin_to_en']).toBe('Chinese + Pinyin → English');
-  });
-
-  it('returns undefined for unknown mode', () => {
-    expect(MODE_LABELS['unknown']).toBeUndefined();
-  });
-});
 
 // ── Answer submission state machine helpers ───────────────────────────────────
 // These mirror the guard logic in submitAnswer.
@@ -262,43 +237,41 @@ describe('toggleLang state', () => {
 // Mirrors the logic in train.js that filters translations by selectedLangs.
 
 function buildAllTransTexts(selectedLangs, result) {
-  return [
-    ...(selectedLangs.includes('en') ? (result.en_texts || []) : []),
-    ...(selectedLangs.includes('de') ? (result.de_texts || []) : []),
-  ];
+  const translations = result.translations || {};
+  return selectedLangs.flatMap(lang => translations[lang] || []);
 }
 
 describe('allTransTexts', () => {
   it('includes EN texts when en is selected', () => {
-    const texts = buildAllTransTexts(['en'], { en_texts: ['hello'], de_texts: ['hallo'] });
+    const texts = buildAllTransTexts(['en'], { translations: { en: ['hello'], de: ['hallo'] } });
     expect(texts).toContain('hello');
     expect(texts).not.toContain('hallo');
   });
 
   it('includes DE texts when de is selected', () => {
-    const texts = buildAllTransTexts(['de'], { en_texts: ['hello'], de_texts: ['hallo'] });
+    const texts = buildAllTransTexts(['de'], { translations: { en: ['hello'], de: ['hallo'] } });
     expect(texts).toContain('hallo');
     expect(texts).not.toContain('hello');
   });
 
   it('includes both when both are selected', () => {
-    const texts = buildAllTransTexts(['en', 'de'], { en_texts: ['hello'], de_texts: ['hallo'] });
+    const texts = buildAllTransTexts(['en', 'de'], { translations: { en: ['hello'], de: ['hallo'] } });
     expect(texts).toContain('hello');
     expect(texts).toContain('hallo');
   });
 
-  it('handles missing en_texts gracefully', () => {
-    const texts = buildAllTransTexts(['en', 'de'], { de_texts: ['hallo'] });
+  it('handles missing en translations gracefully', () => {
+    const texts = buildAllTransTexts(['en', 'de'], { translations: { de: ['hallo'] } });
     expect(texts).toEqual(['hallo']);
   });
 
-  it('handles missing de_texts gracefully', () => {
-    const texts = buildAllTransTexts(['en', 'de'], { en_texts: ['hello'] });
+  it('handles missing de translations gracefully', () => {
+    const texts = buildAllTransTexts(['en', 'de'], { translations: { en: ['hello'] } });
     expect(texts).toEqual(['hello']);
   });
 
   it('returns empty array when no langs selected', () => {
-    const texts = buildAllTransTexts([], { en_texts: ['hello'], de_texts: ['hallo'] });
+    const texts = buildAllTransTexts([], { translations: { en: ['hello'], de: ['hallo'] } });
     expect(texts).toEqual([]);
   });
 });

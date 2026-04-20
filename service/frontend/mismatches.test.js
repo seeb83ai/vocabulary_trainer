@@ -3,22 +3,22 @@ import { describe, it, expect } from 'vitest';
 // ── MISMATCH_MODE_LABELS ───────────────────────────────────────────────────────
 
 const MISMATCH_MODE_LABELS = {
-  en_to_zh: 'EN → ZH',
-  zh_to_en: 'ZH → EN',
-  zh_pinyin_to_en: 'ZH + Pinyin → EN',
+  transl_to_zh: 'To Chinese',
+  zh_to_transl: 'Chinese',
+  zh_pinyin_to_transl: 'Chinese + Pinyin',
 };
 
 describe('MISMATCH_MODE_LABELS', () => {
-  it('has a label for en_to_zh', () => {
-    expect(MISMATCH_MODE_LABELS['en_to_zh']).toBeTruthy();
+  it('has a label for transl_to_zh', () => {
+    expect(MISMATCH_MODE_LABELS['transl_to_zh']).toBeTruthy();
   });
 
-  it('has a label for zh_to_en', () => {
-    expect(MISMATCH_MODE_LABELS['zh_to_en']).toBeTruthy();
+  it('has a label for zh_to_transl', () => {
+    expect(MISMATCH_MODE_LABELS['zh_to_transl']).toBeTruthy();
   });
 
-  it('has a label for zh_pinyin_to_en', () => {
-    expect(MISMATCH_MODE_LABELS['zh_pinyin_to_en']).toBeTruthy();
+  it('has a label for zh_pinyin_to_transl', () => {
+    expect(MISMATCH_MODE_LABELS['zh_pinyin_to_transl']).toBeTruthy();
   });
 
   it('returns undefined for unknown mode', () => {

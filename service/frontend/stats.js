@@ -287,7 +287,7 @@ function renderWordTable(tbodyId, words, cols) {
     const acc = Math.round(w.accuracy);
     const accColor = acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
     const zhLabel = escHtml(w.zh_text) + (w.pinyin ? ` <span class="text-gray-400">${escHtml(w.pinyin)}</span>` : '');
-    const enLabel = (w.en_texts || []).map(t => escHtml(t)).join(', ');
+    const enLabel = Object.values(w.translations || {}).flat().map(t => escHtml(t)).join(', ');
 
     if (cols[0] === 'accuracy') {
       return `<tr class="border-b border-gray-100 hover:bg-gray-50">

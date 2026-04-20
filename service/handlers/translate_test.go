@@ -64,7 +64,7 @@ func TestTranslateHandler_ValidationErrors(t *testing.T) {
 
 	t.Run("empty body", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/translate",
-			strings.NewReader(`{"zh_text":"","en_text":""}`))
+			strings.NewReader(`{"zh_text":"","source_text":""}`))
 		rec := httptest.NewRecorder()
 		h.Translate(rec, req)
 		if rec.Code != http.StatusBadRequest {

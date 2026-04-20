@@ -97,10 +97,10 @@ function renderTable(words) {
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">
-        ${(word.en_texts && word.en_texts.length) ? word.en_texts.map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
+        ${((word.translations || {})['en'] || []).length ? (word.translations['en']).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
       </td>
       <td class="py-3 px-4 text-gray-600">
-        ${(word.de_texts && word.de_texts.length) ? word.de_texts.map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
+        ${((word.translations || {})['de'] || []).length ? (word.translations['de']).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
       </td>
       <td class="py-3 px-4 whitespace-nowrap">${renderTierBadge(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderDue(word)}</td>
@@ -200,15 +200,17 @@ function openEditForm(word) {
     notice.remove();
   }
 
+  const enTexts = (word.translations || {})['en'] || [];
   const container = $('en-inputs-container');
   container.innerHTML = '';
-  for (const t of (word.en_texts.length ? word.en_texts : [''])) {
+  for (const t of (enTexts.length ? enTexts : [''])) {
     addEnInput(t);
   }
 
+  const deTexts = (word.translations || {})['de'] || [];
   const deContainer = $('de-inputs-container');
   deContainer.innerHTML = '';
-  for (const t of ((word.de_texts && word.de_texts.length) ? word.de_texts : [''])) {
+  for (const t of (deTexts.length ? deTexts : [''])) {
     addDeInput(t);
   }
 
@@ -226,7 +228,7 @@ function openEditForm(word) {
   const hmmContainer = $('hmm-builder-container');
   if (word.id) {
     hmmContainer.classList.remove('hidden');
-    loadHMMBuilder('hmm-builder-container', word.id, { zh: word.zh_text, en: word.en_texts || [] });
+    loadHMMBuilder('hmm-builder-container', word.id, { zh: word.zh_text, en: (word.translations || {})['en'] || [] });
   } else {
     hmmContainer.classList.add('hidden');
     hmmContainer.innerHTML = '';
@@ -291,12 +293,10 @@ function buildFormPayload() {
   return {
     zh_text: $('form-zh').value.trim(),
     pinyin: pinyin,
-    en_texts: Array.from(document.querySelectorAll('.en-input'))
-      .map(i => i.value.trim())
-      .filter(Boolean),
-    de_texts: Array.from(document.querySelectorAll('.de-input'))
-      .map(i => i.value.trim())
-      .filter(Boolean),
+    translations: {
+      en: Array.from(document.querySelectorAll('.en-input')).map(i => i.value.trim()).filter(Boolean),
+      de: Array.from(document.querySelectorAll('.de-input')).map(i => i.value.trim()).filter(Boolean),
+    },
     tags: [...formTags],
     start_training: $('form-start-training').checked,
   };
@@ -306,7 +306,8 @@ async function handleFormSubmit(e) {
   e.preventDefault();
   const payload = buildFormPayload();
   if (!payload.zh_text) { alert(t('vocab.zhRequired')); return; }
-  if (!payload.en_texts.length && !payload.de_texts.length) { alert(t('vocab.translationRequired')); return; }
+  const totalTranslations = Object.values(payload.translations).reduce((s, a) => s + a.length, 0);
+  if (!totalTranslations) { alert(t('vocab.translationRequired')); return; }
 
   try {
     if (editingWordId) {
@@ -550,7 +551,7 @@ async function handleTranslate() {
     const zhPromise = (!zh && (en || de))
       ? apiFetch('/api/translate', {
           method: 'POST',
-          body: JSON.stringify({ en_text: en || de }),
+          body: JSON.stringify({ source_text: en || de }),
         }).catch(() => null)
       : Promise.resolve(null);
 
@@ -566,20 +567,20 @@ async function handleTranslate() {
     }
 
     if (enResult) {
-      const translations = enResult.en_texts || (enResult.en_text ? [enResult.en_text] : []);
-      if (translations.length > 0) {
+      const translTexts = enResult.translations || (enResult.source_text ? [enResult.source_text] : []);
+      if (translTexts.length > 0) {
         const container = $('en-inputs-container');
         container.innerHTML = '';
-        for (const tr of translations) addEnInput(tr);
+        for (const tr of translTexts) addEnInput(tr);
       }
     }
 
     if (deResult) {
-      const translations = deResult.en_texts || (deResult.en_text ? [deResult.en_text] : []);
-      if (translations.length > 0) {
+      const translTexts = deResult.translations || (deResult.source_text ? [deResult.source_text] : []);
+      if (translTexts.length > 0) {
         const container = $('de-inputs-container');
         container.innerHTML = '';
-        for (const tr of translations) addDeInput(tr);
+        for (const tr of translTexts) addDeInput(tr);
       }
     }
   } catch (e) {
@@ -681,7 +682,7 @@ function buildDownload(words, cols, format) {
     const vals = [];
     if (cols.zh)     vals.push(word.zh_text || '');
     if (cols.pinyin) vals.push(word.pinyin || '');
-    if (cols.en)     vals.push((word.en_texts || []).join('; '));
+    if (cols.en)     vals.push(Object.values(word.translations || {}).flat().join('; '));
     if (cols.tags)   vals.push((word.tags || []).join('; '));
     if (cols.tier) {
       const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
@@ -705,7 +706,7 @@ function buildDownload(words, cols, format) {
       const obj = {};
       if (cols.zh)       obj.chinese      = word.zh_text || '';
       if (cols.pinyin)   obj.pinyin       = word.pinyin || '';
-      if (cols.en)       obj.translations = word.en_texts || [];
+      if (cols.en)       obj.translations = Object.values(word.translations || {}).flat();
       if (cols.tags)     obj.tags         = word.tags || [];
       if (cols.tier) {
         const t = wordTier(word.total_correct, word.total_attempts, word.learning_new_word, word.streak_bonus);
@@ -783,14 +784,17 @@ async function loadImportSourceTags() {
 
 function importTagMatchesFilter(tag) {
   if (importFilterLangs.size === 0) return true;
+  const langs = tag.available_langs || [];
   if (importFilterMode === 'all') {
-    if (importFilterLangs.has('en') && !tag.with_en) return false;
-    if (importFilterLangs.has('de') && !tag.with_de) return false;
+    for (const lang of importFilterLangs) {
+      if (!langs.includes(lang)) return false;
+    }
     return true;
   }
   // any
-  if (importFilterLangs.has('en') && tag.with_en) return true;
-  if (importFilterLangs.has('de') && tag.with_de) return true;
+  for (const lang of importFilterLangs) {
+    if (langs.includes(lang)) return true;
+  }
   return false;
 }
 
@@ -868,19 +872,22 @@ async function loadImportPreview(tagName, tagDescription) {
       return;
     }
 
-    // Stats line: "123 words · 120 EN · 45 DE"
+    // Stats line: "123 words · 120 EN · 45 DE · ..."
+    const availLangs = data.available_langs || {};
     const parts = [`${data.total} ${t('vocab.importPreviewWords')}`];
-    if (data.with_en > 0) parts.push(`${data.with_en} EN`);
-    if (data.with_de > 0) parts.push(`${data.with_de} DE`);
+    for (const [lang, count] of Object.entries(availLangs).sort()) {
+      if (count > 0) parts.push(`${count} ${lang.toUpperCase()}`);
+    }
     statsEl.textContent = parts.join(' · ');
 
     // Example table (up to 50 rows)
-    const hasDe = (data.examples || []).some(e => e.de_texts && e.de_texts.length > 0);
+    const hasDe = (data.examples || []).some(e => (e.translations || {})['de']?.length > 0);
     for (const ex of (data.examples || [])) {
       const tr = document.createElement('tr');
       tr.className = 'border-b border-gray-100 last:border-0';
-      const en = (ex.en_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
-      const de = (ex.de_texts || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+      const exTransl = ex.translations || {};
+      const en = (exTransl['en'] || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
+      const de = (exTransl['de'] || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
       tr.innerHTML = `
         <td class="py-1 px-2 font-medium">${escHtml(ex.zh_text)}</td>
         <td class="py-1 px-2 text-gray-500">${escHtml(ex.pinyin)}</td>
@@ -964,8 +971,10 @@ async function executeImport() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         tag: importSelectedTag,
-        import_en: $('import-en').checked,
-        import_de: $('import-de').checked,
+        import_langs: [
+          ...($('import-en').checked ? ['en'] : []),
+          ...($('import-de').checked ? ['de'] : []),
+        ],
         apply_tags: [...importApplyTags],
       }),
     });

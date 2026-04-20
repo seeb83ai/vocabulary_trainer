@@ -135,21 +135,19 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			DueDate:      progress.DueDate,
 			IntervalDays: progress.IntervalDays,
 		}
+		card.Translations = map[string][]string{}
 		for _, lang := range langs {
 			transWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			texts := make([]string, len(transWords))
-			for i, tw := range transWords {
-				texts[i] = tw.Text
-			}
-			switch lang {
-			case "en":
-				card.EnTexts = texts
-			case "de":
-				card.DeTexts = texts
+			if len(transWords) > 0 {
+				texts := make([]string, len(transWords))
+				for i, tw := range transWords {
+					texts[i] = tw.Text
+				}
+				card.Translations[lang] = texts
 			}
 		}
 		writeJSON(w, http.StatusOK, card)
@@ -158,7 +156,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	var mode string
 	switch requestedMode {
-	case models.ModeEnToZh, models.ModeZhToEn, models.ModeZhPinyinToEn:
+	case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl:
 		mode = requestedMode
 	case models.ModeProgressive:
 		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus)
@@ -166,9 +164,9 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		mode = sm2.SelectMode()
 	}
 
-	// zh_pinyin_to_en requires pinyin; fall back if missing
-	if mode == models.ModeZhPinyinToEn && (word.Pinyin == nil || *word.Pinyin == "") {
-		mode = models.ModeZhToEn
+	// zh_pinyin_to_transl requires pinyin; fall back if missing
+	if mode == models.ModeZhPinyinToTransl && (word.Pinyin == nil || *word.Pinyin == "") {
+		mode = models.ModeZhToTransl
 	}
 
 	card := models.QuizCard{
@@ -180,29 +178,32 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch mode {
-	case models.ModeEnToZh:
+	case models.ModeTranslToZh:
 		langs := parseLangs(r)
-		// Find the first selected lang that has translations; use it as prompt.
-		var promptWords []models.Word
+		// Load translations for ALL selected langs so the user sees every meaning as context.
+		translations := map[string][]string{}
 		for _, lang := range langs {
 			words, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			if len(words) > 0 {
-				promptWords = words
-				break
+			for _, w := range words {
+				translations[lang] = append(translations[lang], w.Text)
 			}
 		}
-		if len(promptWords) == 0 {
-			card.Mode = models.ModeZhToEn
+		if len(translations) == 0 {
+			card.Mode = models.ModeZhToTransl
 			card.Prompt = word.Text
 		} else {
-			card.Prompt = promptWords[0].Text
-			for _, pw := range promptWords {
-				card.EnTexts = append(card.EnTexts, pw.Text)
+			// Use the first translation of the first selected lang with results as the prompt word.
+			for _, lang := range langs {
+				if texts := translations[lang]; len(texts) > 0 {
+					card.Prompt = texts[0]
+					break
+				}
 			}
+			card.Translations = translations
 			// For learning words, send a masked pinyin hint based on progress
 			if progress.LearningNewWord && word.Pinyin != nil {
 				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
@@ -210,9 +211,9 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	case models.ModeZhToEn:
+	case models.ModeZhToTransl:
 		card.Prompt = word.Text
-	case models.ModeZhPinyinToEn:
+	case models.ModeZhPinyinToTransl:
 		card.Prompt = word.Text
 		card.Pinyin = word.Pinyin
 	}
@@ -233,9 +234,9 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	validModes := map[string]bool{
-		models.ModeEnToZh:       true,
-		models.ModeZhToEn:       true,
-		models.ModeZhPinyinToEn: true,
+		models.ModeTranslToZh:       true,
+		models.ModeZhToTransl:       true,
+		models.ModeZhPinyinToTransl: true,
 	}
 	if !validModes[req.Mode] {
 		writeError(w, http.StatusBadRequest, "invalid mode")
@@ -259,9 +260,9 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 	var correctTexts []string
 	switch req.Mode {
-	case models.ModeEnToZh:
+	case models.ModeTranslToZh:
 		correctTexts = []string{zhWord.ZhText}
-	case models.ModeZhToEn, models.ModeZhPinyinToEn:
+	case models.ModeZhToTransl, models.ModeZhPinyinToTransl:
 		for _, lang := range langs {
 			transWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, lang)
 			if err != nil {
@@ -322,13 +323,12 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
 
 	resp := models.AnswerResponse{
-		Correct:         correct,
-		CorrectAnswers:  correctTexts,
-		ZhText:          zhWord.ZhText,
-		Pinyin:          zhWord.Pinyin,
-		EnTexts:         zhWord.EnTexts,
-		DeTexts:         zhWord.DeTexts,
-		NextDue:         updated.DueDate,
+		Correct:        correct,
+		CorrectAnswers: correctTexts,
+		ZhText:         zhWord.ZhText,
+		Pinyin:         zhWord.Pinyin,
+		Translations:   zhWord.Translations,
+		NextDue:        updated.DueDate,
 		IntervalDays:    updated.IntervalDays,
 		TotalCorrect:    updated.TotalCorrect,
 		TotalAttempts:   updated.TotalAttempts,
