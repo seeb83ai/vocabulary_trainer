@@ -5,6 +5,7 @@ import-hsk
 import-pinyin
 import-hanzi
 fill-translations
+fill-hanzi-translations
 
 # Database
 data/
