@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
 )
@@ -93,26 +95,54 @@ func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error
 
 // AcknowledgeRandomWords marks up to n random unseen zh words as due now so they
 // appear immediately in the quiz without going through the new-word introduction flow.
+// Also initialises component_progress rows for each acknowledged word.
 // Returns the number of words actually acknowledged.
 func (s *Store) AcknowledgeRandomWords(ctx context.Context, userID int64, n int) (int, error) {
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE sm2_progress
-		SET total_attempts = 1,
-		    first_seen_date = date('now'),
-		    due_date        = CURRENT_TIMESTAMP
-		WHERE word_id IN (
-			SELECT w.id FROM words w
-			JOIN sm2_progress p ON p.word_id = w.id
-			WHERE w.language = 'zh' AND w.user_id = ?
-			  AND p.first_seen_date IS NULL
-			ORDER BY RANDOM()
-			LIMIT ?
-		)`, userID, n)
-	if err != nil {
-		return 0, fmt.Errorf("acknowledge random words: %w", err)
+	type wordInfo struct {
+		id     int64
+		zhText string
 	}
-	affected, _ := res.RowsAffected()
-	return int(affected), nil
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT w.id, w.text FROM words w
+		JOIN sm2_progress p ON p.word_id = w.id
+		WHERE w.language = 'zh' AND w.user_id = ?
+		  AND p.first_seen_date IS NULL
+		ORDER BY RANDOM()
+		LIMIT ?`, userID, n)
+	if err != nil {
+		return 0, fmt.Errorf("select random words to acknowledge: %w", err)
+	}
+	var words []wordInfo
+	for rows.Next() {
+		var w wordInfo
+		if err := rows.Scan(&w.id, &w.zhText); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan random word: %w", err)
+		}
+		words = append(words, w)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("scan random words: %w", err)
+	}
+	if len(words) == 0 {
+		return 0, nil
+	}
+
+	now := time.Now()
+	nowStr := now.UTC().Format("2006-01-02 15:04:05")
+	for _, w := range words {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE sm2_progress
+			 SET total_attempts = 1, first_seen_date = date('now'), due_date = ?
+			 WHERE word_id = ?`, nowStr, w.id); err != nil {
+			return 0, fmt.Errorf("acknowledge word %d: %w", w.id, err)
+		}
+		if err := s.InitComponentsForWord(ctx, userID, w.zhText, now); err != nil {
+			log.Printf("AcknowledgeRandomWords: initComponents %q: %v", w.zhText, err)
+		}
+	}
+	return len(words), nil
 }
 
 // GetStats returns due-today count, total word count (zh words only), and the number of

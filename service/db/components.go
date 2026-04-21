@@ -299,6 +299,17 @@ func (s *Store) SeedHanziDecompositionForTest(ctx context.Context, character, de
 	return err
 }
 
+// SeedHanziDecompositionWithDecompForTest inserts a hanzi_decomposition row with
+// definition and decomposition string (IDS operators + component characters).
+// Intended for use in tests only.
+func (s *Store) SeedHanziDecompositionWithDecompForTest(ctx context.Context, character, definition, decomposition string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition (character, definition, decomposition) VALUES (?, ?, ?)
+		 ON CONFLICT(character) DO UPDATE SET definition = excluded.definition, decomposition = excluded.decomposition`,
+		character, definition, decomposition)
+	return err
+}
+
 // SetComponentSeenForTest marks a component as seen. Intended for use in tests only.
 func (s *Store) SetComponentSeenForTest(ctx context.Context, userID int64, character string) {
 	s.db.ExecContext(ctx, //nolint:errcheck

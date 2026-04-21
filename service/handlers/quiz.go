@@ -474,13 +474,18 @@ func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "word_id is required")
 		return
 	}
-	if err := h.Store.AcknowledgeWord(r.Context(), UserIDFromContext(r.Context()), req.WordID); err != nil {
+	userID := UserIDFromContext(r.Context())
+	if err := h.Store.AcknowledgeWord(r.Context(), userID, req.WordID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
 		internalError(w, err)
 		return
+	}
+	zhText, err := h.Store.GetZhTextByID(r.Context(), userID, req.WordID)
+	if err == nil && zhText != "" {
+		initComponents(r.Context(), h.Store, userID, req.WordID, zhText)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

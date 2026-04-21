@@ -1218,6 +1218,36 @@ func TestQuizAcknowledge_NotFound(t *testing.T) {
 	}
 }
 
+func TestQuizAcknowledge_CreatesComponentProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed 女 as a component (definition only).
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed component: %v", err)
+	}
+	// Seed 妈 with definition and a decomposition that contains 女.
+	if err := s.SeedHanziDecompositionWithDecompForTest(ctx, "妈", "mother", "⿰女马"); err != nil {
+		t.Fatalf("seed char: %v", err)
+	}
+
+	id := seedWord(t, s, "妈妈", "māmā", []string{"mother"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	_, total, err := s.GetComponentCounts(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetComponentCounts: %v", err)
+	}
+	if total == 0 {
+		t.Error("expected component_progress rows after acknowledge")
+	}
+}
+
 // ── POST /api/words/{id}/review ───────────────────────────────────────────────
 
 func TestMarkReview_SetsFlag(t *testing.T) {
@@ -1843,6 +1873,41 @@ func TestAcknowledgeRandomHandler_InvalidCount(t *testing.T) {
 	rec := do(t, r, "POST", "/api/quiz/acknowledge-random", map[string]any{"count": 0})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for count=0, got %d", rec.Code)
+	}
+}
+
+func TestAcknowledgeRandomHandler_CreatesComponentProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed 女 as a component (definition only).
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed component: %v", err)
+	}
+	// Seed 妈 with decomposition containing 女.
+	if err := s.SeedHanziDecompositionWithDecompForTest(ctx, "妈", "mother", "⿰女马"); err != nil {
+		t.Fatalf("seed char: %v", err)
+	}
+
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "妈",
+		Translations: map[string][]string{"en": {"mother"}},
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/acknowledge-random", map[string]any{"count": 1})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	_, total, err := s.GetComponentCounts(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetComponentCounts: %v", err)
+	}
+	if total == 0 {
+		t.Error("expected component_progress rows after acknowledge-random")
 	}
 }
 

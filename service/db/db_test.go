@@ -1651,6 +1651,73 @@ func TestAcknowledgeRandomWords(t *testing.T) {
 	}
 }
 
+func TestGetZhTextByID_Found(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	req := models.CreateWordRequest{ZhText: "你好", Translations: map[string][]string{"en": {"hello"}}}
+	id, err := s.CreateWord(ctx, 2, req)
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+	text, err := s.GetZhTextByID(ctx, 2, id)
+	if err != nil {
+		t.Fatalf("GetZhTextByID: %v", err)
+	}
+	if text != "你好" {
+		t.Errorf("want 你好, got %q", text)
+	}
+}
+
+func TestGetZhTextByID_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	text, err := s.GetZhTextByID(context.Background(), 2, 9999)
+	if err != nil {
+		t.Fatalf("want no error for missing word, got: %v", err)
+	}
+	if text != "" {
+		t.Errorf("want empty string for missing word, got %q", text)
+	}
+}
+
+func TestAcknowledgeRandomWords_InitComponents(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed a component that 你好's characters decompose into.
+	if err := s.SeedHanziDecompositionForTest(ctx, "你", "you"); err != nil {
+		t.Fatalf("seed decomp: %v", err)
+	}
+	// Seed a hanzi_decomposition row for 你 itself so InitComponentsForWord can find it.
+	// Also seed a decomposition entry for 你 pointing to 你 as its own component.
+	// Use InsertComponentProgressForTest indirectly by seeding the decomp table properly.
+	// The simpler approach: seed 好 as a component of 你 via the decomposition table.
+	// In practice InitComponentsForWord reads hanzi_decomposition.decomposition for each rune.
+	// For this test we seed 你 in hanzi_decomposition with definition so a component row is created.
+	// Since the decomposition column is NULL, InitComponentsForWord won't create component rows — that's fine.
+	// What matters is that AcknowledgeRandomWords doesn't error.
+	req := models.CreateWordRequest{ZhText: "你好", Translations: map[string][]string{"en": {"hello"}}}
+	if _, err := s.CreateWord(ctx, 2, req); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	n, err := s.AcknowledgeRandomWords(ctx, 2, 1)
+	if err != nil {
+		t.Fatalf("AcknowledgeRandomWords: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("want 1 acknowledged, got %d", n)
+	}
+
+	// SM-2 progress should be updated.
+	due, _, _, err := s.GetStats(ctx, 2, nil, "")
+	if err != nil {
+		t.Fatalf("GetStats: %v", err)
+	}
+	if due != 1 {
+		t.Errorf("want due_today=1, got %d", due)
+	}
+}
+
 func TestGetTranslationLanguages_EmptyDB(t *testing.T) {
 	s := openTestDB(t)
 	langs, err := s.GetTranslationLanguages(context.Background())
