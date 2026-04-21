@@ -305,7 +305,7 @@ async function submitAnswer(e) {
     if (currentCard.card_type === 'component') {
       const result = await apiFetch('/api/component/answer', {
         method: 'POST',
-        body: JSON.stringify({ character: currentCard.prompt, answer }),
+        body: JSON.stringify({ character: currentCard.prompt, answer, langs: selectedLangs }),
       });
       showComponentResult(result);
       return;
@@ -585,12 +585,20 @@ function showComponentResult(resp) {
       <div class="text-lg font-medium text-red-700">${escHtml($('answer-input').value)}</div>
     </div>` : '';
 
+  const answers = resp.correct_answers || {};
+  const defsHtml = Object.entries(answers).map(([lang, def]) =>
+    `<div class="flex items-baseline gap-2">
+       <span class="text-xs font-semibold text-green-600 uppercase w-6 shrink-0">${escHtml(lang)}</span>
+       <span class="text-xl font-bold text-gray-800">${escHtml(def)}</span>
+     </div>`
+  ).join('');
+
   $('word-breakdown').innerHTML = `
     <div class="mt-4 space-y-2 text-left">
       ${yourAnswerHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}: ${escHtml(currentCard.prompt)}</div>
-        <div class="text-xl font-bold text-gray-800">${escHtml(resp.correct_answer)}</div>
+        ${defsHtml}
       </div>
     </div>`;
   show('word-breakdown');

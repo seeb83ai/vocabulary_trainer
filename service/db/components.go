@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 	"unicode"
 	"vocabulary_trainer/models"
@@ -58,33 +59,53 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 	return nil
 }
 
-// componentCard is the internal representation (includes definition for answer checking).
+// componentCard is the internal representation (includes definitions per lang for answer checking).
 type componentCard struct {
-	Character string
-	Definition string
-	Progress  models.ComponentProgress
+	Character   string
+	Definitions map[string]string // lowercase lang → definition
+	Progress    models.ComponentProgress
 }
 
 // GetNextComponentCard returns the most-overdue component due today for the user,
-// or nil if nothing is due. The Definition field is server-side only.
-func (s *Store) GetNextComponentCard(ctx context.Context, userID int64) (*componentCard, error) {
+// considering only characters that have a definition in at least one of langs.
+// Returns nil if nothing is due.
+func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []string) (*componentCard, error) {
+	// Build a per-lang filter so we only return cards the user can answer.
+	whereFrags := []string{}
+	langArgs := []any{}
+	for _, lang := range langs {
+		switch strings.ToUpper(lang) {
+		case "EN":
+			whereFrags = append(whereFrags, "(hd.definition IS NOT NULL AND hd.definition != '')")
+		default:
+			whereFrags = append(whereFrags, "EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = ?)")
+			langArgs = append(langArgs, strings.ToUpper(lang))
+		}
+	}
+	if len(whereFrags) == 0 {
+		whereFrags = []string{"(hd.definition IS NOT NULL AND hd.definition != '')"}
+	}
+	langFilter := strings.Join(whereFrags, " OR ")
+
+	args := append([]any{userID}, langArgs...)
+
 	var c componentCard
 	var dueDateStr string
 	var firstSeenDate sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT cp.character, hd.definition, cp.due_date,
+		SELECT cp.character, cp.due_date,
 		       cp.repetitions, cp.easiness, cp.interval_days,
 		       cp.total_correct, cp.total_attempts, cp.first_seen_date
 		FROM component_progress cp
 		JOIN hanzi_decomposition hd ON hd.character = cp.character
 		WHERE cp.user_id = ?
-		  AND hd.definition IS NOT NULL AND hd.definition != ''
+		  AND (`+langFilter+`)
 		  AND cp.due_date < datetime('now', '+1 day')
 		ORDER BY cp.due_date ASC
 		LIMIT 1`,
-		userID,
+		args...,
 	).Scan(
-		&c.Character, &c.Definition, &dueDateStr,
+		&c.Character, &dueDateStr,
 		&c.Progress.Repetitions, &c.Progress.Easiness, &c.Progress.IntervalDays,
 		&c.Progress.TotalCorrect, &c.Progress.TotalAttempts, &firstSeenDate,
 	)
@@ -94,6 +115,12 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64) (*compon
 	if err != nil {
 		return nil, fmt.Errorf("get next component card: %w", err)
 	}
+
+	defs, err := s.GetComponentDefinitions(ctx, c.Character, langs)
+	if err != nil {
+		return nil, err
+	}
+	c.Definitions = defs
 	c.Progress.UserID = userID
 	c.Progress.Character = c.Character
 	c.Progress.DueDate = dueDateStr
@@ -103,6 +130,36 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64) (*compon
 	return &c, nil
 }
 
+// GetComponentDefinitions returns definitions for a character keyed by lowercase lang code.
+// "en" is read from hanzi_decomposition.definition; other langs from hanzi_decomposition_translation.
+// Missing or empty definitions are omitted from the result.
+func (s *Store) GetComponentDefinitions(ctx context.Context, character string, langs []string) (map[string]string, error) {
+	defs := make(map[string]string)
+	for _, lang := range langs {
+		langUpper := strings.ToUpper(lang)
+		langLower := strings.ToLower(lang)
+		var def string
+		var err error
+		if langUpper == "EN" {
+			err = s.db.QueryRowContext(ctx,
+				`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`, character,
+			).Scan(&def)
+		} else {
+			err = s.db.QueryRowContext(ctx,
+				`SELECT COALESCE(definition, '') FROM hanzi_decomposition_translation WHERE character = ? AND lang = ?`,
+				character, langUpper,
+			).Scan(&def)
+		}
+		if err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("get %s definition for %q: %w", langLower, character, err)
+		}
+		if def != "" {
+			defs[langLower] = def
+		}
+	}
+	return defs, nil
+}
+
 // MarkComponentSeen sets first_seen_date = date('now') if it is currently NULL.
 func (s *Store) MarkComponentSeen(ctx context.Context, userID int64, character string) error {
 	_, err := s.db.ExecContext(ctx,
@@ -110,22 +167,6 @@ func (s *Store) MarkComponentSeen(ctx context.Context, userID int64, character s
 		 WHERE user_id = ? AND character = ?`,
 		userID, character)
 	return err
-}
-
-// GetComponentDefinition returns the definition string for a character from
-// hanzi_decomposition, or "" if not found.
-func (s *Store) GetComponentDefinition(ctx context.Context, character string) (string, error) {
-	var def string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`, character,
-	).Scan(&def)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("get component definition: %w", err)
-	}
-	return def, nil
 }
 
 // RecordComponentAnswer updates SM-2 state for a component after an answer.
@@ -236,6 +277,16 @@ func (s *Store) GetComponentStatsHistory(ctx context.Context, userID int64) ([]m
 	}
 	rows.Close()
 	return stats, rows.Err()
+}
+
+// SeedHanziTranslationForTest inserts a hanzi_decomposition_translation row.
+// Intended for use in tests only.
+func (s *Store) SeedHanziTranslationForTest(ctx context.Context, character, lang, definition string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, ?, ?)
+		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		character, strings.ToUpper(lang), definition)
+	return err
 }
 
 // SeedHanziDecompositionForTest inserts a hanzi_decomposition row with definition.

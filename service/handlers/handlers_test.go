@@ -3318,6 +3318,66 @@ func TestComponentAnswer_NotFound(t *testing.T) {
 	}
 }
 
+func TestComponentAnswer_CorrectAnswersMapReturned(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "woman",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	answers, ok := resp["correct_answers"].(map[string]any)
+	if !ok {
+		t.Fatalf("want correct_answers map, got %T: %v", resp["correct_answers"], resp["correct_answers"])
+	}
+	if answers["en"] != "woman" {
+		t.Errorf("want correct_answers[en]=woman, got %v", answers["en"])
+	}
+}
+
+func TestComponentAnswer_DELangAccepted(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed EN: %v", err)
+	}
+	if err := s.SeedHanziTranslationForTest(context.Background(), "女", "de", "Frau"); err != nil {
+		t.Fatalf("seed DE: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	// Send DE lang — answer in German should be accepted.
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]any{
+		"character": "女",
+		"answer":    "Frau",
+		"langs":     []string{"de"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if correct, _ := resp["correct"].(bool); !correct {
+		t.Errorf("want correct=true for DE answer")
+	}
+	answers, ok := resp["correct_answers"].(map[string]any)
+	if !ok {
+		t.Fatalf("want correct_answers map, got %T", resp["correct_answers"])
+	}
+	if answers["de"] != "Frau" {
+		t.Errorf("want correct_answers[de]=Frau, got %v", answers["de"])
+	}
+}
+
 func TestComponentStats_ReturnsEmptyDays(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

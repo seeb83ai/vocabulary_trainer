@@ -88,6 +88,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	langs := parseLangs(r)
 	mnemonics := r.URL.Query().Get("mnemonics") != "false"
 	trainComponents := r.URL.Query().Get("trainComponents") == "1"
 
@@ -108,27 +109,24 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fetch component candidate.
+	// Fetch component candidate (filtered to langs the user is currently training).
 	var compCard *struct {
-		Character  string
-		Definition string
-		DueDate    time.Time
+		Character string
+		DueDate   time.Time
 	}
 	if trainComponents {
-		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()))
+		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs)
 		if ccErr != nil {
 			writeError(w, http.StatusInternalServerError, ccErr.Error())
 			return
 		}
 		if cc != nil {
 			compCard = &struct {
-				Character  string
-				Definition string
-				DueDate    time.Time
+				Character string
+				DueDate   time.Time
 			}{
-				Character:  cc.Character,
-				Definition: cc.Definition,
-				DueDate:    db.ParseDateTime(cc.Progress.DueDate),
+				Character: cc.Character,
+				DueDate:   db.ParseDateTime(cc.Progress.DueDate),
 			}
 		}
 	}
@@ -177,7 +175,6 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	// Progressive mode: new words (total_attempts==0) are shown as introductions
 	if progress.TotalAttempts == 0 {
-		langs := parseLangs(r)
 		card := models.QuizCard{
 			WordID:       word.ID,
 			Mode:         models.ModeNewWord,
@@ -230,7 +227,6 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	switch mode {
 	case models.ModeTranslToZh:
-		langs := parseLangs(r)
 		// Load translations for ALL selected langs so the user sees every meaning as context.
 		translations := map[string][]string{}
 		for _, lang := range langs {

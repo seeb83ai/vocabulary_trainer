@@ -27,17 +27,28 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	definition, err := h.Store.GetComponentDefinition(r.Context(), req.Character)
+	langs := req.Langs
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
+
+	defs, err := h.Store.GetComponentDefinitions(r.Context(), req.Character, langs)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
-	if definition == "" {
+	if len(defs) == 0 {
 		writeError(w, http.StatusNotFound, "component not found")
 		return
 	}
 
-	correct := sm2.CheckComponentAnswer(req.Answer, definition)
+	correct := false
+	for _, def := range defs {
+		if sm2.CheckComponentAnswer(req.Answer, def) {
+			correct = true
+			break
+		}
+	}
 
 	userID := UserIDFromContext(r.Context())
 	progress, nextDue, err := h.Store.RecordComponentAnswer(r.Context(), userID, req.Character, correct)
@@ -52,13 +63,13 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, models.ComponentAnswerResponse{
-		Correct:       correct,
-		CorrectAnswer: definition,
-		NextDue:       nextDue,
-		IntervalDays:  progress.IntervalDays,
-		TotalCorrect:  progress.TotalCorrect,
-		TotalAttempts: progress.TotalAttempts,
-		Repetitions:   progress.Repetitions,
+		Correct:        correct,
+		CorrectAnswers: defs,
+		NextDue:        nextDue,
+		IntervalDays:   progress.IntervalDays,
+		TotalCorrect:   progress.TotalCorrect,
+		TotalAttempts:  progress.TotalAttempts,
+		Repetitions:    progress.Repetitions,
 	})
 }
 

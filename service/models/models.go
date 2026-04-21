@@ -273,18 +273,19 @@ type ComponentDailyStat struct {
 }
 
 type ComponentAnswerRequest struct {
-	Character string `json:"character"`
-	Answer    string `json:"answer"`
+	Character string   `json:"character"`
+	Answer    string   `json:"answer"`
+	Langs     []string `json:"langs"`
 }
 
 type ComponentAnswerResponse struct {
-	Correct       bool      `json:"correct"`
-	CorrectAnswer string    `json:"correct_answer"`
-	NextDue       time.Time `json:"next_due"`
-	IntervalDays  int       `json:"interval_days"`
-	TotalCorrect  int       `json:"total_correct"`
-	TotalAttempts int       `json:"total_attempts"`
-	Repetitions   int       `json:"repetitions"`
+	Correct        bool              `json:"correct"`
+	CorrectAnswers map[string]string `json:"correct_answers"`
+	NextDue        time.Time         `json:"next_due"`
+	IntervalDays   int               `json:"interval_days"`
+	TotalCorrect   int               `json:"total_correct"`
+	TotalAttempts  int               `json:"total_attempts"`
+	Repetitions    int               `json:"repetitions"`
 }
 
 type HanziDecomposition struct {
