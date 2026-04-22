@@ -58,6 +58,9 @@ type QuizCard struct {
 	EntityKey  string `json:"entity_key,omitempty"`
 	Category   string `json:"category,omitempty"`
 	Hint       string `json:"hint,omitempty"`
+	// Component card fields (card_type="component"); zero-value for other cards.
+	IsNew       bool              `json:"is_new,omitempty"`
+	Definitions map[string]string `json:"definitions,omitempty"`
 }
 
 type AnswerRequest struct {

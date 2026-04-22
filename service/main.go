@@ -241,6 +241,7 @@ func main() {
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
 		r.Post("/component/answer", componentH.Answer)
+		r.Post("/component/seen", componentH.Seen)
 		r.Get("/component/stats", componentH.Stats)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmH != nil))
 		if translateH.APIKey != "" {

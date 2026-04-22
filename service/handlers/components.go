@@ -73,6 +73,27 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Seen marks a component as introduced so it enters the regular quiz rotation.
+func (h *ComponentHandler) Seen(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Character string `json:"character"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Character = strings.TrimSpace(req.Character)
+	if req.Character == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	if err := h.Store.MarkComponentSeen(r.Context(), UserIDFromContext(r.Context()), req.Character); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // Stats returns daily component stat history.
 func (h *ComponentHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.Store.GetComponentStatsHistory(r.Context(), UserIDFromContext(r.Context()))

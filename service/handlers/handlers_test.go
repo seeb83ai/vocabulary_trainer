@@ -127,6 +127,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/config", translateH.Config(true, true))
 	r.Post("/api/translate", translateH.Translate)
 	r.Post("/api/component/answer", componentH.Answer)
+	r.Post("/api/component/seen", componentH.Seen)
 	r.Get("/api/component/stats", componentH.Stats)
 	return r
 }
@@ -3482,6 +3483,91 @@ func TestQuizNext_ReturnsComponentCard(t *testing.T) {
 	}
 	if card["prompt"] != "女" {
 		t.Errorf("want prompt=女, got %v", card["prompt"])
+	}
+}
+
+func TestQuizNext_NewComponentCard_HasIsNewAndDefinitions(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Insert unseen component (first_seen_date IS NULL).
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if card["card_type"] != "component" {
+		t.Fatalf("want card_type=component, got %v", card["card_type"])
+	}
+	if isNew, _ := card["is_new"].(bool); !isNew {
+		t.Error("want is_new=true for unseen component")
+	}
+	defs, ok := card["definitions"].(map[string]any)
+	if !ok {
+		t.Fatalf("want definitions map, got %T", card["definitions"])
+	}
+	if defs["en"] != "woman" {
+		t.Errorf("want definitions[en]=woman, got %v", defs["en"])
+	}
+}
+
+func TestQuizNext_SeenComponentCard_IsNewFalse(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.SetComponentSeenForTest(ctx, int64(2), "女")
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if isNew, _ := card["is_new"].(bool); isNew {
+		t.Error("want is_new=false for already-seen component")
+	}
+}
+
+func TestComponentSeen_MarksFirstSeenDate(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/seen", map[string]string{"character": "女"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify component now counts toward due_today.
+	rec2 := do(t, r, http.MethodGet, "/api/quiz/stats?trainComponents=1", nil)
+	var stats map[string]any
+	decodeJSON(t, rec2, &stats)
+	if v, _ := stats["components_due_today"].(float64); int(v) != 1 {
+		t.Errorf("want components_due_today=1 after seen, got %v", stats["components_due_today"])
+	}
+}
+
+func TestComponentSeen_MissingCharacter(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodPost, "/api/component/seen", map[string]string{})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rec.Code)
 	}
 }
 

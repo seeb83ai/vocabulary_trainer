@@ -111,8 +111,10 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch component candidate (filtered to langs the user is currently training).
 	var compCard *struct {
-		Character string
-		DueDate   time.Time
+		Character   string
+		DueDate     time.Time
+		IsNew       bool
+		Definitions map[string]string
 	}
 	if trainComponents {
 		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs)
@@ -122,11 +124,15 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 		if cc != nil {
 			compCard = &struct {
-				Character string
-				DueDate   time.Time
+				Character   string
+				DueDate     time.Time
+				IsNew       bool
+				Definitions map[string]string
 			}{
-				Character: cc.Character,
-				DueDate:   db.ParseDateTime(cc.Progress.DueDate),
+				Character:   cc.Character,
+				DueDate:     db.ParseDateTime(cc.Progress.DueDate),
+				IsNew:       cc.Progress.FirstSeenDate == nil,
+				Definitions: cc.Definitions,
 			}
 		}
 	}
@@ -158,9 +164,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		serveComp := word == nil || compCard.DueDate.Before(progress.DueDate)
 		if serveComp {
 			writeJSON(w, http.StatusOK, models.QuizCard{
-				CardType: "component",
-				Prompt:   compCard.Character,
-				DueDate:  compCard.DueDate,
+				CardType:    "component",
+				Prompt:      compCard.Character,
+				DueDate:     compCard.DueDate,
+				IsNew:       compCard.IsNew,
+				Definitions: compCard.Definitions,
 			})
 			return
 		}

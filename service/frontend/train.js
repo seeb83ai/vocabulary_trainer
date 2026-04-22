@@ -127,6 +127,7 @@ async function loadNextCard() {
   hide('add-translation-btn');
   hide('result-play-btn');
   hide('new-word-area');
+  hide('new-component-area');
   hide('result-decompose');
   hide('result-decompose-content');
   hide('bucket-info');
@@ -201,6 +202,7 @@ async function loadNextCard() {
   // New word introduction (progressive mode)
   if (currentCard.mode === 'new_word') {
     hide('card-area');
+    hide('new-component-area');
     show('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
@@ -215,6 +217,24 @@ async function loadNextCard() {
     return;
   }
 
+  // New component introduction
+  if (currentCard.card_type === 'component' && currentCard.is_new) {
+    hide('card-area');
+    hide('new-word-area');
+    show('new-component-area');
+    setText('new-component-char', currentCard.prompt);
+    const defs = currentCard.definitions || {};
+    $('new-component-defs').innerHTML = Object.entries(defs).map(([lang, def]) =>
+      `<div class="flex items-baseline gap-2 p-3 bg-purple-50 border border-purple-100 rounded-xl">
+         <span class="text-xs font-semibold text-purple-500 uppercase w-6 shrink-0">${escHtml(lang)}</span>
+         <span class="text-xl font-bold text-gray-800">${escHtml(def)}</span>
+       </div>`
+    ).join('');
+    await loadStats();
+    return;
+  }
+
+  hide('new-component-area');
   showCard();
   await loadStats();
 }
@@ -902,6 +922,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('new-word-no-new-btn').addEventListener('click', () => {
     skipNewWords = true;
+    loadNextCard();
+  });
+  $('new-component-got-it-btn').addEventListener('click', async () => {
+    if (!currentCard) return;
+    try {
+      await apiFetch('/api/component/seen', {
+        method: 'POST',
+        body: JSON.stringify({ character: currentCard.prompt }),
+      });
+    } catch (err) {
+      alert('Error: ' + err.message);
+      return;
+    }
     loadNextCard();
   });
 
