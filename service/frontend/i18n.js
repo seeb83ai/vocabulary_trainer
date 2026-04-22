@@ -47,6 +47,8 @@ const I18N = {
     'filter.langs': 'Languages:',
     'filter.mnemonics': 'Mnemonics:',
     'filter.mnemonicsOn': 'On',
+    'filter.components': 'Components:',
+    'filter.componentsOn': 'On',
     'filter.quizMode': 'Quiz Mode',
     'filter.done': 'Done',
     'filter.edit': '▼ Edit',
@@ -368,6 +370,12 @@ const I18N = {
     'pinyin.dueSoon': 'Due again soon',
     'pinyin.all': 'All',
 
+    // Component cards in word training
+    'component.modeLabel': 'Component',
+    'component.character': 'Character',
+    'component.newLabel': 'New Component',
+    'component.gotIt': 'Got it!',
+
     // HMM mnemonic cards in word training
     'hmm.modeLabel': 'Mnemonic',
     'hmm.type.actor': 'Actor',
@@ -433,6 +441,8 @@ const I18N = {
     'filter.langs': '语言：',
     'filter.mnemonics': '助记：',
     'filter.mnemonicsOn': '开',
+    'filter.components': '部件：',
+    'filter.componentsOn': '开',
     'filter.quizMode': '测验模式',
     'filter.done': '完成',
     'filter.edit': '▼ 编辑',
@@ -753,6 +763,12 @@ const I18N = {
     'pinyin.nextReview': '{n} 天后复习',
     'pinyin.dueSoon': '即将再次到期',
     'pinyin.all': '全部',
+
+    // Component cards in word training
+    'component.modeLabel': '部件',
+    'component.character': '汉字',
+    'component.newLabel': '新部件',
+    'component.gotIt': '知道了！',
 
     // HMM mnemonic cards in word training
     'hmm.modeLabel': '记忆法',

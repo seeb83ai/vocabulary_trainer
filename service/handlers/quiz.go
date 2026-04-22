@@ -88,7 +88,9 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	langs := parseLangs(r)
 	mnemonics := r.URL.Query().Get("mnemonics") != "false"
+	trainComponents := r.URL.Query().Get("trainComponents") == "1"
 
 	// Ensure progress rows exist for any newly-named library entries.
 	if err := h.Store.EnsureHMMProgress(r.Context(), UserIDFromContext(r.Context())); err != nil {
@@ -96,28 +98,79 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Interleave due HMM mnemonic cards (unless user excluded mnemonics).
+	// Fetch HMM mnemonic candidate.
+	var hmmCard *models.HMMQuizCard
 	if mnemonics {
-		hmmCard, _, hmmErr := h.Store.GetNextDueHMMCard(r.Context(), UserIDFromContext(r.Context()), nil)
+		var hmmErr error
+		hmmCard, _, hmmErr = h.Store.GetNextDueHMMCard(r.Context(), UserIDFromContext(r.Context()), nil)
 		if hmmErr != nil {
 			writeError(w, http.StatusInternalServerError, hmmErr.Error())
 			return
 		}
-		if hmmCard != nil {
-			serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
-			if serveHMM {
-				writeJSON(w, http.StatusOK, models.QuizCard{
-					CardType:     "hmm",
-					EntityType:   hmmCard.EntityType,
-					EntityKey:    hmmCard.EntityKey,
-					Prompt:       hmmCard.Prompt,
-					Category:     hmmCard.Category,
-					Hint:         hmmCard.Hint,
-					DueDate:      hmmCard.DueDate,
-					IntervalDays: hmmCard.IntervalDays,
-				})
-				return
+	}
+
+	// Fetch component candidate (filtered to langs the user is currently training).
+	var compCard *struct {
+		Character   string
+		DueDate     time.Time
+		IsNew       bool
+		Definitions map[string]string
+	}
+	if trainComponents {
+		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs)
+		if ccErr != nil {
+			writeError(w, http.StatusInternalServerError, ccErr.Error())
+			return
+		}
+		if cc != nil {
+			compCard = &struct {
+				Character   string
+				DueDate     time.Time
+				IsNew       bool
+				Definitions map[string]string
+			}{
+				Character:   cc.Character,
+				DueDate:     db.ParseDateTime(cc.Progress.DueDate),
+				IsNew:       cc.Progress.FirstSeenDate == nil,
+				Definitions: cc.Definitions,
 			}
+		}
+	}
+
+	// Pick the card with the lowest due_date across word, HMM, and component.
+	// HMM check.
+	if hmmCard != nil {
+		serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
+		if compCard != nil && serveHMM {
+			serveHMM = hmmCard.DueDate.Before(compCard.DueDate) || hmmCard.DueDate.Equal(compCard.DueDate)
+		}
+		if serveHMM {
+			writeJSON(w, http.StatusOK, models.QuizCard{
+				CardType:     "hmm",
+				EntityType:   hmmCard.EntityType,
+				EntityKey:    hmmCard.EntityKey,
+				Prompt:       hmmCard.Prompt,
+				Category:     hmmCard.Category,
+				Hint:         hmmCard.Hint,
+				DueDate:      hmmCard.DueDate,
+				IntervalDays: hmmCard.IntervalDays,
+			})
+			return
+		}
+	}
+
+	// Component check.
+	if compCard != nil {
+		serveComp := word == nil || compCard.DueDate.Before(progress.DueDate)
+		if serveComp {
+			writeJSON(w, http.StatusOK, models.QuizCard{
+				CardType:    "component",
+				Prompt:      compCard.Character,
+				DueDate:     compCard.DueDate,
+				IsNew:       compCard.IsNew,
+				Definitions: compCard.Definitions,
+			})
+			return
 		}
 	}
 
@@ -130,7 +183,6 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	// Progressive mode: new words (total_attempts==0) are shown as introductions
 	if progress.TotalAttempts == 0 {
-		langs := parseLangs(r)
 		card := models.QuizCard{
 			WordID:       word.ID,
 			Mode:         models.ModeNewWord,
@@ -183,7 +235,6 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	switch mode {
 	case models.ModeTranslToZh:
-		langs := parseLangs(r)
 		// Load translations for ALL selected langs so the user sees every meaning as context.
 		translations := map[string][]string{}
 		for _, lang := range langs {
@@ -431,13 +482,18 @@ func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "word_id is required")
 		return
 	}
-	if err := h.Store.AcknowledgeWord(r.Context(), UserIDFromContext(r.Context()), req.WordID); err != nil {
+	userID := UserIDFromContext(r.Context())
+	if err := h.Store.AcknowledgeWord(r.Context(), userID, req.WordID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
 		}
 		internalError(w, err)
 		return
+	}
+	zhText, err := h.Store.GetZhTextByID(r.Context(), userID, req.WordID)
+	if err == nil && zhText != "" {
+		initComponents(r.Context(), h.Store, userID, req.WordID, zhText)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -504,17 +560,29 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		hmmDueToday = hmmStats.DueToday
 		hmmTotal = hmmStats.Total
 	}
+	compDueToday := 0
+	compTotal := 0
+	if r.URL.Query().Get("trainComponents") == "1" {
+		var cErr error
+		compDueToday, compTotal, cErr = h.Store.GetComponentCounts(r.Context(), UserIDFromContext(r.Context()))
+		if cErr != nil {
+			writeError(w, http.StatusInternalServerError, cErr.Error())
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]int{
-		"due_today":            due,
-		"total":                total,
-		"new_today":            newToday,
-		"max_new_per_day":      h.MaxNewPerDay,
-		"today_attempts":       todayAttempts,
-		"today_mistakes":       todayMistakes,
-		"available_to_advance": availableToAdvance,
-		"new_available":        newAvailable,
-		"hmm_due_today":        hmmDueToday,
-		"hmm_total":            hmmTotal,
+		"due_today":              due,
+		"total":                  total,
+		"new_today":              newToday,
+		"max_new_per_day":        h.MaxNewPerDay,
+		"today_attempts":         todayAttempts,
+		"today_mistakes":         todayMistakes,
+		"available_to_advance":   availableToAdvance,
+		"new_available":          newAvailable,
+		"hmm_due_today":          hmmDueToday,
+		"hmm_total":              hmmTotal,
+		"components_due_today":   compDueToday,
+		"components_total":       compTotal,
 	})
 }
 

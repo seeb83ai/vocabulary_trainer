@@ -152,6 +152,7 @@ func main() {
 	hmmH := &handlers.HMMHandler{Store: store, DeepLAPIKey: translateH.APIKey}
 	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
 	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDirs: pinyinAudioDirs}
+	componentH := &handlers.ComponentHandler{Store: store}
 
 	llmClient := llm.NewClientFromEnv()
 	var llmH *handlers.LLMHandler
@@ -239,6 +240,9 @@ func main() {
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
+		r.Post("/component/answer", componentH.Answer)
+		r.Post("/component/seen", componentH.Seen)
+		r.Get("/component/stats", componentH.Stats)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmH != nil))
 		if translateH.APIKey != "" {
 			r.Post("/translate", translateH.Translate)

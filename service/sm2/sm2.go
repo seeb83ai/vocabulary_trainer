@@ -197,6 +197,19 @@ func expandVariants(a string) []string {
 	return out
 }
 
+// CheckComponentAnswer checks whether the user's answer matches any part of a
+// hanzi component definition. The definition is split on ';' and ',' — each
+// resulting part is a valid answer after normalisation.
+func CheckComponentAnswer(userAnswer, definition string) bool {
+	ua := normalize(userAnswer)
+	for _, part := range strings.FieldsFunc(definition, func(r rune) bool { return r == ';' || r == ',' }) {
+		if normalize(part) == ua {
+			return true
+		}
+	}
+	return false
+}
+
 // MaskPinyin returns a masked pinyin hint for learning-phase transl_to_zh cards.
 // The masking level depends on totalCorrect:
 //

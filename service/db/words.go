@@ -292,6 +292,19 @@ func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, la
 	return texts, rows.Err()
 }
 
+// GetZhTextByID returns the text of a zh word owned by userID.
+// Returns empty string if the word is not found or not a zh word.
+func (s *Store) GetZhTextByID(ctx context.Context, userID, wordID int64) (string, error) {
+	var text string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT text FROM words WHERE id = ? AND user_id = ? AND language = 'zh'`,
+		wordID, userID).Scan(&text)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return text, err
+}
+
 // GetWordByID returns a single zh word with all its English translations.
 func (s *Store) GetWordByID(ctx context.Context, userID, id int64) (*models.WordDetail, error) {
 	var wd models.WordDetail

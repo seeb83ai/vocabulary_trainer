@@ -14,6 +14,7 @@ let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 let selectedBucket = localStorage.getItem('quizBucket') || '';
 let selectedLangs = JSON.parse(localStorage.getItem('quizLangs') || '["en"]');
 let includeMnemonics = localStorage.getItem('quizMnemonics') !== 'false';
+let includeComponents = localStorage.getItem('quizComponents') !== 'false';
 let latestStats = null;
 let skipNewWords = false;
 
@@ -84,17 +85,33 @@ function applyMnemonicPill() {
   if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
 }
 
+function applyComponentPill() {
+  const active = includeComponents;
+  const cls = active
+    ? 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-blue-600 text-white'
+    : 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
+  const overlayCls = active
+    ? 'px-4 py-2 rounded-full text-sm font-medium transition bg-blue-600 text-white'
+    : 'px-4 py-2 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
+  const label = t('filter.componentsOn');
+  const pill = $('components-pill');
+  if (pill) { pill.className = cls; pill.textContent = label; }
+  const overlayPill = $('overlay-components-pill');
+  if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
+}
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
     if (selectedTags.length) params.set('tags', selectedTags.join(','));
     if (selectedBucket) params.set('bucket', selectedBucket);
     if (!includeMnemonics) params.set('mnemonics', 'false');
+    if (includeComponents) params.set('trainComponents', '1');
     const qs = params.toString();
     const statsUrl = qs ? `/api/quiz/stats?${qs}` : '/api/quiz/stats';
     const stats = await apiFetch(statsUrl);
     latestStats = stats;
-    setText('stats-due', stats.due_today + (stats.hmm_due_today || 0));
+    setText('stats-due', stats.due_today + (stats.hmm_due_today || 0) + (stats.components_due_today || 0));
     setText('stats-total', stats.total);
     setText('stats-new', `${stats.new_today} / ${stats.max_new_per_day}`);
   } catch (_) {}
@@ -110,6 +127,7 @@ async function loadNextCard() {
   hide('add-translation-btn');
   hide('result-play-btn');
   hide('new-word-area');
+  hide('new-component-area');
   hide('result-decompose');
   hide('result-decompose-content');
   hide('bucket-info');
@@ -132,7 +150,7 @@ async function loadNextCard() {
       showEmptyState();
       return;
     }
-    if (latestStats.due_today === 0 && (latestStats.hmm_due_today || 0) === 0 && (!latestStats.new_available || skipNewWords)) {
+    if (latestStats.due_today === 0 && (latestStats.hmm_due_today || 0) === 0 && (latestStats.components_due_today || 0) === 0 && (!latestStats.new_available || skipNewWords)) {
       skipNewWords = false;
       setText('success-stats', t('stats.attemptsAndMistakes', { attempts: latestStats.today_attempts, mistakes: latestStats.today_mistakes }));
       document.querySelectorAll('.advance-btn').forEach(btn => {
@@ -151,6 +169,7 @@ async function loadNextCard() {
     if (selectedLangs.length) params.set('langs', selectedLangs.join(','));
     if (skipNewWords) params.set('skip_new', 'true');
     if (!includeMnemonics) params.set('mnemonics', 'false');
+    if (includeComponents) params.set('trainComponents', '1');
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
@@ -183,6 +202,7 @@ async function loadNextCard() {
   // New word introduction (progressive mode)
   if (currentCard.mode === 'new_word') {
     hide('card-area');
+    hide('new-component-area');
     show('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
@@ -197,6 +217,24 @@ async function loadNextCard() {
     return;
   }
 
+  // New component introduction
+  if (currentCard.card_type === 'component' && currentCard.is_new) {
+    hide('card-area');
+    hide('new-word-area');
+    show('new-component-area');
+    setText('new-component-char', currentCard.prompt);
+    const defs = currentCard.definitions || {};
+    $('new-component-defs').innerHTML = Object.entries(defs).map(([lang, def]) =>
+      `<div class="flex items-baseline gap-2 p-3 bg-purple-50 border border-purple-100 rounded-xl">
+         <span class="text-xs font-semibold text-purple-500 uppercase w-6 shrink-0">${escHtml(lang)}</span>
+         <span class="text-xl font-bold text-gray-800">${escHtml(def)}</span>
+       </div>`
+    ).join('');
+    await loadStats();
+    return;
+  }
+
+  hide('new-component-area');
   showCard();
   await loadStats();
 }
@@ -204,7 +242,15 @@ async function loadNextCard() {
 function showCard() {
   show('card-area');
 
-  if (currentCard.card_type === 'hmm') {
+  if (currentCard.card_type === 'component') {
+    setText('mode-label', t('component.modeLabel'));
+    setText('prompt-word', currentCard.prompt);
+    hide('play-btn');
+    hide('pinyin-hint');
+    hide('translations-hint');
+    hide('hmm-type-badge');
+    hide('hmm-actor-hint');
+  } else if (currentCard.card_type === 'hmm') {
     setText('mode-label', t('hmm.modeLabel'));
     setText('prompt-word', currentCard.prompt);
     hide('play-btn');
@@ -276,6 +322,15 @@ async function submitAnswer(e) {
   const answer = $('answer-input').value;
 
   try {
+    if (currentCard.card_type === 'component') {
+      const result = await apiFetch('/api/component/answer', {
+        method: 'POST',
+        body: JSON.stringify({ character: currentCard.prompt, answer, langs: selectedLangs }),
+      });
+      showComponentResult(result);
+      return;
+    }
+
     if (currentCard.card_type === 'hmm') {
       const result = await apiFetch('/api/hmm-quiz/answer', {
         method: 'POST',
@@ -531,6 +586,59 @@ function showHMMResult(resp) {
   loadStats();
 }
 
+function showComponentResult(resp) {
+  hide('card-area');
+  show('result-area');
+
+  const icon = $('result-icon');
+  if (resp.correct) {
+    icon.textContent = t('result.correct');
+    icon.className = 'text-3xl font-bold text-green-600 mb-4';
+  } else {
+    icon.textContent = t('result.wrong');
+    icon.className = 'text-3xl font-bold text-red-600 mb-4';
+  }
+
+  const yourAnswerHtml = (!resp.correct && $('answer-input').value.trim()) ? `
+    <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
+      <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
+      <div class="text-lg font-medium text-red-700">${escHtml($('answer-input').value)}</div>
+    </div>` : '';
+
+  const answers = resp.correct_answers || {};
+  const defsHtml = Object.entries(answers).map(([lang, def]) =>
+    `<div class="flex items-baseline gap-2">
+       <span class="text-xs font-semibold text-green-600 uppercase w-6 shrink-0">${escHtml(lang)}</span>
+       <span class="text-xl font-bold text-gray-800">${escHtml(def)}</span>
+     </div>`
+  ).join('');
+
+  $('word-breakdown').innerHTML = `
+    <div class="mt-4 space-y-2 text-left">
+      ${yourAnswerHtml}
+      <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}: ${escHtml(currentCard.prompt)}</div>
+        ${defsHtml}
+      </div>
+    </div>`;
+  show('word-breakdown');
+
+  hide('add-translation-btn');
+  hide('result-hmm');
+  hide('result-decompose');
+  hide('result-decompose-content');
+  hide('needs-review-btn');
+  hide('bucket-info');
+  hide('streak-info');
+
+  setText('next-due-info', t('result.nextReview', { n: resp.interval_days }));
+  const eff = resp.total_correct;
+  setText('attempt-stats', t('result.correctStats', { eff, total: resp.total_attempts }));
+
+  $('next-btn').focus();
+  loadStats();
+}
+
 function renderCharDecomposition(charData) {
   let html = `<div class="p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">`;
   html += `<div class="flex items-baseline gap-2 mb-1">`;
@@ -711,6 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyModeButtons();
   applyTierPills();
   applyMnemonicPill();
+  applyComponentPill();
   loadLangs();
   loadTrainTags();
 
@@ -724,6 +833,17 @@ document.addEventListener('DOMContentLoaded', () => {
   if (mnemonicsPill) mnemonicsPill.addEventListener('click', toggleMnemonics);
   const overlayMnemonicsPill = $('overlay-mnemonics-pill');
   if (overlayMnemonicsPill) overlayMnemonicsPill.addEventListener('click', toggleMnemonics);
+
+  function toggleComponents() {
+    includeComponents = !includeComponents;
+    localStorage.setItem('quizComponents', includeComponents ? 'true' : 'false');
+    applyComponentPill();
+    loadNextCard();
+  }
+  const componentsPill = $('components-pill');
+  if (componentsPill) componentsPill.addEventListener('click', toggleComponents);
+  const overlayComponentsPill = $('overlay-components-pill');
+  if (overlayComponentsPill) overlayComponentsPill.addEventListener('click', toggleComponents);
 
   document.querySelectorAll('.tier-pill').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -802,6 +922,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('new-word-no-new-btn').addEventListener('click', () => {
     skipNewWords = true;
+    loadNextCard();
+  });
+  $('new-component-got-it-btn').addEventListener('click', async () => {
+    if (!currentCard) return;
+    try {
+      await apiFetch('/api/component/seen', {
+        method: 'POST',
+        body: JSON.stringify({ character: currentCard.prompt }),
+      });
+    } catch (err) {
+      alert('Error: ' + err.message);
+      return;
+    }
     loadNextCard();
   });
 

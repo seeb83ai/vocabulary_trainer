@@ -86,6 +86,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	tagsH := &handlers.TagsHandler{Store: s}
 	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
 	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN"}
+	componentH := &handlers.ComponentHandler{Store: s}
 
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(userID))
@@ -125,6 +126,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Put("/api/tags/{name}", tagsH.Update)
 	r.Get("/api/config", translateH.Config(true, true))
 	r.Post("/api/translate", translateH.Translate)
+	r.Post("/api/component/answer", componentH.Answer)
+	r.Post("/api/component/seen", componentH.Seen)
+	r.Get("/api/component/stats", componentH.Stats)
 	return r
 }
 
@@ -1215,6 +1219,36 @@ func TestQuizAcknowledge_NotFound(t *testing.T) {
 	}
 }
 
+func TestQuizAcknowledge_CreatesComponentProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed 女 as a component (definition only).
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed component: %v", err)
+	}
+	// Seed 妈 with definition and a decomposition that contains 女.
+	if err := s.SeedHanziDecompositionWithDecompForTest(ctx, "妈", "mother", "⿰女马"); err != nil {
+		t.Fatalf("seed char: %v", err)
+	}
+
+	id := seedWord(t, s, "妈妈", "māmā", []string{"mother"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	_, total, err := s.GetComponentCounts(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetComponentCounts: %v", err)
+	}
+	if total == 0 {
+		t.Error("expected component_progress rows after acknowledge")
+	}
+}
+
 // ── POST /api/words/{id}/review ───────────────────────────────────────────────
 
 func TestMarkReview_SetsFlag(t *testing.T) {
@@ -1840,6 +1874,41 @@ func TestAcknowledgeRandomHandler_InvalidCount(t *testing.T) {
 	rec := do(t, r, "POST", "/api/quiz/acknowledge-random", map[string]any{"count": 0})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for count=0, got %d", rec.Code)
+	}
+}
+
+func TestAcknowledgeRandomHandler_CreatesComponentProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed 女 as a component (definition only).
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed component: %v", err)
+	}
+	// Seed 妈 with decomposition containing 女.
+	if err := s.SeedHanziDecompositionWithDecompForTest(ctx, "妈", "mother", "⿰女马"); err != nil {
+		t.Fatalf("seed char: %v", err)
+	}
+
+	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "妈",
+		Translations: map[string][]string{"en": {"mother"}},
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/acknowledge-random", map[string]any{"count": 1})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	_, total, err := s.GetComponentCounts(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetComponentCounts: %v", err)
+	}
+	if total == 0 {
+		t.Error("expected component_progress rows after acknowledge-random")
 	}
 }
 
@@ -3229,5 +3298,300 @@ func TestTranslate_PlusUserAllowed(t *testing.T) {
 	rec := do(t, r, http.MethodPost, "/api/translate", map[string]string{"zh_text": "你好"})
 	if rec.Code == http.StatusForbidden {
 		t.Fatal("plus user should not be forbidden from translate")
+	}
+}
+
+// ── Component handler tests ───────────────────────────────────────────────────
+
+func TestComponentAnswer_CorrectAnswer(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Insert component directly — the handler test is about answer checking, not InitComponentsForWord.
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "woman",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if correct, _ := resp["correct"].(bool); !correct {
+		t.Errorf("want correct=true")
+	}
+}
+
+func TestComponentAnswer_WrongAnswer(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "man",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if correct, _ := resp["correct"].(bool); correct {
+		t.Errorf("want correct=false")
+	}
+}
+
+func TestComponentAnswer_AlternativeSemicolon(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "曰", "to speak; to say"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "曰", time.Now().Add(-time.Hour))
+
+	for _, answer := range []string{"to speak", "to say"} {
+		r := newRouter(s)
+		rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+			"character": "曰",
+			"answer":    answer,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer %q: want 200, got %d", answer, rec.Code)
+		}
+		var resp map[string]any
+		decodeJSON(t, rec, &resp)
+		if correct, _ := resp["correct"].(bool); !correct {
+			t.Errorf("answer %q: want correct=true", answer)
+		}
+	}
+}
+
+func TestComponentAnswer_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "X",
+		"answer":    "something",
+	})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestComponentAnswer_CorrectAnswersMapReturned(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "woman",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	answers, ok := resp["correct_answers"].(map[string]any)
+	if !ok {
+		t.Fatalf("want correct_answers map, got %T: %v", resp["correct_answers"], resp["correct_answers"])
+	}
+	if answers["en"] != "woman" {
+		t.Errorf("want correct_answers[en]=woman, got %v", answers["en"])
+	}
+}
+
+func TestComponentAnswer_DELangAccepted(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed EN: %v", err)
+	}
+	if err := s.SeedHanziTranslationForTest(context.Background(), "女", "de", "Frau"); err != nil {
+		t.Fatalf("seed DE: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	// Send DE lang — answer in German should be accepted.
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]any{
+		"character": "女",
+		"answer":    "Frau",
+		"langs":     []string{"de"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if correct, _ := resp["correct"].(bool); !correct {
+		t.Errorf("want correct=true for DE answer")
+	}
+	answers, ok := resp["correct_answers"].(map[string]any)
+	if !ok {
+		t.Fatalf("want correct_answers map, got %T", resp["correct_answers"])
+	}
+	if answers["de"] != "Frau" {
+		t.Errorf("want correct_answers[de]=Frau, got %v", answers["de"])
+	}
+}
+
+func TestComponentStats_ReturnsEmptyDays(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/component/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	days, ok := resp["days"]
+	if !ok {
+		t.Fatal("want 'days' key in response")
+	}
+	if days == nil {
+		t.Fatal("want non-nil days")
+	}
+}
+
+func TestQuizNext_ReturnsComponentCard(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Insert component directly — overdue, no regular words exist.
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", past)
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if card["card_type"] != "component" {
+		t.Errorf("want card_type=component, got %v", card["card_type"])
+	}
+	if card["prompt"] != "女" {
+		t.Errorf("want prompt=女, got %v", card["prompt"])
+	}
+}
+
+func TestQuizNext_NewComponentCard_HasIsNewAndDefinitions(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// Insert unseen component (first_seen_date IS NULL).
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if card["card_type"] != "component" {
+		t.Fatalf("want card_type=component, got %v", card["card_type"])
+	}
+	if isNew, _ := card["is_new"].(bool); !isNew {
+		t.Error("want is_new=true for unseen component")
+	}
+	defs, ok := card["definitions"].(map[string]any)
+	if !ok {
+		t.Fatalf("want definitions map, got %T", card["definitions"])
+	}
+	if defs["en"] != "woman" {
+		t.Errorf("want definitions[en]=woman, got %v", defs["en"])
+	}
+}
+
+func TestQuizNext_SeenComponentCard_IsNewFalse(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.SetComponentSeenForTest(ctx, int64(2), "女")
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if isNew, _ := card["is_new"].(bool); isNew {
+		t.Error("want is_new=false for already-seen component")
+	}
+}
+
+func TestComponentSeen_MarksFirstSeenDate(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/seen", map[string]string{"character": "女"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify component now counts toward due_today.
+	rec2 := do(t, r, http.MethodGet, "/api/quiz/stats?trainComponents=1", nil)
+	var stats map[string]any
+	decodeJSON(t, rec2, &stats)
+	if v, _ := stats["components_due_today"].(float64); int(v) != 1 {
+		t.Errorf("want components_due_today=1 after seen, got %v", stats["components_due_today"])
+	}
+}
+
+func TestComponentSeen_MissingCharacter(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodPost, "/api/component/seen", map[string]string{})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rec.Code)
+	}
+}
+
+func TestQuizStats_IncludesComponentCounts(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	past := time.Now().Add(-24 * time.Hour)
+	// Insert component directly — this test is about stats, not InitComponentsForWord.
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", past)
+	s.SetComponentSeenForTest(context.Background(), int64(2), "女")
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/stats?trainComponents=1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if v, _ := resp["components_total"].(float64); int(v) != 1 {
+		t.Errorf("want components_total=1, got %v", resp["components_total"])
+	}
+	if v, _ := resp["components_due_today"].(float64); int(v) != 1 {
+		t.Errorf("want components_due_today=1, got %v", resp["components_due_today"])
 	}
 }

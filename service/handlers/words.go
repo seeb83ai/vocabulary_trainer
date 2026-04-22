@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -123,6 +124,7 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 			internalError(w, err)
 			return
 		}
+		initComponents(r.Context(), h.Store, UserIDFromContext(r.Context()), id, req.ZhText)
 	}
 	if h.Audio != nil {
 		go h.Audio.generate(id, req.ZhText)
@@ -224,6 +226,7 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 			internalError(w, err)
 			return
 		}
+		initComponents(r.Context(), h.Store, UserIDFromContext(r.Context()), id, req.ZhText)
 	}
 	if h.Audio != nil {
 		go h.Audio.regenerate(id, req.ZhText)
@@ -352,4 +355,16 @@ func internalError(w http.ResponseWriter, err error) {
 
 func parseID(r *http.Request) (int64, error) {
 	return strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+}
+
+// initComponents adds component_progress rows for a zh word after it enters
+// training. Errors are non-fatal: we log them and continue.
+func initComponents(ctx context.Context, s *db.Store, userID, wordID int64, zhText string) {
+	p, err := s.GetSM2Progress(ctx, wordID)
+	if err != nil || p == nil {
+		return
+	}
+	if err := s.InitComponentsForWord(ctx, userID, zhText, p.DueDate); err != nil {
+		log.Printf("initComponents %q: %v", zhText, err)
+	}
 }
