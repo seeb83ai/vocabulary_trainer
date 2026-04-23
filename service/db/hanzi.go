@@ -177,7 +177,7 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 		args[i] = string(c)
 	}
 
-	query := `SELECT character, definition, radical, decomposition, etymology
+	query := `SELECT character, definition, radical, decomposition, etymology, pinyin
 		FROM hanzi_decomposition WHERE character IN (` + strings.Join(ph, ",") + `)`
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -191,11 +191,12 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 		radical       sql.NullString
 		decomposition sql.NullString
 		etymology     sql.NullString
+		pinyin        sql.NullString
 	}
 	var rawRows []rawRow
 	for rows.Next() {
 		var r rawRow
-		if err := rows.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology); err != nil {
+		if err := rows.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology, &r.pinyin); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scan hanzi decomposition: %w", err)
 		}
@@ -217,6 +218,13 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 		delete(compSet, c)
 	}
 
+	// Keep raw rows around keyed by character so we can pass pinyin/etymology
+	// into the semantic classifier when attaching components.
+	rawByChar := map[string]rawRow{}
+	for _, r := range rawRows {
+		rawByChar[r.character] = r
+	}
+
 	// Second query for component definitions.
 	compMap := map[string]*models.HanziDecomposition{}
 	if len(compSet) > 0 {
@@ -226,19 +234,20 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 			ph2 = append(ph2, "?")
 			args2 = append(args2, string(c))
 		}
-		rows2, err := s.db.QueryContext(ctx, `SELECT character, definition, radical, decomposition, etymology
+		rows2, err := s.db.QueryContext(ctx, `SELECT character, definition, radical, decomposition, etymology, pinyin
 			FROM hanzi_decomposition WHERE character IN (`+strings.Join(ph2, ",")+`)`, args2...)
 		if err != nil {
 			return nil, fmt.Errorf("query component decomposition: %w", err)
 		}
 		for rows2.Next() {
 			var r rawRow
-			if err := rows2.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology); err != nil {
+			if err := rows2.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology, &r.pinyin); err != nil {
 				rows2.Close()
 				return nil, fmt.Errorf("scan component decomposition: %w", err)
 			}
-			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology, r.pinyin)
 			compMap[r.character] = &d
+			rawByChar[r.character] = r
 		}
 		rows2.Close()
 	}
@@ -246,7 +255,7 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 	// Also index top-level results so components can reference siblings.
 	for _, r := range rawRows {
 		if _, ok := compMap[r.character]; !ok {
-			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology, r.pinyin)
 			compMap[r.character] = &d
 		}
 	}
@@ -254,11 +263,26 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 	// Build result with components attached.
 	results := make([]models.HanziDecomposition, 0, len(rawRows))
 	for _, r := range rawRows {
-		d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+		d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology, r.pinyin)
+		parentRunes := []rune(r.character)
+		parentPy := parsePinyinJSON(r.pinyin.String)
 		if r.decomposition.Valid {
 			for _, c := range extractComponents(r.decomposition.String) {
 				if comp, ok := compMap[string(c)]; ok && string(c) != r.character {
-					appendComponent(&d, *comp)
+					compCopy := *comp
+					compCopy.Components = nil
+					compCopy.Decomposition = ""
+					var compPy []string
+					if cr, ok := rawByChar[string(c)]; ok {
+						compPy = parsePinyinJSON(cr.pinyin.String)
+					}
+					var parentRune rune
+					if len(parentRunes) > 0 {
+						parentRune = parentRunes[0]
+					}
+					isSem := shouldKeepComponent(parentRune, c, r.etymology.String, r.radical.String, parentPy, compPy)
+					compCopy.IsSemantic = &isSem
+					d.Components = append(d.Components, compCopy)
 				}
 			}
 		}
@@ -311,13 +335,7 @@ func (s *Store) UpsertHanziDecomposition(ctx context.Context, char, decomp strin
 	return nil
 }
 
-func appendComponent(parent *models.HanziDecomposition, comp models.HanziDecomposition) {
-	comp.Components = nil
-	comp.Decomposition = ""
-	parent.Components = append(parent.Components, comp)
-}
-
-func buildDecomposition(character string, definition, radical, decomposition, etymology sql.NullString) models.HanziDecomposition {
+func buildDecomposition(character string, definition, radical, decomposition, etymology, pinyin sql.NullString) models.HanziDecomposition {
 	d := models.HanziDecomposition{Character: character}
 	if definition.Valid {
 		d.Definition = definition.String
@@ -333,6 +351,9 @@ func buildDecomposition(character string, definition, radical, decomposition, et
 		if err := json.Unmarshal([]byte(etymology.String), &ety); err == nil && ety.Type != "" {
 			d.Etymology = &ety
 		}
+	}
+	if pinyin.Valid && pinyin.String != "" {
+		d.Pinyin = parsePinyinJSON(pinyin.String)
 	}
 	return d
 }

@@ -658,7 +658,10 @@ function renderCharDecomposition(charData) {
   if (charData.components && charData.components.length > 0) {
     html += `<div class="flex flex-wrap gap-2 mt-1">`;
     for (const comp of charData.components) {
-      html += `<div class="px-2 py-1 bg-white border border-gray-200 rounded-lg text-center min-w-[3rem]">`;
+      const isPhonetic = comp.is_semantic === false;
+      const dimClass = isPhonetic ? ' opacity-40' : '';
+      const title = isPhonetic ? ' title="Phonetic component (sound hint only)"' : '';
+      html += `<div class="px-2 py-1 bg-white border border-gray-200 rounded-lg text-center min-w-[3rem]${dimClass}"${title}>`;
       html += `<div class="text-lg font-medium">${escHtml(comp.character)}</div>`;
       if (comp.definition) {
         html += `<div class="text-xs text-gray-400 leading-tight">${escHtml(comp.definition)}</div>`;
