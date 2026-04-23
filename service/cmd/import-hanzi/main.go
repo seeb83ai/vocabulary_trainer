@@ -2,7 +2,8 @@
 //
 // Each line of dictionary.txt is a JSON object with fields: character, radical,
 // decomposition, definition, etymology, pinyin, matches.
-// We store character, radical, decomposition, definition, and etymology (as JSON string).
+// We store character, radical, decomposition, definition, etymology (as JSON
+// string) and pinyin (as JSON-encoded string array).
 //
 // Usage:
 //
@@ -28,6 +29,7 @@ type dictEntry struct {
 	Decomposition string          `json:"decomposition"`
 	Definition    string          `json:"definition"`
 	Etymology     json.RawMessage `json:"etymology"`
+	Pinyin        []string        `json:"pinyin"`
 }
 
 func main() {
@@ -69,7 +71,7 @@ func main() {
 	}
 
 	stmt, err := tx.Prepare(`INSERT OR REPLACE INTO hanzi_decomposition
-		(character, definition, radical, decomposition, etymology) VALUES (?, ?, ?, ?, ?)`)
+		(character, definition, radical, decomposition, etymology, pinyin) VALUES (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		log.Fatalf("prepare: %v", err)
 	}
@@ -104,8 +106,20 @@ func main() {
 			etymStr = &s
 		}
 
+		var pinyinStr *string
+		if len(e.Pinyin) > 0 {
+			b, err := json.Marshal(e.Pinyin)
+			if err != nil {
+				log.Printf("WARN: marshal pinyin for %q: %v", e.Character, err)
+				failed++
+				continue
+			}
+			s := string(b)
+			pinyinStr = &s
+		}
+
 		if _, err := stmt.Exec(e.Character, nullStr(e.Definition), nullStr(e.Radical),
-			nullStr(e.Decomposition), etymStr); err != nil {
+			nullStr(e.Decomposition), etymStr, pinyinStr); err != nil {
 			log.Printf("WARN: insert %q: %v", e.Character, err)
 			failed++
 			continue
