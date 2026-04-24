@@ -25,6 +25,145 @@ func extractComponents(decomposition string) []rune {
 	return out
 }
 
+// shouldKeepComponent returns true if comp should be stored as a training
+// component of parent. It excludes the self-reference and the labelled
+// phonetic component of pictophonetic characters; for characters without
+// etymology it falls back to pinyin similarity. The definition-non-empty
+// rule is applied by the caller.
+func shouldKeepComponent(parent, comp rune, etymologyJSON, radical string, parentPinyin, compPinyin []string) bool {
+	if comp == parent {
+		return false
+	}
+	if etymologyJSON != "" {
+		var ety struct {
+			Type     string `json:"type"`
+			Phonetic string `json:"phonetic"`
+			Semantic string `json:"semantic"`
+		}
+		if err := json.Unmarshal([]byte(etymologyJSON), &ety); err == nil && ety.Type != "" {
+			if ety.Type == "pictophonetic" &&
+				ety.Phonetic != "" &&
+				string(comp) == ety.Phonetic &&
+				string(comp) != ety.Semantic &&
+				string(comp) != radical {
+				return false
+			}
+			return true
+		}
+	}
+	if pinyinSimilar(parentPinyin, compPinyin) {
+		return false
+	}
+	return true
+}
+
+// pinyinSimilar reports whether any reading in b shares a final (rhyme) with
+// any reading in a, after stripping tones. Empty inputs return false.
+func pinyinSimilar(a, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	finalsA := make(map[string]struct{}, len(a))
+	for _, r := range a {
+		if f := pinyinFinal(r); f != "" {
+			finalsA[f] = struct{}{}
+		}
+	}
+	if len(finalsA) == 0 {
+		return false
+	}
+	for _, r := range b {
+		if f := pinyinFinal(r); f != "" {
+			if _, ok := finalsA[f]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pinyinInitials is the set of pinyin syllable onsets used by pinyinFinal to
+// strip the initial and return the final (rhyme). Longer prefixes first so
+// "zh"/"ch"/"sh" are matched before "z"/"c"/"s".
+var pinyinInitials = []string{
+	"zh", "ch", "sh",
+	"b", "p", "m", "f", "d", "t", "n", "l",
+	"g", "k", "h", "j", "q", "x",
+	"r", "z", "c", "s", "y", "w",
+}
+
+// pinyinFinal returns the toneless final (rhyme) of a pinyin syllable.
+// Tone marks and trailing tone digits are stripped. The initial consonant
+// (if any) is removed. Returns "" on empty input.
+func pinyinFinal(syllable string) string {
+	s := stripPinyinTones(syllable)
+	if s == "" {
+		return ""
+	}
+	for _, init := range pinyinInitials {
+		if strings.HasPrefix(s, init) {
+			return s[len(init):]
+		}
+	}
+	return s
+}
+
+// stripPinyinTones returns a lowercase ASCII-ish version of a pinyin syllable
+// with tone marks (Unicode combining diacritics) and trailing tone digits
+// removed. Preserves ü as "v" so finals like "nü" match "lü".
+func stripPinyinTones(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	// Strip trailing tone digits (e.g. "qing1").
+	for len(s) > 0 {
+		last := s[len(s)-1]
+		if last >= '0' && last <= '5' {
+			s = s[:len(s)-1]
+			continue
+		}
+		break
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case 'ā', 'á', 'ǎ', 'à':
+			b.WriteRune('a')
+		case 'ē', 'é', 'ě', 'è':
+			b.WriteRune('e')
+		case 'ī', 'í', 'ǐ', 'ì':
+			b.WriteRune('i')
+		case 'ō', 'ó', 'ǒ', 'ò':
+			b.WriteRune('o')
+		case 'ū', 'ú', 'ǔ', 'ù':
+			b.WriteRune('u')
+		case 'ǖ', 'ǘ', 'ǚ', 'ǜ', 'ü':
+			b.WriteRune('v')
+		case 'ń', 'ň', 'ǹ':
+			b.WriteRune('n')
+		case 'ḿ':
+			b.WriteRune('m')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// parsePinyinJSON decodes a JSON-encoded pinyin array as stored in
+// hanzi_decomposition.pinyin. Returns nil for empty/invalid input.
+func parsePinyinJSON(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
 func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]models.HanziDecomposition, error) {
 	if len(chars) == 0 {
 		return nil, nil
@@ -38,7 +177,7 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 		args[i] = string(c)
 	}
 
-	query := `SELECT character, definition, radical, decomposition, etymology
+	query := `SELECT character, definition, radical, decomposition, etymology, pinyin
 		FROM hanzi_decomposition WHERE character IN (` + strings.Join(ph, ",") + `)`
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -52,11 +191,12 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 		radical       sql.NullString
 		decomposition sql.NullString
 		etymology     sql.NullString
+		pinyin        sql.NullString
 	}
 	var rawRows []rawRow
 	for rows.Next() {
 		var r rawRow
-		if err := rows.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology); err != nil {
+		if err := rows.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology, &r.pinyin); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scan hanzi decomposition: %w", err)
 		}
@@ -78,6 +218,13 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 		delete(compSet, c)
 	}
 
+	// Keep raw rows around keyed by character so we can pass pinyin/etymology
+	// into the semantic classifier when attaching components.
+	rawByChar := map[string]rawRow{}
+	for _, r := range rawRows {
+		rawByChar[r.character] = r
+	}
+
 	// Second query for component definitions.
 	compMap := map[string]*models.HanziDecomposition{}
 	if len(compSet) > 0 {
@@ -87,19 +234,20 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 			ph2 = append(ph2, "?")
 			args2 = append(args2, string(c))
 		}
-		rows2, err := s.db.QueryContext(ctx, `SELECT character, definition, radical, decomposition, etymology
+		rows2, err := s.db.QueryContext(ctx, `SELECT character, definition, radical, decomposition, etymology, pinyin
 			FROM hanzi_decomposition WHERE character IN (`+strings.Join(ph2, ",")+`)`, args2...)
 		if err != nil {
 			return nil, fmt.Errorf("query component decomposition: %w", err)
 		}
 		for rows2.Next() {
 			var r rawRow
-			if err := rows2.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology); err != nil {
+			if err := rows2.Scan(&r.character, &r.definition, &r.radical, &r.decomposition, &r.etymology, &r.pinyin); err != nil {
 				rows2.Close()
 				return nil, fmt.Errorf("scan component decomposition: %w", err)
 			}
-			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology, r.pinyin)
 			compMap[r.character] = &d
+			rawByChar[r.character] = r
 		}
 		rows2.Close()
 	}
@@ -107,7 +255,7 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 	// Also index top-level results so components can reference siblings.
 	for _, r := range rawRows {
 		if _, ok := compMap[r.character]; !ok {
-			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+			d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology, r.pinyin)
 			compMap[r.character] = &d
 		}
 	}
@@ -115,11 +263,26 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 	// Build result with components attached.
 	results := make([]models.HanziDecomposition, 0, len(rawRows))
 	for _, r := range rawRows {
-		d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology)
+		d := buildDecomposition(r.character, r.definition, r.radical, r.decomposition, r.etymology, r.pinyin)
+		parentRunes := []rune(r.character)
+		parentPy := parsePinyinJSON(r.pinyin.String)
 		if r.decomposition.Valid {
 			for _, c := range extractComponents(r.decomposition.String) {
 				if comp, ok := compMap[string(c)]; ok && string(c) != r.character {
-					appendComponent(&d, *comp)
+					compCopy := *comp
+					compCopy.Components = nil
+					compCopy.Decomposition = ""
+					var compPy []string
+					if cr, ok := rawByChar[string(c)]; ok {
+						compPy = parsePinyinJSON(cr.pinyin.String)
+					}
+					var parentRune rune
+					if len(parentRunes) > 0 {
+						parentRune = parentRunes[0]
+					}
+					isSem := shouldKeepComponent(parentRune, c, r.etymology.String, r.radical.String, parentPy, compPy)
+					compCopy.IsSemantic = &isSem
+					d.Components = append(d.Components, compCopy)
 				}
 			}
 		}
@@ -172,13 +335,7 @@ func (s *Store) UpsertHanziDecomposition(ctx context.Context, char, decomp strin
 	return nil
 }
 
-func appendComponent(parent *models.HanziDecomposition, comp models.HanziDecomposition) {
-	comp.Components = nil
-	comp.Decomposition = ""
-	parent.Components = append(parent.Components, comp)
-}
-
-func buildDecomposition(character string, definition, radical, decomposition, etymology sql.NullString) models.HanziDecomposition {
+func buildDecomposition(character string, definition, radical, decomposition, etymology, pinyin sql.NullString) models.HanziDecomposition {
 	d := models.HanziDecomposition{Character: character}
 	if definition.Valid {
 		d.Definition = definition.String
@@ -194,6 +351,9 @@ func buildDecomposition(character string, definition, radical, decomposition, et
 		if err := json.Unmarshal([]byte(etymology.String), &ety); err == nil && ety.Type != "" {
 			d.Etymology = &ety
 		}
+	}
+	if pinyin.Valid && pinyin.String != "" {
+		d.Pinyin = parsePinyinJSON(pinyin.String)
 	}
 	return d
 }

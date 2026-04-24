@@ -296,8 +296,14 @@ type HanziDecomposition struct {
 	Definition    string               `json:"definition,omitempty"`
 	Radical       string               `json:"radical,omitempty"`
 	Decomposition string               `json:"decomposition,omitempty"`
+	Pinyin        []string             `json:"pinyin,omitempty"`
 	Etymology     *HanziEtymology      `json:"etymology,omitempty"`
 	Components    []HanziDecomposition `json:"components,omitempty"`
+	// IsSemantic is only populated on entries returned as components of a
+	// parent character. True means the component contributes meaning to the
+	// parent (semantic radical, ideographic part, or distinct pinyin); false
+	// means it is purely phonetic and can be faded in the UI.
+	IsSemantic *bool `json:"is_semantic,omitempty"`
 }
 
 type HanziEtymology struct {

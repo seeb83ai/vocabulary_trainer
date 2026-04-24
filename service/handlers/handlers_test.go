@@ -3372,6 +3372,33 @@ func TestComponentAnswer_AlternativeSemicolon(t *testing.T) {
 	}
 }
 
+// TestComponentAnswer_MixedCommaSemicolon verifies that a definition like
+// "woman, girl; female" accepts any of the three single-word alternatives,
+// not just the semicolon-split halves.
+func TestComponentAnswer_MixedCommaSemicolon(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman, girl; female"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	for _, answer := range []string{"woman", "girl", "female"} {
+		r := newRouter(s)
+		rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+			"character": "女",
+			"answer":    answer,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer %q: want 200, got %d", answer, rec.Code)
+		}
+		var resp map[string]any
+		decodeJSON(t, rec, &resp)
+		if correct, _ := resp["correct"].(bool); !correct {
+			t.Errorf("answer %q: want correct=true", answer)
+		}
+	}
+}
+
 func TestComponentAnswer_NotFound(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

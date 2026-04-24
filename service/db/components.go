@@ -13,8 +13,10 @@ import (
 
 // InitComponentsForWord adds a component_progress row for every component
 // extracted from the hanzi decomposition of each Han rune in zhText.
-// The components come from hanzi_decomposition.decomposition (one level deep),
-// filtered to only those with a non-empty definition.
+// Components come from hanzi_decomposition.decomposition (one level deep)
+// and are filtered by shouldKeepComponent (etymology label, with pinyin
+// similarity fallback) plus the requirement that the component has a
+// non-empty definition.
 // Rows are INSERT OR IGNORE so calling this multiple times is safe.
 // dueDate is copied from the origin zh word's sm2_progress.due_date.
 func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error {
@@ -23,30 +25,35 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 		if !unicode.Is(unicode.Han, r) {
 			continue
 		}
-		// Step 1: look up the decomposition of this character.
-		var decomp sql.NullString
+		var decomp, etymology, radical, parentPinyin sql.NullString
 		err := s.db.QueryRowContext(ctx,
-			`SELECT decomposition FROM hanzi_decomposition WHERE character = ?`,
+			`SELECT decomposition, etymology, radical, pinyin FROM hanzi_decomposition WHERE character = ?`,
 			string(r),
-		).Scan(&decomp)
+		).Scan(&decomp, &etymology, &radical, &parentPinyin)
 		if err == sql.ErrNoRows || !decomp.Valid || decomp.String == "" {
 			continue
 		}
 		if err != nil {
 			return fmt.Errorf("decomp lookup %q: %w", string(r), err)
 		}
-		// Step 2: extract actual component characters (filters IDS operators and placeholders).
+		parentPy := parsePinyinJSON(parentPinyin.String)
 		for _, comp := range extractComponents(decomp.String) {
-			var def string
+			var def, compPinyin sql.NullString
 			err := s.db.QueryRowContext(ctx,
-				`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`,
+				`SELECT definition, pinyin FROM hanzi_decomposition WHERE character = ?`,
 				string(comp),
-			).Scan(&def)
-			if err == sql.ErrNoRows || def == "" {
+			).Scan(&def, &compPinyin)
+			if err == sql.ErrNoRows {
 				continue
 			}
 			if err != nil {
 				return fmt.Errorf("component def lookup %q: %w", string(comp), err)
+			}
+			if !def.Valid || def.String == "" {
+				continue
+			}
+			if !shouldKeepComponent(r, comp, etymology.String, radical.String, parentPy, parsePinyinJSON(compPinyin.String)) {
+				continue
 			}
 			if _, err := s.db.ExecContext(ctx,
 				`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
