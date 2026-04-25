@@ -245,3 +245,49 @@ WHERE p.user_id = ? AND ` + hmmNameFilter + typeFilter
 
 	return stats, nil
 }
+
+// HMMEntityBreakdown holds aggregate stats for one entity type.
+type HMMEntityBreakdown struct {
+	EntityType    string  `json:"entity_type"`
+	Total         int     `json:"total"`
+	DueToday      int     `json:"due_today"`
+	TotalCorrect  int     `json:"total_correct"`
+	TotalAttempts int     `json:"total_attempts"`
+	Accuracy      float64 `json:"accuracy"`
+}
+
+// GetHMMBreakdown returns per-entity-type aggregate stats for the given user.
+func (s *Store) GetHMMBreakdown(ctx context.Context, userID int64) ([]HMMEntityBreakdown, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT p.entity_type,
+		       COUNT(*) AS total,
+		       SUM(CASE WHEN p.due_date < datetime('now', '+1 day') THEN 1 ELSE 0 END) AS due_today,
+		       SUM(p.total_correct)  AS total_correct,
+		       SUM(p.total_attempts) AS total_attempts
+		FROM hmm_progress p`+hmmBaseJoins+`
+		WHERE p.user_id = ? AND `+hmmNameFilter+`
+		GROUP BY p.entity_type
+		ORDER BY p.entity_type`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("hmm breakdown: %w", err)
+	}
+	var out []HMMEntityBreakdown
+	for rows.Next() {
+		var b HMMEntityBreakdown
+		if err := rows.Scan(&b.EntityType, &b.Total, &b.DueToday, &b.TotalCorrect, &b.TotalAttempts); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan hmm breakdown: %w", err)
+		}
+		if b.TotalAttempts > 0 {
+			b.Accuracy = float64(b.TotalCorrect) / float64(b.TotalAttempts) * 100
+		}
+		out = append(out, b)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("hmm breakdown rows: %w", err)
+	}
+	return out, nil
+}

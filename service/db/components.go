@@ -243,23 +243,32 @@ func (s *Store) RecordComponentAnswer(ctx context.Context, userID int64, charact
 	return p, updated.DueDate, nil
 }
 
-// RecordComponentStat increments today's correct or wrong count in component_stats.
+// RecordComponentStat increments today's correct or wrong count in component_stats
+// and snapshots the current total number of components in training for the user.
 func (s *Store) RecordComponentStat(ctx context.Context, userID int64, correct bool) error {
 	col := "wrong"
 	if correct {
 		col = "correct"
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO component_stats (user_id, date, correct, wrong) VALUES (?, date('now'), 0, 0)
+		`INSERT INTO component_stats (user_id, date, correct, wrong, components_total) VALUES (?, date('now'), 0, 0, 0)
 		 ON CONFLICT(user_id, date) DO NOTHING`,
 		userID,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert component_stats row: %w", err)
 	}
-	_, err = s.db.ExecContext(ctx,
+	if _, err = s.db.ExecContext(ctx,
 		`UPDATE component_stats SET `+col+` = `+col+` + 1 WHERE user_id = ? AND date = date('now')`,
 		userID,
+	); err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE component_stats
+		    SET components_total = (SELECT COUNT(*) FROM component_progress WHERE user_id = ?)
+		  WHERE user_id = ? AND date = date('now')`,
+		userID, userID,
 	)
 	return err
 }
@@ -267,7 +276,7 @@ func (s *Store) RecordComponentStat(ctx context.Context, userID int64, correct b
 // GetComponentStatsHistory returns daily component training stats for a user.
 func (s *Store) GetComponentStatsHistory(ctx context.Context, userID int64) ([]models.ComponentDailyStat, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT date, correct, wrong FROM component_stats WHERE user_id = ? ORDER BY date ASC`,
+		`SELECT date, correct, wrong, components_total FROM component_stats WHERE user_id = ? ORDER BY date ASC`,
 		userID,
 	)
 	if err != nil {
@@ -276,7 +285,7 @@ func (s *Store) GetComponentStatsHistory(ctx context.Context, userID int64) ([]m
 	var stats []models.ComponentDailyStat
 	for rows.Next() {
 		var s models.ComponentDailyStat
-		if err := rows.Scan(&s.Date, &s.Correct, &s.Wrong); err != nil {
+		if err := rows.Scan(&s.Date, &s.Correct, &s.Wrong, &s.ComponentsTotal); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scan component stat: %w", err)
 		}

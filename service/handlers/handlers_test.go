@@ -87,6 +87,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
 	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN"}
 	componentH := &handlers.ComponentHandler{Store: s}
+	hmmH := &handlers.HMMHandler{Store: s}
 
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(userID))
@@ -130,6 +131,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/component/answer", componentH.Answer)
 	r.Post("/api/component/seen", componentH.Seen)
 	r.Get("/api/component/stats", componentH.Stats)
+	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
 	return r
 }
 
@@ -3683,5 +3685,19 @@ func TestComponentList_SearchFilter(t *testing.T) {
 	}
 	if items[0].(map[string]any)["character"] != "日" {
 		t.Errorf("want 日 in result, got %v", items[0])
+	}
+}
+
+func TestHMMBreakdown_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodGet, "/api/hmm/breakdown", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	items, _ := resp["breakdown"].([]any)
+	if len(items) != 0 {
+		t.Errorf("want empty breakdown on fresh DB, got %d items", len(items))
 	}
 }

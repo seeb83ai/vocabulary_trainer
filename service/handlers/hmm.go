@@ -514,3 +514,16 @@ func collectRadicalDefs(d models.HanziDecomposition) map[string]string {
 	walk(d)
 	return defs
 }
+
+// GetBreakdown returns per-entity-type aggregate stats for the mnemonics tab.
+func (h *HMMHandler) GetBreakdown(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.Store.GetHMMBreakdown(r.Context(), UserIDFromContext(r.Context()))
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if rows == nil {
+		rows = []db.HMMEntityBreakdown{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"breakdown": rows})
+}

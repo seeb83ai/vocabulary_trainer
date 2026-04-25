@@ -1,8 +1,10 @@
 // Tab switching
 function initTabs() {
   const tabs = [
-    { btn: 'tab-words',   panel: 'panel-words' },
-    { btn: 'tab-pinyin',  panel: 'panel-pinyin' },
+    { btn: 'tab-words',      panel: 'panel-words' },
+    { btn: 'tab-pinyin',     panel: 'panel-pinyin' },
+    { btn: 'tab-components', panel: 'panel-components' },
+    { btn: 'tab-mnemonics',  panel: 'panel-mnemonics' },
   ];
   tabs.forEach(({ btn, panel }) => {
     $(btn).addEventListener('click', () => {
@@ -18,10 +20,12 @@ function initTabs() {
 document.addEventListener('DOMContentLoaded', async () => {
   initTabs();
 
-  // Load both tabs in parallel
-  const [wordsResult, pinyinResult] = await Promise.allSettled([
+  // Load all tabs in parallel
+  const [wordsResult, pinyinResult, compResult, hmmResult] = await Promise.allSettled([
     apiFetch('/api/quiz/daily-stats'),
     apiFetch('/api/pinyin-quiz/daily-stats'),
+    apiFetch('/api/component/stats'),
+    apiFetch('/api/hmm/breakdown'),
   ]);
 
   // --- Words tab ---
@@ -53,6 +57,37 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load due-date distribution with tag filters
   await initDueDateChart();
+
+  // --- Components tab ---
+  if (compResult.status === 'rejected') {
+    $('comp-table-body').innerHTML =
+      `<tr><td colspan="4" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
+  } else {
+    const cdays = (compResult.value.days) || [];
+    if (cdays.length === 0) {
+      $('comp-stats-chart').style.display = 'none';
+      show('comp-chart-empty');
+      $('comp-table-body').innerHTML =
+        `<tr><td colspan="4" class="py-8 text-center text-gray-400">No component training data yet.</td></tr>`;
+    } else {
+      renderCompChart(cdays);
+      renderCompTable(cdays);
+    }
+  }
+
+  // --- Mnemonics tab ---
+  if (hmmResult.status === 'rejected') {
+    $('hmm-breakdown-body').innerHTML =
+      `<tr><td colspan="5" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
+  } else {
+    const breakdown = (hmmResult.value.breakdown) || [];
+    if (breakdown.length === 0) {
+      show('hmm-breakdown-empty');
+      $('hmm-breakdown-body').innerHTML = '';
+    } else {
+      renderHMMBreakdown(breakdown);
+    }
+  }
 
   // --- Pinyin tab ---
   if (pinyinResult.status === 'rejected') {
@@ -521,6 +556,131 @@ function renderPinyinTable(days) {
       <td class="py-2 text-right">${d.sounds_seen}</td>
     </tr>`;
   }).join('');
+}
+
+// --- Components tab ---
+
+function renderCompChart(days) {
+  const labels = days.map(d => formatDateLabel(d.date));
+  const ctx = $('comp-stats-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: t('chart.correct'),
+          data: days.map(d => d.correct),
+          backgroundColor: 'rgba(34, 197, 94, 0.7)',
+          stack: 'answers',
+        },
+        {
+          label: t('chart.mistakes'),
+          data: days.map(d => d.wrong),
+          backgroundColor: 'rgba(239, 68, 68, 0.7)',
+          stack: 'answers',
+        },
+        {
+          label: 'Components in training',
+          data: days.map(d => d.components_total),
+          type: 'line',
+          borderColor: 'rgba(168, 85, 247, 0.9)',
+          backgroundColor: 'rgba(168, 85, 247, 0.1)',
+          fill: false,
+          yAxisID: 'y1',
+          tension: 0.3,
+          pointRadius: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
+        y: { beginAtZero: true, stacked: true, title: { display: true, text: t('stats.answers') } },
+        y1: {
+          beginAtZero: true,
+          position: 'right',
+          title: { display: true, text: 'Components' },
+          grid: { drawOnChartArea: false },
+        },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            afterBody(items) {
+              const idx = items[0].dataIndex;
+              const d = days[idx];
+              const total = d.correct + d.wrong;
+              const acc = total > 0 ? Math.round(d.correct / total * 100) : 0;
+              return `Accuracy: ${acc}%\nComponents in training: ${d.components_total}`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+function renderCompTable(days) {
+  const recent = days.slice(-14).reverse();
+  const tbody = $('comp-table-body');
+  if (recent.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-400">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = recent.map(d => {
+    const total = d.correct + d.wrong;
+    const acc = total > 0 ? Math.round(d.correct / total * 100) : 0;
+    const accColor = acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
+    return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+      <td class="py-2 pr-4 font-medium">${escHtml(formatDateLabel(d.date))}</td>
+      <td class="py-2 pr-4 text-right">${total}</td>
+      <td class="py-2 pr-4 text-right">${d.wrong}</td>
+      <td class="py-2 pr-4 text-right ${accColor} font-medium">${acc}%</td>
+      <td class="py-2 text-right text-violet-600">${d.components_total || 0}</td>
+    </tr>`;
+  }).join('');
+}
+
+// --- Mnemonics tab ---
+
+const HMM_TYPE_LABELS = {
+  actor:     'Actors',
+  location:  'Locations',
+  tone_room: 'Tone Rooms',
+  prop:      'Props',
+};
+
+function renderHMMBreakdown(breakdown) {
+  const tbody = $('hmm-breakdown-body');
+  let totalRow = { total: 0, due_today: 0, total_attempts: 0, total_correct: 0 };
+  const rows = breakdown.map(b => {
+    const acc = b.total_attempts > 0 ? Math.round(b.accuracy) : null;
+    const accColor = acc === null ? 'text-gray-400' : acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
+    totalRow.total         += b.total;
+    totalRow.due_today     += b.due_today;
+    totalRow.total_attempts += b.total_attempts;
+    totalRow.total_correct  += b.total_correct;
+    return `<tr class="border-b border-gray-100 hover:bg-gray-50">
+      <td class="py-2 pr-4 font-medium">${escHtml(HMM_TYPE_LABELS[b.entity_type] || b.entity_type)}</td>
+      <td class="py-2 pr-4 text-right">${b.total}</td>
+      <td class="py-2 pr-4 text-right">${b.due_today > 0 ? `<span class="text-orange-500">${b.due_today}</span>` : b.due_today}</td>
+      <td class="py-2 pr-4 text-right">${b.total_attempts}</td>
+      <td class="py-2 text-right ${accColor} font-medium">${acc !== null ? acc + '%' : '—'}</td>
+    </tr>`;
+  });
+  const totalAcc = totalRow.total_attempts > 0 ? Math.round(totalRow.total_correct / totalRow.total_attempts * 100) : null;
+  const totalAccColor = totalAcc === null ? 'text-gray-400' : totalAcc >= 80 ? 'text-green-600' : totalAcc >= 50 ? 'text-yellow-600' : 'text-red-600';
+  rows.push(`<tr class="font-semibold border-t border-gray-300">
+    <td class="py-2 pr-4">Total</td>
+    <td class="py-2 pr-4 text-right">${totalRow.total}</td>
+    <td class="py-2 pr-4 text-right">${totalRow.due_today > 0 ? `<span class="text-orange-500">${totalRow.due_today}</span>` : totalRow.due_today}</td>
+    <td class="py-2 pr-4 text-right">${totalRow.total_attempts}</td>
+    <td class="py-2 text-right ${totalAccColor} font-medium">${totalAcc !== null ? totalAcc + '%' : '—'}</td>
+  </tr>`);
+  tbody.innerHTML = rows.join('');
 }
 
 function renderDueDateChart(dates) {

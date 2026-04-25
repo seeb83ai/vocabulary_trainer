@@ -232,6 +232,7 @@ func main() {
 			r.Get("/props", hmmH.GetProps)
 			r.Put("/props", hmmH.UpsertProp)
 			r.Delete("/props/{radical}", hmmH.DeleteProp)
+			r.Get("/breakdown", hmmH.GetBreakdown)
 		})
 		r.Get("/pinyin-quiz/next", pinyinQuizH.Next)
 		r.Post("/pinyin-quiz/answer", pinyinQuizH.Answer)

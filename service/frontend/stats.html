@@ -4,9 +4,11 @@
   <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-8">
 
     <!-- Tabs -->
-    <div class="flex gap-1 bg-white rounded-xl shadow p-1 w-fit">
-      <button id="tab-words" class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white">Words</button>
-      <button id="tab-pinyin" class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Pinyin</button>
+    <div class="flex gap-1 bg-white rounded-xl shadow p-1 w-fit flex-wrap">
+      <button id="tab-words"      class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white">Words</button>
+      <button id="tab-pinyin"     class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Pinyin</button>
+      <button id="tab-components" class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Components</button>
+      <button id="tab-mnemonics"  class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Mnemonics</button>
     </div>
 
     <!-- ===== WORDS TAB ===== -->
@@ -162,6 +164,66 @@
       </div>
 
     </div><!-- end panel-pinyin -->
+
+    <!-- ===== COMPONENTS TAB ===== -->
+    <div id="panel-components" class="hidden space-y-8">
+
+      <!-- Training History Chart -->
+      <div class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Component Training History</h2>
+        <div id="comp-chart-empty" class="hidden text-center text-gray-400 py-12">No component training data yet. Start a session to see your progress!</div>
+        <div style="min-height:250px"><canvas id="comp-stats-chart" height="200"></canvas></div>
+      </div>
+
+      <!-- Last 14 Days Table -->
+      <div class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.last14Days">Last 14 Days</h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left">
+            <thead class="text-gray-500 border-b">
+              <tr>
+                <th class="py-2 pr-4" data-i18n="stats.date">Date</th>
+                <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
+                <th class="py-2 pr-4 text-right" data-i18n="stats.mistakes">Mistakes</th>
+                <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
+                <th class="py-2 text-right text-violet-600">Components</th>
+              </tr>
+            </thead>
+            <tbody id="comp-table-body">
+              <tr><td colspan="5" class="py-8 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- end panel-components -->
+
+    <!-- ===== MNEMONICS TAB ===== -->
+    <div id="panel-mnemonics" class="hidden space-y-8">
+
+      <!-- Breakdown by entity type -->
+      <div class="bg-white rounded-2xl shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Mnemonic Library Stats</h2>
+        <div id="hmm-breakdown-empty" class="hidden text-center text-gray-400 py-12">No mnemonics trained yet. Set up your HMM library and start training!</div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left">
+            <thead class="text-gray-500 border-b">
+              <tr>
+                <th class="py-2 pr-4">Type</th>
+                <th class="py-2 pr-4 text-right">Total</th>
+                <th class="py-2 pr-4 text-right">Due Today</th>
+                <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
+                <th class="py-2 text-right" data-i18n="stats.accuracy">Accuracy</th>
+              </tr>
+            </thead>
+            <tbody id="hmm-breakdown-body">
+              <tr><td colspan="5" class="py-8 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- end panel-mnemonics -->
 
   </main>
 

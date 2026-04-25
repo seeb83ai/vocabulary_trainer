@@ -270,9 +270,10 @@ type ComponentProgress struct {
 }
 
 type ComponentDailyStat struct {
-	Date    string `json:"date"`
-	Correct int    `json:"correct"`
-	Wrong   int    `json:"wrong"`
+	Date            string `json:"date"`
+	Correct         int    `json:"correct"`
+	Wrong           int    `json:"wrong"`
+	ComponentsTotal int    `json:"components_total"`
 }
 
 type ComponentAnswerRequest struct {
