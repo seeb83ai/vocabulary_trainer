@@ -332,6 +332,94 @@ func (s *Store) InsertComponentProgressForTest(ctx context.Context, userID int64
 		userID, character, dueDate.UTC().Format("2006-01-02 15:04:05"))
 }
 
+// ComponentListItem is one row in the component list view.
+type ComponentListItem struct {
+	Character     string  `json:"character"`
+	DefinitionEN  string  `json:"definition_en"`
+	DefinitionDE  string  `json:"definition_de"`
+	DueDate       string  `json:"due_date"`
+	TotalCorrect  int     `json:"total_correct"`
+	TotalAttempts int     `json:"total_attempts"`
+	Easiness      float64 `json:"easiness"`
+	IntervalDays  int     `json:"interval_days"`
+	FirstSeenDate *string `json:"first_seen_date,omitempty"`
+}
+
+// GetComponentList returns a paginated list of component_progress rows for a user,
+// optionally filtered by a search string matched against character or EN definition.
+func (s *Store) GetComponentList(ctx context.Context, userID int64, search string, page, perPage int) ([]ComponentListItem, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * perPage
+
+	var args []any
+	whereExtra := ""
+	if search != "" {
+		whereExtra = " AND (cp.character LIKE ? OR LOWER(hd.definition) LIKE LOWER(?))"
+		like := "%" + search + "%"
+		args = append(args, like, like)
+	}
+
+	countArgs := append([]any{userID}, args...)
+	var total int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM component_progress cp
+		JOIN hanzi_decomposition hd ON hd.character = cp.character
+		WHERE cp.user_id = ?`+whereExtra,
+		countArgs...,
+	).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count components: %w", err)
+	}
+
+	listArgs := append([]any{userID}, args...)
+	listArgs = append(listArgs, perPage, offset)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT cp.character,
+		       COALESCE(hd.definition, '') AS def_en,
+		       COALESCE(hdt.definition, '') AS def_de,
+		       date(cp.due_date) AS due_date,
+		       cp.total_correct, cp.total_attempts,
+		       cp.easiness, cp.interval_days,
+		       cp.first_seen_date
+		FROM component_progress cp
+		JOIN hanzi_decomposition hd ON hd.character = cp.character
+		LEFT JOIN hanzi_decomposition_translation hdt
+		       ON hdt.character = cp.character AND hdt.lang = 'DE'
+		WHERE cp.user_id = ?`+whereExtra+`
+		ORDER BY cp.due_date ASC
+		LIMIT ? OFFSET ?`,
+		listArgs...,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list components: %w", err)
+	}
+	var items []ComponentListItem
+	for rows.Next() {
+		var it ComponentListItem
+		var firstSeen sql.NullString
+		if err := rows.Scan(
+			&it.Character, &it.DefinitionEN, &it.DefinitionDE,
+			&it.DueDate, &it.TotalCorrect, &it.TotalAttempts,
+			&it.Easiness, &it.IntervalDays, &firstSeen,
+		); err != nil {
+			rows.Close()
+			return nil, 0, fmt.Errorf("scan component list: %w", err)
+		}
+		if firstSeen.Valid {
+			it.FirstSeenDate = &firstSeen.String
+		}
+		items = append(items, it)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("component list rows: %w", err)
+	}
+	return items, total, nil
+}
+
 // GetComponentCounts returns the number of components due today and the total
 // number of components in training for the given user.
 func (s *Store) GetComponentCounts(ctx context.Context, userID int64) (dueToday, total int, err error) {
@@ -340,7 +428,6 @@ func (s *Store) GetComponentCounts(ctx context.Context, userID int64) (dueToday,
 		 JOIN hanzi_decomposition hd ON hd.character = cp.character
 		 WHERE cp.user_id = ?
 		   AND hd.definition IS NOT NULL AND hd.definition != ''
-		   AND cp.first_seen_date IS NOT NULL
 		   AND cp.due_date < date('now', '+1 day')`,
 		userID,
 	).Scan(&dueToday)

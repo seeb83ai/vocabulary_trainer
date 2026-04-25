@@ -126,6 +126,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Put("/api/tags/{name}", tagsH.Update)
 	r.Get("/api/config", translateH.Config(true, true))
 	r.Post("/api/translate", translateH.Translate)
+	r.Get("/api/components", componentH.List)
 	r.Post("/api/component/answer", componentH.Answer)
 	r.Post("/api/component/seen", componentH.Seen)
 	r.Get("/api/component/stats", componentH.Stats)
@@ -3620,5 +3621,67 @@ func TestQuizStats_IncludesComponentCounts(t *testing.T) {
 	}
 	if v, _ := resp["components_due_today"].(float64); int(v) != 1 {
 		t.Errorf("want components_due_today=1, got %v", resp["components_due_today"])
+	}
+}
+
+func TestComponentList_ReturnsComponents(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman; female"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if total, _ := resp["total"].(float64); int(total) != 1 {
+		t.Errorf("want total=1, got %v", resp["total"])
+	}
+	items, _ := resp["components"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("want 1 component, got %d", len(items))
+	}
+	item := items[0].(map[string]any)
+	if item["character"] != "女" {
+		t.Errorf("want character=女, got %v", item["character"])
+	}
+	if item["definition_en"] != "woman; female" {
+		t.Errorf("want definition_en='woman; female', got %v", item["definition_en"])
+	}
+}
+
+func TestComponentList_SearchFilter(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman; female"); err != nil {
+		t.Fatalf("seed 女: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "日", "sun; day"); err != nil {
+		t.Fatalf("seed 日: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+	s.InsertComponentProgressForTest(ctx, int64(2), "日", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components?q=sun", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if total, _ := resp["total"].(float64); int(total) != 1 {
+		t.Errorf("want total=1 for search 'sun', got %v", resp["total"])
+	}
+	items, _ := resp["components"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("want 1 item, got %d", len(items))
+	}
+	if items[0].(map[string]any)["character"] != "日" {
+		t.Errorf("want 日 in result, got %v", items[0])
 	}
 }

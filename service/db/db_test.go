@@ -3053,3 +3053,40 @@ func TestGetNextComponentCard_ENAndDE(t *testing.T) {
 		t.Errorf("want de=Frau, got %q", card.Definitions["de"])
 	}
 }
+
+func TestGetComponentList_BasicAndSearch(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "女", "woman; female")
+	seedHanziDef(t, s, "日", "sun; day")
+	past := time.Now().Add(-time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.InsertComponentProgressForTest(ctx, int64(2), "日", past)
+
+	// All components
+	items, total, err := s.GetComponentList(ctx, int64(2), "", 1, 20)
+	if err != nil {
+		t.Fatalf("GetComponentList: %v", err)
+	}
+	if total != 2 {
+		t.Errorf("want total=2, got %d", total)
+	}
+	if len(items) != 2 {
+		t.Errorf("want 2 items, got %d", len(items))
+	}
+
+	// Search by definition
+	items, total, err = s.GetComponentList(ctx, int64(2), "sun", 1, 20)
+	if err != nil {
+		t.Fatalf("GetComponentList search: %v", err)
+	}
+	if total != 1 {
+		t.Errorf("want total=1 for 'sun', got %d", total)
+	}
+	if len(items) != 1 || items[0].Character != "日" {
+		t.Errorf("want 日, got %+v", items)
+	}
+	if items[0].DefinitionEN != "sun; day" {
+		t.Errorf("want definition_en='sun; day', got %q", items[0].DefinitionEN)
+	}
+}

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
@@ -92,6 +93,38 @@ func (h *ComponentHandler) Seen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// List returns a paginated list of component_progress rows for the authenticated user.
+func (h *ComponentHandler) List(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+	q := r.URL.Query().Get("q")
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+	if perPage < 1 {
+		perPage = 20
+	}
+	if perPage > 200 {
+		perPage = 200
+	}
+
+	items, total, err := h.Store.GetComponentList(r.Context(), userID, q, page, perPage)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if items == nil {
+		items = []db.ComponentListItem{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"components": items,
+		"total":      total,
+		"page":       page,
+		"per_page":   perPage,
+	})
 }
 
 // Stats returns daily component stat history.

@@ -16,6 +16,10 @@ let selectedTierFilter = '';
 let dueFilter = '';
 let missingLangFilter = '';
 
+let currentView = 'words'; // 'words' | 'components'
+let compPage = 1;
+let compSearchTimer = null;
+
 // Import tab state
 let importSelectedTag = '';
 let importApplyTags = [];
@@ -750,6 +754,80 @@ function buildDownload(words, cols, format) {
   return { content: lines.join('\n'), mime: 'text/csv', ext: 'csv' };
 }
 
+// ── Component view ────────────────────────────────────────────────────────────
+
+function switchView(view) {
+  currentView = view;
+  const isWords = view === 'words';
+  $('words-table-wrap').classList.toggle('hidden', !isWords);
+  $('components-table-wrap').classList.toggle('hidden', isWords);
+  $('word-filters-row').classList.toggle('hidden', !isWords);
+  $('filter-tier-bar').classList.toggle('hidden', !isWords);
+  if (isWords) renderFilterTags(); else $('filter-tags-bar').classList.add('hidden');
+
+  $('view-words-btn').className = `px-3 py-1.5 transition ${isWords ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`;
+  $('view-components-btn').className = `px-3 py-1.5 transition ${!isWords ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`;
+
+  currentPage = 1;
+  compPage = 1;
+  if (isWords) loadWords(); else loadComponents();
+}
+
+async function loadComponents() {
+  const params = new URLSearchParams({
+    q: searchQuery,
+    page: compPage,
+    per_page: perPage,
+  });
+  try {
+    const data = await apiFetch(`/api/components?${params}`);
+    renderComponentTable(data.components);
+    renderPagination(data.total, data.page, data.per_page);
+  } catch (e) {
+    alert('Failed to load components: ' + e.message);
+  }
+}
+
+function renderComponentTable(components) {
+  const tbody = $('components-tbody');
+  tbody.innerHTML = '';
+  if (!components || components.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="5" class="text-center py-8 text-gray-500">${escHtml(t('vocab.noEntries'))}</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+  for (const comp of components) {
+    const tr = document.createElement('tr');
+    tr.className = 'border-b border-gray-200 hover:bg-gray-50';
+    tr.innerHTML = `
+      <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}</td>
+      <td class="py-3 px-4 text-gray-600">${comp.definition_en ? escHtml(comp.definition_en) : '<span class="text-gray-400">—</span>'}</td>
+      <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>
+      <td class="py-3 px-4 whitespace-nowrap">${renderComponentLevel(comp)}</td>
+      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderComponentDue(comp)}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderComponentLevel(comp) {
+  if (!comp.first_seen_date) {
+    return `<span class="text-gray-400 text-xs">${escHtml(t('vocab.unseen'))}</span>`;
+  }
+  const tier = wordTier(comp.total_correct, comp.total_attempts, false, 0);
+  if (!tier) return `<span class="text-gray-400 text-xs">${escHtml(t('vocab.unseen'))}</span>`;
+  const pct = comp.total_attempts > 0 ? Math.round(comp.total_correct / comp.total_attempts * 100) : 0;
+  return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${t(tier.i18nKey)}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
+}
+
+function renderComponentDue(comp) {
+  if (!comp.due_date) return '<span class="text-gray-400">—</span>';
+  const today = new Date().toISOString().slice(0, 10);
+  if (comp.due_date <= today) return `<span class="text-orange-500">${escHtml(t('vocab.dueLabel'))}</span>`;
+  const diffDays = Math.round((new Date(comp.due_date) - new Date(today)) / 86400000);
+  return `<span class="text-gray-500">${escHtml(t('vocab.inDays', { n: diffDays }))}</span>`;
+}
+
 // ── Import tab ────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
@@ -1147,7 +1225,8 @@ document.addEventListener('DOMContentLoaded', () => {
     perPage = parseInt(e.target.value);
     localStorage.setItem('vocabPerPage', perPage);
     currentPage = 1;
-    loadWords();
+    compPage = 1;
+    if (currentView === 'words') loadWords(); else loadComponents();
   });
 
   $('missing-lang-select').addEventListener('change', (e) => {
@@ -1212,22 +1291,30 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  $('view-words-btn').addEventListener('click', () => { if (currentView !== 'words') switchView('words'); });
+  $('view-components-btn').addEventListener('click', () => { if (currentView !== 'components') switchView('components'); });
+
   $('search-input').addEventListener('input', () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
       searchQuery = $('search-input').value.trim();
       currentPage = 1;
-      loadWords();
+      compPage = 1;
+      if (currentView === 'words') loadWords(); else loadComponents();
     }, 300);
   });
 
   $('prev-btn').addEventListener('click', () => {
-    if (currentPage > 1) { currentPage--; loadWords(); }
+    if (currentView === 'words') {
+      if (currentPage > 1) { currentPage--; loadWords(); }
+    } else {
+      if (compPage > 1) { compPage--; loadComponents(); }
+    }
   });
 
   $('next-page-btn').addEventListener('click', () => {
-    currentPage++;
-    loadWords();
+    if (currentView === 'words') { currentPage++; loadWords(); }
+    else { compPage++; loadComponents(); }
   });
 
   $('download-btn').addEventListener('click', openDownloadModal);
@@ -1299,6 +1386,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Re-render dynamic text when UI language changes
   document.addEventListener('langchange', () => {
     renderTierFilter();
-    loadWords();
+    if (currentView === 'words') loadWords(); else loadComponents();
   });
 });

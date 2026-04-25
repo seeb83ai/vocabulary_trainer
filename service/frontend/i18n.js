@@ -111,6 +111,8 @@ const I18N = {
     'vocab.cancel': 'Cancel',
     'vocab.reviewNotice': 'This word is flagged for review — the flag will be cleared when you save.',
     'vocab.listTitle': 'Vocabulary List',
+    'vocab.viewWords': 'Words',
+    'vocab.viewComponents': 'Components',
     'vocab.search': 'Search…',
     'vocab.hideUnseen': 'Hide Unseen',
     'vocab.needsReview': 'Needs Review',

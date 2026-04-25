@@ -240,6 +240,7 @@ func main() {
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
+		r.Get("/components", componentH.List)
 		r.Post("/component/answer", componentH.Answer)
 		r.Post("/component/seen", componentH.Seen)
 		r.Get("/component/stats", componentH.Stats)
