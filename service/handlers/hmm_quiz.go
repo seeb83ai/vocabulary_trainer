@@ -224,3 +224,39 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// Skip moves an HMM entity's due date forward by the requested number of days
+// (default 7) without recording an attempt.
+func (h *HMMQuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		EntityType string `json:"entity_type"`
+		EntityKey  string `json:"entity_key"`
+		Days       int    `json:"days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	switch req.EntityType {
+	case models.HMMEntityActor, models.HMMEntityLocation, models.HMMEntityToneRoom, models.HMMEntityProp:
+	default:
+		writeError(w, http.StatusBadRequest, "invalid entity_type")
+		return
+	}
+	if req.EntityKey == "" {
+		writeError(w, http.StatusBadRequest, "entity_key is required")
+		return
+	}
+	if req.Days <= 0 {
+		req.Days = 7
+	}
+	if err := h.Store.SkipHMM(r.Context(), UserIDFromContext(r.Context()), req.EntityType, req.EntityKey, req.Days); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "progress not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
