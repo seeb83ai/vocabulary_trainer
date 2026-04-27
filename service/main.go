@@ -281,7 +281,7 @@ func main() {
 		renderTemplate(w, "stats", PageData{
 			Title:       "Stats — Vocab Trainer",
 			ActiveNav:   "stats",
-			ExtraHead:   template.HTML(`<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>`),
+			ExtraHead:   template.HTML(`<script src="chart.js"></script>`),
 			PageScripts: []string{"stats.js"},
 		})
 	})
