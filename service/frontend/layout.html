@@ -22,7 +22,7 @@
         <a href="/mnemonics"  class="{{if eq .ActiveNav "mnemonics"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.mnemonics">Mnemonics</a>
         <a href="/mismatches" class="{{if eq .ActiveNav "mismatches"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.mismatches">Mismatches</a>
         <a href="/stats"      class="{{if eq .ActiveNav "stats"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.stats">Stats</a>
-        {{if eq .ActiveNav "settings"}}<a href="/settings" class="text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5" data-i18n="nav.settings">Settings</a>{{end}}
+        <a href="/settings" class="{{if eq .ActiveNav "settings"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.settings">Settings</a>
         <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="en">🇬🇧</option>
           <option value="zh">🇨🇳</option>

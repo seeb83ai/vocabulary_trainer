@@ -179,7 +179,11 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		for i := range words {
 			words[i].Translations = map[string][]string{}
 		}
-		for _, lang := range []string{"en", "de"} {
+		allLangs, err := s.GetTranslationLanguages(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, lang := range allLangs {
 			langMap, err := s.batchLoadTranslationTexts(ctx, ids, lang)
 			if err != nil {
 				return nil, 0, err

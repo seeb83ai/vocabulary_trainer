@@ -79,17 +79,13 @@ func TestRenderTemplate_ActiveNavLink(t *testing.T) {
 
 func TestRenderTemplate_SettingsNavLink(t *testing.T) {
 	setupTemplates(t)
-	rr := httptest.NewRecorder()
-	renderTemplate(rr, "settings", PageData{ActiveNav: "settings"})
-	body := rr.Body.String()
-	if !strings.Contains(body, `href="/settings"`) {
-		t.Error("settings nav link missing on settings page")
-	}
-
-	rr2 := httptest.NewRecorder()
-	renderTemplate(rr2, "train", PageData{ActiveNav: "train"})
-	if strings.Contains(rr2.Body.String(), `href="/settings"`) {
-		t.Error("settings nav link should not appear on non-settings pages")
+	// Settings link is always visible in the nav (not hidden on non-settings pages)
+	for _, page := range []string{"settings", "train", "vocab", "stats"} {
+		rr := httptest.NewRecorder()
+		renderTemplate(rr, page, PageData{ActiveNav: page})
+		if !strings.Contains(rr.Body.String(), `href="/settings"`) {
+			t.Errorf("settings nav link missing on %s page", page)
+		}
 	}
 }
 

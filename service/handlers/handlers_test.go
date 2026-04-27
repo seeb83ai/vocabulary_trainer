@@ -85,7 +85,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	importH := &handlers.ImportHandler{Store: s}
 	tagsH := &handlers.TagsHandler{Store: s}
 	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
-	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN"}
+	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
+	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN", SettingsHandler: settingsH}
 	componentH := &handlers.ComponentHandler{Store: s}
 	hmmH := &handlers.HMMHandler{Store: s}
 
@@ -132,6 +133,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/component/seen", componentH.Seen)
 	r.Get("/api/component/stats", componentH.Stats)
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
+	r.Get("/api/settings", settingsH.Get)
+	r.Patch("/api/settings", settingsH.Patch)
+	r.Put("/api/settings/api-keys", settingsH.PutAPIKeys)
 	return r
 }
 
@@ -1091,11 +1095,13 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 	// Acknowledge first
 	do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": id})
 
-	// Helper to set total_correct and total_attempts directly
+	// Helper to set progress for progressive-threshold testing.
+	// Graduates the word out of LearningNewWord so SelectProgressiveMode is used.
 	setProgress := func(correct, attempts int) {
 		p, _ := s.GetSM2Progress(ctx, id)
 		p.TotalCorrect = correct
 		p.TotalAttempts = attempts
+		p.LearningNewWord = false // graduated: use progressive tier logic
 		p.DueDate = time.Now().UTC().Add(-time.Hour) // ensure due
 		s.UpdateSM2Progress(ctx, *p)
 	}
@@ -1122,7 +1128,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 	}
 
 	// accuracy >= 85% and attempts >= 10: random (any valid mode)
-	setProgress(9, 10)
+	setProgress(9, 10) // also sets LearningNewWord=false
 	validModes := map[string]bool{
 		models.ModeTranslToZh:       true,
 		models.ModeZhToTransl:       true,
@@ -1131,6 +1137,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		p, _ := s.GetSM2Progress(ctx, id)
 		p.DueDate = time.Now().UTC().Add(-time.Hour)
+		p.LearningNewWord = false
 		s.UpdateSM2Progress(ctx, *p)
 		rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
 		var card models.QuizCard
@@ -3699,5 +3706,170 @@ func TestHMMBreakdown_Empty(t *testing.T) {
 	items, _ := resp["breakdown"].([]any)
 	if len(items) != 0 {
 		t.Errorf("want empty breakdown on fresh DB, got %d items", len(items))
+	}
+}
+
+// ── GET /api/settings ────────────────────────────────────────────────────────
+
+func TestGetSettings_Defaults(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+
+	if st.PrimaryLang != "en" {
+		t.Errorf("want primary_lang=en, got %q", st.PrimaryLang)
+	}
+	if st.SecondaryLang != "de" {
+		t.Errorf("want secondary_lang=de, got %q", st.SecondaryLang)
+	}
+	if st.ProgNew != "transl_to_zh" {
+		t.Errorf("want prog_new=transl_to_zh, got %q", st.ProgNew)
+	}
+	if st.ProgTierLearning != "zh_pinyin_to_transl" {
+		t.Errorf("want prog_tier_learning=zh_pinyin_to_transl, got %q", st.ProgTierLearning)
+	}
+	if st.ProgTierMastered != "random" {
+		t.Errorf("want prog_tier_mastered=random, got %q", st.ProgTierMastered)
+	}
+	if st.NewWordMode2 != "zh_to_transl" {
+		t.Errorf("want new_word_mode_2=zh_to_transl, got %q", st.NewWordMode2)
+	}
+	if st.DeeplKeySet {
+		t.Error("want deepl_key_set=false by default")
+	}
+}
+
+// ── PATCH /api/settings ──────────────────────────────────────────────────────
+
+func TestPatchSettings_Valid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]string{
+		"primary_lang":         "de",
+		"secondary_lang":       "en",
+		"prog_new":             "zh_to_transl",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "zh_pinyin_to_transl",
+		"new_word_mode_2":      "zh_to_transl",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify by reading back
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.PrimaryLang != "de" {
+		t.Errorf("want primary_lang=de after patch, got %q", st.PrimaryLang)
+	}
+	if st.SecondaryLang != "en" {
+		t.Errorf("want secondary_lang=en after patch, got %q", st.SecondaryLang)
+	}
+	if st.ProgNew != "zh_to_transl" {
+		t.Errorf("want prog_new=zh_to_transl after patch, got %q", st.ProgNew)
+	}
+	if st.NewWordMode1 != "zh_pinyin_to_transl" {
+		t.Errorf("want new_word_mode_1=zh_pinyin_to_transl, got %q", st.NewWordMode1)
+	}
+}
+
+func TestPatchSettings_InvalidMode(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "de",
+		"prog_new":             "invalid_mode",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "transl_to_zh",
+		"new_word_mode_2":      "zh_to_transl",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for invalid mode, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPatchSettings_SameLang(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "en",
+		"prog_new":             "transl_to_zh",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "transl_to_zh",
+		"new_word_mode_2":      "zh_to_transl",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 when primary=secondary lang, got %d", rec.Code)
+	}
+}
+
+// ── GET /api/quiz/next uses user primary lang ─────────────────────────────────
+
+func TestQuizNext_UsesUserPrimaryLang(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+
+	// Set primary lang to "de"
+	payload := map[string]string{
+		"primary_lang": "de", "secondary_lang": "en",
+		"prog_new": "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered": "random",
+		"new_word_mode_0": "transl_to_zh", "new_word_mode_1": "transl_to_zh",
+		"new_word_mode_2": "zh_to_transl",
+	}
+	do(t, r, http.MethodPatch, "/api/settings", payload)
+
+	// Create a word with only "de" translation
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "狗",
+		Pinyin:       "gǒu",
+		Translations: map[string][]string{"de": {"Hund"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	// Acknowledge the word
+	do(t, r, http.MethodPost, "/api/quiz/acknowledge", map[string]int64{"word_id": id})
+
+	// Request quiz with mode=transl_to_zh (no langs param → should use primary_lang="de")
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?mode=transl_to_zh", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// The prompt should be the German translation
+	if card.Prompt != "Hund" {
+		t.Errorf("want prompt=Hund (de), got %q", card.Prompt)
 	}
 }

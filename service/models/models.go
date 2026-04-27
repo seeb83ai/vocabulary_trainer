@@ -9,7 +9,28 @@ const (
 	ModeZhPinyinToTransl = "zh_pinyin_to_transl"
 	ModeProgressive      = "progressive"
 	ModeNewWord          = "new_word"
+	ModeMaskPinyin       = "mask_pinyin" // transl_to_zh with pinyin hint forced on
 )
+
+// UserSettings holds per-user configuration stored in user_settings.
+type UserSettings struct {
+	PrimaryLang        string `json:"primary_lang"`
+	SecondaryLang      string `json:"secondary_lang"`
+	ProgNew            string `json:"prog_new"`             // totalAttempts<3
+	ProgTierStruggling string `json:"prog_tier_struggling"` // totalAttempts>=3, accuracy<50%
+	ProgTierLearning   string `json:"prog_tier_learning"`   // accuracy<70% or totalAttempts<10
+	ProgTierPracticing string `json:"prog_tier_practicing"` // accuracy<85%
+	ProgTierMastered   string `json:"prog_tier_mastered"`   // accuracy>=85%
+	NewWordMode0       string `json:"new_word_mode_0"`      // TotalCorrect==0
+	NewWordMode1       string `json:"new_word_mode_1"`      // TotalCorrect==1
+	NewWordMode2       string `json:"new_word_mode_2"`      // TotalCorrect>=2
+	DeeplKeySet        bool   `json:"deepl_key_set"`
+	DeeplKeyMasked     string `json:"deepl_key_masked,omitempty"`
+	LLMProvider        string `json:"llm_provider"`
+	LLMLocalURL        string `json:"llm_local_url"`
+	LLMKeySet          bool   `json:"llm_key_set"`
+	LLMKeyMasked       string `json:"llm_key_masked,omitempty"`
+}
 
 // DB-layer structs
 

@@ -1,5 +1,33 @@
 // Vocabulary management page logic
 
+// Language settings — loaded once on init; graceful fallback to en/de
+let primaryLang = 'en';
+let secondaryLang = 'de';
+
+const LANG_NAMES = { en: 'English', de: 'German', zh: 'Chinese', fr: 'French', es: 'Spanish' };
+
+async function loadLangSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    if (!res.ok) return;
+    const st = await res.json();
+    primaryLang = st.primary_lang || 'en';
+    secondaryLang = st.secondary_lang || 'de';
+    // Update column headers to reflect actual language order
+    document.querySelectorAll('[data-sort="en"] span[data-i18n]').forEach(el => {
+      el.textContent = LANG_NAMES[primaryLang === 'en' ? 'en' : secondaryLang === 'en' ? 'en' : 'en'] || 'English';
+    });
+    // Update the two translation column headers by order in DOM
+    const sortHeaders = document.querySelectorAll('[data-sort="en"], [data-sort="de"]');
+    if (sortHeaders.length >= 2) {
+      sortHeaders[0].querySelector('span[data-i18n]').textContent = LANG_NAMES[primaryLang] || primaryLang;
+      sortHeaders[1].querySelector('span[data-i18n]').textContent = LANG_NAMES[secondaryLang] || secondaryLang;
+      sortHeaders[0].dataset.sort = primaryLang;
+      sortHeaders[1].dataset.sort = secondaryLang;
+    }
+  } catch { /* ignore — use defaults */ }
+}
+
 let currentPage = 1;
 let perPage = parseInt(localStorage.getItem('vocabPerPage')) || 20;
 let searchQuery = '';
@@ -101,10 +129,10 @@ function renderTable(words) {
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">
-        ${((word.translations || {})['en'] || []).length ? (word.translations['en']).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
+        ${((word.translations || {})[primaryLang] || []).length ? (word.translations[primaryLang]).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
       </td>
       <td class="py-3 px-4 text-gray-600">
-        ${((word.translations || {})['de'] || []).length ? (word.translations['de']).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
+        ${((word.translations || {})[secondaryLang] || []).length ? (word.translations[secondaryLang]).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
       </td>
       <td class="py-3 px-4 whitespace-nowrap">${renderTierBadge(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderDue(word)}</td>
@@ -1185,8 +1213,8 @@ async function saveTagMeta(name, description, importable) {
 
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
+  loadLangSettings().then(() => loadWords());
   loadTags();
-  loadWords();
   renderTierFilter();
   initTranslateButton();
 

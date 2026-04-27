@@ -250,27 +250,87 @@ func MaskPinyin(pinyin string, totalCorrect int) string {
 	return strings.Join(words, " ")
 }
 
-// SelectProgressiveMode picks a quiz mode based on the word's accuracy (correct/attempts).
-// This implements the progressive training ladder:
-//   - attempts < 3                          → transl_to_zh (not enough data)
-//   - accuracy < 50%                        → transl_to_zh (still struggling)
-//   - accuracy < 70% or attempts < 10       → zh_pinyin_to_transl (progressing; pinyin scaffold)
-//   - accuracy < 85%                        → zh_to_transl (reliable; drop pinyin)
-//   - accuracy ≥ 85% and attempts ≥ 10      → random (mastered)
-func SelectProgressiveMode(totalCorrect, totalAttempts, streakBonus int) string {
+// ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
+// A zero-value string in any field uses the built-in default for that tier.
+type ProgressiveModeConfig struct {
+	New        string // totalAttempts<3; default: ModeTranslToZh
+	Struggling string // totalAttempts>=3 and accuracy<50%; default: ModeTranslToZh
+	Learning   string // accuracy<70% or totalAttempts<10; default: ModeZhPinyinToTransl
+	Practicing string // accuracy<85%; default: ModeZhToTransl
+	Mastered   string // accuracy>=85%; default: random via SelectMode()
+}
+
+// DefaultProgressiveModeConfig returns the built-in defaults.
+func DefaultProgressiveModeConfig() ProgressiveModeConfig {
+	return ProgressiveModeConfig{
+		New:        models.ModeTranslToZh,
+		Struggling: models.ModeTranslToZh,
+		Learning:   models.ModeZhPinyinToTransl,
+		Practicing: models.ModeZhToTransl,
+		Mastered:   "random",
+	}
+}
+
+// NewWordModeConfig holds per-step mode choices for LearningNewWord words.
+type NewWordModeConfig struct {
+	Step0 string // TotalCorrect==0; default: ModeTranslToZh
+	Step1 string // TotalCorrect==1; default: ModeTranslToZh
+	Step2 string // TotalCorrect>=2; default: ModeZhToTransl
+}
+
+// DefaultNewWordModeConfig returns the built-in defaults.
+func DefaultNewWordModeConfig() NewWordModeConfig {
+	return NewWordModeConfig{
+		Step0: models.ModeTranslToZh,
+		Step1: models.ModeTranslToZh,
+		Step2: models.ModeZhToTransl,
+	}
+}
+
+func resolveMode(configured, fallback string) string {
+	if configured == "" {
+		return fallback
+	}
+	if configured == "random" {
+		return SelectMode()
+	}
+	return configured
+}
+
+// SelectProgressiveMode picks a quiz mode based on the word's accuracy and the
+// user's per-tier configuration. The progressive training ladder:
+//   - totalAttempts < 3                       → cfg.New
+//   - accuracy < 50%                          → cfg.Struggling
+//   - accuracy < 70% or totalAttempts < 10    → cfg.Learning
+//   - accuracy < 85%                          → cfg.Practicing
+//   - accuracy ≥ 85% and totalAttempts ≥ 10   → cfg.Mastered
+func SelectProgressiveMode(totalCorrect, totalAttempts, streakBonus int, cfg ProgressiveModeConfig) string {
 	if totalAttempts < 3 {
-		return models.ModeTranslToZh
+		return resolveMode(cfg.New, models.ModeTranslToZh)
 	}
 	accuracy := float64(totalCorrect+streakBonus) / float64(totalAttempts)
 	switch {
 	case accuracy < 0.50:
-		return models.ModeTranslToZh
+		return resolveMode(cfg.Struggling, models.ModeTranslToZh)
 	case accuracy < 0.70 || totalAttempts < 10:
-		return models.ModeZhPinyinToTransl
+		return resolveMode(cfg.Learning, models.ModeZhPinyinToTransl)
 	case accuracy < 0.85:
-		return models.ModeZhToTransl
+		return resolveMode(cfg.Practicing, models.ModeZhToTransl)
 	default:
-		return SelectMode()
+		return resolveMode(cfg.Mastered, "random")
+	}
+}
+
+// SelectNewWordMode picks the quiz mode for a LearningNewWord word (after its
+// initial introduction) based on how many times the user has answered correctly.
+func SelectNewWordMode(totalCorrect int, cfg NewWordModeConfig) string {
+	switch {
+	case totalCorrect <= 0:
+		return resolveMode(cfg.Step0, models.ModeTranslToZh)
+	case totalCorrect == 1:
+		return resolveMode(cfg.Step1, models.ModeTranslToZh)
+	default:
+		return resolveMode(cfg.Step2, models.ModeZhToTransl)
 	}
 }
 

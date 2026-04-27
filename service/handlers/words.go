@@ -259,7 +259,11 @@ func (h *WordsHandler) AddTranslation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Lang == "" {
-		body.Lang = "en"
+		if st, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); st != nil {
+			body.Lang = st.PrimaryLang
+		} else {
+			body.Lang = "en"
+		}
 	}
 	if err := h.Store.AddTranslation(r.Context(), UserIDFromContext(r.Context()), id, body.Lang, body.Text); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

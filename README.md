@@ -87,17 +87,19 @@ The training page stats bar shows **New today: X / Y** so you can see how many n
 
 ## Progressive mode
 
-The **Progressive** quiz mode introduces new words gently and gradually increases difficulty based on your accuracy (correct answers ÷ total attempts):
+The **Progressive** quiz mode introduces new words gently and gradually increases difficulty based on your accuracy (correct answers ÷ total attempts). The default behaviour is:
 
 | Condition | What happens |
 |---|---|
-| Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all English translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. |
+| Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. |
 | **Learning phase** (`learning_new_word = true`) | Word is in the **New** bucket. Short retry intervals (minutes, not days) so you can drill it in one session. Get **3 correct in a row** to graduate. Wrong answers reset the streak. |
-| `total_attempts < 3` | **EN → ZH** — not enough data yet; stay at the easiest direction |
-| Accuracy < 50% | **EN → ZH** — still struggling; see English, type Chinese |
-| Accuracy < 70% **or** `total_attempts < 10` | **ZH + Pinyin → EN** — making progress; see Chinese with pinyin hint, type English |
-| Accuracy < 85% (and `total_attempts ≥ 10`) | **ZH → EN** — reliable; see Chinese only, type English |
+| `total_attempts < 3` | **Translation → Chinese** — not enough data yet; stay at the easiest direction |
+| Accuracy < 50% | **Translation → Chinese** — still struggling |
+| Accuracy < 70% **or** `total_attempts < 10` | **Chinese + Pinyin → Translation** — making progress |
+| Accuracy < 85% (and `total_attempts ≥ 10`) | **Chinese → Translation** — reliable; see Chinese only |
 | Accuracy ≥ 85% and `total_attempts ≥ 10` | **Random** — any of the three quiz directions |
+
+You can customise the quiz format for each tier (and for each step of the new-word learning phase) in the **Settings → Training Mode** panel. The available formats are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, *Translation → Chinese (pinyin hint)*, and *Random*.
 
 **Learning phase ("New" bucket):**
 
@@ -137,6 +139,14 @@ The bonus is calculated as the minimum value needed to reach the target accuracy
 **Skip vs Got it:**
 - **Got it** marks the word as introduced, enters the learning phase, and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.
 - **Skip** defers the word by 7 days. Does *not* count as seen — the word remains "new" and will be shown as an introduction again when it comes due.
+
+## User settings
+
+Each user has a personal settings page (`/settings`) with:
+
+- **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
+- **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
+- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
 
 ## Auto-translate (DeepL)
 
@@ -472,6 +482,9 @@ vocabulary_trainer/
 | `GET` | `/api/pinyin-quiz/stats` | Get pinyin due-today and total counts (`tags` query param) |
 | `GET` | `/api/pinyin-quiz/audio/{filename}` | Serve a pinyin pronunciation MP3 file |
 | `GET` | `/api/pinyin-quiz/tags` | List pinyin consonant group tags |
+| `GET` | `/api/settings` | Get user settings (language prefs, quiz modes, masked API key status) |
+| `PATCH` | `/api/settings` | Update language preferences and per-tier quiz mode configuration |
+| `PUT` | `/api/settings/api-keys` | Encrypt and store personal DeepL / LLM API keys |
 
 ## License
 

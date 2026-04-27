@@ -30,7 +30,11 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 	langs := req.Langs
 	if len(langs) == 0 {
-		langs = []string{"en"}
+		if st, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); st != nil {
+			langs = []string{st.PrimaryLang}
+		} else {
+			langs = []string{"en"}
+		}
 	}
 
 	defs, err := h.Store.GetComponentDefinitions(r.Context(), req.Character, langs)
