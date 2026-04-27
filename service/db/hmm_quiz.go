@@ -186,6 +186,23 @@ func (s *Store) GetHMMProgress(ctx context.Context, userID int64, entityType, en
 	return &p, nil
 }
 
+// SkipHMM moves an HMM entity's due date forward by the given number of days
+// without touching attempt counters or SM-2 state.
+func (s *Store) SkipHMM(ctx context.Context, userID int64, entityType, entityKey string, days int) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE hmm_progress SET due_date = datetime('now', ?)
+		 WHERE user_id = ? AND entity_type = ? AND entity_key = ?`,
+		fmt.Sprintf("+%d days", days), userID, entityType, entityKey)
+	if err != nil {
+		return fmt.Errorf("skip hmm: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // UpdateHMMProgress saves updated progress for an HMM entity.
 func (s *Store) UpdateHMMProgress(ctx context.Context, p models.HMMProgress) error {
 	learningInt := 0

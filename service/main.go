@@ -241,9 +241,11 @@ func main() {
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
+		r.Post("/hmm-quiz/skip", hmmQuizH.Skip)
 		r.Get("/components", componentH.List)
 		r.Post("/component/answer", componentH.Answer)
 		r.Post("/component/seen", componentH.Seen)
+		r.Post("/component/skip", componentH.Skip)
 		r.Get("/component/stats", componentH.Stats)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmH != nil))
 		if translateH.APIKey != "" {

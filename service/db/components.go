@@ -176,6 +176,23 @@ func (s *Store) MarkComponentSeen(ctx context.Context, userID int64, character s
 	return err
 }
 
+// SkipComponent moves a component's due date forward by the given number of days
+// without touching attempt counters or SM-2 state.
+func (s *Store) SkipComponent(ctx context.Context, userID int64, character string, days int) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE component_progress SET due_date = datetime('now', ?)
+		 WHERE user_id = ? AND character = ?`,
+		fmt.Sprintf("+%d days", days), userID, character)
+	if err != nil {
+		return fmt.Errorf("skip component: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // RecordComponentAnswer updates SM-2 state for a component after an answer.
 // Returns the updated progress and the next due time.Time (for JSON responses).
 func (s *Store) RecordComponentAnswer(ctx context.Context, userID int64, character string, correct bool) (models.ComponentProgress, time.Time, error) {

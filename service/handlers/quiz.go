@@ -445,10 +445,12 @@ func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// Skip moves a word's due date forward by 7 days without marking it as seen.
+// Skip moves a word's due date forward by the requested number of days
+// (default 7) without marking it as seen.
 func (h *QuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		WordID int64 `json:"word_id"`
+		Days   int   `json:"days"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -458,7 +460,10 @@ func (h *QuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "word_id is required")
 		return
 	}
-	if err := h.Store.SkipWord(r.Context(), UserIDFromContext(r.Context()), req.WordID, 7); err != nil {
+	if req.Days <= 0 {
+		req.Days = 7
+	}
+	if err := h.Store.SkipWord(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Days); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
