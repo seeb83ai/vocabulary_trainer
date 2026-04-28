@@ -2538,6 +2538,38 @@ func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 	}
 }
 
+// ── GET /api/quiz/next — new_word includes scene_text when scene exists ──────
+
+func TestQuizNext_NewWord_IncludesSceneText(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "猫",
+		Pinyin:       "māo",
+		Translations: map[string][]string{"en": {"cat"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertHMMScene(ctx, id, "a cat sits in a room"); err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeNewWord {
+		t.Skipf("card is not new_word (mode=%s); test only applies to first introduction", card.Mode)
+	}
+	if card.SceneText != "a cat sits in a room" {
+		t.Errorf("want scene_text %q, got %q", "a cat sits in a room", card.SceneText)
+	}
+}
+
 // ── PUT /api/words/{id} — unchanged zh_text ───────────────────────────────────
 
 func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {

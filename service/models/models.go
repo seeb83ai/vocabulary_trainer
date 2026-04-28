@@ -61,6 +61,8 @@ type QuizCard struct {
 	// Component card fields (card_type="component"); zero-value for other cards.
 	IsNew       bool              `json:"is_new,omitempty"`
 	Definitions map[string]string `json:"definitions,omitempty"`
+	// HMM scene text for new_word introduction cards; empty when no scene exists.
+	SceneText string `json:"scene_text,omitempty"`
 }
 
 type AnswerRequest struct {

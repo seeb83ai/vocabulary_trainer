@@ -206,6 +206,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 				card.Translations[lang] = texts
 			}
 		}
+		card.SceneText, _ = h.Store.GetHMMSceneText(r.Context(), word.ID)
 		writeJSON(w, http.StatusOK, card)
 		return
 	}

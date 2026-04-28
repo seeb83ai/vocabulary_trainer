@@ -127,6 +127,9 @@ async function loadNextCard() {
   hide('add-translation-btn');
   hide('result-play-btn');
   hide('new-word-area');
+  hide('new-word-hmm');
+  hide('new-word-decompose');
+  hide('new-word-decompose-content');
   hide('new-component-area');
   hide('result-decompose');
   hide('result-decompose-content');
@@ -213,6 +216,32 @@ async function loadNextCard() {
     $('new-word-en').innerHTML = transLines.join('<br>') || '—';
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
+
+    const newWordHmmEl = $('new-word-hmm');
+    if (currentCard.scene_text) {
+      newWordHmmEl.innerHTML = `
+        <button id="new-word-hmm-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
+        <div id="new-word-hmm-content" class="hidden mt-2"></div>
+      `;
+      show('new-word-hmm');
+      $('new-word-hmm-btn').addEventListener('click', () => {
+        const content = $('new-word-hmm-content');
+        if (content.classList.contains('hidden')) {
+          renderHMMSceneReadOnly('new-word-hmm-content', currentCard.scene_text);
+          content.classList.remove('hidden');
+          $('new-word-hmm-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
+        } else {
+          content.classList.add('hidden');
+          $('new-word-hmm-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
+        }
+      });
+    } else {
+      newWordHmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
+      show('new-word-hmm');
+    }
+
+    loadDecomposition(currentCard.prompt, 'new-word-decompose', 'new-word-decompose-toggle');
+
     await loadStats();
     return;
   }
