@@ -72,7 +72,8 @@ async function loadLanguages() {
     const secondaryEl = document.getElementById('secondary-lang');
     const names = { en: 'English', de: 'German', zh: 'Chinese', fr: 'French', es: 'Spanish' };
     primaryEl.innerHTML = '';
-    secondaryEl.innerHTML = '';
+    // Secondary starts with a "None" sentinel so the user can clear it
+    secondaryEl.innerHTML = '<option value="">— None —</option>';
     for (const code of langs) {
       const label = names[code] || code;
       const o1 = document.createElement('option');
@@ -95,7 +96,7 @@ async function loadSettings() {
     const primaryEl = document.getElementById('primary-lang');
     const secondaryEl = document.getElementById('secondary-lang');
     if (primaryEl) primaryEl.value = st.primary_lang || 'en';
-    if (secondaryEl) secondaryEl.value = st.secondary_lang || 'de';
+    if (secondaryEl) secondaryEl.value = st.secondary_lang ?? '';
 
     // Progressive tier selects
     populateModeSelect(document.getElementById('mode-prog-new'),        st.prog_new            || 'transl_to_zh');
@@ -142,7 +143,7 @@ document.getElementById('lang-save-btn')?.addEventListener('click', async () => 
   hideMsg('lang-success'); hideMsg('lang-error');
   const primary = document.getElementById('primary-lang').value;
   const secondary = document.getElementById('secondary-lang').value;
-  if (primary === secondary) {
+  if (secondary !== '' && primary === secondary) {
     showMsg('lang-error', 'Primary and secondary languages must differ.', true);
     return;
   }

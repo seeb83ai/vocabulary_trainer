@@ -49,11 +49,11 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.PrimaryLang == "" || req.SecondaryLang == "" {
-		writeError(w, http.StatusBadRequest, "primary_lang and secondary_lang are required")
+	if req.PrimaryLang == "" {
+		writeError(w, http.StatusBadRequest, "primary_lang is required")
 		return
 	}
-	if req.PrimaryLang == req.SecondaryLang {
+	if req.SecondaryLang != "" && req.PrimaryLang == req.SecondaryLang {
 		writeError(w, http.StatusBadRequest, "primary_lang and secondary_lang must differ")
 		return
 	}

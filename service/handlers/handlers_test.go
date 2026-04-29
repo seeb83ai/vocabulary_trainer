@@ -3814,7 +3814,7 @@ func TestPatchSettings_SameLang(t *testing.T) {
 
 	payload := map[string]string{
 		"primary_lang":         "en",
-		"secondary_lang":       "en",
+		"secondary_lang":       "en", // same as primary — invalid
 		"prog_new":             "transl_to_zh",
 		"prog_tier_struggling": "transl_to_zh",
 		"prog_tier_learning":   "zh_pinyin_to_transl",
@@ -3827,6 +3827,36 @@ func TestPatchSettings_SameLang(t *testing.T) {
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 when primary=secondary lang, got %d", rec.Code)
+	}
+}
+
+func TestPatchSettings_EmptySecondaryLang(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "", // no secondary — valid
+		"prog_new":             "transl_to_zh",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "transl_to_zh",
+		"new_word_mode_2":      "zh_to_transl",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 for empty secondary_lang, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Read back and verify secondary_lang is stored as empty
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.SecondaryLang != "" {
+		t.Errorf("want secondary_lang empty after patch, got %q", st.SecondaryLang)
 	}
 }
 
