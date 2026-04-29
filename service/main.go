@@ -108,7 +108,9 @@ func main() {
 		log.Fatalf("Failed to initialise auth: %v", err)
 	}
 
-	translateH := &handlers.TranslateHandler{Store: store}
+	settingsH := handlers.NewSettingsHandler(store, authH.Secret())
+
+	translateH := &handlers.TranslateHandler{Store: store, SettingsHandler: settingsH}
 	if key := os.Getenv("DEEPL_API_KEY"); key != "" {
 		lang := os.Getenv("DEEPL_TARGET_LANGUAGE")
 		if lang == "" {
@@ -157,8 +159,10 @@ func main() {
 	llmClient := llm.NewClientFromEnv()
 	var llmH *handlers.LLMHandler
 	if llmClient != nil {
-		llmH = &handlers.LLMHandler{Client: llmClient, Store: store}
+		llmH = &handlers.LLMHandler{Client: llmClient, Store: store, SettingsHandler: settingsH}
 		log.Printf("LLM enabled: provider=%s", llmClient.Name())
+	} else {
+		llmH = &handlers.LLMHandler{Store: store, SettingsHandler: settingsH}
 	}
 
 	r := chi.NewRouter()
@@ -207,9 +211,7 @@ func main() {
 				r.Get("/hmm/context", hmmH.GetSceneContext)
 				r.Put("/hmm", hmmH.SaveScene)
 				r.Delete("/hmm", hmmH.DeleteScene)
-				if llmH != nil {
-					r.Post("/hmm/generate-scene", llmH.GenerateScene)
-				}
+				r.Post("/hmm/generate-scene", llmH.GenerateScene)
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
@@ -247,10 +249,11 @@ func main() {
 		r.Post("/component/seen", componentH.Seen)
 		r.Post("/component/skip", componentH.Skip)
 		r.Get("/component/stats", componentH.Stats)
-		r.Get("/config", translateH.Config(translateH.APIKey != "", llmH != nil))
-		if translateH.APIKey != "" {
-			r.Post("/translate", translateH.Translate)
-		}
+		r.Get("/settings", settingsH.Get)
+		r.Patch("/settings", settingsH.Patch)
+		r.Put("/settings/api-keys", settingsH.PutAPIKeys)
+		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
+		r.Post("/translate", translateH.Translate)
 	})
 
 	// Static frontend files

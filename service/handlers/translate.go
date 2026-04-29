@@ -13,9 +13,10 @@ import (
 )
 
 type TranslateHandler struct {
-	APIKey     string
-	TargetLang string
-	Store      *db.Store
+	APIKey          string
+	TargetLang      string
+	Store           *db.Store
+	SettingsHandler *SettingsHandler // may be nil when auth is disabled
 }
 
 type translateRequest struct {
@@ -46,13 +47,20 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Pinyin-only path (both zh and source_text provided) is available to all users.
-	// DeepL translation requires plus or admin role.
+	// DeepL translation requires plus/admin role OR a personal user key.
 	pinyinOnly := req.ZhText != "" && req.SourceText != ""
 	if !pinyinOnly {
-		role, err := h.Store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
-		if err != nil || (role != "plus" && role != "admin") {
-			writeError(w, http.StatusForbidden, "feature requires plus account")
-			return
+		hasUserKey := false
+		if h.SettingsHandler != nil {
+			dk, _, _, _ := h.SettingsHandler.UserAPIKeys(r, UserIDFromContext(r.Context()))
+			hasUserKey = dk != ""
+		}
+		if !hasUserKey {
+			role, err := h.Store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
+			if err != nil || (role != "plus" && role != "admin") {
+				writeError(w, http.StatusForbidden, "feature requires plus account or a personal DeepL key")
+				return
+			}
 		}
 	}
 
@@ -63,12 +71,24 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		targetLang = strings.ToUpper(req.TargetLang)
 	}
 
+	// Resolve the API key: user-specific key takes precedence over server env key.
+	apiKey := h.APIKey
+	if h.SettingsHandler != nil {
+		if userKey, _, _, _ := h.SettingsHandler.UserAPIKeys(r, UserIDFromContext(r.Context())); userKey != "" {
+			apiKey = userKey
+		}
+	}
+	if apiKey == "" {
+		writeError(w, http.StatusServiceUnavailable, "DeepL not configured")
+		return
+	}
+
 	if req.ZhText != "" && req.SourceText == "" {
 		// Chinese provided → translate to target language (request multiple meanings)
 		instructions := []string{
 			"If this word has multiple distinct meanings in the target language, list up to 3 translations separated by ' / '. Only include genuinely different meanings, not synonyms.",
 		}
-		translated, err := deeplTranslate([]string{req.ZhText}, targetLang, "ZH", h.APIKey, instructions)
+		translated, err := deeplTranslate([]string{req.ZhText}, targetLang, "ZH", apiKey, instructions)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
 			return
@@ -79,7 +99,7 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		resp.Pinyin = toPinyin(req.ZhText)
 	} else if req.SourceText != "" && req.ZhText == "" {
 		// Source language text provided → translate to Chinese
-		translated, err := deeplTranslate([]string{req.SourceText}, "ZH", "", h.APIKey, nil)
+		translated, err := deeplTranslate([]string{req.SourceText}, "ZH", "", apiKey, nil)
 		if err != nil {
 			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
 			return
@@ -113,15 +133,28 @@ func Pinyin(w http.ResponseWriter, r *http.Request) {
 // Config returns feature availability for the current user.
 // *_configured: whether the API key/service is set up server-side.
 // *_available:  configured AND the user's role allows access (plus or admin).
+// user_*_key_set: the user has a personal key stored in settings.
 func (h *TranslateHandler) Config(deeplConfigured, llmConfigured bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		role, _ := h.Store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
+		userID := UserIDFromContext(r.Context())
+		role, _ := h.Store.GetUserRole(r.Context(), userID)
 		canUse := role == "plus" || role == "admin"
+
+		userDeeplSet := false
+		userLLMSet := false
+		if h.SettingsHandler != nil {
+			dk, _, lk, _ := h.SettingsHandler.UserAPIKeys(r, userID)
+			userDeeplSet = dk != ""
+			userLLMSet = lk != ""
+		}
+
 		writeJSON(w, http.StatusOK, map[string]bool{
-			"deepl_configured": deeplConfigured,
-			"deepl_available":  deeplConfigured && canUse,
-			"llm_configured":   llmConfigured,
-			"llm_available":    llmConfigured && canUse,
+			"deepl_configured":   deeplConfigured,
+			"deepl_available":    (deeplConfigured || userDeeplSet) && canUse,
+			"llm_configured":     llmConfigured,
+			"llm_available":      (llmConfigured || userLLMSet) && canUse,
+			"user_deepl_key_set": userDeeplSet,
+			"user_llm_key_set":   userLLMSet,
 		})
 	}
 }

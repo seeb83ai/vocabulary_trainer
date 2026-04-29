@@ -1,5 +1,58 @@
 // Vocabulary management page logic
 
+// Language settings — loaded once on init from /api/settings
+let primaryLang = 'en';
+let secondaryLang = '';  // empty means no secondary language
+
+const LANG_NAMES = { en: 'English', de: 'German', zh: 'Chinese', fr: 'French', es: 'Spanish' };
+
+function applySecondaryLangVisibility() {
+  const hasSecondary = secondaryLang !== '';
+
+  // Word table: show/hide the secondary column header
+  const colHeader = document.getElementById('col-secondary-lang');
+  if (colHeader) colHeader.classList.toggle('hidden', !hasSecondary);
+
+  // Edit form: show/hide the secondary-lang inputs block
+  const deSection = document.getElementById('de-form-section');
+  if (deSection) deSection.classList.toggle('hidden', !hasSecondary);
+
+  // Missing-lang filter: show/hide the secondary option
+  const deOption = document.getElementById('missing-lang-de-option');
+  if (deOption) deOption.classList.toggle('hidden', !hasSecondary);
+  // If the secondary is now hidden but was selected, reset the filter
+  if (!hasSecondary && missingLangFilter === secondaryLang) {
+    missingLangFilter = '';
+    const sel = document.getElementById('missing-lang-select');
+    if (sel) sel.value = '';
+  }
+}
+
+async function loadLangSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    if (!res.ok) return;
+    const st = await res.json();
+    primaryLang = st.primary_lang || 'en';
+    secondaryLang = st.secondary_lang ?? '';
+
+    // Update the primary column header
+    const primaryHeader = document.querySelector('[data-sort="en"], [data-sort="de"]');
+    if (primaryHeader) {
+      primaryHeader.querySelector('span[data-i18n]').textContent = LANG_NAMES[primaryLang] || primaryLang;
+      primaryHeader.dataset.sort = primaryLang;
+    }
+    // Update the secondary column header (may be hidden below)
+    const colHeader = document.getElementById('col-secondary-lang');
+    if (colHeader && secondaryLang) {
+      colHeader.querySelector('span[data-i18n]').textContent = LANG_NAMES[secondaryLang] || secondaryLang;
+      colHeader.dataset.sort = secondaryLang;
+    }
+
+    applySecondaryLangVisibility();
+  } catch { /* ignore — use defaults */ }
+}
+
 let currentPage = 1;
 let perPage = parseInt(localStorage.getItem('vocabPerPage')) || 20;
 let searchQuery = '';
@@ -101,11 +154,11 @@ function renderTable(words) {
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">
-        ${((word.translations || {})['en'] || []).length ? (word.translations['en']).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
+        ${((word.translations || {})[primaryLang] || []).length ? (word.translations[primaryLang]).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
       </td>
-      <td class="py-3 px-4 text-gray-600">
-        ${((word.translations || {})['de'] || []).length ? (word.translations['de']).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
-      </td>
+      ${secondaryLang ? `<td class="py-3 px-4 text-gray-600">
+        ${((word.translations || {})[secondaryLang] || []).length ? (word.translations[secondaryLang]).map(escHtml).join(', ') : '<span class="text-gray-400">—</span>'}
+      </td>` : ''}
       <td class="py-3 px-4 whitespace-nowrap">${renderTierBadge(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap text-xs">${renderDue(word)}</td>
       <td class="py-3 px-4 whitespace-nowrap">
@@ -204,19 +257,22 @@ function openEditForm(word) {
     notice.remove();
   }
 
-  const enTexts = (word.translations || {})['en'] || [];
+  const enTexts = (word.translations || {})[primaryLang] || [];
   const container = $('en-inputs-container');
   container.innerHTML = '';
   for (const t of (enTexts.length ? enTexts : [''])) {
     addEnInput(t);
   }
 
-  const deTexts = (word.translations || {})['de'] || [];
   const deContainer = $('de-inputs-container');
   deContainer.innerHTML = '';
-  for (const t of (deTexts.length ? deTexts : [''])) {
-    addDeInput(t);
+  if (secondaryLang) {
+    const deTexts = (word.translations || {})[secondaryLang] || [];
+    for (const t of (deTexts.length ? deTexts : [''])) {
+      addDeInput(t);
+    }
   }
+  applySecondaryLangVisibility();
 
   formTags = [...(word.tags || [])];
   renderFormTags();
@@ -252,7 +308,8 @@ function resetForm() {
   $('en-inputs-container').innerHTML = '';
   addEnInput('');
   $('de-inputs-container').innerHTML = '';
-  addDeInput('');
+  if (secondaryLang) addDeInput('');
+  applySecondaryLangVisibility();
   formTags = [];
   renderFormTags();
   $('form-tag-input').value = '';
@@ -294,13 +351,16 @@ function addDeInput(value = '') {
 
 function buildFormPayload() {
   const pinyin = $('form-pinyin').value.trim();
+  const translations = {
+    [primaryLang]: Array.from(document.querySelectorAll('.en-input')).map(i => i.value.trim()).filter(Boolean),
+  };
+  if (secondaryLang) {
+    translations[secondaryLang] = Array.from(document.querySelectorAll('.de-input')).map(i => i.value.trim()).filter(Boolean);
+  }
   return {
     zh_text: $('form-zh').value.trim(),
     pinyin: pinyin,
-    translations: {
-      en: Array.from(document.querySelectorAll('.en-input')).map(i => i.value.trim()).filter(Boolean),
-      de: Array.from(document.querySelectorAll('.de-input')).map(i => i.value.trim()).filter(Boolean),
-    },
+    translations,
     tags: [...formTags],
     start_training: $('form-start-training').checked,
   };
@@ -1185,8 +1245,8 @@ async function saveTagMeta(name, description, importable) {
 
 document.addEventListener('DOMContentLoaded', () => {
   resetForm();
+  loadLangSettings().then(() => loadWords());
   loadTags();
-  loadWords();
   renderTierFilter();
   initTranslateButton();
 

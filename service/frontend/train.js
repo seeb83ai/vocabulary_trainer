@@ -1,5 +1,11 @@
 // Training page logic
 
+// Primary language loaded from settings — used as the quiz-lang default
+let userPrimaryLang = 'en';
+fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
+  if (st?.primary_lang) userPrimaryLang = st.primary_lang;
+}).catch(() => {});
+
 const HMM_TYPE_COLORS = {
   actor:     'bg-purple-100 text-purple-700',
   location:  'bg-blue-100 text-blue-700',
@@ -415,7 +421,7 @@ async function submitAnswer(e) {
           try {
             await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
               method: 'POST',
-              body: JSON.stringify({ text: answer, lang: selectedLangs[0] || 'en' }),
+              body: JSON.stringify({ text: answer, lang: selectedLangs[0] || userPrimaryLang }),
             });
             addBtn.textContent = t('result.added');
             addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
@@ -752,7 +758,7 @@ async function loadLangs() {
   // Prune stale selections
   selectedLangs = selectedLangs.filter(l => allLangs.includes(l));
   if (selectedLangs.length === 0) {
-    selectedLangs = allLangs.length > 0 ? [allLangs[0]] : ['en'];
+    selectedLangs = allLangs.length > 0 ? [allLangs[0]] : [userPrimaryLang];
   }
   localStorage.setItem('quizLangs', JSON.stringify(selectedLangs));
   applyLangChips(allLangs);

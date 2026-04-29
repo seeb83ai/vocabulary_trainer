@@ -11,6 +11,7 @@ const I18N = {
     'nav.hmmQuiz': 'Mnemonics Quiz',
     'nav.mismatches': 'Mismatches',
     'nav.stats': 'Stats',
+    'nav.settings': 'Settings',
     'nav.signOut': 'Sign out',
 
     // Language selector
@@ -408,6 +409,7 @@ const I18N = {
     'nav.hmmQuiz': '记忆测验',
     'nav.mismatches': '混淆',
     'nav.stats': '统计',
+    'nav.settings': '设置',
     'nav.signOut': '退出',
 
     // Language selector

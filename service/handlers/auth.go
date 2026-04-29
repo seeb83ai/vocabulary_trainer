@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -17,9 +20,11 @@ import (
 	"vocabulary_trainer/email"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 const cookieName = "vocab_session"
+const settingsKeyCookie = "vocab_settings_key"
 const sessionTTL = 24 * time.Hour
 const verificationTTL = 24 * time.Hour
 
@@ -73,6 +78,10 @@ func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL, secretHe
 	}
 	return &AuthHandler{store: store, secret: secret, emailSender: emailSender, appURL: appURL}, nil
 }
+
+// Secret returns the server's HMAC/encryption secret so other handlers can use
+// it for sealing the per-user settings key cookie.
+func (a *AuthHandler) Secret() []byte { return a.secret }
 
 // Middleware rejects unauthenticated requests and injects the user ID into context.
 // API requests receive 401 JSON; page requests redirect to /.
@@ -144,6 +153,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
+	a.setSettingsKeyCookie(w, r, user.ID, req.Password)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -192,7 +202,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	verToken := hex.EncodeToString(tokenBytes)
 	expiresAt := time.Now().Add(verificationTTL)
 
-	userID, err := a.store.CreateUser(r.Context(), req.Email, string(hash), verToken, expiresAt)
+	userID, err := a.store.CreateUserWithSettings(r.Context(), req.Email, string(hash), verToken, expiresAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -219,6 +229,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			SameSite: http.SameSiteLaxMode,
 			MaxAge:   int(sessionTTL.Seconds()),
 		})
+		a.setSettingsKeyCookie(w, r, user.ID, req.Password)
 		writeJSON(w, http.StatusOK, map[string]any{"auto_login": true, "redirect": "/train"})
 		return
 	}
@@ -319,6 +330,13 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+
+	// Re-encrypt API keys with the new derived key.
+	if err := a.reencryptAPIKeys(w, r, userID, req.NewPassword); err != nil {
+		log.Printf("Warning: re-encrypt API keys for user %d: %v", userID, err)
+		// Non-fatal: keys become inaccessible until user re-saves them.
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -333,6 +351,13 @@ func AuthStatus(a *AuthHandler) http.HandlerFunc {
 func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     settingsKeyCookie,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
@@ -397,4 +422,217 @@ func isValidEmail(email string) bool {
 	}
 	domain := email[at+1:]
 	return strings.Contains(domain, ".")
+}
+
+// --- Settings-key crypto helpers ---
+
+// deriveSettingsKey runs PBKDF2-SHA256(password, saltHex, 100_000) → 32-byte key.
+func deriveSettingsKey(password, saltHex string) ([]byte, error) {
+	salt, err := hex.DecodeString(saltHex)
+	if err != nil {
+		return nil, fmt.Errorf("decode salt: %w", err)
+	}
+	return pbkdf2.Key([]byte(password), salt, 100_000, 32, sha256.New), nil
+}
+
+// sealKey AES-GCM-encrypts a 32-byte derived key with the server secret.
+// Returns standard base64.
+// SealKey encrypts derivedKey with secret using AES-GCM and returns a base64 string.
+// Exported so tests can round-trip without using the auth handler.
+func SealKey(secret, derivedKey []byte) (string, error) {
+	return sealKey(secret, derivedKey)
+}
+
+func sealKey(secret, derivedKey []byte) (string, error) {
+	block, err := aes.NewCipher(secret[:32])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	ct := gcm.Seal(nonce, nonce, derivedKey, nil)
+	return base64.StdEncoding.EncodeToString(ct), nil
+}
+
+// OpenSettingsKey decodes the settings_key cookie value and decrypts it.
+// Exported so SettingsHandler and translate/LLM handlers can call it.
+func OpenSettingsKey(secret []byte, sealed string) ([]byte, error) {
+	ct, err := base64.StdEncoding.DecodeString(sealed)
+	if err != nil {
+		return nil, fmt.Errorf("decode sealed key: %w", err)
+	}
+	block, err := aes.NewCipher(secret[:32])
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	ns := gcm.NonceSize()
+	if len(ct) < ns {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+	return gcm.Open(nil, ct[:ns], ct[ns:], nil)
+}
+
+// EncryptAPIKey AES-GCM-encrypts a plaintext API key with the derived key.
+// Returns standard base64. Returns "" for empty plaintext.
+func EncryptAPIKey(derivedKey []byte, plaintext string) (string, error) {
+	if plaintext == "" {
+		return "", nil
+	}
+	block, err := aes.NewCipher(derivedKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	ct := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	return base64.StdEncoding.EncodeToString(ct), nil
+}
+
+// DecryptAPIKey is the inverse of EncryptAPIKey. Returns "" for empty ciphertext.
+func DecryptAPIKey(derivedKey []byte, ciphertext string) (string, error) {
+	if ciphertext == "" {
+		return "", nil
+	}
+	ct, err := base64.StdEncoding.DecodeString(ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("decode api key: %w", err)
+	}
+	block, err := aes.NewCipher(derivedKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	ns := gcm.NonceSize()
+	if len(ct) < ns {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+	pt, err := gcm.Open(nil, ct[:ns], ct[ns:], nil)
+	if err != nil {
+		return "", fmt.Errorf("decrypt api key: %w", err)
+	}
+	return string(pt), nil
+}
+
+// MaskKey returns a masked display of a key (shows last ≤4 chars).
+// Returns "" for empty input so callers can distinguish "no key" from "key set".
+func MaskKey(plaintext string) string {
+	if plaintext == "" {
+		return ""
+	}
+	suffix := plaintext
+	if len(suffix) > 4 {
+		suffix = suffix[len(suffix)-4:]
+	}
+	return "****" + suffix
+}
+
+// setSettingsKeyCookie derives the per-user encryption key from the plaintext
+// password + their stored salt, seals it with the server secret, and writes a
+// HttpOnly cookie.
+func (a *AuthHandler) setSettingsKeyCookie(w http.ResponseWriter, r *http.Request, userID int64, password string) {
+	_, salt, _, _, err := a.store.GetUserSettingsRaw(r.Context(), userID)
+	if err != nil || salt == "" {
+		return
+	}
+	derivedKey, err := deriveSettingsKey(password, salt)
+	if err != nil {
+		return
+	}
+	sealed, err := sealKey(a.secret, derivedKey)
+	if err != nil {
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     settingsKeyCookie,
+		Value:    sealed,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+}
+
+// reencryptAPIKeys re-derives the settings key from the new password and
+// re-encrypts any stored API keys. Called after a successful password change.
+func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, userID int64, newPassword string) error {
+	_, salt, deeplEnc, llmEnc, err := a.store.GetUserSettingsRaw(r.Context(), userID)
+	if err != nil {
+		return err
+	}
+	if salt == "" {
+		return nil
+	}
+
+	// Get old derived key from the existing settings_key cookie.
+	oldDerivedKey, cookieErr := func() ([]byte, error) {
+		c, err := r.Cookie(settingsKeyCookie)
+		if err != nil {
+			return nil, err
+		}
+		return OpenSettingsKey(a.secret, c.Value)
+	}()
+
+	newDerivedKey, err := deriveSettingsKey(newPassword, salt)
+	if err != nil {
+		return err
+	}
+
+	// Re-encrypt API keys only when we have the old key to decrypt them.
+	if cookieErr == nil && oldDerivedKey != nil {
+		if deeplEnc != "" {
+			pt, err := DecryptAPIKey(oldDerivedKey, deeplEnc)
+			if err == nil {
+				deeplEnc, _ = EncryptAPIKey(newDerivedKey, pt)
+			}
+		}
+		if llmEnc != "" {
+			pt, err := DecryptAPIKey(oldDerivedKey, llmEnc)
+			if err == nil {
+				llmEnc, _ = EncryptAPIKey(newDerivedKey, pt)
+			}
+		}
+		// Load current llm_provider and llm_local_url from settings.
+		st, _, _, _, _ := a.store.GetUserSettingsRaw(r.Context(), userID)
+		provider := ""
+		localURL := ""
+		if st != nil {
+			provider = st.LLMProvider
+			localURL = st.LLMLocalURL
+		}
+		_ = a.store.UpdateUserAPIKeys(r.Context(), userID, deeplEnc, provider, llmEnc, localURL)
+	}
+
+	// Always issue the new settings-key cookie.
+	sealed, err := sealKey(a.secret, newDerivedKey)
+	if err != nil {
+		return err
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     settingsKeyCookie,
+		Value:    sealed,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+	return nil
 }

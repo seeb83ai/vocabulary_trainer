@@ -12,8 +12,9 @@ import (
 )
 
 type LLMHandler struct {
-	Client llm.Client
-	Store  *db.Store
+	Client          llm.Client      // server-configured client (may be nil)
+	Store           *db.Store
+	SettingsHandler *SettingsHandler // may be nil when auth is disabled
 }
 
 type llmGenerateRequest struct {
@@ -30,10 +31,33 @@ type llmGenerateResponse struct {
 const llmSystemPrompt = `You are a creative writing assistant for the Hanzi Movie Method, a mnemonic system for memorizing Chinese characters. Your task is to write exactly one short, vivid scene. Respond with only the scene text — no preamble, no numbering, no labels, no explanation.`
 
 func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
-	role, err := h.Store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
-	if err != nil || (role != "plus" && role != "admin") {
-		writeError(w, http.StatusForbidden, "feature requires plus account")
+	userID := UserIDFromContext(r.Context())
+
+	// Resolve which LLM client to use: per-user key takes precedence.
+	client := h.Client
+	if h.SettingsHandler != nil {
+		_, provider, userKey, localURL := h.SettingsHandler.UserAPIKeys(r, userID)
+		if provider != "" && (userKey != "" || provider == "local") {
+			if uc := llm.NewClientFromConfig(provider, userKey, localURL); uc != nil {
+				client = uc
+			}
+		}
+	}
+	if client == nil {
+		writeError(w, http.StatusServiceUnavailable, "LLM not configured")
 		return
+	}
+
+	hasUserKey := h.SettingsHandler != nil && func() bool {
+		_, p, k, _ := h.SettingsHandler.UserAPIKeys(r, userID)
+		return p != "" && k != ""
+	}()
+	if !hasUserKey {
+		role, err := h.Store.GetUserRole(r.Context(), userID)
+		if err != nil || (role != "plus" && role != "admin") {
+			writeError(w, http.StatusForbidden, "feature requires plus account or a personal LLM key")
+			return
+		}
 	}
 
 	id, err := parseID(r)
@@ -123,7 +147,7 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		text, err := h.Client.Generate(r.Context(), llm.Request{
+		text, err := client.Generate(r.Context(), llm.Request{
 			System: llmSystemPrompt,
 			User:   userMsg,
 		})

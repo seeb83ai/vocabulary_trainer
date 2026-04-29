@@ -454,10 +454,14 @@ func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.Confu
 	}
 	rows.Close() // release before per-row queries
 
+	allLangs, err := s.GetTranslationLanguages(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for i := range items {
 		items[i].ZhTranslations = map[string][]string{}
 		items[i].ConfusedWithTranslations = map[string][]string{}
-		for _, lang := range []string{"en", "de"} {
+		for _, lang := range allLangs {
 			texts, ferr := s.getTranslationTextsForZhWord(ctx, items[i].ZhWordID, lang)
 			if ferr != nil {
 				return nil, ferr

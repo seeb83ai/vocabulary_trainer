@@ -3090,3 +3090,112 @@ func TestGetComponentList_BasicAndSearch(t *testing.T) {
 		t.Errorf("want definition_en='sun; day', got %q", items[0].DefinitionEN)
 	}
 }
+
+// ── User Settings ─────────────────────────────────────────────────────────────
+
+func TestGetUserSettings_Defaults(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.PrimaryLang != "en" {
+		t.Errorf("want primary_lang=en, got %q", st.PrimaryLang)
+	}
+	if st.SecondaryLang != "de" {
+		t.Errorf("want secondary_lang=de, got %q", st.SecondaryLang)
+	}
+	if st.ProgNew != "transl_to_zh" {
+		t.Errorf("want prog_new=transl_to_zh, got %q", st.ProgNew)
+	}
+	if st.ProgTierStruggling != "transl_to_zh" {
+		t.Errorf("want prog_tier_struggling=transl_to_zh, got %q", st.ProgTierStruggling)
+	}
+	if st.ProgTierLearning != "zh_pinyin_to_transl" {
+		t.Errorf("want prog_tier_learning=zh_pinyin_to_transl, got %q", st.ProgTierLearning)
+	}
+	if st.ProgTierPracticing != "zh_to_transl" {
+		t.Errorf("want prog_tier_practicing=zh_to_transl, got %q", st.ProgTierPracticing)
+	}
+	if st.ProgTierMastered != "random" {
+		t.Errorf("want prog_tier_mastered=random, got %q", st.ProgTierMastered)
+	}
+	if st.NewWordMode0 != "transl_to_zh" {
+		t.Errorf("want new_word_mode_0=transl_to_zh, got %q", st.NewWordMode0)
+	}
+	if st.NewWordMode1 != "transl_to_zh" {
+		t.Errorf("want new_word_mode_1=transl_to_zh, got %q", st.NewWordMode1)
+	}
+	if st.NewWordMode2 != "zh_to_transl" {
+		t.Errorf("want new_word_mode_2=zh_to_transl, got %q", st.NewWordMode2)
+	}
+}
+
+func TestUpdateUserSettings_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	in := models.UserSettings{
+		PrimaryLang:        "de",
+		SecondaryLang:      "en",
+		ProgNew:            "zh_to_transl",
+		ProgTierStruggling: "zh_pinyin_to_transl",
+		ProgTierLearning:   "mask_pinyin",
+		ProgTierPracticing: "random",
+		ProgTierMastered:   "random",
+		NewWordMode0:       "zh_pinyin_to_transl",
+		NewWordMode1:       "zh_to_transl",
+		NewWordMode2:       "random",
+	}
+	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+	out, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings after update: %v", err)
+	}
+	if out.PrimaryLang != "de" {
+		t.Errorf("primary_lang: want de, got %q", out.PrimaryLang)
+	}
+	if out.ProgTierStruggling != "zh_pinyin_to_transl" {
+		t.Errorf("prog_tier_struggling: want zh_pinyin_to_transl, got %q", out.ProgTierStruggling)
+	}
+	if out.NewWordMode0 != "zh_pinyin_to_transl" {
+		t.Errorf("new_word_mode_0: want zh_pinyin_to_transl, got %q", out.NewWordMode0)
+	}
+}
+
+func TestUpdateUserAPIKeys_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	// Store encrypted blobs (plaintext here for simplicity — DB just stores the string)
+	if err := s.UpdateUserAPIKeys(ctx, userID, "enc-deepl", "openai", "enc-llm", "http://local"); err != nil {
+		t.Fatalf("UpdateUserAPIKeys: %v", err)
+	}
+
+	st, salt, deeplEnc, llmEnc, err := s.GetUserSettingsRaw(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettingsRaw: %v", err)
+	}
+	if salt == "" {
+		t.Error("want non-empty salt")
+	}
+	if deeplEnc != "enc-deepl" {
+		t.Errorf("want deeplEnc=enc-deepl, got %q", deeplEnc)
+	}
+	if llmEnc != "enc-llm" {
+		t.Errorf("want llmEnc=enc-llm, got %q", llmEnc)
+	}
+	if st.LLMProvider != "openai" {
+		t.Errorf("want llm_provider=openai, got %q", st.LLMProvider)
+	}
+	if st.LLMLocalURL != "http://local" {
+		t.Errorf("want llm_local_url=http://local, got %q", st.LLMLocalURL)
+	}
+}

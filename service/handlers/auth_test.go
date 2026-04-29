@@ -308,3 +308,85 @@ func TestLogout_ClearsSession(t *testing.T) {
 		t.Errorf("logout cookie MaxAge should be negative, got %d", clearedCookie.MaxAge)
 	}
 }
+
+// ── Crypto helpers ────────────────────────────────────────────────────────────
+
+func TestEncryptDecryptAPIKey_RoundTrip(t *testing.T) {
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	plaintext := "sk-test-api-key-1234"
+	enc, err := handlers.EncryptAPIKey(key, plaintext)
+	if err != nil {
+		t.Fatalf("EncryptAPIKey: %v", err)
+	}
+	if enc == "" {
+		t.Fatal("EncryptAPIKey returned empty string")
+	}
+	got, err := handlers.DecryptAPIKey(key, enc)
+	if err != nil {
+		t.Fatalf("DecryptAPIKey: %v", err)
+	}
+	if got != plaintext {
+		t.Errorf("want %q, got %q", plaintext, got)
+	}
+}
+
+func TestEncryptDecryptAPIKey_Empty(t *testing.T) {
+	key := make([]byte, 32)
+	enc, err := handlers.EncryptAPIKey(key, "")
+	if err != nil {
+		t.Fatalf("EncryptAPIKey empty: %v", err)
+	}
+	if enc != "" {
+		t.Errorf("want empty for empty input, got %q", enc)
+	}
+	dec, err := handlers.DecryptAPIKey(key, "")
+	if err != nil {
+		t.Fatalf("DecryptAPIKey empty: %v", err)
+	}
+	if dec != "" {
+		t.Errorf("want empty for empty ciphertext, got %q", dec)
+	}
+}
+
+func TestSealOpenSettingsKey_RoundTrip(t *testing.T) {
+	secret := make([]byte, 32)
+	for i := range secret {
+		secret[i] = byte(i + 100)
+	}
+	derived := make([]byte, 32)
+	for i := range derived {
+		derived[i] = byte(i + 50)
+	}
+	sealed, err := handlers.SealKey(secret, derived)
+	if err != nil {
+		t.Fatalf("SealKey: %v", err)
+	}
+	got, err := handlers.OpenSettingsKey(secret, sealed)
+	if err != nil {
+		t.Fatalf("OpenSettingsKey: %v", err)
+	}
+	if string(got) != string(derived) {
+		t.Errorf("round-trip failed: want %v, got %v", derived, got)
+	}
+}
+
+func TestMaskKey(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"sk-1234567890abcdef", "****cdef"},
+		{"abcd", "****abcd"},
+		{"ab", "****ab"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := handlers.MaskKey(tt.input)
+		if got != tt.want {
+			t.Errorf("MaskKey(%q): want %q, got %q", tt.input, tt.want, got)
+		}
+	}
+}

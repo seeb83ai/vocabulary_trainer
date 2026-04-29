@@ -30,6 +30,41 @@ type Client interface {
 	Name() string
 }
 
+// NewClientFromConfig creates an LLM client from explicit config (for per-user keys).
+// For the "local" provider, localURL overrides LOCAL_LLM_URL; the model falls back
+// to the LOCAL_LLM_MODEL env var.
+// Returns nil if provider is unrecognised or the key/URL is empty.
+func NewClientFromConfig(provider, apiKey, localURL string) Client {
+	switch provider {
+	case "openai":
+		if apiKey == "" {
+			return nil
+		}
+		return &openAIClient{apiKey: apiKey, httpClient: http.DefaultClient}
+	case "anthropic":
+		if apiKey == "" {
+			return nil
+		}
+		return &anthropicClient{apiKey: apiKey, httpClient: http.DefaultClient}
+	case "gemini":
+		if apiKey == "" {
+			return nil
+		}
+		return &geminiClient{apiKey: apiKey, httpClient: http.DefaultClient}
+	case "local":
+		url := localURL
+		if url == "" {
+			url = os.Getenv("LOCAL_LLM_URL")
+		}
+		model := os.Getenv("LOCAL_LLM_MODEL")
+		if url == "" || model == "" {
+			return nil
+		}
+		return &localClient{baseURL: url, model: model, apiKey: apiKey, httpClient: http.DefaultClient}
+	}
+	return nil
+}
+
 // NewClientFromEnv collects every configured LLM provider in priority order
 // (local first, then OpenAI, Anthropic, Gemini) and returns them wrapped in a
 // fallbackClient so that if the primary provider fails the next one is tried

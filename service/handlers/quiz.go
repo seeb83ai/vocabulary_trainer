@@ -56,12 +56,15 @@ func (h *QuizHandler) Langs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, langs)
 }
 
-// parseLangs extracts the "langs" query param (comma-separated) or returns ["en"].
-func parseLangs(r *http.Request) []string {
+// parseLangs extracts the "langs" query param (comma-separated) or returns [defaultLang].
+func parseLangs(r *http.Request, defaultLang string) []string {
 	if l := r.URL.Query().Get("langs"); l != "" {
 		return strings.Split(l, ",")
 	}
-	return []string{"en"}
+	if defaultLang == "" {
+		defaultLang = "en"
+	}
+	return []string{defaultLang}
 }
 
 // Next returns the next card to study.
@@ -88,7 +91,28 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	langs := parseLangs(r)
+	// Load user settings once; used for quiz mode config and language defaults.
+	userSettings, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context()))
+	progCfg := sm2.DefaultProgressiveModeConfig()
+	nwCfg := sm2.DefaultNewWordModeConfig()
+	primaryLang := "en"
+	if userSettings != nil {
+		progCfg = sm2.ProgressiveModeConfig{
+			New:        userSettings.ProgNew,
+			Struggling: userSettings.ProgTierStruggling,
+			Learning:   userSettings.ProgTierLearning,
+			Practicing: userSettings.ProgTierPracticing,
+			Mastered:   userSettings.ProgTierMastered,
+		}
+		nwCfg = sm2.NewWordModeConfig{
+			Step0: userSettings.NewWordMode0,
+			Step1: userSettings.NewWordMode1,
+			Step2: userSettings.NewWordMode2,
+		}
+		primaryLang = userSettings.PrimaryLang
+	}
+
+	langs := parseLangs(r, primaryLang)
 	mnemonics := r.URL.Query().Get("mnemonics") != "false"
 	trainComponents := r.URL.Query().Get("trainComponents") == "1"
 
@@ -212,12 +236,22 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	var mode string
 	switch requestedMode {
-	case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl:
+	case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin:
 		mode = requestedMode
 	case models.ModeProgressive:
-		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus)
+		if progress.LearningNewWord {
+			mode = sm2.SelectNewWordMode(progress.TotalCorrect, nwCfg)
+		} else {
+			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
+		}
 	default:
 		mode = sm2.SelectMode()
+	}
+
+	// mask_pinyin resolves to transl_to_zh with the pinyin hint forced on.
+	forceMaskPinyin := mode == models.ModeMaskPinyin
+	if forceMaskPinyin {
+		mode = models.ModeTranslToZh
 	}
 
 	// zh_pinyin_to_transl requires pinyin; fall back if missing
@@ -258,9 +292,17 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
-			card.Translations = translations
-			// For learning words, send a masked pinyin hint based on progress
-			if progress.LearningNewWord && word.Pinyin != nil {
+		}
+		card.Translations = translations
+		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
+		if word.Pinyin != nil {
+			if forceMaskPinyin && !progress.LearningNewWord {
+				// Tier-based mask_pinyin: always show a level-0 masked hint (first char of each syllable).
+				if masked := sm2.MaskPinyin(*word.Pinyin, 0); masked != "" {
+					card.Pinyin = &masked
+				}
+			} else if progress.LearningNewWord {
+				// Intro-phase: fade out hint as correct answers accumulate.
 				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
 					card.Pinyin = &masked
 				}
@@ -311,7 +353,11 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 	langs := req.Langs
 	if len(langs) == 0 {
-		langs = []string{"en"}
+		if st, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); st != nil {
+			langs = []string{st.PrimaryLang}
+		} else {
+			langs = []string{"en"}
+		}
 	}
 	var correctTexts []string
 	switch req.Mode {
@@ -378,12 +424,12 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
 
 	resp := models.AnswerResponse{
-		Correct:        correct,
-		CorrectAnswers: correctTexts,
-		ZhText:         zhWord.ZhText,
-		Pinyin:         zhWord.Pinyin,
-		Translations:   zhWord.Translations,
-		NextDue:        updated.DueDate,
+		Correct:         correct,
+		CorrectAnswers:  correctTexts,
+		ZhText:          zhWord.ZhText,
+		Pinyin:          zhWord.Pinyin,
+		Translations:    zhWord.Translations,
+		NextDue:         updated.DueDate,
 		IntervalDays:    updated.IntervalDays,
 		TotalCorrect:    updated.TotalCorrect,
 		TotalAttempts:   updated.TotalAttempts,
@@ -576,18 +622,18 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]int{
-		"due_today":              due,
-		"total":                  total,
-		"new_today":              newToday,
-		"max_new_per_day":        h.MaxNewPerDay,
-		"today_attempts":         todayAttempts,
-		"today_mistakes":         todayMistakes,
-		"available_to_advance":   availableToAdvance,
-		"new_available":          newAvailable,
-		"hmm_due_today":          hmmDueToday,
-		"hmm_total":              hmmTotal,
-		"components_due_today":   compDueToday,
-		"components_total":       compTotal,
+		"due_today":            due,
+		"total":                total,
+		"new_today":            newToday,
+		"max_new_per_day":      h.MaxNewPerDay,
+		"today_attempts":       todayAttempts,
+		"today_mistakes":       todayMistakes,
+		"available_to_advance": availableToAdvance,
+		"new_available":        newAvailable,
+		"hmm_due_today":        hmmDueToday,
+		"hmm_total":            hmmTotal,
+		"components_due_today": compDueToday,
+		"components_total":     compTotal,
 	})
 }
 
