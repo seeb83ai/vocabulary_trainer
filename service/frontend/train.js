@@ -1,9 +1,11 @@
 // Training page logic
 
-// Primary language loaded from settings — used as the quiz-lang default
+// Language settings loaded from /api/settings on init
 let userPrimaryLang = 'en';
-fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
+let userSecondaryLang = '';
+const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
+  userSecondaryLang = st?.secondary_lang ?? '';
 }).catch(() => {});
 
 const HMM_TYPE_COLORS = {
@@ -711,29 +713,25 @@ function applyLangChips(allLangs) {
   const overlayContainer = $('overlay-lang-chips');
   overlayContainer.innerHTML = '';
 
-  if (allLangs.length < 2) {
-    $('overlay-langs-section').classList.add('hidden');
-  } else {
-    $('overlay-langs-section').classList.remove('hidden');
+  $('overlay-langs-section').classList.toggle('hidden', allLangs.length < 2);
 
-    for (const lang of allLangs) {
-      const active = selectedLangs.includes(lang);
+  for (const lang of allLangs) {
+    const active = selectedLangs.includes(lang);
 
-      // Desktop chip — insert before the separator (third child: label, sep, mnemonics-pill)
-      const sep = desktopContainer.querySelector('span.text-gray-300');
-      const pill = document.createElement('button');
-      pill.className = `lang-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-      pill.textContent = lang.toUpperCase();
-      pill.addEventListener('click', () => toggleLang(lang, allLangs));
-      desktopContainer.insertBefore(pill, sep);
+    // Desktop chip — insert before the separator (third child: label, sep, mnemonics-pill)
+    const sep = desktopContainer.querySelector('span.text-gray-300');
+    const pill = document.createElement('button');
+    pill.className = `lang-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    pill.textContent = lang.toUpperCase();
+    pill.addEventListener('click', () => toggleLang(lang, allLangs));
+    desktopContainer.insertBefore(pill, sep);
 
-      // Overlay chip
-      const overlayPill = document.createElement('button');
-      overlayPill.className = `overlay-lang-btn px-3 py-1.5 rounded-full text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-      overlayPill.textContent = lang.toUpperCase();
-      overlayPill.addEventListener('click', () => toggleLang(lang, allLangs));
-      overlayContainer.appendChild(overlayPill);
-    }
+    // Overlay chip
+    const overlayPill = document.createElement('button');
+    overlayPill.className = `overlay-lang-btn px-3 py-1.5 rounded-full text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    overlayPill.textContent = lang.toUpperCase();
+    overlayPill.addEventListener('click', () => toggleLang(lang, allLangs));
+    overlayContainer.appendChild(overlayPill);
   }
 }
 
@@ -751,10 +749,14 @@ function toggleLang(lang, allLangs) {
 }
 
 async function loadLangs() {
-  let allLangs = [];
+  let availableLangs = [];
   try {
-    allLangs = await apiFetch('/api/quiz/langs');
+    availableLangs = await apiFetch('/api/quiz/langs');
   } catch (_) {}
+  await _settingsPromise;
+  // Only show langs the user has configured, in primary-first order
+  const userLangs = [userPrimaryLang, userSecondaryLang].filter(l => l && availableLangs.includes(l));
+  const allLangs = userLangs.length > 0 ? userLangs : availableLangs;
   // Prune stale selections
   selectedLangs = selectedLangs.filter(l => allLangs.includes(l));
   if (selectedLangs.length === 0) {

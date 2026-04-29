@@ -49,6 +49,16 @@ async function loadLangSettings() {
       colHeader.dataset.sort = secondaryLang;
     }
 
+    // Update form labels to reflect actual primary/secondary language names
+    const primaryLabel = document.getElementById('primary-lang-label');
+    if (primaryLabel) {
+      primaryLabel.textContent = `${LANG_NAMES[primaryLang] || primaryLang} Translation(s)`;
+    }
+    const secondaryLabel = document.getElementById('secondary-lang-label');
+    if (secondaryLabel && secondaryLang) {
+      secondaryLabel.textContent = `${LANG_NAMES[secondaryLang] || secondaryLang} Translation(s)`;
+    }
+
     applySecondaryLangVisibility();
   } catch { /* ignore — use defaults */ }
 }
@@ -325,9 +335,10 @@ function addEnInput(value = '') {
   const container = $('en-inputs-container');
   const wrapper = document.createElement('div');
   wrapper.className = 'flex items-center gap-2 mb-2';
+  const placeholder = escHtml(LANG_NAMES[primaryLang] || primaryLang);
   wrapper.innerHTML = `
     <input type="text" class="en-input flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-           placeholder="${escHtml(t('vocab.englishPlaceholder'))}" value="${escHtml(value)}">
+           placeholder="${placeholder}" value="${escHtml(value)}">
     <button type="button" class="btn-remove-en text-gray-400 hover:text-red-500 text-xl leading-none" title="Remove">×</button>`;
   wrapper.querySelector('.btn-remove-en').addEventListener('click', () => {
     if (container.children.length > 1) wrapper.remove();
@@ -339,9 +350,10 @@ function addDeInput(value = '') {
   const container = $('de-inputs-container');
   const wrapper = document.createElement('div');
   wrapper.className = 'flex items-center gap-2 mb-2';
+  const placeholder = escHtml(LANG_NAMES[secondaryLang] || secondaryLang);
   wrapper.innerHTML = `
     <input type="text" class="de-input flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-           placeholder="${escHtml(t('vocab.germanPlaceholder'))}" value="${escHtml(value)}">
+           placeholder="${placeholder}" value="${escHtml(value)}">
     <button type="button" class="btn-remove-de text-gray-400 hover:text-red-500 text-xl leading-none" title="Remove">×</button>`;
   wrapper.querySelector('.btn-remove-de').addEventListener('click', () => {
     if (container.children.length > 1) wrapper.remove();
@@ -1244,8 +1256,7 @@ async function saveTagMeta(name, description, importable) {
 // ── End tags tab ───────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  resetForm();
-  loadLangSettings().then(() => loadWords());
+  loadLangSettings().then(() => { resetForm(); loadWords(); });
   loadTags();
   renderTierFilter();
   initTranslateButton();
