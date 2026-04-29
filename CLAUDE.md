@@ -14,6 +14,10 @@ wait for approval before writing code. For small isolated fixes (typo, obvious o
 **Bugs discovered during a task:** point them out and ask before fixing. Never silently fix code outside
 the scope of the current task.
 
+**Always write a failing test first** Before any production code is changed, implement a test first. Ensure that it is failing.
+
+**TDD: Implement code changes to fix the failing tests** Only AFTER a new or changes test failed, implement the needed production code changed to make the test succeed. Then write the next failing test to continue
+
 ## Testing rules
 
 **Mandatory:** Every code change that adds or modifies a function, DB query, or HTTP endpoint **must** include

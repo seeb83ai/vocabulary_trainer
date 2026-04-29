@@ -695,6 +695,57 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 	// cards and inflate the session beyond what due_today reports.
 	todayBound := "AND p.due_date < date('now', '+1 day')"
 
+	// When the cap has not been reached, prefer unseen words — but only when
+	// there are no learning_new_word=1 cards currently due. Advanced seen words
+	// may have due_dates shifted far into the past (larger interval = larger
+	// shift), so ORDER BY due_date alone would pick them ahead of unseen words.
+	if !skipNew && newToday < maxNew {
+		var learningDue int
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sm2_progress p
+			 JOIN words w ON w.id = p.word_id
+			 WHERE w.language = 'zh' AND w.user_id = ?
+			   AND p.learning_new_word = 1
+			   AND p.first_seen_date IS NOT NULL
+			   AND p.due_date <= CURRENT_TIMESTAMP`,
+			userID).Scan(&learningDue); err != nil {
+			return nil, nil, fmt.Errorf("count learning due: %w", err)
+		}
+		if learningDue == 0 {
+			unseenQuery := `
+				SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
+				       p.repetitions, p.easiness, p.interval_days, p.due_date,
+				       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
+				FROM words w
+				JOIN sm2_progress p ON p.word_id = w.id
+				WHERE w.language = 'zh' AND w.user_id = ?` + tagFilter + `
+				  AND p.first_seen_date IS NULL
+				ORDER BY p.due_date ASC
+				LIMIT 1`
+			args := append([]any{userID}, tagArgs...)
+			row := s.db.QueryRowContext(ctx, unseenQuery, args...)
+			var uw models.Word
+			var up models.SM2Progress
+			var createdAt, dueDate string
+			var learning int
+			err := row.Scan(
+				&uw.ID, &uw.Text, &uw.Language, &uw.Pinyin, &createdAt,
+				&up.Repetitions, &up.Easiness, &up.IntervalDays, &dueDate,
+				&up.TotalCorrect, &up.TotalAttempts, &up.StreakBonus, &learning,
+			)
+			if err != nil && err != sql.ErrNoRows {
+				return nil, nil, fmt.Errorf("get next unseen card: %w", err)
+			}
+			if err == nil {
+				uw.CreatedAt = parseDateTime(createdAt)
+				up.DueDate = parseDateTime(dueDate)
+				up.LearningNewWord = learning == 1
+				up.WordID = uw.ID
+				return &uw, &up, nil
+			}
+		}
+	}
+
 	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP")
 	if err != nil || w != nil {
 		return w, p, err

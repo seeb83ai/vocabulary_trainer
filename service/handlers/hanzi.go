@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
@@ -30,5 +31,24 @@ func (h *HanziHandler) Decompose(w http.ResponseWriter, r *http.Request) {
 	if results == nil {
 		results = []models.HanziDecomposition{}
 	}
+
+	if langsParam := r.URL.Query().Get("langs"); langsParam != "" {
+		langs := strings.Split(langsParam, ",")
+		if err := h.Store.AnnotateComponentDefinitions(r.Context(), results, langs); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to annotate component definitions")
+			return
+		}
+	}
+
+	if r.URL.Query().Get("mark_new") == "true" {
+		userID := UserIDFromContext(r.Context())
+		if userID > 0 {
+			if err := h.Store.AnnotateNewComponents(r.Context(), userID, results); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to annotate components")
+				return
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, results)
 }

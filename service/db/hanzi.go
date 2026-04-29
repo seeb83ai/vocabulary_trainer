@@ -303,6 +303,107 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 	return ordered, nil
 }
 
+// AnnotateComponentDefinitions populates Definitions on every component entry in
+// results for the requested langs. EN comes from hanzi_decomposition.definition;
+// other langs from hanzi_decomposition_translation. Called when the decompose
+// endpoint is requested with a langs parameter.
+func (s *Store) AnnotateComponentDefinitions(ctx context.Context, results []models.HanziDecomposition, langs []string) error {
+	if len(langs) == 0 {
+		return nil
+	}
+	compSet := map[string]bool{}
+	for _, d := range results {
+		for _, c := range d.Components {
+			compSet[c.Character] = true
+		}
+	}
+	if len(compSet) == 0 {
+		return nil
+	}
+	chars := make([]string, 0, len(compSet))
+	for ch := range compSet {
+		chars = append(chars, ch)
+	}
+
+	// Build a map character → lang → definition.
+	defMap := map[string]map[string]string{}
+	for _, ch := range chars {
+		defs, err := s.GetComponentDefinitions(ctx, ch, langs)
+		if err != nil {
+			return fmt.Errorf("annotate component definitions %q: %w", ch, err)
+		}
+		if len(defs) > 0 {
+			defMap[ch] = defs
+		}
+	}
+
+	for i := range results {
+		for j := range results[i].Components {
+			ch := results[i].Components[j].Character
+			if defs, ok := defMap[ch]; ok {
+				results[i].Components[j].Definitions = defs
+			}
+		}
+	}
+	return nil
+}
+
+// AnnotateNewComponents sets IsNewComponent on every component in results.
+// A component is "new" when the user has no component_progress row for it yet.
+// The top-level characters are never annotated (only their Components entries).
+func (s *Store) AnnotateNewComponents(ctx context.Context, userID int64, results []models.HanziDecomposition) error {
+	// Collect all unique component characters across all top-level entries.
+	compSet := map[string]bool{}
+	for _, d := range results {
+		for _, c := range d.Components {
+			compSet[c.Character] = true
+		}
+	}
+	if len(compSet) == 0 {
+		return nil
+	}
+
+	ph := make([]string, 0, len(compSet))
+	args := make([]any, 0, len(compSet)+1)
+	args = append(args, userID)
+	for ch := range compSet {
+		ph = append(ph, "?")
+		args = append(args, ch)
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT character FROM component_progress WHERE user_id = ? AND character IN (`+strings.Join(ph, ",")+`) AND total_attempts > 0`,
+		args...,
+	)
+	if err != nil {
+		return fmt.Errorf("annotate new components: %w", err)
+	}
+	trained := map[string]bool{}
+	for rows.Next() {
+		var ch string
+		if err := rows.Scan(&ch); err != nil {
+			rows.Close()
+			return fmt.Errorf("annotate new components scan: %w", err)
+		}
+		trained[ch] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("annotate new components rows: %w", err)
+	}
+
+	isNew := func(ch string) *bool {
+		v := !trained[ch]
+		return &v
+	}
+	for i := range results {
+		for j := range results[i].Components {
+			results[i].Components[j].IsNewComponent = isNew(results[i].Components[j].Character)
+		}
+	}
+	return nil
+}
+
 // GetHanziDecompositionString returns the raw decomposition string for a single character,
 // or an empty string if none exists.
 func (s *Store) GetHanziDecompositionString(ctx context.Context, char string) (string, error) {

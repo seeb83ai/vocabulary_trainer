@@ -3199,3 +3199,162 @@ func TestUpdateUserAPIKeys_RoundTrip(t *testing.T) {
 		t.Errorf("want llm_local_url=http://local, got %q", st.LLMLocalURL)
 	}
 }
+
+func TestAnnotateComponentDefinitions_PopulatesENAndDE(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	s.SeedHanziDecompositionWithDecompForTest(ctx, "好", "good", "⿰女子")
+	s.SeedHanziDecompositionForTest(ctx, "女", "woman")
+	s.SeedHanziDecompositionForTest(ctx, "子", "child")
+	if err := s.SeedHanziTranslationForTest(ctx, "女", "de", "Frau"); err != nil {
+		t.Fatalf("seed DE translation: %v", err)
+	}
+
+	results, err := s.GetHanziDecomposition(ctx, []rune("好"))
+	if err != nil {
+		t.Fatalf("GetHanziDecomposition: %v", err)
+	}
+	if len(results) == 0 || len(results[0].Components) == 0 {
+		t.Skip("no components — decomposition not seeded correctly")
+	}
+
+	if err := s.AnnotateComponentDefinitions(ctx, results, []string{"en", "de"}); err != nil {
+		t.Fatalf("AnnotateComponentDefinitions: %v", err)
+	}
+
+	byChar := map[string]map[string]string{}
+	for _, comp := range results[0].Components {
+		byChar[comp.Character] = comp.Definitions
+	}
+	if defs := byChar["女"]; defs["en"] != "woman" {
+		t.Errorf("女 EN: want %q, got %q", "woman", defs["en"])
+	}
+	if defs := byChar["女"]; defs["de"] != "Frau" {
+		t.Errorf("女 DE: want %q, got %q", "Frau", defs["de"])
+	}
+	if defs := byChar["子"]; defs["en"] != "child" {
+		t.Errorf("子 EN: want %q, got %q", "child", defs["en"])
+	}
+}
+
+func TestAnnotateComponentDefinitions_NoLangsIsNoop(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	s.SeedHanziDecompositionWithDecompForTest(ctx, "好", "good", "⿰女子")
+	s.SeedHanziDecompositionForTest(ctx, "女", "woman")
+	s.SeedHanziDecompositionForTest(ctx, "子", "child")
+
+	results, err := s.GetHanziDecomposition(ctx, []rune("好"))
+	if err != nil {
+		t.Fatalf("GetHanziDecomposition: %v", err)
+	}
+	if err := s.AnnotateComponentDefinitions(ctx, results, nil); err != nil {
+		t.Fatalf("AnnotateComponentDefinitions: %v", err)
+	}
+	for _, comp := range results[0].Components {
+		if comp.Definitions != nil {
+			t.Errorf("component %q: expected nil Definitions with no langs, got %v", comp.Character, comp.Definitions)
+		}
+	}
+}
+
+func TestGetNextCard_PrefersUnseenOverAdvancedSeen(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seen word: shift due_date 30 days into the past (simulates a high-interval
+	// word that was advanced), clear learning_new_word so it doesn't block the
+	// unseen-priority path.
+	idSeen := seedWord(t, s, "一", "", []string{"one"})
+	s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_date = date('now'), due_date = datetime('now', '-30 days'), learning_new_word = 0 WHERE word_id = ?`,
+		idSeen)
+
+	// Unseen word whose due_date is the default CURRENT_TIMESTAMP (recent).
+	idUnseen := seedWord(t, s, "二", "", []string{"two"})
+
+	// cap=100, no learning_new_word=1 words due → unseen should be preferred
+	// even though the seen word has an older due_date.
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a card")
+	}
+	if w.ID != idUnseen {
+		t.Errorf("want unseen word (id=%d), got id=%d — advanced seen word took priority", idUnseen, w.ID)
+	}
+}
+
+func TestAnnotateNewComponents_MarksNewAndExisting(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Seed decomposition data: 好 = 女 + 子
+	s.SeedHanziDecompositionWithDecompForTest(ctx, "好", "good", "⿰女子")
+	s.SeedHanziDecompositionForTest(ctx, "女", "woman")
+	s.SeedHanziDecompositionForTest(ctx, "子", "child")
+
+	results, err := s.GetHanziDecomposition(ctx, []rune("好"))
+	if err != nil {
+		t.Fatalf("GetHanziDecomposition: %v", err)
+	}
+	if len(results) == 0 || len(results[0].Components) == 0 {
+		t.Skip("no components found — decomposition not seeded correctly")
+	}
+
+	// Before any component_progress row: both should be new.
+	if err := s.AnnotateNewComponents(ctx, userID, results); err != nil {
+		t.Fatalf("AnnotateNewComponents (before insert): %v", err)
+	}
+	for _, comp := range results[0].Components {
+		if comp.IsNewComponent == nil || !*comp.IsNewComponent {
+			t.Errorf("component %q: want is_new_component=true before progress row, got %v", comp.Character, comp.IsNewComponent)
+		}
+	}
+
+	// Insert a progress row for 女 with total_attempts=0 (exists but never trained).
+	s.InsertComponentProgressForTest(ctx, userID, "女", time.Now())
+
+	results2, err := s.GetHanziDecomposition(ctx, []rune("好"))
+	if err != nil {
+		t.Fatalf("GetHanziDecomposition (2nd): %v", err)
+	}
+	if err := s.AnnotateNewComponents(ctx, userID, results2); err != nil {
+		t.Fatalf("AnnotateNewComponents (untrained row): %v", err)
+	}
+	for _, comp := range results2[0].Components {
+		if comp.IsNewComponent == nil || !*comp.IsNewComponent {
+			t.Errorf("component %q: want is_new_component=true when total_attempts=0, got %v", comp.Character, comp.IsNewComponent)
+		}
+	}
+
+	// Mark 女 as trained (total_attempts > 0).
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE component_progress SET total_attempts = 1 WHERE user_id = ? AND character = '女'`, userID,
+	); err != nil {
+		t.Fatalf("update total_attempts: %v", err)
+	}
+
+	results3, err := s.GetHanziDecomposition(ctx, []rune("好"))
+	if err != nil {
+		t.Fatalf("GetHanziDecomposition (3rd): %v", err)
+	}
+	if err := s.AnnotateNewComponents(ctx, userID, results3); err != nil {
+		t.Fatalf("AnnotateNewComponents (trained row): %v", err)
+	}
+	byChar := map[string]*bool{}
+	for _, comp := range results3[0].Components {
+		byChar[comp.Character] = comp.IsNewComponent
+	}
+	if v := byChar["女"]; v == nil || *v {
+		t.Errorf("component 女: want is_new_component=false after total_attempts=1, got %v", v)
+	}
+	if v := byChar["子"]; v == nil || !*v {
+		t.Errorf("component 子: want is_new_component=true (no progress row), got %v", v)
+	}
+}

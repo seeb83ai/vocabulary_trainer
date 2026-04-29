@@ -64,6 +64,7 @@ const I18N = {
     'success.title': 'All done for today!',
     'success.learnMore': 'Learn more words?',
     'success.alsoNew': 'Also introduce new words today',
+    'success.introduceNew': 'Introduce new words',
     'error.icon': '⚠️',
 
     // Card area
@@ -87,6 +88,8 @@ const I18N = {
     'result.addTranslation': 'Add "{answer}" as correct answer',
     'result.added': '✓ Added',
     'result.charBreakdown': 'Character breakdown',
+    'newWord.components': '(New) Components',
+    'newWord.componentNew': 'New',
     'result.flagReview': 'Flag for Review',
     'result.flagged': '✓ Flagged',
     'result.next': 'Next →',
@@ -462,6 +465,7 @@ const I18N = {
     'success.title': '今天全部完成！',
     'success.learnMore': '继续学习更多词汇？',
     'success.alsoNew': '同时引入今天的新词',
+    'success.introduceNew': '引入新词',
     'error.icon': '⚠️',
 
     // Card area
@@ -485,6 +489,8 @@ const I18N = {
     'result.addTranslation': '将"{answer}"添加为正确答案',
     'result.added': '✓ 已添加',
     'result.charBreakdown': '汉字拆解',
+    'newWord.components': '(新)部件',
+    'newWord.componentNew': '新',
     'result.flagReview': '标记复习',
     'result.flagged': '✓ 已标记',
     'result.next': '下一个 →',

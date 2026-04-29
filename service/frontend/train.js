@@ -161,9 +161,16 @@ async function loadNextCard() {
     if (latestStats.due_today === 0 && (latestStats.hmm_due_today || 0) === 0 && (latestStats.components_due_today || 0) === 0 && (!latestStats.new_available || skipNewWords)) {
       skipNewWords = false;
       setText('success-stats', t('stats.attemptsAndMistakes', { attempts: latestStats.today_attempts, mistakes: latestStats.today_mistakes }));
+      const allAdvanceDisabled = latestStats.available_to_advance < 10;
       document.querySelectorAll('.advance-btn').forEach(btn => {
         btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);
       });
+      const hasUnseen = (latestStats.new_available || 0) > 0;
+      if (allAdvanceDisabled && hasUnseen) {
+        show('introduce-new-btn');
+      } else {
+        hide('introduce-new-btn');
+      }
       show('success-state');
       return;
     }
@@ -221,6 +228,7 @@ async function loadNextCard() {
     $('new-word-en').innerHTML = transLines.join('<br>') || '—';
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
+    loadNewWordBreakdown(currentCard.prompt);
     await loadStats();
     return;
   }
@@ -707,6 +715,49 @@ async function loadDecomposition(zhText, containerId, toggleId) {
   } catch (_) {}
 }
 
+async function loadNewWordBreakdown(zhText) {
+  const container = $('new-word-breakdown');
+  container.innerHTML = '';
+  hide('new-word-breakdown');
+  try {
+    const langs = [userPrimaryLang, userSecondaryLang].filter(Boolean);
+    const langsParam = langs.join(',');
+    const data = await apiFetch(`/api/hanzi/decompose?chars=${encodeURIComponent(zhText)}&mark_new=true&langs=${encodeURIComponent(langsParam)}`);
+    if (!data || data.length === 0) return;
+    // Collect all semantic components that have a definition in at least one requested lang.
+    const comps = [];
+    for (const charData of data) {
+      for (const comp of (charData.components || [])) {
+        if (comp.is_semantic === false) continue;
+        const defs = comp.definitions || {};
+        const hasDef = langs.some(l => defs[l.toLowerCase()]) || comp.definition;
+        if (!hasDef) continue;
+        comps.push(comp);
+      }
+    }
+    if (comps.length === 0) return;
+    let html = `<div class="mt-5 text-left border-t border-gray-100 pt-4">`;
+    html += `<div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">${escHtml(t('newWord.components'))}</div>`;
+    html += `<div class="space-y-2">`;
+    for (const comp of comps) {
+      const isNew = comp.is_new_component === true;
+      const defs = comp.definitions || {};
+      const defParts = langs.map(l => defs[l.toLowerCase()]).filter(Boolean);
+      const defText = defParts.length > 0 ? defParts.join(' · ') : (comp.definition || '');
+      html += `<div class="flex items-center gap-3">`;
+      html += `<span class="text-2xl font-bold text-gray-800 w-8 shrink-0">${escHtml(comp.character)}</span>`;
+      html += `<span class="text-sm text-gray-600 flex-1">${escHtml(defText)}</span>`;
+      if (isNew) {
+        html += `<span class="text-xs font-semibold text-purple-600 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full shrink-0">${escHtml(t('newWord.componentNew'))}</span>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+    container.innerHTML = html;
+    show('new-word-breakdown');
+  } catch (_) {}
+}
+
 function applyLangChips(allLangs) {
   const desktopContainer = $('lang-chips-desktop');
   desktopContainer.querySelectorAll('.lang-pill').forEach(p => p.remove());
@@ -988,6 +1039,20 @@ document.addEventListener('DOMContentLoaded', () => {
       hide('success-state');
       loadNextCard();
     });
+  });
+
+  $('introduce-new-btn').addEventListener('click', async () => {
+    try {
+      await apiFetch('/api/quiz/advance', {
+        method: 'POST',
+        body: JSON.stringify({ count: 0, reset_new_cap: true }),
+      });
+    } catch (err) {
+      alert('Error: ' + err.message);
+      return;
+    }
+    hide('success-state');
+    loadNextCard();
   });
 
   // Re-render dynamic text when language changes

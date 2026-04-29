@@ -326,6 +326,13 @@ type HanziDecomposition struct {
 	// parent (semantic radical, ideographic part, or distinct pinyin); false
 	// means it is purely phonetic and can be faded in the UI.
 	IsSemantic *bool `json:"is_semantic,omitempty"`
+	// IsNewComponent is only populated when the decompose endpoint is called
+	// with mark_new=true. True means the component has no component_progress
+	// row for the requesting user yet (i.e. it would be added to training).
+	IsNewComponent *bool `json:"is_new_component,omitempty"`
+	// Definitions is populated on component entries when the decompose endpoint
+	// is called with a langs parameter. Keys are lowercase lang codes (e.g. "en", "de").
+	Definitions map[string]string `json:"definitions,omitempty"`
 }
 
 type HanziEtymology struct {

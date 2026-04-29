@@ -358,6 +358,14 @@ func (s *Store) InsertComponentProgressForTest(ctx context.Context, userID int64
 		userID, character, dueDate.UTC().Format("2006-01-02 15:04:05"))
 }
 
+// SetComponentAttemptsForTest sets total_attempts for a component_progress row.
+// Intended for use in tests only.
+func (s *Store) SetComponentAttemptsForTest(ctx context.Context, userID int64, character string, attempts int) {
+	s.db.ExecContext(ctx, //nolint:errcheck
+		`UPDATE component_progress SET total_attempts = ? WHERE user_id = ? AND character = ?`,
+		attempts, userID, character)
+}
+
 // ComponentListItem is one row in the component list view.
 type ComponentListItem struct {
 	Character     string  `json:"character"`
