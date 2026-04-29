@@ -243,9 +243,11 @@ func main() {
 		r.Get("/pinyin-quiz/audio/{filename}", pinyinQuizH.ServeAudio)
 		r.Get("/pinyin-quiz/tags", pinyinQuizH.ListTags)
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
+		r.Post("/hmm-quiz/skip", hmmQuizH.Skip)
 		r.Get("/components", componentH.List)
 		r.Post("/component/answer", componentH.Answer)
 		r.Post("/component/seen", componentH.Seen)
+		r.Post("/component/skip", componentH.Skip)
 		r.Get("/component/stats", componentH.Stats)
 		r.Get("/settings", settingsH.Get)
 		r.Patch("/settings", settingsH.Patch)
@@ -284,7 +286,7 @@ func main() {
 		renderTemplate(w, "stats", PageData{
 			Title:       "Stats — Vocab Trainer",
 			ActiveNav:   "stats",
-			ExtraHead:   template.HTML(`<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>`),
+			ExtraHead:   template.HTML(`<script src="chart.js"></script>`),
 			PageScripts: []string{"stats.js"},
 		})
 	})

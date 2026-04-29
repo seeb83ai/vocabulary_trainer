@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -93,6 +95,36 @@ func (h *ComponentHandler) Seen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Store.MarkComponentSeen(r.Context(), UserIDFromContext(r.Context()), req.Character); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Skip moves a component's due date forward by the requested number of days
+// (default 7) without recording an attempt.
+func (h *ComponentHandler) Skip(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Character string `json:"character"`
+		Days      int    `json:"days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Character = strings.TrimSpace(req.Character)
+	if req.Character == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	if req.Days <= 0 {
+		req.Days = 7
+	}
+	if err := h.Store.SkipComponent(r.Context(), UserIDFromContext(r.Context()), req.Character, req.Days); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "component not found")
+			return
+		}
 		internalError(w, err)
 		return
 	}

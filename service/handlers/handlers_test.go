@@ -89,6 +89,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN", SettingsHandler: settingsH}
 	componentH := &handlers.ComponentHandler{Store: s}
 	hmmH := &handlers.HMMHandler{Store: s}
+	hmmQuizH := &handlers.HMMQuizHandler{Store: s}
 
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(userID))
@@ -131,7 +132,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/components", componentH.List)
 	r.Post("/api/component/answer", componentH.Answer)
 	r.Post("/api/component/seen", componentH.Seen)
+	r.Post("/api/component/skip", componentH.Skip)
 	r.Get("/api/component/stats", componentH.Stats)
+	r.Post("/api/hmm-quiz/skip", hmmQuizH.Skip)
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
 	r.Get("/api/settings", settingsH.Get)
 	r.Patch("/api/settings", settingsH.Patch)
@@ -1169,6 +1172,29 @@ func TestQuizSkip_Valid(t *testing.T) {
 	}
 	if !afterP.DueDate.After(beforeP.DueDate) {
 		t.Error("skip should move due_date forward")
+	}
+}
+
+func TestQuizSkip_DaysOne(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	ctx := context.Background()
+
+	beforeP, _ := s.GetSM2Progress(ctx, id)
+
+	rec := do(t, r, "POST", "/api/quiz/skip", map[string]any{"word_id": id, "days": 1})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	afterP, _ := s.GetSM2Progress(ctx, id)
+	if afterP.TotalAttempts != beforeP.TotalAttempts {
+		t.Error("skip should not change total_attempts")
+	}
+	delta := afterP.DueDate.Sub(time.Now())
+	if delta < 23*time.Hour || delta > 25*time.Hour {
+		t.Errorf("days=1 should move due_date ~24h ahead, got delta=%v", delta)
 	}
 }
 
@@ -3603,6 +3629,125 @@ func TestComponentSeen_MarksFirstSeenDate(t *testing.T) {
 func TestComponentSeen_MissingCharacter(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodPost, "/api/component/seen", map[string]string{})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rec.Code)
+	}
+}
+
+// ── POST /api/component/skip ─────────────────────────────────────────────────
+
+func TestComponentSkip_DaysOne(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/skip", map[string]any{"character": "女", "days": 1})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 10)
+	if err != nil {
+		t.Fatalf("GetComponentList: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 component, got %d", len(items))
+	}
+	wantDate := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	if items[0].DueDate != wantDate {
+		t.Errorf("days=1: want due_date=%s, got %s", wantDate, items[0].DueDate)
+	}
+}
+
+func TestComponentSkip_NotFound(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodPost, "/api/component/skip", map[string]any{"character": "不存在", "days": 1})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestComponentSkip_MissingCharacter(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodPost, "/api/component/skip", map[string]any{})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rec.Code)
+	}
+}
+
+// ── POST /api/hmm-quiz/skip ──────────────────────────────────────────────────
+
+func TestHMMQuizSkip_DaysOne(t *testing.T) {
+	s := openTestDB(t)
+	seedHMMCard(t, s)
+	ctx := context.Background()
+
+	prog, err := s.GetHMMProgress(ctx, int64(2), models.HMMEntityActor, "n")
+	if err != nil || prog == nil {
+		// fall back: pick any actor with a progress row
+		actors, _ := s.GetHMMActors(ctx, int64(2))
+		var key string
+		for _, a := range actors {
+			if a.ActorName != "" {
+				key = a.Initial
+				break
+			}
+		}
+		if key == "" {
+			t.Skip("no named actor available")
+		}
+		prog, _ = s.GetHMMProgress(ctx, int64(2), models.HMMEntityActor, key)
+	}
+	if prog == nil {
+		t.Skip("no hmm progress row available")
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
+		"entity_type": models.HMMEntityActor,
+		"entity_key":  prog.EntityKey,
+		"days":        1,
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	after, err := s.GetHMMProgress(ctx, int64(2), models.HMMEntityActor, prog.EntityKey)
+	if err != nil || after == nil {
+		t.Fatalf("GetHMMProgress after skip: %v", err)
+	}
+	if after.TotalAttempts != prog.TotalAttempts {
+		t.Error("skip should not change total_attempts")
+	}
+	delta := after.DueDate.Sub(time.Now())
+	if delta < 23*time.Hour || delta > 25*time.Hour {
+		t.Errorf("days=1 should move due_date ~24h ahead, got delta=%v", delta)
+	}
+}
+
+func TestHMMQuizSkip_NotFound(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
+		"entity_type": models.HMMEntityActor,
+		"entity_key":  "zzz",
+		"days":        1,
+	})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestHMMQuizSkip_BadEntityType(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
+		"entity_type": "garbage",
+		"entity_key":  "x",
+		"days":        1,
+	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d", rec.Code)
 	}

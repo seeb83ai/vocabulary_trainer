@@ -6,8 +6,16 @@ async function isPasswordPwned(password) {
     const hex = Array.from(new Uint8Array(buf))
       .map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
     const prefix = hex.slice(0, 5), suffix = hex.slice(5);
-    const res = await fetch('https://api.pwnedpasswords.com/range/' + prefix,
-      { headers: { 'Add-Padding': 'true' } });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    let res;
+    try {
+      res = await fetch('https://api.pwnedpasswords.com/range/' + prefix,
+        { headers: { 'Add-Padding': 'true' }, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) return false;
     const text = await res.text();
     return text.split('\r\n').some(l => l.split(':')[0] === suffix);
   } catch {

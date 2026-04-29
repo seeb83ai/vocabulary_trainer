@@ -902,6 +902,29 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 
+  // Skip current card for today (advance due_date by 1 day).
+  $('skip-today-btn').addEventListener('click', async () => {
+    if (isSubmitted || !currentCard) return;
+    let url, body;
+    if (currentCard.card_type === 'hmm') {
+      url = '/api/hmm-quiz/skip';
+      body = { entity_type: currentCard.entity_type, entity_key: currentCard.entity_key, days: 1 };
+    } else if (currentCard.card_type === 'component') {
+      url = '/api/component/skip';
+      body = { character: currentCard.prompt, days: 1 };
+    } else {
+      url = '/api/quiz/skip';
+      body = { word_id: currentCard.word_id, days: 1 };
+    }
+    try {
+      await apiFetch(url, { method: 'POST', body: JSON.stringify(body) });
+    } catch (err) {
+      alert('Error: ' + err.message);
+      return;
+    }
+    loadNextCard();
+  });
+
   // Progressive mode: new word buttons
   $('new-word-skip-btn').addEventListener('click', async () => {
     if (!currentCard) return;

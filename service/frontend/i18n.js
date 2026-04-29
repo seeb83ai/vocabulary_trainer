@@ -68,6 +68,7 @@ const I18N = {
     // Card area
     'card.placeholder': 'Type your answer…',
     'card.submit': 'Submit',
+    'card.skipToday': 'Skip for Today',
     'card.readAloud': 'Read aloud',
 
     // New word area
@@ -464,6 +465,7 @@ const I18N = {
     // Card area
     'card.placeholder': '输入你的答案…',
     'card.submit': '提交',
+    'card.skipToday': '今天跳过',
     'card.readAloud': '朗读',
 
     // New word area

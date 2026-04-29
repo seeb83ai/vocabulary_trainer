@@ -140,6 +140,8 @@ The bonus is calculated as the minimum value needed to reach the target accuracy
 - **Got it** marks the word as introduced, enters the learning phase, and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.
 - **Skip** defers the word by 7 days. Does *not* count as seen — the word remains "new" and will be shown as an introduction again when it comes due.
 
+**Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day without recording an attempt. Useful when you want to clear a stuck card from today's queue but try again tomorrow.
+
 ## User settings
 
 Each user has a personal settings page (`/settings`) with:
@@ -447,7 +449,7 @@ vocabulary_trainer/
 |---|---|---|
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params) |
 | `POST` | `/api/quiz/answer` | Submit an answer |
-| `POST` | `/api/quiz/skip` | Skip a new word (defer due date by 7 days) |
+| `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7) |
 | `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
