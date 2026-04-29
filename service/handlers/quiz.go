@@ -292,9 +292,17 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
-			card.Translations = translations
-			// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
-			if (progress.LearningNewWord || forceMaskPinyin) && word.Pinyin != nil {
+		}
+		card.Translations = translations
+		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
+		if word.Pinyin != nil {
+			if forceMaskPinyin && !progress.LearningNewWord {
+				// Tier-based mask_pinyin: always show a level-0 masked hint (first char of each syllable).
+				if masked := sm2.MaskPinyin(*word.Pinyin, 0); masked != "" {
+					card.Pinyin = &masked
+				}
+			} else if progress.LearningNewWord {
+				// Intro-phase: fade out hint as correct answers accumulate.
 				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
 					card.Pinyin = &masked
 				}
@@ -416,12 +424,12 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
 
 	resp := models.AnswerResponse{
-		Correct:        correct,
-		CorrectAnswers: correctTexts,
-		ZhText:         zhWord.ZhText,
-		Pinyin:         zhWord.Pinyin,
-		Translations:   zhWord.Translations,
-		NextDue:        updated.DueDate,
+		Correct:         correct,
+		CorrectAnswers:  correctTexts,
+		ZhText:          zhWord.ZhText,
+		Pinyin:          zhWord.Pinyin,
+		Translations:    zhWord.Translations,
+		NextDue:         updated.DueDate,
 		IntervalDays:    updated.IntervalDays,
 		TotalCorrect:    updated.TotalCorrect,
 		TotalAttempts:   updated.TotalAttempts,
@@ -614,18 +622,18 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]int{
-		"due_today":              due,
-		"total":                  total,
-		"new_today":              newToday,
-		"max_new_per_day":        h.MaxNewPerDay,
-		"today_attempts":         todayAttempts,
-		"today_mistakes":         todayMistakes,
-		"available_to_advance":   availableToAdvance,
-		"new_available":          newAvailable,
-		"hmm_due_today":          hmmDueToday,
-		"hmm_total":              hmmTotal,
-		"components_due_today":   compDueToday,
-		"components_total":       compTotal,
+		"due_today":            due,
+		"total":                total,
+		"new_today":            newToday,
+		"max_new_per_day":      h.MaxNewPerDay,
+		"today_attempts":       todayAttempts,
+		"today_mistakes":       todayMistakes,
+		"available_to_advance": availableToAdvance,
+		"new_available":        newAvailable,
+		"hmm_due_today":        hmmDueToday,
+		"hmm_total":            hmmTotal,
+		"components_due_today": compDueToday,
+		"components_total":     compTotal,
 	})
 }
 
