@@ -200,3 +200,17 @@ Never rename or drop tables.
 | `dictionary.txt` | 2.5 MB hanzi dataset; only needed by `service/cmd/import-hanzi` |
 | `package-lock.json` | npm lockfile; never needed for code tasks |
 | `chinese_a1.txt` | Sample vocabulary import data; not needed for code tasks |
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary (needs-triage, needs-info, ready-for-agent, ready-for-human, wontfix). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
