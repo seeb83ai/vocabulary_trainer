@@ -136,6 +136,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	// Fetch component candidate (filtered to langs the user is currently training).
 	var compCard *struct {
 		Character   string
+		Pinyin      string
 		DueDate     time.Time
 		IsNew       bool
 		Definitions map[string]string
@@ -149,11 +150,13 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		if cc != nil {
 			compCard = &struct {
 				Character   string
+				Pinyin      string
 				DueDate     time.Time
 				IsNew       bool
 				Definitions map[string]string
 			}{
 				Character:   cc.Character,
+				Pinyin:      cc.Pinyin,
 				DueDate:     db.ParseDateTime(cc.Progress.DueDate),
 				IsNew:       cc.Progress.FirstSeenDate == nil,
 				Definitions: cc.Definitions,
@@ -187,9 +190,14 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	if compCard != nil {
 		serveComp := word == nil || compCard.DueDate.Before(progress.DueDate)
 		if serveComp {
+			var py *string
+			if compCard.Pinyin != "" {
+				py = &compCard.Pinyin
+			}
 			writeJSON(w, http.StatusOK, models.QuizCard{
 				CardType:    "component",
 				Prompt:      compCard.Character,
+				Pinyin:      py,
 				DueDate:     compCard.DueDate,
 				IsNew:       compCard.IsNew,
 				Definitions: compCard.Definitions,

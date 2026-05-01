@@ -239,6 +239,12 @@ async function loadNextCard() {
     hide('new-word-area');
     show('new-component-area');
     setText('new-component-char', currentCard.prompt);
+    if (currentCard.pinyin) {
+      setText('new-component-pinyin', currentCard.pinyin);
+      show('new-component-pinyin');
+    } else {
+      hide('new-component-pinyin');
+    }
     const defs = currentCard.definitions || {};
     $('new-component-defs').innerHTML = Object.entries(defs).map(([lang, def]) =>
       `<div class="flex items-baseline gap-2 p-3 bg-purple-50 border border-purple-100 rounded-xl">
@@ -262,7 +268,12 @@ function showCard() {
     setText('mode-label', t('component.modeLabel'));
     setText('prompt-word', currentCard.prompt);
     hide('play-btn');
-    hide('pinyin-hint');
+    if (currentCard.pinyin) {
+      setText('pinyin-hint', currentCard.pinyin);
+      show('pinyin-hint');
+    } else {
+      hide('pinyin-hint');
+    }
     hide('translations-hint');
     hide('hmm-type-badge');
     hide('hmm-actor-hint');

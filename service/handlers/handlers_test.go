@@ -3605,6 +3605,27 @@ func TestQuizNext_SeenComponentCard_IsNewFalse(t *testing.T) {
 	}
 }
 
+func TestQuizNext_ComponentCard_HasPinyin(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionWithPinyinForTest(ctx, "女", "woman", `["nv3"]`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if card["pinyin"] != "nǚ" {
+		t.Errorf("want pinyin=nǚ, got %v", card["pinyin"])
+	}
+}
+
 func TestComponentSeen_MarksFirstSeenDate(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

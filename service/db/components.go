@@ -69,6 +69,7 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 // componentCard is the internal representation (includes definitions per lang for answer checking).
 type componentCard struct {
 	Character   string
+	Pinyin      string            // tone-marked display string, e.g. "nǚ"
 	Definitions map[string]string // lowercase lang → definition
 	Progress    models.ComponentProgress
 }
@@ -99,10 +100,12 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 	var c componentCard
 	var dueDateStr string
 	var firstSeenDate sql.NullString
+	var pinyinJSON sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT cp.character, cp.due_date,
 		       cp.repetitions, cp.easiness, cp.interval_days,
-		       cp.total_correct, cp.total_attempts, cp.first_seen_date
+		       cp.total_correct, cp.total_attempts, cp.first_seen_date,
+		       hd.pinyin
 		FROM component_progress cp
 		JOIN hanzi_decomposition hd ON hd.character = cp.character
 		WHERE cp.user_id = ?
@@ -115,12 +118,25 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		&c.Character, &dueDateStr,
 		&c.Progress.Repetitions, &c.Progress.Easiness, &c.Progress.IntervalDays,
 		&c.Progress.TotalCorrect, &c.Progress.TotalAttempts, &firstSeenDate,
+		&pinyinJSON,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get next component card: %w", err)
+	}
+
+	if pinyinJSON.Valid {
+		readings := parsePinyinJSON(pinyinJSON.String)
+		parts := make([]string, 0, len(readings))
+		for _, r := range readings {
+			r = strings.ReplaceAll(r, "u:", "v") // normalise colon-ü notation
+			if syl, tone, err := sm2.ParsePinyinAnswer(r); err == nil {
+				parts = append(parts, sm2.NumberedToToneMark(syl, tone))
+			}
+		}
+		c.Pinyin = strings.Join(parts, " / ")
 	}
 
 	defs, err := s.GetComponentDefinitions(ctx, c.Character, langs)
@@ -329,6 +345,16 @@ func (s *Store) SeedHanziDecompositionForTest(ctx context.Context, character, de
 		`INSERT INTO hanzi_decomposition (character, definition) VALUES (?, ?)
 		 ON CONFLICT(character) DO UPDATE SET definition = excluded.definition`,
 		character, definition)
+	return err
+}
+
+// SeedHanziDecompositionWithPinyinForTest inserts a hanzi_decomposition row with
+// definition and a JSON-encoded pinyin array. Intended for use in tests only.
+func (s *Store) SeedHanziDecompositionWithPinyinForTest(ctx context.Context, character, definition, pinyinJSON string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition (character, definition, pinyin) VALUES (?, ?, ?)
+		 ON CONFLICT(character) DO UPDATE SET definition = excluded.definition, pinyin = excluded.pinyin`,
+		character, definition, pinyinJSON)
 	return err
 }
 

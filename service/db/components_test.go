@@ -232,6 +232,25 @@ func TestInitComponentsForWord_PinyinFallbackDrop(t *testing.T) {
 	}
 }
 
+func TestGetNextComponentCard_IncludesPinyin(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", `["nv3"]`)
+	past := time.Now().Add(-time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("want a card, got nil")
+	}
+	if card.Pinyin != "nǚ" {
+		t.Errorf("want Pinyin=nǚ, got %q", card.Pinyin)
+	}
+}
+
 func TestInitComponentsForWord_EtymologyIdempotent(t *testing.T) {
 	s := openTestDB(t)
 	ety := `{"type":"pictophonetic","phonetic":"马","semantic":"女"}`
