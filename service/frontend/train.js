@@ -655,6 +655,37 @@ function showComponentResult(resp) {
   loadStats();
 }
 
+function numberedToToneMark(pinyin) {
+  if (!pinyin) return pinyin;
+  const s = pinyin.toLowerCase();
+  const last = s[s.length - 1];
+  if (last < '1' || last > '5') return s;
+  const tone = parseInt(last, 10);
+  let syllable = s.slice(0, -1).replace(/u:/g, 'ü').replace(/v/g, 'ü');
+  if (tone === 5) return syllable;
+  const toneMarks = {
+    'a': ['ā','á','ǎ','à'], 'e': ['ē','é','ě','è'], 'i': ['ī','í','ǐ','ì'],
+    'o': ['ō','ó','ǒ','ò'], 'u': ['ū','ú','ǔ','ù'], 'ü': ['ǖ','ǘ','ǚ','ǜ'],
+  };
+  const runes = [...syllable];
+  let idx = runes.findIndex(r => r === 'a' || r === 'e');
+  if (idx < 0) idx = runes.findIndex((r, i) => r === 'o' && runes[i + 1] === 'u');
+  if (idx < 0) {
+    const vowels = new Set(['a','e','i','o','u','ü']);
+    for (let i = runes.length - 1; i >= 0; i--) {
+      if (vowels.has(runes[i])) { idx = i; break; }
+    }
+  }
+  if (idx < 0 || !toneMarks[runes[idx]]) return syllable;
+  runes[idx] = toneMarks[runes[idx]][tone - 1];
+  return runes.join('');
+}
+
+function formatComponentPinyin(pinyinArr) {
+  if (!pinyinArr || pinyinArr.length === 0) return '';
+  return pinyinArr.map(numberedToToneMark).join(' / ');
+}
+
 function renderCharDecomposition(charData) {
   let html = `<div class="p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">`;
   html += `<div class="flex items-baseline gap-2 mb-1">`;
@@ -679,6 +710,10 @@ function renderCharDecomposition(charData) {
       const title = isPhonetic ? ' title="Phonetic component (sound hint only)"' : '';
       html += `<div class="px-2 py-1 bg-white border border-gray-200 rounded-lg text-center min-w-[3rem]${dimClass}"${title}>`;
       html += `<div class="text-lg font-medium">${escHtml(comp.character)}</div>`;
+      const compPinyin = formatComponentPinyin(comp.pinyin);
+      if (compPinyin) {
+        html += `<div class="text-xs text-blue-400 leading-tight">${escHtml(compPinyin)}</div>`;
+      }
       if (comp.definition) {
         html += `<div class="text-xs text-gray-400 leading-tight">${escHtml(comp.definition)}</div>`;
       }
@@ -744,9 +779,14 @@ async function loadNewWordBreakdown(zhText) {
       const defs = comp.definitions || {};
       const defParts = langs.map(l => defs[l.toLowerCase()]).filter(Boolean);
       const defText = defParts.length > 0 ? defParts.join(' · ') : (comp.definition || '');
+      const rowPinyin = formatComponentPinyin(comp.pinyin);
       html += `<div class="flex items-center gap-3">`;
       html += `<span class="text-2xl font-bold text-gray-800 w-8 shrink-0">${escHtml(comp.character)}</span>`;
-      html += `<span class="text-sm text-gray-600 flex-1">${escHtml(defText)}</span>`;
+      html += `<span class="text-sm text-gray-600 flex-1">`;
+      if (rowPinyin) {
+        html += `<span class="text-blue-400 mr-1">${escHtml(rowPinyin)}</span>`;
+      }
+      html += `${escHtml(defText)}</span>`;
       if (isNew) {
         html += `<span class="text-xs font-semibold text-purple-600 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full shrink-0">${escHtml(t('newWord.componentNew'))}</span>`;
       }

@@ -275,3 +275,146 @@ describe('allTransTexts', () => {
     expect(texts).toEqual([]);
   });
 });
+
+// ── numberedToToneMark ────────────────────────────────────────────────────────
+
+function numberedToToneMark(pinyin) {
+  if (!pinyin) return pinyin;
+  const s = pinyin.toLowerCase();
+  const last = s[s.length - 1];
+  if (last < '1' || last > '5') return s;
+  const tone = parseInt(last, 10);
+  let syllable = s.slice(0, -1).replace(/u:/g, 'ü').replace(/v/g, 'ü');
+  if (tone === 5) return syllable;
+  const toneMarks = {
+    'a': ['ā','á','ǎ','à'], 'e': ['ē','é','ě','è'], 'i': ['ī','í','ǐ','ì'],
+    'o': ['ō','ó','ǒ','ò'], 'u': ['ū','ú','ǔ','ù'], 'ü': ['ǖ','ǘ','ǚ','ǜ'],
+  };
+  const runes = [...syllable];
+  let idx = runes.findIndex(r => r === 'a' || r === 'e');
+  if (idx < 0) idx = runes.findIndex((r, i) => r === 'o' && runes[i + 1] === 'u');
+  if (idx < 0) {
+    const vowels = new Set(['a','e','i','o','u','ü']);
+    for (let i = runes.length - 1; i >= 0; i--) {
+      if (vowels.has(runes[i])) { idx = i; break; }
+    }
+  }
+  if (idx < 0 || !toneMarks[runes[idx]]) return syllable;
+  runes[idx] = toneMarks[runes[idx]][tone - 1];
+  return runes.join('');
+}
+
+describe('numberedToToneMark', () => {
+  it('applies tone 3 to a (ba3 → bǎ)', () => {
+    expect(numberedToToneMark('ba3')).toBe('bǎ');
+  });
+
+  it('applies tone 1 to a in multi-vowel syllable (hao1 → hāo)', () => {
+    expect(numberedToToneMark('hao1')).toBe('hāo');
+  });
+
+  it('applies tone 2 to e (he2 → hé)', () => {
+    expect(numberedToToneMark('he2')).toBe('hé');
+  });
+
+  it('applies tone 4 to o in ou (dou4 → dòu)', () => {
+    expect(numberedToToneMark('dou4')).toBe('dòu');
+  });
+
+  it('applies tone 3 to last vowel when no a/e/ou (ni3 → nǐ)', () => {
+    expect(numberedToToneMark('ni3')).toBe('nǐ');
+  });
+
+  it('applies tone 4 to last vowel u (lu4 → lù)', () => {
+    expect(numberedToToneMark('lu4')).toBe('lù');
+  });
+
+  it('treats v as ü and applies tone mark (lv3 → lǚ)', () => {
+    expect(numberedToToneMark('lv3')).toBe('lǚ');
+  });
+
+  it('treats v as ü and applies tone mark (nv3 → nǚ)', () => {
+    expect(numberedToToneMark('nv3')).toBe('nǚ');
+  });
+
+  it('treats colon notation as ü (nu:3 → nǚ)', () => {
+    expect(numberedToToneMark('nu:3')).toBe('nǚ');
+  });
+
+  it('returns bare syllable with no mark for tone 5 (ma5 → ma)', () => {
+    expect(numberedToToneMark('ma5')).toBe('ma');
+  });
+
+  it('normalizes v to ü for tone 5 (lv5 → lü)', () => {
+    expect(numberedToToneMark('lv5')).toBe('lü');
+  });
+
+  it('applies tone 1 (zhong1 → zhōng)', () => {
+    expect(numberedToToneMark('zhong1')).toBe('zhōng');
+  });
+
+  it('applies tone 2 (ren2 → rén)', () => {
+    expect(numberedToToneMark('ren2')).toBe('rén');
+  });
+
+  it('applies tone 4 (shi4 → shì)', () => {
+    expect(numberedToToneMark('shi4')).toBe('shì');
+  });
+
+  it('returns null for null input', () => {
+    expect(numberedToToneMark(null)).toBe(null);
+  });
+
+  it('returns undefined for undefined input', () => {
+    expect(numberedToToneMark(undefined)).toBe(undefined);
+  });
+
+  it('returns string unchanged when no tone digit at end', () => {
+    expect(numberedToToneMark('ba')).toBe('ba');
+  });
+
+  it('lowercases uppercase input (BA3 → bǎ)', () => {
+    expect(numberedToToneMark('BA3')).toBe('bǎ');
+  });
+});
+
+// ── formatComponentPinyin ─────────────────────────────────────────────────────
+
+function formatComponentPinyin(pinyinArr) {
+  if (!pinyinArr || pinyinArr.length === 0) return '';
+  return pinyinArr.map(numberedToToneMark).join(' / ');
+}
+
+describe('formatComponentPinyin', () => {
+  it('returns empty string for null', () => {
+    expect(formatComponentPinyin(null)).toBe('');
+  });
+
+  it('returns empty string for undefined', () => {
+    expect(formatComponentPinyin(undefined)).toBe('');
+  });
+
+  it('returns empty string for empty array', () => {
+    expect(formatComponentPinyin([])).toBe('');
+  });
+
+  it('converts a single-element array', () => {
+    expect(formatComponentPinyin(['ba3'])).toBe('bǎ');
+  });
+
+  it('joins multiple readings with " / "', () => {
+    expect(formatComponentPinyin(['ba3', 'ba2'])).toBe('bǎ / bá');
+  });
+
+  it('handles lv3 (ü via v) in an array', () => {
+    expect(formatComponentPinyin(['lv3'])).toBe('lǚ');
+  });
+
+  it('handles nu:3 (ü via colon) in an array', () => {
+    expect(formatComponentPinyin(['nu:3'])).toBe('nǚ');
+  });
+
+  it('handles tone 5 neutral in an array', () => {
+    expect(formatComponentPinyin(['ma5'])).toBe('ma');
+  });
+});
