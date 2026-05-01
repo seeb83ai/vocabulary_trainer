@@ -82,6 +82,7 @@ let missingLangFilter = '';
 let currentView = 'words'; // 'words' | 'components'
 let compPage = 1;
 let compSearchTimer = null;
+let compReviewFilterActive = false;
 
 // Import tab state
 let importSelectedTag = '';
@@ -304,8 +305,74 @@ function openEditForm(word) {
     hmmContainer.innerHTML = '';
   }
 
+  loadComponentsForEdit(word.zh_text);
+
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
   $('form-zh').focus();
+}
+
+async function loadComponentsForEdit(zhText) {
+  const section = $('components-edit-section');
+  section.innerHTML = '';
+  section.classList.add('hidden');
+  if (!zhText) return;
+
+  const langs = [primaryLang];
+  if (secondaryLang) langs.push(secondaryLang);
+  const langParam = langs.join(',');
+
+  let data;
+  try {
+    data = await apiFetch(`/api/hanzi/decompose?chars=${encodeURIComponent(zhText)}&langs=${encodeURIComponent(langParam)}`);
+  } catch (_) {
+    return;
+  }
+
+  const compSet = new Map();
+  for (const entry of (data || [])) {
+    for (const comp of (entry.components || [])) {
+      if (!compSet.has(comp.character)) compSet.set(comp.character, comp.definitions || {});
+    }
+  }
+  if (compSet.size === 0) return;
+
+  const langName = l => ({ en: 'EN', de: 'DE', fr: 'FR', es: 'ES', zh: 'ZH' }[l] || l.toUpperCase());
+  let html = `<div class="border border-gray-200 rounded-xl p-4">
+    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">${escHtml(t('vocab.components') || 'Components')}</div>
+    <div class="space-y-2">`;
+  for (const [char, defs] of compSet) {
+    html += `<div class="flex items-start gap-3">
+      <span class="text-xl font-bold text-gray-800 w-8 shrink-0 pt-1">${escHtml(char)}</span>
+      <div class="flex flex-wrap gap-2 flex-1">`;
+    for (const lang of langs) {
+      const val = (defs[lang] || defs[lang.toUpperCase()] || '');
+      html += `<div class="flex items-center gap-1">
+        <span class="text-xs font-semibold text-gray-400 w-6">${escHtml(langName(lang))}</span>
+        <input type="text" class="comp-def-input border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+               data-char="${escHtml(char)}" data-lang="${escHtml(lang)}" value="${escHtml(val)}" placeholder="${escHtml(langName(lang))} definition">
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+  html += `</div></div>`;
+  section.innerHTML = html;
+  section.classList.remove('hidden');
+
+  section.querySelectorAll('.comp-def-input').forEach(input => {
+    input.addEventListener('blur', async () => {
+      const char = input.dataset.char;
+      const lang = input.dataset.lang;
+      const definition = input.value.trim();
+      try {
+        await apiFetch(`/api/components/${encodeURIComponent(char)}/translation`, {
+          method: 'PUT',
+          body: JSON.stringify({ lang, definition }),
+        });
+      } catch (err) {
+        console.error('Failed to save component translation:', err);
+      }
+    });
+  });
 }
 
 function resetForm() {
@@ -315,6 +382,8 @@ function resetForm() {
   $('form-pinyin').value = '';
   hide('form-cancel-btn');
   hide('hanziway-link');
+  const compSection = $('components-edit-section');
+  if (compSection) { compSection.innerHTML = ''; compSection.classList.add('hidden'); }
   $('en-inputs-container').innerHTML = '';
   addEnInput('');
   $('de-inputs-container').innerHTML = '';
@@ -685,6 +754,16 @@ function updateReviewFilterBtn() {
   }
 }
 
+function updateCompReviewFilterBtn() {
+  const btn = $('comp-review-filter-btn');
+  if (!btn) return;
+  if (compReviewFilterActive) {
+    btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-orange-400 bg-orange-50 text-orange-600';
+  } else {
+    btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100';
+  }
+}
+
 function updateDueFilterBtns() {
   ['today', 'tomorrow'].forEach(key => {
     const btn = $('due-' + key + '-btn');
@@ -835,6 +914,7 @@ function switchView(view) {
   $('components-table-wrap').classList.toggle('hidden', isWords);
   $('word-filters-row').classList.toggle('hidden', !isWords);
   $('filter-tier-bar').classList.toggle('hidden', !isWords);
+  $('component-filters-row').classList.toggle('hidden', isWords);
   if (isWords) renderFilterTags(); else $('filter-tags-bar').classList.add('hidden');
 
   $('view-words-btn').className = `px-3 py-1.5 transition ${isWords ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`;
@@ -851,6 +931,7 @@ async function loadComponents() {
     page: compPage,
     per_page: perPage,
   });
+  if (compReviewFilterActive) params.set('review', '1');
   try {
     const data = await apiFetch(`/api/components?${params}`);
     renderComponentTable(data.components);
@@ -1281,6 +1362,13 @@ document.addEventListener('DOMContentLoaded', () => {
     updateReviewFilterBtn();
     currentPage = 1;
     loadWords();
+  });
+
+  $('comp-review-filter-btn').addEventListener('click', () => {
+    compReviewFilterActive = !compReviewFilterActive;
+    updateCompReviewFilterBtn();
+    compPage = 1;
+    loadComponents();
   });
 
   ['today', 'tomorrow'].forEach(key => {

@@ -81,16 +81,11 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 	whereFrags := []string{}
 	langArgs := []any{}
 	for _, lang := range langs {
-		switch strings.ToUpper(lang) {
-		case "EN":
-			whereFrags = append(whereFrags, "(hd.definition IS NOT NULL AND hd.definition != '')")
-		default:
-			whereFrags = append(whereFrags, "EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = ?)")
-			langArgs = append(langArgs, strings.ToUpper(lang))
-		}
+		whereFrags = append(whereFrags, "EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = ? AND definition != '')")
+		langArgs = append(langArgs, strings.ToUpper(lang))
 	}
 	if len(whereFrags) == 0 {
-		whereFrags = []string{"(hd.definition IS NOT NULL AND hd.definition != '')"}
+		whereFrags = []string{"EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = 'EN' AND definition != '')"}
 	}
 	langFilter := strings.Join(whereFrags, " OR ")
 
@@ -104,7 +99,6 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		       cp.repetitions, cp.easiness, cp.interval_days,
 		       cp.total_correct, cp.total_attempts, cp.first_seen_date
 		FROM component_progress cp
-		JOIN hanzi_decomposition hd ON hd.character = cp.character
 		WHERE cp.user_id = ?
 		  AND (`+langFilter+`)
 		  AND cp.due_date < datetime('now', '+1 day')
@@ -138,7 +132,7 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 }
 
 // GetComponentDefinitions returns definitions for a character keyed by lowercase lang code.
-// "en" is read from hanzi_decomposition.definition; other langs from hanzi_decomposition_translation.
+// All langs (including EN) are read from hanzi_decomposition_translation.
 // Missing or empty definitions are omitted from the result.
 func (s *Store) GetComponentDefinitions(ctx context.Context, character string, langs []string) (map[string]string, error) {
 	defs := make(map[string]string)
@@ -146,17 +140,10 @@ func (s *Store) GetComponentDefinitions(ctx context.Context, character string, l
 		langUpper := strings.ToUpper(lang)
 		langLower := strings.ToLower(lang)
 		var def string
-		var err error
-		if langUpper == "EN" {
-			err = s.db.QueryRowContext(ctx,
-				`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`, character,
-			).Scan(&def)
-		} else {
-			err = s.db.QueryRowContext(ctx,
-				`SELECT COALESCE(definition, '') FROM hanzi_decomposition_translation WHERE character = ? AND lang = ?`,
-				character, langUpper,
-			).Scan(&def)
-		}
+		err := s.db.QueryRowContext(ctx,
+			`SELECT COALESCE(definition, '') FROM hanzi_decomposition_translation WHERE character = ? AND lang = ?`,
+			character, langUpper,
+		).Scan(&def)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, fmt.Errorf("get %s definition for %q: %w", langLower, character, err)
 		}
@@ -165,6 +152,26 @@ func (s *Store) GetComponentDefinitions(ctx context.Context, character string, l
 		}
 	}
 	return defs, nil
+}
+
+// StoreComponentTranslation upserts a translation for a hanzi component character.
+func (s *Store) StoreComponentTranslation(character, lang, definition string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO hanzi_decomposition_translation (character, lang, definition)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		character, strings.ToUpper(lang), definition,
+	)
+	return err
+}
+
+// MarkComponentForReview sets needs_review = 1 for a component_progress row.
+func (s *Store) MarkComponentForReview(userID int64, character string) error {
+	_, err := s.db.Exec(
+		`UPDATE component_progress SET needs_review = 1 WHERE user_id = ? AND character = ?`,
+		userID, character,
+	)
+	return err
 }
 
 // MarkComponentSeen sets first_seen_date = date('now') if it is currently NULL.
@@ -322,24 +329,36 @@ func (s *Store) SeedHanziTranslationForTest(ctx context.Context, character, lang
 	return err
 }
 
-// SeedHanziDecompositionForTest inserts a hanzi_decomposition row with definition.
-// Intended for use in tests only.
+// SeedHanziDecompositionForTest inserts a hanzi_decomposition row with definition
+// and also seeds the EN translation table entry. Intended for use in tests only.
 func (s *Store) SeedHanziDecompositionForTest(ctx context.Context, character, definition string) error {
-	_, err := s.db.ExecContext(ctx,
+	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO hanzi_decomposition (character, definition) VALUES (?, ?)
 		 ON CONFLICT(character) DO UPDATE SET definition = excluded.definition`,
+		character, definition); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
+		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
 		character, definition)
 	return err
 }
 
 // SeedHanziDecompositionWithDecompForTest inserts a hanzi_decomposition row with
-// definition and decomposition string (IDS operators + component characters).
+// definition and decomposition string, and also seeds the EN translation table entry.
 // Intended for use in tests only.
 func (s *Store) SeedHanziDecompositionWithDecompForTest(ctx context.Context, character, definition, decomposition string) error {
-	_, err := s.db.ExecContext(ctx,
+	if _, err := s.db.ExecContext(ctx,
 		`INSERT INTO hanzi_decomposition (character, definition, decomposition) VALUES (?, ?, ?)
 		 ON CONFLICT(character) DO UPDATE SET definition = excluded.definition, decomposition = excluded.decomposition`,
-		character, definition, decomposition)
+		character, definition, decomposition); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
+		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		character, definition)
 	return err
 }
 
@@ -380,8 +399,9 @@ type ComponentListItem struct {
 }
 
 // GetComponentList returns a paginated list of component_progress rows for a user,
-// optionally filtered by a search string matched against character or EN definition.
-func (s *Store) GetComponentList(ctx context.Context, userID int64, search string, page, perPage int) ([]ComponentListItem, int, error) {
+// optionally filtered by a search string matched against character or EN definition,
+// and optionally restricted to rows with needs_review = 1.
+func (s *Store) GetComponentList(ctx context.Context, userID int64, search string, page, perPage int, reviewOnly bool) ([]ComponentListItem, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -390,9 +410,12 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 	var args []any
 	whereExtra := ""
 	if search != "" {
-		whereExtra = " AND (cp.character LIKE ? OR LOWER(hd.definition) LIKE LOWER(?))"
+		whereExtra += " AND (cp.character LIKE ? OR LOWER(hdt_en.definition) LIKE LOWER(?))"
 		like := "%" + search + "%"
 		args = append(args, like, like)
+	}
+	if reviewOnly {
+		whereExtra += " AND cp.needs_review = 1"
 	}
 
 	countArgs := append([]any{userID}, args...)
@@ -400,7 +423,8 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 	err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM component_progress cp
-		JOIN hanzi_decomposition hd ON hd.character = cp.character
+		LEFT JOIN hanzi_decomposition_translation hdt_en
+		       ON hdt_en.character = cp.character AND hdt_en.lang = 'EN'
 		WHERE cp.user_id = ?`+whereExtra,
 		countArgs...,
 	).Scan(&total)
@@ -412,16 +436,17 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 	listArgs = append(listArgs, perPage, offset)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT cp.character,
-		       COALESCE(hd.definition, '') AS def_en,
-		       COALESCE(hdt.definition, '') AS def_de,
+		       COALESCE(hdt_en.definition, '') AS def_en,
+		       COALESCE(hdt_de.definition, '') AS def_de,
 		       date(cp.due_date) AS due_date,
 		       cp.total_correct, cp.total_attempts,
 		       cp.easiness, cp.interval_days,
 		       cp.first_seen_date
 		FROM component_progress cp
-		JOIN hanzi_decomposition hd ON hd.character = cp.character
-		LEFT JOIN hanzi_decomposition_translation hdt
-		       ON hdt.character = cp.character AND hdt.lang = 'DE'
+		LEFT JOIN hanzi_decomposition_translation hdt_en
+		       ON hdt_en.character = cp.character AND hdt_en.lang = 'EN'
+		LEFT JOIN hanzi_decomposition_translation hdt_de
+		       ON hdt_de.character = cp.character AND hdt_de.lang = 'DE'
 		WHERE cp.user_id = ?`+whereExtra+`
 		ORDER BY cp.due_date ASC
 		LIMIT ? OFFSET ?`,
@@ -459,9 +484,8 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 func (s *Store) GetComponentCounts(ctx context.Context, userID int64) (dueToday, total int, err error) {
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM component_progress cp
-		 JOIN hanzi_decomposition hd ON hd.character = cp.character
 		 WHERE cp.user_id = ?
-		   AND hd.definition IS NOT NULL AND hd.definition != ''
+		   AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = 'EN' AND definition != '')
 		   AND cp.due_date < date('now', '+1 day')`,
 		userID,
 	).Scan(&dueToday)

@@ -643,9 +643,25 @@ function showComponentResult(resp) {
   hide('result-hmm');
   hide('result-decompose');
   hide('result-decompose-content');
-  hide('needs-review-btn');
   hide('bucket-info');
   hide('streak-info');
+
+  const reviewBtn = $('needs-review-btn');
+  reviewBtn.textContent = t('result.flagReview');
+  reviewBtn.disabled = false;
+  reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
+  reviewBtn.onclick = async () => {
+    reviewBtn.disabled = true;
+    try {
+      await apiFetch(`/api/components/${encodeURIComponent(currentCard.prompt)}/review`, { method: 'POST' });
+      reviewBtn.textContent = t('result.flagged');
+      reviewBtn.className = 'w-full mb-3 border border-orange-200 text-orange-400 font-medium py-2 rounded-xl text-sm';
+    } catch (err) {
+      reviewBtn.disabled = false;
+      alert('Could not flag component: ' + err.message);
+    }
+  };
+  show('needs-review-btn');
 
   setText('next-due-info', t('result.nextReview', { n: resp.interval_days }));
   const eff = resp.total_correct;

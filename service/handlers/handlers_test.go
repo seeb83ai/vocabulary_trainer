@@ -135,6 +135,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/component/seen", componentH.Seen)
 	r.Post("/api/component/skip", componentH.Skip)
 	r.Get("/api/component/stats", componentH.Stats)
+	r.Post("/api/components/{char}/review", componentH.Review)
+	r.Put("/api/components/{char}/translation", componentH.UpdateTranslation)
 	r.Get("/api/hanzi/decompose", hanziH.Decompose)
 	r.Post("/api/hmm-quiz/skip", hmmQuizH.Skip)
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
@@ -3652,7 +3654,7 @@ func TestComponentSkip_DaysOne(t *testing.T) {
 		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
 	}
 
-	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 10)
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 10, false)
 	if err != nil {
 		t.Fatalf("GetComponentList: %v", err)
 	}
@@ -4157,5 +4159,113 @@ func TestDecompose_Langs_PopulatesDefinitions(t *testing.T) {
 	}
 	if defs := byChar["女"]; defs["de"] != "Frau" {
 		t.Errorf("女 DE: want %q, got %q", "Frau", defs["de"])
+	}
+}
+
+// ── Component review ──────────────────────────────────────────────────────────
+
+func TestComponentReview_Sets204(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/components/女/review", nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify via reviewOnly filter — only returns flagged components.
+	items, total, err := s.GetComponentList(ctx, int64(2), "", 1, 20, true)
+	if err != nil {
+		t.Fatalf("GetComponentList: %v", err)
+	}
+	if total != 1 || len(items) == 0 || items[0].Character != "女" {
+		t.Errorf("want 女 flagged, got total=%d items=%v", total, items)
+	}
+}
+
+// ── Component translation update ──────────────────────────────────────────────
+
+func TestComponentUpdateTranslation_Sets204(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPut, "/api/components/水/translation", map[string]string{
+		"lang":       "de",
+		"definition": "Wasser",
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	defs, err := s.GetComponentDefinitions(ctx, "水", []string{"de"})
+	if err != nil {
+		t.Fatalf("GetComponentDefinitions: %v", err)
+	}
+	if defs["de"] != "Wasser" {
+		t.Errorf("want de=Wasser, got %q", defs["de"])
+	}
+}
+
+func TestComponentUpdateTranslation_MissingLang(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPut, "/api/components/水/translation", map[string]string{
+		"definition": "Wasser",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── Component list review filter ──────────────────────────────────────────────
+
+func TestComponentList_ReviewFilter(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "日", "sun"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	past := time.Now().Add(-time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.InsertComponentProgressForTest(ctx, int64(2), "日", past)
+	if err := s.MarkComponentForReview(int64(2), "女"); err != nil {
+		t.Fatalf("MarkComponentForReview: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components?review=1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Components []map[string]any `json:"components"`
+		Total      int              `json:"total"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 1 {
+		t.Errorf("want total=1 with review filter, got %d", resp.Total)
+	}
+	if len(resp.Components) != 1 {
+		t.Errorf("want 1 component, got %d", len(resp.Components))
+	}
+	if char, _ := resp.Components[0]["character"].(string); char != "女" {
+		t.Errorf("want character=女, got %q", char)
 	}
 }
