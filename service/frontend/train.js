@@ -144,7 +144,7 @@ async function loadNextCard() {
   const reviewBtn = $('needs-review-btn');
   reviewBtn.textContent = t('result.flagReview');
   reviewBtn.disabled = false;
-  reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
+  reviewBtn.className = 'w-1/2 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
   reviewBtn.onclick = null;
 
   // Fetch fresh stats first. The backend's GetNextCard may return non-due
@@ -488,18 +488,22 @@ async function submitAnswer(e) {
     const reviewBtn = $('needs-review-btn');
     reviewBtn.textContent = t('result.flagReview');
     reviewBtn.disabled = false;
-    reviewBtn.className = 'w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
+    reviewBtn.className = 'w-1/2 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
     reviewBtn.onclick = async () => {
       reviewBtn.disabled = true;
       try {
         await apiFetch(`/api/words/${currentCard.word_id}/review`, { method: 'POST' });
         reviewBtn.textContent = t('result.flagged');
-        reviewBtn.className = 'w-full mb-3 border border-orange-200 text-orange-400 font-medium py-2 rounded-xl text-sm';
+        reviewBtn.className = 'w-1/2 border border-orange-200 text-orange-400 font-medium py-2 rounded-xl text-sm';
       } catch (err) {
         reviewBtn.disabled = false;
         alert('Could not flag word: ' + err.message);
       }
     };
+
+    const editBtn = $('edit-card-btn');
+    editBtn.onclick = () => window.open(`/vocab?edit=${currentCard.word_id}`, '_blank');
+    show('review-edit-row');
 
     loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
 
@@ -577,7 +581,7 @@ function showHMMResult(resp) {
   hide('result-hmm');
   hide('result-decompose');
   hide('result-decompose-content');
-  hide('needs-review-btn');
+  hide('review-edit-row');
 
   if (resp.learning) {
     setText('next-due-info', t('pinyin.learning', { n: 3 }));
@@ -643,9 +647,28 @@ function showComponentResult(resp) {
   hide('result-hmm');
   hide('result-decompose');
   hide('result-decompose-content');
-  hide('needs-review-btn');
   hide('bucket-info');
   hide('streak-info');
+
+  const reviewBtn = $('needs-review-btn');
+  reviewBtn.textContent = t('result.flagReview');
+  reviewBtn.disabled = false;
+  reviewBtn.className = 'w-1/2 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
+  reviewBtn.onclick = async () => {
+    reviewBtn.disabled = true;
+    try {
+      await apiFetch(`/api/components/${encodeURIComponent(currentCard.prompt)}/review`, { method: 'POST' });
+      reviewBtn.textContent = t('result.flagged');
+      reviewBtn.className = 'w-1/2 border border-orange-200 text-orange-400 font-medium py-2 rounded-xl text-sm';
+    } catch (err) {
+      reviewBtn.disabled = false;
+      alert('Could not flag component: ' + err.message);
+    }
+  };
+
+  const editBtn = $('edit-card-btn');
+  editBtn.onclick = () => window.open(`/vocab?editComp=${encodeURIComponent(currentCard.prompt)}`, '_blank');
+  show('review-edit-row');
 
   setText('next-due-info', t('result.nextReview', { n: resp.interval_days }));
   const eff = resp.total_correct;
