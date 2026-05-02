@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -69,6 +70,7 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 // componentCard is the internal representation (includes definitions per lang for answer checking).
 type componentCard struct {
 	Character   string
+	Pinyin      string
 	Definitions map[string]string // lowercase lang → definition
 	Progress    models.ComponentProgress
 }
@@ -128,6 +130,9 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		return nil, err
 	}
 	c.Definitions = defs
+	var rawPinyin sql.NullString
+	_ = s.db.QueryRowContext(ctx, `SELECT pinyin FROM hanzi_decomposition WHERE character = ?`, c.Character).Scan(&rawPinyin)
+	c.Pinyin = joinPinyinJSON(rawPinyin.String)
 	c.Progress.UserID = userID
 	c.Progress.Character = c.Character
 	c.Progress.DueDate = dueDateStr
@@ -343,6 +348,16 @@ func (s *Store) SeedHanziDecompositionWithDecompForTest(ctx context.Context, cha
 	return err
 }
 
+// SeedHanziDecompositionWithPinyinForTest inserts a hanzi_decomposition row with
+// definition and a JSON-encoded pinyin array. Intended for use in tests only.
+func (s *Store) SeedHanziDecompositionWithPinyinForTest(ctx context.Context, character, definition, pinyinJSON string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition (character, definition, pinyin) VALUES (?, ?, ?)
+		 ON CONFLICT(character) DO UPDATE SET definition = excluded.definition, pinyin = excluded.pinyin`,
+		character, definition, pinyinJSON)
+	return err
+}
+
 // SetComponentSeenForTest marks a component as seen. Intended for use in tests only.
 func (s *Store) SetComponentSeenForTest(ctx context.Context, userID int64, character string) {
 	s.db.ExecContext(ctx, //nolint:errcheck
@@ -369,6 +384,7 @@ func (s *Store) SetComponentAttemptsForTest(ctx context.Context, userID int64, c
 // ComponentListItem is one row in the component list view.
 type ComponentListItem struct {
 	Character     string  `json:"character"`
+	Pinyin        string  `json:"pinyin,omitempty"`
 	DefinitionEN  string  `json:"definition_en"`
 	DefinitionDE  string  `json:"definition_de"`
 	DueDate       string  `json:"due_date"`
@@ -412,6 +428,7 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 	listArgs = append(listArgs, perPage, offset)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT cp.character,
+		       COALESCE(hd.pinyin, '') AS pinyin,
 		       COALESCE(hd.definition, '') AS def_en,
 		       COALESCE(hdt.definition, '') AS def_de,
 		       date(cp.due_date) AS due_date,
@@ -433,15 +450,17 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 	var items []ComponentListItem
 	for rows.Next() {
 		var it ComponentListItem
+		var rawPinyin string
 		var firstSeen sql.NullString
 		if err := rows.Scan(
-			&it.Character, &it.DefinitionEN, &it.DefinitionDE,
+			&it.Character, &rawPinyin, &it.DefinitionEN, &it.DefinitionDE,
 			&it.DueDate, &it.TotalCorrect, &it.TotalAttempts,
 			&it.Easiness, &it.IntervalDays, &firstSeen,
 		); err != nil {
 			rows.Close()
 			return nil, 0, fmt.Errorf("scan component list: %w", err)
 		}
+		it.Pinyin = joinPinyinJSON(rawPinyin)
 		if firstSeen.Valid {
 			it.FirstSeenDate = &firstSeen.String
 		}
@@ -452,6 +471,17 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 		return nil, 0, fmt.Errorf("component list rows: %w", err)
 	}
 	return items, total, nil
+}
+
+func joinPinyinJSON(s string) string {
+	if s == "" {
+		return ""
+	}
+	var parts []string
+	if err := json.Unmarshal([]byte(s), &parts); err != nil {
+		return ""
+	}
+	return strings.Join(parts, " / ")
 }
 
 // GetComponentCounts returns the number of components due today and the total
