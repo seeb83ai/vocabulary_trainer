@@ -25,6 +25,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("ADMIN_PASSWORD", "I am the admin")
 	os.Setenv("USER_EMAIL", "me@example.de")
 	os.Setenv("USER_PASSWORD", "I learn zh")
+	os.Setenv("BCRYPT_COST", "min") // speed up bcrypt in tests
 	os.Exit(m.Run())
 }
 
