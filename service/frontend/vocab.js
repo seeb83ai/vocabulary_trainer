@@ -953,14 +953,25 @@ function renderComponentTable(components) {
   for (const comp of components) {
     const tr = document.createElement('tr');
     tr.className = 'border-b border-gray-200 hover:bg-gray-50';
+    tr.dataset.char = comp.character;
     tr.innerHTML = `
       <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}</td>
       <td class="py-3 px-4 text-gray-600">${comp.definition_en ? escHtml(comp.definition_en) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 whitespace-nowrap">${renderComponentLevel(comp)}</td>
-      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderComponentDue(comp)}</td>`;
+      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderComponentDue(comp)}</td>
+      <td class="py-3 px-4 whitespace-nowrap">
+        <button class="btn-comp-edit text-blue-600 hover:text-blue-800 font-medium"
+                data-char="${escHtml(comp.character)}"
+                data-en="${escHtml(comp.definition_en || '')}"
+                data-de="${escHtml(comp.definition_de || '')}">${escHtml(t('vocab.edit'))}</button>
+      </td>`;
     tbody.appendChild(tr);
   }
+
+  tbody.querySelectorAll('.btn-comp-edit').forEach(btn => {
+    btn.addEventListener('click', () => toggleComponentEditRow(btn));
+  });
 }
 
 function renderComponentLevel(comp) {
@@ -979,6 +990,73 @@ function renderComponentDue(comp) {
   if (comp.due_date <= today) return `<span class="text-orange-500">${escHtml(t('vocab.dueLabel'))}</span>`;
   const diffDays = Math.round((new Date(comp.due_date) - new Date(today)) / 86400000);
   return `<span class="text-gray-500">${escHtml(t('vocab.inDays', { n: diffDays }))}</span>`;
+}
+
+function toggleComponentEditRow(btn) {
+  const char = btn.dataset.char;
+  const parentRow = btn.closest('tr');
+  const tbody = parentRow.parentNode;
+  const existingEditRow = tbody.querySelector(`tr.comp-edit-row[data-char="${CSS.escape(char)}"]`);
+
+  if (existingEditRow) {
+    existingEditRow.remove();
+    return;
+  }
+
+  const langs = [primaryLang];
+  if (secondaryLang) langs.push(secondaryLang);
+  const langName = l => ({ en: 'EN', de: 'DE', fr: 'FR', es: 'ES', zh: 'ZH' }[l] || l.toUpperCase());
+  const currentVals = { en: btn.dataset.en, de: btn.dataset.de };
+
+  const editRow = document.createElement('tr');
+  editRow.className = 'comp-edit-row bg-blue-50';
+  editRow.dataset.char = char;
+
+  let inputsHtml = '';
+  for (const lang of langs) {
+    const val = currentVals[lang] || '';
+    inputsHtml += `
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-semibold text-gray-500 w-6">${escHtml(langName(lang))}</span>
+        <input type="text" class="comp-list-input border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+               data-char="${escHtml(char)}" data-lang="${escHtml(lang)}" value="${escHtml(val)}">
+      </div>`;
+  }
+
+  editRow.innerHTML = `
+    <td colspan="6" class="py-3 px-4">
+      <div class="flex flex-wrap items-end gap-3">
+        <div class="flex flex-col gap-2 flex-1 min-w-48">${inputsHtml}</div>
+        <div class="flex gap-2">
+          <button class="btn-comp-save px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">${escHtml(t('vocab.save') || 'Save')}</button>
+          <button class="btn-comp-cancel px-3 py-1.5 border border-gray-300 text-sm rounded-lg hover:bg-gray-100">${escHtml(t('vocab.cancel') || 'Cancel')}</button>
+        </div>
+      </div>
+    </td>`;
+
+  parentRow.after(editRow);
+
+  editRow.querySelector('.btn-comp-cancel').addEventListener('click', () => editRow.remove());
+
+  editRow.querySelector('.btn-comp-save').addEventListener('click', async () => {
+    const inputs = editRow.querySelectorAll('.comp-list-input');
+    const saveBtn = editRow.querySelector('.btn-comp-save');
+    saveBtn.disabled = true;
+    try {
+      for (const input of inputs) {
+        await apiFetch(`/api/components/${encodeURIComponent(input.dataset.char)}/translation`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lang: input.dataset.lang, definition: input.value.trim() }),
+        });
+      }
+      editRow.remove();
+      loadComponents();
+    } catch (e) {
+      alert('Failed to save: ' + e.message);
+      saveBtn.disabled = false;
+    }
+  });
 }
 
 // ── Import tab ────────────────────────────────────────────────────────────────
