@@ -22,10 +22,11 @@ data/
 
 # Env
 .env
-ideas.md
 
 # Node
 /node_modules/
 
 # Misc
 skills-lock.json
+ideas.md
+.scratch
