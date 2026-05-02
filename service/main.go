@@ -251,6 +251,7 @@ func main() {
 		r.Get("/component/stats", componentH.Stats)
 		r.Post("/components/{char}/review", componentH.Review)
 		r.Put("/components/{char}/translation", componentH.UpdateTranslation)
+		r.Get("/components/{char}/translations", componentH.GetTranslations)
 		r.Get("/settings", settingsH.Get)
 		r.Patch("/settings", settingsH.Patch)
 		r.Put("/settings/api-keys", settingsH.PutAPIKeys)

@@ -165,6 +165,28 @@ func (s *Store) StoreComponentTranslation(character, lang, definition string) er
 	return err
 }
 
+// GetComponentTranslations returns all language translations for a component character,
+// keyed by lowercase language code.
+func (s *Store) GetComponentTranslations(character string) (map[string]string, error) {
+	rows, err := s.db.Query(
+		`SELECT lang, definition FROM hanzi_decomposition_translation WHERE character = ?`,
+		character,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]string)
+	for rows.Next() {
+		var lang, def string
+		if err := rows.Scan(&lang, &def); err != nil {
+			return nil, err
+		}
+		result[strings.ToLower(lang)] = def
+	}
+	return result, rows.Err()
+}
+
 // MarkComponentForReview sets needs_review = 1 for a component_progress row.
 func (s *Store) MarkComponentForReview(userID int64, character string) error {
 	_, err := s.db.Exec(

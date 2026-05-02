@@ -137,6 +137,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/component/stats", componentH.Stats)
 	r.Post("/api/components/{char}/review", componentH.Review)
 	r.Put("/api/components/{char}/translation", componentH.UpdateTranslation)
+	r.Get("/api/components/{char}/translations", componentH.GetTranslations)
 	r.Get("/api/hanzi/decompose", hanziH.Decompose)
 	r.Post("/api/hmm-quiz/skip", hmmQuizH.Skip)
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
@@ -4267,5 +4268,49 @@ func TestComponentList_ReviewFilter(t *testing.T) {
 	}
 	if char, _ := resp.Components[0]["character"].(string); char != "女" {
 		t.Errorf("want character=女, got %q", char)
+	}
+}
+
+// ── GetTranslations ───────────────────────────────────────────────────────────
+
+func TestComponentGetTranslations_ReturnsMap(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := s.StoreComponentTranslation("水", "en", "water"); err != nil {
+		t.Fatalf("store en: %v", err)
+	}
+	if err := s.StoreComponentTranslation("水", "de", "Wasser"); err != nil {
+		t.Fatalf("store de: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components/水/translations", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]string
+	decodeJSON(t, rec, &resp)
+	if resp["en"] != "water" {
+		t.Errorf("want en=water, got %q", resp["en"])
+	}
+	if resp["de"] != "Wasser" {
+		t.Errorf("want de=Wasser, got %q", resp["de"])
+	}
+}
+
+func TestComponentGetTranslations_EmptyForUnknown(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components/X/translations", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]string
+	decodeJSON(t, rec, &resp)
+	if len(resp) != 0 {
+		t.Errorf("want empty map, got %v", resp)
 	}
 }

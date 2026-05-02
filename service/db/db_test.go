@@ -3405,6 +3405,37 @@ func TestStoreComponentTranslation_UpdateExisting(t *testing.T) {
 	}
 }
 
+// ── GetComponentTranslations ──────────────────────────────────────────────────
+
+func TestGetComponentTranslations_ReturnsAllLangs(t *testing.T) {
+	s := openTestDB(t)
+	seedHanziDef(t, s, "女", "woman")
+	seedHanziTranslation(t, s, "女", "en", "woman")
+	seedHanziTranslation(t, s, "女", "de", "Frau")
+
+	got, err := s.GetComponentTranslations("女")
+	if err != nil {
+		t.Fatalf("GetComponentTranslations: %v", err)
+	}
+	if got["en"] != "woman" {
+		t.Errorf("want en=woman, got %q", got["en"])
+	}
+	if got["de"] != "Frau" {
+		t.Errorf("want de=Frau, got %q", got["de"])
+	}
+}
+
+func TestGetComponentTranslations_EmptyForUnknownChar(t *testing.T) {
+	s := openTestDB(t)
+	got, err := s.GetComponentTranslations("X")
+	if err != nil {
+		t.Fatalf("GetComponentTranslations: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("want empty map, got %v", got)
+	}
+}
+
 // ── GetComponentDefinitions (EN from translation table) ───────────────────────
 
 func TestGetComponentDefinitions_ENFromTranslationTable(t *testing.T) {

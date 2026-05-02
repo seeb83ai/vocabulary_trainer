@@ -193,6 +193,21 @@ func (h *ComponentHandler) Review(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetTranslations returns all stored translations for a component character.
+func (h *ComponentHandler) GetTranslations(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	translations, err := h.Store.GetComponentTranslations(char)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, translations)
+}
+
 // UpdateTranslation stores or updates a translation for a component character.
 func (h *ComponentHandler) UpdateTranslation(w http.ResponseWriter, r *http.Request) {
 	char := chi.URLParam(r, "char")

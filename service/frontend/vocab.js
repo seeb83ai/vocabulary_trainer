@@ -970,7 +970,7 @@ function renderComponentTable(components) {
   }
 
   tbody.querySelectorAll('.btn-comp-edit').forEach(btn => {
-    btn.addEventListener('click', () => toggleComponentEditRow(btn));
+    btn.addEventListener('click', () => openComponentEdit(btn.dataset.char));
   });
 }
 
@@ -992,77 +992,58 @@ function renderComponentDue(comp) {
   return `<span class="text-gray-500">${escHtml(t('vocab.inDays', { n: diffDays }))}</span>`;
 }
 
-function toggleComponentEditRow(btn) {
-  const char = btn.dataset.char;
-  const parentRow = btn.closest('tr');
-  const tbody = parentRow.parentNode;
-  const existingEditRow = tbody.querySelector(`tr.comp-edit-row[data-char="${CSS.escape(char)}"]`);
+let editingCompChar = null;
 
-  if (existingEditRow) {
-    existingEditRow.remove();
-    return;
-  }
+function openComponentEdit(char) {
+  editingCompChar = char;
+  $('comp-edit-char').textContent = char;
+  $('comp-edit-form').innerHTML = `<span class="text-gray-400 text-sm">${escHtml(t('vocab.loading') || 'Loading…')}</span>`;
+  switchTab('comp');
+  $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
 
-  const langs = [primaryLang];
-  if (secondaryLang) langs.push(secondaryLang);
-  const langName = l => ({ en: 'EN', de: 'DE', fr: 'FR', es: 'ES', zh: 'ZH' }[l] || l.toUpperCase());
-  const currentVals = { en: btn.dataset.en, de: btn.dataset.de };
-
-  const editRow = document.createElement('tr');
-  editRow.className = 'comp-edit-row bg-blue-50';
-  editRow.dataset.char = char;
-
-  let inputsHtml = '';
-  for (const lang of langs) {
-    const val = currentVals[lang] || '';
-    inputsHtml += `
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-semibold text-gray-500 w-6">${escHtml(langName(lang))}</span>
-        <input type="text" class="comp-list-input border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
-               data-char="${escHtml(char)}" data-lang="${escHtml(lang)}" value="${escHtml(val)}">
-      </div>`;
-  }
-
-  editRow.innerHTML = `
-    <td colspan="6" class="py-3 px-4">
-      <div class="flex flex-wrap items-end gap-3">
-        <div class="flex flex-col gap-2 flex-1 min-w-48">${inputsHtml}</div>
-        <div class="flex gap-2">
-          <button class="btn-comp-save px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">${escHtml(t('vocab.save') || 'Save')}</button>
-          <button class="btn-comp-cancel px-3 py-1.5 border border-gray-300 text-sm rounded-lg hover:bg-gray-100">${escHtml(t('vocab.cancel') || 'Cancel')}</button>
-        </div>
-      </div>
-    </td>`;
-
-  parentRow.after(editRow);
-
-  editRow.querySelector('.btn-comp-cancel').addEventListener('click', () => editRow.remove());
-
-  editRow.querySelector('.btn-comp-save').addEventListener('click', async () => {
-    const inputs = editRow.querySelectorAll('.comp-list-input');
-    const saveBtn = editRow.querySelector('.btn-comp-save');
-    saveBtn.disabled = true;
-    try {
-      for (const input of inputs) {
-        await apiFetch(`/api/components/${encodeURIComponent(input.dataset.char)}/translation`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lang: input.dataset.lang, definition: input.value.trim() }),
-        });
-      }
-      editRow.remove();
-      loadComponents();
-    } catch (e) {
-      alert('Failed to save: ' + e.message);
-      saveBtn.disabled = false;
+  apiFetch(`/api/components/${encodeURIComponent(char)}/translations`).then(data => {
+    const langs = [primaryLang];
+    if (secondaryLang) langs.push(secondaryLang);
+    const form = $('comp-edit-form');
+    form.innerHTML = '';
+    for (const lang of langs) {
+      const raw = data[lang] || data[lang.toUpperCase()] || '';
+      const parts = raw ? raw.split(/[,;]+/).map(s => s.trim()).filter(Boolean) : [''];
+      const langLabel = LANG_NAMES[lang] || lang.toUpperCase();
+      const section = document.createElement('div');
+      section.className = 'space-y-2';
+      section.dataset.lang = lang;
+      section.innerHTML = `
+        <label class="block text-sm font-medium text-gray-700">${escHtml(langLabel)} Translation(s)</label>
+        <div class="comp-trans-inputs space-y-1.5"></div>
+        <button type="button" class="btn-add-comp-trans text-sm text-blue-600 hover:text-blue-800 font-medium">+ ${escHtml(t('vocab.addTranslation') || 'Add')}</button>`;
+      const inputsDiv = section.querySelector('.comp-trans-inputs');
+      for (const part of parts) inputsDiv.appendChild(makeCompTransInput(lang, part));
+      section.querySelector('.btn-add-comp-trans').addEventListener('click', () =>
+        inputsDiv.appendChild(makeCompTransInput(lang, ''))
+      );
+      form.appendChild(section);
     }
+  }).catch(e => {
+    $('comp-edit-form').innerHTML = `<span class="text-red-500 text-sm">${escHtml(e.message)}</span>`;
   });
+}
+
+function makeCompTransInput(lang, value) {
+  const div = document.createElement('div');
+  div.className = 'flex gap-2';
+  div.innerHTML = `
+    <input type="text" class="comp-trans-input flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+           data-lang="${escHtml(lang)}" value="${escHtml(value)}">
+    <button type="button" class="btn-remove-comp-trans text-gray-400 hover:text-red-500 text-xl leading-none px-1" title="Remove">×</button>`;
+  div.querySelector('.btn-remove-comp-trans').addEventListener('click', () => div.remove());
+  return div;
 }
 
 // ── Import tab ────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
-  const tabs = ['add', 'import', 'tags'];
+  const tabs = ['add', 'import', 'tags', 'comp'];
   tabs.forEach(tab => {
     const active = tab === name;
     $('panel-' + tab).classList.toggle('hidden', !active);
@@ -1428,17 +1409,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }).catch(() => {});
   }
 
-  // Handle ?editComp=<char> for deep-linking to component inline edit
+  // Handle ?editComp=<char> for deep-linking to component edit tab
   const editCompParam = new URLSearchParams(window.location.search).get('editComp');
-  if (editCompParam) {
-    searchQuery = editCompParam;
-    $('search-input').value = editCompParam;
-    switchView('components');
-    loadComponents().then(() => {
-      const btn = document.querySelector(`.btn-comp-edit[data-char="${CSS.escape(editCompParam)}"]`);
-      if (btn) toggleComponentEditRow(btn);
-    }).catch(() => {});
-  }
+  if (editCompParam) openComponentEdit(editCompParam);
 
   $('hide-unseen-btn').addEventListener('click', () => {
     hideUnseenActive = !hideUnseenActive;
@@ -1577,6 +1550,41 @@ document.addEventListener('DOMContentLoaded', () => {
   $('tab-add').addEventListener('click', () => switchTab('add'));
   $('tab-import').addEventListener('click', () => switchTab('import'));
   $('tab-tags').addEventListener('click', () => switchTab('tags'));
+  $('tab-comp').addEventListener('click', () => switchTab('comp'));
+
+  $('comp-edit-save-btn').addEventListener('click', async () => {
+    if (!editingCompChar) return;
+    const btn = $('comp-edit-save-btn');
+    btn.disabled = true;
+    const byLang = {};
+    $('comp-edit-form').querySelectorAll('.comp-trans-input').forEach(input => {
+      const lang = input.dataset.lang;
+      const val = input.value.trim();
+      if (!byLang[lang]) byLang[lang] = [];
+      if (val) byLang[lang].push(val);
+    });
+    try {
+      for (const [lang, parts] of Object.entries(byLang)) {
+        await apiFetch(`/api/components/${encodeURIComponent(editingCompChar)}/translation`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lang, definition: parts.join(', ') }),
+        });
+      }
+      editingCompChar = null;
+      switchTab('add');
+      if (currentView === 'components') loadComponents();
+    } catch (e) {
+      alert('Failed to save: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('comp-edit-cancel-btn').addEventListener('click', () => {
+    editingCompChar = null;
+    switchTab('add');
+  });
 
   // Import language filter toggle buttons
   ['en', 'de'].forEach(lang => {
