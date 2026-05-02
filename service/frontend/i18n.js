@@ -156,6 +156,8 @@ const I18N = {
 
     // Tags tab
     'vocab.tagsTab': 'Tags',
+    'vocab.editComponentTab': 'Edit Component',
+    'vocab.editComponentTitle': 'Edit Component Translations',
     'vocab.tagsDesc': 'Set a description and control whether other users can import words from each tag.',
     'vocab.tagsLoading': 'Loading tags…',
     'vocab.tagsEmpty': 'No tags yet. Add words with tags to manage them here.',
@@ -555,6 +557,8 @@ const I18N = {
 
     // Tags tab
     'vocab.tagsTab': '标签',
+    'vocab.editComponentTab': '编辑部件',
+    'vocab.editComponentTitle': '编辑部件翻译',
     'vocab.tagsDesc': '为每个标签设置描述，并控制其他用户是否可以导入该标签下的词汇。',
     'vocab.tagsLoading': '加载标签中…',
     'vocab.tagsEmpty': '暂无标签。添加带标签的词汇后可在此管理。',

@@ -82,6 +82,7 @@ let missingLangFilter = '';
 let currentView = 'words'; // 'words' | 'components'
 let compPage = 1;
 let compSearchTimer = null;
+let compReviewFilterActive = false;
 
 // Import tab state
 let importSelectedTag = '';
@@ -304,8 +305,74 @@ function openEditForm(word) {
     hmmContainer.innerHTML = '';
   }
 
+  loadComponentsForEdit(word.zh_text);
+
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
   $('form-zh').focus();
+}
+
+async function loadComponentsForEdit(zhText) {
+  const section = $('components-edit-section');
+  section.innerHTML = '';
+  section.classList.add('hidden');
+  if (!zhText) return;
+
+  const langs = [primaryLang];
+  if (secondaryLang) langs.push(secondaryLang);
+  const langParam = langs.join(',');
+
+  let data;
+  try {
+    data = await apiFetch(`/api/hanzi/decompose?chars=${encodeURIComponent(zhText)}&langs=${encodeURIComponent(langParam)}`);
+  } catch (_) {
+    return;
+  }
+
+  const compSet = new Map();
+  for (const entry of (data || [])) {
+    for (const comp of (entry.components || [])) {
+      if (!compSet.has(comp.character)) compSet.set(comp.character, comp.definitions || {});
+    }
+  }
+  if (compSet.size === 0) return;
+
+  const langName = l => ({ en: 'EN', de: 'DE', fr: 'FR', es: 'ES', zh: 'ZH' }[l] || l.toUpperCase());
+  let html = `<div class="border border-gray-200 rounded-xl p-4">
+    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">${escHtml(t('vocab.components') || 'Components')}</div>
+    <div class="space-y-2">`;
+  for (const [char, defs] of compSet) {
+    html += `<div class="flex items-start gap-3">
+      <span class="text-xl font-bold text-gray-800 w-8 shrink-0 pt-1">${escHtml(char)}</span>
+      <div class="flex flex-wrap gap-2 flex-1">`;
+    for (const lang of langs) {
+      const val = (defs[lang] || defs[lang.toUpperCase()] || '');
+      html += `<div class="flex items-center gap-1">
+        <span class="text-xs font-semibold text-gray-400 w-6">${escHtml(langName(lang))}</span>
+        <input type="text" class="comp-def-input border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+               data-char="${escHtml(char)}" data-lang="${escHtml(lang)}" value="${escHtml(val)}" placeholder="${escHtml(langName(lang))} definition">
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+  html += `</div></div>`;
+  section.innerHTML = html;
+  section.classList.remove('hidden');
+
+  section.querySelectorAll('.comp-def-input').forEach(input => {
+    input.addEventListener('blur', async () => {
+      const char = input.dataset.char;
+      const lang = input.dataset.lang;
+      const definition = input.value.trim();
+      try {
+        await apiFetch(`/api/components/${encodeURIComponent(char)}/translation`, {
+          method: 'PUT',
+          body: JSON.stringify({ lang, definition }),
+        });
+      } catch (err) {
+        console.error('Failed to save component translation:', err);
+      }
+    });
+  });
 }
 
 function resetForm() {
@@ -315,6 +382,8 @@ function resetForm() {
   $('form-pinyin').value = '';
   hide('form-cancel-btn');
   hide('hanziway-link');
+  const compSection = $('components-edit-section');
+  if (compSection) { compSection.innerHTML = ''; compSection.classList.add('hidden'); }
   $('en-inputs-container').innerHTML = '';
   addEnInput('');
   $('de-inputs-container').innerHTML = '';
@@ -685,6 +754,16 @@ function updateReviewFilterBtn() {
   }
 }
 
+function updateCompReviewFilterBtn() {
+  const btn = $('comp-review-filter-btn');
+  if (!btn) return;
+  if (compReviewFilterActive) {
+    btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-orange-400 bg-orange-50 text-orange-600';
+  } else {
+    btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100';
+  }
+}
+
 function updateDueFilterBtns() {
   ['today', 'tomorrow'].forEach(key => {
     const btn = $('due-' + key + '-btn');
@@ -835,6 +914,7 @@ function switchView(view) {
   $('components-table-wrap').classList.toggle('hidden', isWords);
   $('word-filters-row').classList.toggle('hidden', !isWords);
   $('filter-tier-bar').classList.toggle('hidden', !isWords);
+  $('component-filters-row').classList.toggle('hidden', isWords);
   if (isWords) renderFilterTags(); else $('filter-tags-bar').classList.add('hidden');
 
   $('view-words-btn').className = `px-3 py-1.5 transition ${isWords ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`;
@@ -851,6 +931,7 @@ async function loadComponents() {
     page: compPage,
     per_page: perPage,
   });
+  if (compReviewFilterActive) params.set('review', '1');
   try {
     const data = await apiFetch(`/api/components?${params}`);
     renderComponentTable(data.components);
@@ -872,15 +953,26 @@ function renderComponentTable(components) {
   for (const comp of components) {
     const tr = document.createElement('tr');
     tr.className = 'border-b border-gray-200 hover:bg-gray-50';
+    tr.dataset.char = comp.character;
     tr.innerHTML = `
       <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}</td>
       <td class="py-3 px-4 text-gray-500 text-sm">${comp.pinyin ? escHtml(comp.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">${comp.definition_en ? escHtml(comp.definition_en) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 whitespace-nowrap">${renderComponentLevel(comp)}</td>
-      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderComponentDue(comp)}</td>`;
+      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderComponentDue(comp)}</td>
+      <td class="py-3 px-4 whitespace-nowrap">
+        <button class="btn-comp-edit text-blue-600 hover:text-blue-800 font-medium"
+                data-char="${escHtml(comp.character)}"
+                data-en="${escHtml(comp.definition_en || '')}"
+                data-de="${escHtml(comp.definition_de || '')}">${escHtml(t('vocab.edit'))}</button>
+      </td>`;
     tbody.appendChild(tr);
   }
+
+  tbody.querySelectorAll('.btn-comp-edit').forEach(btn => {
+    btn.addEventListener('click', () => openComponentEdit(btn.dataset.char));
+  });
 }
 
 function renderComponentLevel(comp) {
@@ -901,10 +993,58 @@ function renderComponentDue(comp) {
   return `<span class="text-gray-500">${escHtml(t('vocab.inDays', { n: diffDays }))}</span>`;
 }
 
+let editingCompChar = null;
+
+function openComponentEdit(char) {
+  editingCompChar = char;
+  $('comp-edit-char').textContent = char;
+  $('comp-edit-form').innerHTML = `<span class="text-gray-400 text-sm">${escHtml(t('vocab.loading') || 'Loading…')}</span>`;
+  switchTab('comp');
+  $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
+
+  apiFetch(`/api/components/${encodeURIComponent(char)}/translations`).then(data => {
+    const langs = [primaryLang];
+    if (secondaryLang) langs.push(secondaryLang);
+    const form = $('comp-edit-form');
+    form.innerHTML = '';
+    for (const lang of langs) {
+      const raw = data[lang] || data[lang.toUpperCase()] || '';
+      const parts = raw ? raw.split(/[,;]+/).map(s => s.trim()).filter(Boolean) : [''];
+      const langLabel = LANG_NAMES[lang] || lang.toUpperCase();
+      const section = document.createElement('div');
+      section.className = 'space-y-2';
+      section.dataset.lang = lang;
+      section.innerHTML = `
+        <label class="block text-sm font-medium text-gray-700">${escHtml(langLabel)} Translation(s)</label>
+        <div class="comp-trans-inputs space-y-1.5"></div>
+        <button type="button" class="btn-add-comp-trans text-sm text-blue-600 hover:text-blue-800 font-medium">+ ${escHtml(t('vocab.addTranslation') || 'Add')}</button>`;
+      const inputsDiv = section.querySelector('.comp-trans-inputs');
+      for (const part of parts) inputsDiv.appendChild(makeCompTransInput(lang, part));
+      section.querySelector('.btn-add-comp-trans').addEventListener('click', () =>
+        inputsDiv.appendChild(makeCompTransInput(lang, ''))
+      );
+      form.appendChild(section);
+    }
+  }).catch(e => {
+    $('comp-edit-form').innerHTML = `<span class="text-red-500 text-sm">${escHtml(e.message)}</span>`;
+  });
+}
+
+function makeCompTransInput(lang, value) {
+  const div = document.createElement('div');
+  div.className = 'flex gap-2';
+  div.innerHTML = `
+    <input type="text" class="comp-trans-input flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+           data-lang="${escHtml(lang)}" value="${escHtml(value)}">
+    <button type="button" class="btn-remove-comp-trans text-gray-400 hover:text-red-500 text-xl leading-none px-1" title="Remove">×</button>`;
+  div.querySelector('.btn-remove-comp-trans').addEventListener('click', () => div.remove());
+  return div;
+}
+
 // ── Import tab ────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
-  const tabs = ['add', 'import', 'tags'];
+  const tabs = ['add', 'import', 'tags', 'comp'];
   tabs.forEach(tab => {
     const active = tab === name;
     $('panel-' + tab).classList.toggle('hidden', !active);
@@ -1270,6 +1410,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }).catch(() => {});
   }
 
+  // Handle ?editComp=<char> for deep-linking to component edit tab
+  const editCompParam = new URLSearchParams(window.location.search).get('editComp');
+  if (editCompParam) openComponentEdit(editCompParam);
+
   $('hide-unseen-btn').addEventListener('click', () => {
     hideUnseenActive = !hideUnseenActive;
     updateHideUnseenBtn();
@@ -1282,6 +1426,13 @@ document.addEventListener('DOMContentLoaded', () => {
     updateReviewFilterBtn();
     currentPage = 1;
     loadWords();
+  });
+
+  $('comp-review-filter-btn').addEventListener('click', () => {
+    compReviewFilterActive = !compReviewFilterActive;
+    updateCompReviewFilterBtn();
+    compPage = 1;
+    loadComponents();
   });
 
   ['today', 'tomorrow'].forEach(key => {
@@ -1400,6 +1551,41 @@ document.addEventListener('DOMContentLoaded', () => {
   $('tab-add').addEventListener('click', () => switchTab('add'));
   $('tab-import').addEventListener('click', () => switchTab('import'));
   $('tab-tags').addEventListener('click', () => switchTab('tags'));
+  $('tab-comp').addEventListener('click', () => switchTab('comp'));
+
+  $('comp-edit-save-btn').addEventListener('click', async () => {
+    if (!editingCompChar) return;
+    const btn = $('comp-edit-save-btn');
+    btn.disabled = true;
+    const byLang = {};
+    $('comp-edit-form').querySelectorAll('.comp-trans-input').forEach(input => {
+      const lang = input.dataset.lang;
+      const val = input.value.trim();
+      if (!byLang[lang]) byLang[lang] = [];
+      if (val) byLang[lang].push(val);
+    });
+    try {
+      for (const [lang, parts] of Object.entries(byLang)) {
+        await apiFetch(`/api/components/${encodeURIComponent(editingCompChar)}/translation`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lang, definition: parts.join(', ') }),
+        });
+      }
+      editingCompChar = null;
+      switchTab('add');
+      if (currentView === 'components') loadComponents();
+    } catch (e) {
+      alert('Failed to save: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('comp-edit-cancel-btn').addEventListener('click', () => {
+    editingCompChar = null;
+    switchTab('add');
+  });
 
   // Import language filter toggle buttons
   ['en', 'de'].forEach(lang => {

@@ -143,6 +143,15 @@ func seedHanziFull(t *testing.T, s *Store, character, definition, decomp, etymol
 	if err != nil {
 		t.Fatalf("seedHanziFull %q: %v", character, err)
 	}
+	if definition != "" {
+		_, err = s.db.Exec(
+			`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
+			 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+			character, definition)
+		if err != nil {
+			t.Fatalf("seedHanziFull translation %q: %v", character, err)
+		}
+	}
 }
 
 func nullIfEmpty(s string) any {
@@ -274,7 +283,7 @@ func TestGetComponentList_IncludesPinyin(t *testing.T) {
 	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
 	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(time.Hour))
 
-	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50)
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50, false)
 	if err != nil {
 		t.Fatalf("GetComponentList: %v", err)
 	}
@@ -292,7 +301,7 @@ func TestGetComponentList_MultipleReadingsJoined(t *testing.T) {
 	seedHanziFull(t, s, "行", "row/walk", "", "", "", `["háng","xíng"]`)
 	s.InsertComponentProgressForTest(ctx, int64(2), "行", time.Now().Add(time.Hour))
 
-	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50)
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50, false)
 	if err != nil {
 		t.Fatalf("GetComponentList: %v", err)
 	}
@@ -313,7 +322,7 @@ func TestGetComponentList_NullPinyinOmitted(t *testing.T) {
 	}
 	s.InsertComponentProgressForTest(ctx, int64(2), "日", time.Now().Add(time.Hour))
 
-	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50)
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50, false)
 	if err != nil {
 		t.Fatalf("GetComponentList: %v", err)
 	}

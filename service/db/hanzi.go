@@ -304,9 +304,9 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 }
 
 // AnnotateComponentDefinitions populates Definitions on every component entry in
-// results for the requested langs. EN comes from hanzi_decomposition.definition;
-// other langs from hanzi_decomposition_translation. Called when the decompose
-// endpoint is requested with a langs parameter.
+// results for the requested langs. All langs (including EN) are read from
+// hanzi_decomposition_translation. Called when the decompose endpoint is requested
+// with a langs parameter.
 func (s *Store) AnnotateComponentDefinitions(ctx context.Context, results []models.HanziDecomposition, langs []string) error {
 	if len(langs) == 0 {
 		return nil
