@@ -119,7 +119,7 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		return nil, fmt.Errorf("get next component card: %w", err)
 	}
 
-	defs, err := s.GetComponentDefinitions(ctx, c.Character, langs)
+	defs, err := s.GetComponentTranslations(c.Character)
 	if err != nil {
 		return nil, err
 	}

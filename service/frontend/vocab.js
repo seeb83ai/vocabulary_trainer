@@ -1397,22 +1397,25 @@ async function saveTagMeta(name, description, importable) {
 // ── End tags tab ───────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-  loadLangSettings().then(() => { resetForm(); loadWords(); });
+  loadLangSettings().then(() => {
+    resetForm();
+    loadWords();
+
+    // Handle ?edit=<wordId> for deep-linking to edit form (e.g. from training page)
+    const editParam = new URLSearchParams(window.location.search).get('edit');
+    if (editParam) {
+      apiFetch(`/api/words/${editParam}`).then(word => {
+        if (word) openEditForm(word);
+      }).catch(() => {});
+    }
+
+    // Handle ?editComp=<char> for deep-linking to component edit tab
+    const editCompParam = new URLSearchParams(window.location.search).get('editComp');
+    if (editCompParam) openComponentEdit(editCompParam);
+  });
   loadTags();
   renderTierFilter();
   initTranslateButton();
-
-  // Handle ?edit=<wordId> for deep-linking to edit form (e.g. from training page)
-  const editParam = new URLSearchParams(window.location.search).get('edit');
-  if (editParam) {
-    apiFetch(`/api/words/${editParam}`).then(word => {
-      if (word) openEditForm(word);
-    }).catch(() => {});
-  }
-
-  // Handle ?editComp=<char> for deep-linking to component edit tab
-  const editCompParam = new URLSearchParams(window.location.search).get('editComp');
-  if (editCompParam) openComponentEdit(editCompParam);
 
   $('hide-unseen-btn').addEventListener('click', () => {
     hideUnseenActive = !hideUnseenActive;
@@ -1572,8 +1575,6 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ lang, definition: parts.join(', ') }),
         });
       }
-      editingCompChar = null;
-      switchTab('add');
       if (currentView === 'components') loadComponents();
     } catch (e) {
       alert('Failed to save: ' + e.message);
