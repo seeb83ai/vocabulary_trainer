@@ -17,6 +17,9 @@
         <button id="tab-tags"
           class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition"
           data-i18n="vocab.tagsTab">Tags</button>
+        <button id="tab-comp"
+          class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition"
+          data-i18n="vocab.editComponentTab">Edit Component</button>
       </div>
 
       <!-- Add / Edit panel -->
@@ -94,6 +97,7 @@
           </div>
         </form>
         <div id="hmm-builder-container" class="hidden mt-4"></div>
+        <div id="components-edit-section" class="hidden mt-4"></div>
       </div>
 
       <!-- Import panel -->
@@ -202,6 +206,23 @@
         </div>
       </div>
 
+      <!-- Edit Component panel -->
+      <div id="panel-comp" class="hidden">
+        <div class="flex items-center gap-4 mb-5">
+          <span id="comp-edit-char" class="text-5xl font-bold text-gray-800 leading-none"></span>
+          <h2 class="text-lg font-semibold text-gray-800" data-i18n="vocab.editComponentTitle">Edit Component Translations</h2>
+        </div>
+        <div id="comp-edit-form" class="space-y-5 mb-5"></div>
+        <div class="flex gap-3">
+          <button id="comp-edit-save-btn"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+            data-i18n="vocab.save">Save</button>
+          <button id="comp-edit-cancel-btn"
+            class="text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
+            data-i18n="vocab.cancel">Cancel</button>
+        </div>
+      </div>
+
     </div>
 
     <!-- Search & list -->
@@ -259,6 +280,13 @@
       <div id="filter-tags-bar" class="hidden px-4 sm:px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
         <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.tags">Tags:</span>
       </div>
+      <div id="component-filters-row" class="hidden px-4 sm:px-6 py-2 border-b border-gray-200 flex flex-wrap gap-2">
+        <button id="comp-review-filter-btn"
+          class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
+          data-i18n="vocab.needsReview">
+          Needs Review
+        </button>
+      </div>
 
       <div id="words-table-wrap" class="overflow-x-auto">
         <table class="w-full text-sm">
@@ -285,6 +313,7 @@
               <th class="py-3 px-4 text-left" data-i18n="vocab.german">German</th>
               <th class="py-3 px-4 text-left" data-i18n="vocab.level">Level</th>
               <th class="py-3 px-4 text-left" data-i18n="vocab.due">Due</th>
+              <th class="py-3 px-4 text-left"></th>
             </tr>
           </thead>
           <tbody id="components-tbody"></tbody>

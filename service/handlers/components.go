@@ -10,6 +10,8 @@ import (
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type ComponentHandler struct {
@@ -147,7 +149,8 @@ func (h *ComponentHandler) List(w http.ResponseWriter, r *http.Request) {
 		perPage = 200
 	}
 
-	items, total, err := h.Store.GetComponentList(r.Context(), userID, q, page, perPage)
+	reviewOnly := r.URL.Query().Get("review") == "1"
+	items, total, err := h.Store.GetComponentList(r.Context(), userID, q, page, perPage, reviewOnly)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -174,4 +177,59 @@ func (h *ComponentHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		stats = []models.ComponentDailyStat{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"days": stats})
+}
+
+// Review flags a component for review by setting needs_review = 1.
+func (h *ComponentHandler) Review(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	if err := h.Store.MarkComponentForReview(UserIDFromContext(r.Context()), char); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetTranslations returns all stored translations for a component character.
+func (h *ComponentHandler) GetTranslations(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	translations, err := h.Store.GetComponentTranslations(char)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, translations)
+}
+
+// UpdateTranslation stores or updates a translation for a component character.
+func (h *ComponentHandler) UpdateTranslation(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	var req struct {
+		Lang       string `json:"lang"`
+		Definition string `json:"definition"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if strings.TrimSpace(req.Lang) == "" {
+		writeError(w, http.StatusBadRequest, "lang is required")
+		return
+	}
+	if err := h.Store.StoreComponentTranslation(char, req.Lang, req.Definition); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

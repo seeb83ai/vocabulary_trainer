@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS users (
 				return fmt.Errorf("user credentials: %w", err)
 			}
 
-			adminHash, err := bcrypt.GenerateFromPassword([]byte(adminPass), bcrypt.DefaultCost)
+			adminHash, err := bcrypt.GenerateFromPassword([]byte(adminPass), bcryptCost())
 			if err != nil {
 				return fmt.Errorf("hash admin password: %w", err)
 			}
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS users (
 				return fmt.Errorf("seed admin user: %w", err)
 			}
 
-			userHash, err := bcrypt.GenerateFromPassword([]byte(userPass), bcrypt.DefaultCost)
+			userHash, err := bcrypt.GenerateFromPassword([]byte(userPass), bcryptCost())
 			if err != nil {
 				return fmt.Errorf("hash user password: %w", err)
 			}
@@ -122,4 +122,13 @@ func promptCredentials(label, emailEnv, passEnv string) (email, password string,
 	}
 
 	return email, password, nil
+}
+
+// bcryptCost returns bcrypt.MinCost when BCRYPT_COST=min is set (e.g. in tests)
+// and bcrypt.DefaultCost otherwise.
+func bcryptCost() int {
+	if os.Getenv("BCRYPT_COST") == "min" {
+		return bcrypt.MinCost
+	}
+	return bcrypt.DefaultCost
 }
