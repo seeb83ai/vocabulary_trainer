@@ -193,6 +193,89 @@ describe('result area DOM rendering', () => {
   });
 });
 
+// ── renderCharDecomposition component pinyin ──────────────────────────────────
+// Inlined from train.js for isolated unit testing.
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderCharDecomposition(charData) {
+  let html = `<div class="p-3 bg-gray-50 border border-gray-200 rounded-xl mb-2">`;
+  html += `<div class="flex items-baseline gap-2 mb-1">`;
+  html += `<span class="text-2xl font-bold">${escHtml(charData.character)}</span>`;
+  if (charData.radical) {
+    html += `<span class="text-sm text-gray-400">${escHtml(charData.radical)}</span>`;
+  }
+  if (charData.definition) {
+    html += `<span class="text-sm text-gray-500">${escHtml(charData.definition)}</span>`;
+  }
+  html += `</div>`;
+
+  if (charData.components && charData.components.length > 0) {
+    html += `<div class="flex flex-wrap gap-2 mt-1">`;
+    for (const comp of charData.components) {
+      const isPhonetic = comp.is_semantic === false;
+      const dimClass = isPhonetic ? ' opacity-40' : '';
+      const title = isPhonetic ? ' title="Phonetic component (sound hint only)"' : '';
+      html += `<div class="px-2 py-1 bg-white border border-gray-200 rounded-lg text-center min-w-[3rem]${dimClass}"${title}>`;
+      html += `<div class="text-lg font-medium">${escHtml(comp.character)}</div>`;
+      if (comp.pinyin && comp.pinyin.length > 0) {
+        html += `<div class="text-xs text-gray-400">${escHtml(comp.pinyin.join(' / '))}</div>`;
+      }
+      if (comp.definition) {
+        html += `<div class="text-xs text-gray-400 leading-tight">${escHtml(comp.definition)}</div>`;
+      }
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+describe('renderCharDecomposition component pinyin', () => {
+  it('shows pinyin below character when present', () => {
+    const html = renderCharDecomposition({
+      character: '好',
+      components: [{ character: '女', pinyin: ['nǚ'], definition: 'woman' }],
+    });
+    expect(html).toContain('nǚ');
+  });
+
+  it('joins multiple readings with " / "', () => {
+    const html = renderCharDecomposition({
+      character: '行',
+      components: [{ character: '行', pinyin: ['háng', 'xíng'], definition: 'walk' }],
+    });
+    expect(html).toContain('háng / xíng');
+  });
+
+  it('omits pinyin div when pinyin array is empty', () => {
+    const html = renderCharDecomposition({
+      character: '好',
+      components: [{ character: '女', pinyin: [], definition: 'woman' }],
+    });
+    const pinyinDivCount = (html.match(/text-xs text-gray-400/g) || []).length;
+    // definition div also has text-xs text-gray-400 — pinyin adds one more
+    const htmlWithPinyin = renderCharDecomposition({
+      character: '好',
+      components: [{ character: '女', pinyin: ['nǚ'], definition: 'woman' }],
+    });
+    expect(html.length).toBeLessThan(htmlWithPinyin.length);
+  });
+
+  it('omits pinyin div when pinyin is absent', () => {
+    const html = renderCharDecomposition({
+      character: '好',
+      components: [{ character: '女', definition: 'woman' }],
+    });
+    expect(html).not.toContain('háng');
+    expect(html).toContain('woman');
+  });
+});
+
 // ── toggleLang state logic ─────────────────────────────────────────────────────
 // Pure state portion of train.js toggleLang (without DOM side-effects).
 

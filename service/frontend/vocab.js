@@ -946,7 +946,7 @@ function renderComponentTable(components) {
   tbody.innerHTML = '';
   if (!components || components.length === 0) {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="5" class="text-center py-8 text-gray-500">${escHtml(t('vocab.noEntries'))}</td>`;
+    tr.innerHTML = `<td colspan="6" class="text-center py-8 text-gray-500">${escHtml(t('vocab.noEntries'))}</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -956,6 +956,7 @@ function renderComponentTable(components) {
     tr.dataset.char = comp.character;
     tr.innerHTML = `
       <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}</td>
+      <td class="py-3 px-4 text-gray-500 text-sm">${comp.pinyin ? escHtml(comp.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">${comp.definition_en ? escHtml(comp.definition_en) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 whitespace-nowrap">${renderComponentLevel(comp)}</td>

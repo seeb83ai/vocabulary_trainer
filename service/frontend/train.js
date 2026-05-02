@@ -239,6 +239,9 @@ async function loadNextCard() {
     hide('new-word-area');
     show('new-component-area');
     setText('new-component-char', currentCard.prompt);
+    const compPinyin = currentCard.pinyin || null;
+    setText('new-component-pinyin', compPinyin || '');
+    compPinyin ? show('new-component-pinyin-row') : hide('new-component-pinyin-row');
     const defs = currentCard.definitions || {};
     $('new-component-defs').innerHTML = Object.entries(defs).map(([lang, def]) =>
       `<div class="flex items-baseline gap-2 p-3 bg-purple-50 border border-purple-100 rounded-xl">
@@ -262,7 +265,12 @@ function showCard() {
     setText('mode-label', t('component.modeLabel'));
     setText('prompt-word', currentCard.prompt);
     hide('play-btn');
-    hide('pinyin-hint');
+    if (currentCard.pinyin) {
+      setText('pinyin-hint', currentCard.pinyin);
+      show('pinyin-hint');
+    } else {
+      hide('pinyin-hint');
+    }
     hide('translations-hint');
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
@@ -702,6 +710,9 @@ function renderCharDecomposition(charData) {
       const title = isPhonetic ? ' title="Phonetic component (sound hint only)"' : '';
       html += `<div class="px-2 py-1 bg-white border border-gray-200 rounded-lg text-center min-w-[3rem]${dimClass}"${title}>`;
       html += `<div class="text-lg font-medium">${escHtml(comp.character)}</div>`;
+      if (comp.pinyin && comp.pinyin.length > 0) {
+        html += `<div class="text-xs text-gray-400">${escHtml(comp.pinyin.join(' / '))}</div>`;
+      }
       if (comp.definition) {
         html += `<div class="text-xs text-gray-400 leading-tight">${escHtml(comp.definition)}</div>`;
       }

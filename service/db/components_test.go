@@ -143,6 +143,15 @@ func seedHanziFull(t *testing.T, s *Store, character, definition, decomp, etymol
 	if err != nil {
 		t.Fatalf("seedHanziFull %q: %v", character, err)
 	}
+	if definition != "" {
+		_, err = s.db.Exec(
+			`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
+			 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+			character, definition)
+		if err != nil {
+			t.Fatalf("seedHanziFull translation %q: %v", character, err)
+		}
+	}
 }
 
 func nullIfEmpty(s string) any {
@@ -229,6 +238,99 @@ func TestInitComponentsForWord_PinyinFallbackDrop(t *testing.T) {
 
 	if len(chars) != 1 || chars[0] != "讠" {
 		t.Errorf("want [讠], got %v (pinyin-similar 青 must be excluded)", chars)
+	}
+}
+
+func TestGetNextComponentCard_IncludesPinyin(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("want a card, got nil")
+	}
+	if card.Pinyin != "nǚ" {
+		t.Errorf("want pinyin %q, got %q", "nǚ", card.Pinyin)
+	}
+}
+
+func TestGetNextComponentCard_MultipleReadingsJoined(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "行", "row/walk", "", "", "", `["háng","xíng"]`)
+	s.InsertComponentProgressForTest(ctx, int64(2), "行", time.Now().Add(-time.Hour))
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("want a card, got nil")
+	}
+	if card.Pinyin != "háng / xíng" {
+		t.Errorf("want pinyin %q, got %q", "háng / xíng", card.Pinyin)
+	}
+}
+
+func TestGetComponentList_IncludesPinyin(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(time.Hour))
+
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50, false)
+	if err != nil {
+		t.Fatalf("GetComponentList: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 item, got %d", len(items))
+	}
+	if items[0].Pinyin != "nǚ" {
+		t.Errorf("want pinyin %q, got %q", "nǚ", items[0].Pinyin)
+	}
+}
+
+func TestGetComponentList_MultipleReadingsJoined(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "行", "row/walk", "", "", "", `["háng","xíng"]`)
+	s.InsertComponentProgressForTest(ctx, int64(2), "行", time.Now().Add(time.Hour))
+
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50, false)
+	if err != nil {
+		t.Fatalf("GetComponentList: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 item, got %d", len(items))
+	}
+	if items[0].Pinyin != "háng / xíng" {
+		t.Errorf("want pinyin %q, got %q", "háng / xíng", items[0].Pinyin)
+	}
+}
+
+func TestGetComponentList_NullPinyinOmitted(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	// SeedHanziDecompositionForTest does not set pinyin (NULL).
+	if err := s.SeedHanziDecompositionForTest(ctx, "日", "sun"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "日", time.Now().Add(time.Hour))
+
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 50, false)
+	if err != nil {
+		t.Fatalf("GetComponentList: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 item, got %d", len(items))
+	}
+	if items[0].Pinyin != "" {
+		t.Errorf("want empty pinyin for NULL, got %q", items[0].Pinyin)
 	}
 }
 
