@@ -1428,6 +1428,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }).catch(() => {});
   }
 
+  // Handle ?editComp=<char> for deep-linking to component inline edit
+  const editCompParam = new URLSearchParams(window.location.search).get('editComp');
+  if (editCompParam) {
+    searchQuery = editCompParam;
+    $('search-input').value = editCompParam;
+    switchView('components');
+    loadComponents().then(() => {
+      const btn = document.querySelector(`.btn-comp-edit[data-char="${CSS.escape(editCompParam)}"]`);
+      if (btn) toggleComponentEditRow(btn);
+    }).catch(() => {});
+  }
+
   $('hide-unseen-btn').addEventListener('click', () => {
     hideUnseenActive = !hideUnseenActive;
     updateHideUnseenBtn();

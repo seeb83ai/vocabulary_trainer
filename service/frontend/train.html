@@ -295,13 +295,21 @@
           <div id="word-breakdown" class="hidden mb-2"></div>
           <button id="add-translation-btn" class="hidden"></button>
 
-          <button
-            id="needs-review-btn"
-            class="w-full mb-3 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition"
-            data-i18n="result.flagReview"
-          >
-            Flag for Review
-          </button>
+          <div id="review-edit-row" class="flex gap-3 mb-3">
+            <button
+              id="edit-card-btn"
+              class="w-1/2 border border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-700 font-medium py-2 rounded-xl text-sm transition"
+            >
+              Edit
+            </button>
+            <button
+              id="needs-review-btn"
+              class="w-1/2 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition"
+              data-i18n="result.flagReview"
+            >
+              Flag for Review
+            </button>
+          </div>
           <button
             id="next-btn"
             class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
