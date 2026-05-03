@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 	"vocabulary_trainer/db"
@@ -505,14 +506,118 @@ func TestQuizAnswer_ListenOnlyMode(t *testing.T) {
 	}
 }
 
-func TestAudioChar_Endpoint(t *testing.T) {
+func TestAudioChar_TTSUnavailable(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
 
 	rec := do(t, r, "GET", "/api/audio/char/%E5%90%AC", nil) // URL-encoded "听"
-	// TTS is unavailable in test environment; expect 503, not 404
-	if rec.Code == http.StatusNotFound {
-		t.Errorf("want 503 (TTS unavailable), got 404 (endpoint not registered)")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("want 503 (TTS unavailable), got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAudioChar_EmptyChar(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/audio/char/", nil)
+	// chi will not match the route for an empty segment — expect 404 from the router,
+	// or 400 if it does match. Either way it must not be 200.
+	if rec.Code == http.StatusOK {
+		t.Errorf("want non-200 for empty char, got 200")
+	}
+}
+
+func TestAudioChar_CachedFileServed(t *testing.T) {
+	s := openTestDB(t)
+	audioDir := t.TempDir()
+
+	// Pre-write a fake MP3 so TTS is never called.
+	zhText := "听"
+	filename := fmt.Sprintf("%x.mp3", []byte(zhText))
+	fakeMP3 := []byte("ID3fakeaudio")
+	if err := os.WriteFile(filepath.Join(audioDir, filename), fakeMP3, 0644); err != nil {
+		t.Fatalf("write fake mp3: %v", err)
+	}
+
+	audioH := &handlers.AudioHandler{Store: s, AudioDir: audioDir}
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/char/{char}", audioH.ServeCharAudio)
+
+	rec := do(t, r, "GET", "/api/audio/char/%E5%90%AC", nil)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 for cached file, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestQuizNext_ListenOnly_NoTranslationsNoPinyin(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "听", "tīng", []string{"listen"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=listen_only", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if len(card.Translations) != 0 {
+		t.Errorf("listen_only card must not include translations, got %v", card.Translations)
+	}
+	if card.Pinyin != nil {
+		t.Errorf("listen_only card must not include pinyin, got %q", *card.Pinyin)
+	}
+}
+
+func TestQuizAnswer_ListenOnly_Wrong(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "听", "tīng", []string{"listen"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeListenOnly,
+		Answer: "wrong answer",
+		Langs:  []string{"en"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Errorf("want correct=false for wrong answer")
+	}
+	if resp.ZhText != "听" {
+		t.Errorf("want ZhText=听, got %q", resp.ZhText)
+	}
+	if len(resp.CorrectAnswers) == 0 {
+		t.Errorf("want CorrectAnswers populated, got empty")
 	}
 }
 
