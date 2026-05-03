@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/tts"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type AudioHandler struct {
@@ -40,6 +43,42 @@ func (h *AudioHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 		if err := h.generate(id, wd.ZhText); err != nil {
 			// TTS unavailable — tell the client so it can fall back
 			writeError(w, http.StatusServiceUnavailable, "tts unavailable")
+			return
+		}
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	http.ServeFile(w, r, mp3Path)
+}
+
+// ServeCharAudio handles GET /api/audio/char/{char}.
+// It serves TTS audio for a raw Chinese text segment (used for components that have no word ID).
+// The cache filename is the hex encoding of the UTF-8 bytes to ensure filesystem safety.
+func (h *AudioHandler) ServeCharAudio(w http.ResponseWriter, r *http.Request) {
+	zhText := chi.URLParam(r, "char")
+	if zhText == "" {
+		writeError(w, http.StatusBadRequest, "char is required")
+		return
+	}
+
+	filename := hex.EncodeToString([]byte(zhText)) + ".mp3"
+	mp3Path := filepath.Join(h.AudioDir, filename)
+
+	if _, err := os.Stat(mp3Path); os.IsNotExist(err) {
+		if err := os.MkdirAll(h.AudioDir, 0755); err != nil {
+			log.Printf("tts mkdir %s: %v", h.AudioDir, err)
+			writeError(w, http.StatusInternalServerError, "failed to create audio dir")
+			return
+		}
+		data, err := tts.Synthesize(zhText)
+		if err != nil {
+			log.Printf("tts generate char %q: %v", zhText, err)
+			writeError(w, http.StatusServiceUnavailable, "tts unavailable")
+			return
+		}
+		if err := os.WriteFile(mp3Path, data, 0644); err != nil {
+			log.Printf("tts write char %q: %v", zhText, err)
+			writeError(w, http.StatusInternalServerError, "failed to write audio")
 			return
 		}
 	}

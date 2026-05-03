@@ -116,10 +116,11 @@ function setText(id, text) {
   if (el) el.textContent = text;
 }
 
-// playAudio plays the server-cached MP3 for wordId.
+// playAudio plays the server-cached MP3 for wordId, or the char TTS endpoint when wordId <= 0.
 // Falls back silently to the Web Speech API if the MP3 is unavailable.
 function playAudio(wordId, zhText) {
-  const audio = new Audio(`/api/audio/${wordId}`);
+  const url = wordId > 0 ? `/api/audio/${wordId}` : `/api/audio/char/${encodeURIComponent(zhText)}`;
+  const audio = new Audio(url);
   audio.play().catch(() => {
     if ('speechSynthesis' in window) {
       const u = new SpeechSynthesisUtterance(zhText);

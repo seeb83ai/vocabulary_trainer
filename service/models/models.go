@@ -10,6 +10,7 @@ const (
 	ModeProgressive      = "progressive"
 	ModeNewWord          = "new_word"
 	ModeMaskPinyin       = "mask_pinyin" // transl_to_zh with pinyin hint forced on
+	ModeListenOnly       = "listen_only" // zh_to_transl but hides the Chinese prompt
 )
 
 // UserSettings holds per-user configuration stored in user_settings.

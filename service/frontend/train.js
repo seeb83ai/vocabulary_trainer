@@ -23,6 +23,7 @@ let selectedBucket = localStorage.getItem('quizBucket') || '';
 let selectedLangs = JSON.parse(localStorage.getItem('quizLangs') || '["en"]');
 let includeMnemonics = localStorage.getItem('quizMnemonics') !== 'false';
 let includeComponents = localStorage.getItem('quizComponents') !== 'false';
+let autoplay = localStorage.getItem('quizAutoplay') === 'true';
 let latestStats = null;
 let skipNewWords = false;
 
@@ -105,6 +106,21 @@ function applyComponentPill() {
   const pill = $('components-pill');
   if (pill) { pill.className = cls; pill.textContent = label; }
   const overlayPill = $('overlay-components-pill');
+  if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
+}
+
+function applyAutoplayPill() {
+  const active = autoplay;
+  const cls = active
+    ? 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-blue-600 text-white'
+    : 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
+  const overlayCls = active
+    ? 'px-4 py-2 rounded-full text-sm font-medium transition bg-blue-600 text-white'
+    : 'px-4 py-2 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
+  const label = t('filter.autoplayOn');
+  const pill = $('autoplay-pill');
+  if (pill) { pill.className = cls; pill.textContent = label; }
+  const overlayPill = $('overlay-autoplay-pill');
   if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
 }
 
@@ -229,6 +245,7 @@ async function loadNextCard() {
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
     loadNewWordBreakdown(currentCard.prompt);
+    if (autoplay) playAudio(currentCard.word_id, currentCard.prompt);
     await loadStats();
     return;
   }
@@ -239,6 +256,7 @@ async function loadNextCard() {
     hide('new-word-area');
     show('new-component-area');
     setText('new-component-char', currentCard.prompt);
+    $('new-component-play-btn').onclick = () => playAudio(0, currentCard.prompt);
     const compPinyin = currentCard.pinyin || null;
     setText('new-component-pinyin', compPinyin || '');
     compPinyin ? show('new-component-pinyin-row') : hide('new-component-pinyin-row');
@@ -249,6 +267,7 @@ async function loadNextCard() {
          <span class="text-xl font-bold text-gray-800">${escHtml(def)}</span>
        </div>`
     ).join('');
+    if (autoplay) playAudio(0, currentCard.prompt);
     await loadStats();
     return;
   }
@@ -262,10 +281,18 @@ function showCard() {
   show('card-area');
 
   if (currentCard.card_type === 'component') {
+    const listenOnlyComp = selectedMode === 'listen_only';
     setText('mode-label', t('component.modeLabel'));
-    setText('prompt-word', currentCard.prompt);
-    hide('play-btn');
-    if (currentCard.pinyin) {
+    if (listenOnlyComp) {
+      setText('prompt-word', '🔊');
+      const playBtn = $('play-btn');
+      playBtn.onclick = () => playAudio(0, currentCard.prompt);
+      show('play-btn');
+    } else {
+      setText('prompt-word', currentCard.prompt);
+      hide('play-btn');
+    }
+    if (currentCard.pinyin && !listenOnlyComp) {
       setText('pinyin-hint', currentCard.pinyin);
       show('pinyin-hint');
     } else {
@@ -274,6 +301,7 @@ function showCard() {
     hide('translations-hint');
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
+    if (autoplay) playAudio(0, currentCard.prompt);
   } else if (currentCard.card_type === 'hmm') {
     setText('mode-label', t('hmm.modeLabel'));
     setText('prompt-word', currentCard.prompt);
@@ -301,10 +329,12 @@ function showCard() {
     hide('hmm-actor-hint');
 
     setText('mode-label', getModeLabel(currentCard.mode));
-    setText('prompt-word', currentCard.prompt);
 
-    // Show play button only when the prompt is Chinese
-    const isZhPrompt = currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
+    // Show play button when prompt is Chinese; in listen_only also hide the prompt text
+    const isZhPrompt = ['zh_to_transl', 'zh_pinyin_to_transl', 'listen_only'].includes(currentCard.mode);
+    const isListenOnly = currentCard.mode === 'listen_only';
+    setText('prompt-word', isListenOnly ? '🔊' : currentCard.prompt);
+
     const playBtn = $('play-btn');
     if (isZhPrompt) {
       playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
@@ -313,7 +343,7 @@ function showCard() {
       hide('play-btn');
     }
 
-    if (currentCard.pinyin) {
+    if (currentCard.pinyin && !isListenOnly) {
       setText('pinyin-hint', currentCard.pinyin);
       show('pinyin-hint');
     } else {
@@ -333,6 +363,8 @@ function showCard() {
     } else {
       hide('translations-hint');
     }
+
+    if (autoplay && isZhPrompt) playAudio(currentCard.word_id, currentCard.prompt);
   }
 
   $('answer-input').focus();
@@ -916,6 +948,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTierPills();
   applyMnemonicPill();
   applyComponentPill();
+  applyAutoplayPill();
   loadLangs();
   loadTrainTags();
 
@@ -940,6 +973,16 @@ document.addEventListener('DOMContentLoaded', () => {
   if (componentsPill) componentsPill.addEventListener('click', toggleComponents);
   const overlayComponentsPill = $('overlay-components-pill');
   if (overlayComponentsPill) overlayComponentsPill.addEventListener('click', toggleComponents);
+
+  function toggleAutoplay() {
+    autoplay = !autoplay;
+    localStorage.setItem('quizAutoplay', autoplay ? 'true' : 'false');
+    applyAutoplayPill();
+  }
+  const autoplayPill = $('autoplay-pill');
+  if (autoplayPill) autoplayPill.addEventListener('click', toggleAutoplay);
+  const overlayAutoplayPill = $('overlay-autoplay-pill');
+  if (overlayAutoplayPill) overlayAutoplayPill.addEventListener('click', toggleAutoplay);
 
   document.querySelectorAll('.tier-pill').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1093,6 +1136,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('langchange', () => {
     applyModeButtons();
     applyTierPills();
+    applyMnemonicPill();
+    applyComponentPill();
+    applyAutoplayPill();
   });
 
   // Onboarding import (shown when user has zero words)

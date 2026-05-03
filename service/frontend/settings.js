@@ -24,11 +24,12 @@ async function isPasswordPwned(password) {
 }
 
 const MODE_OPTIONS = [
-  { value: 'transl_to_zh',       label: 'Translation → Chinese' },
-  { value: 'zh_to_transl',       label: 'Chinese → Translation' },
+  { value: 'transl_to_zh',        label: 'Translation → Chinese' },
+  { value: 'zh_to_transl',        label: 'Chinese → Translation' },
   { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
-  { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
-  { value: 'random',             label: 'Random' },
+  { value: 'mask_pinyin',         label: 'Translation → Chinese (pinyin hint)' },
+  { value: 'listen_only',         label: 'Listen Only (audio, no characters)' },
+  { value: 'random',              label: 'Random' },
 ];
 
 function populateModeSelect(el, value) {

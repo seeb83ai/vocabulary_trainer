@@ -82,6 +82,7 @@ func newRouter(s *db.Store) http.Handler {
 func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	wordsH := &handlers.WordsHandler{Store: s}
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
+	audioH := &handlers.AudioHandler{Store: s, AudioDir: os.TempDir()}
 	mismatchH := &handlers.MismatchesHandler{Store: s}
 	importH := &handlers.ImportHandler{Store: s}
 	tagsH := &handlers.TagsHandler{Store: s}
@@ -139,6 +140,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/components/{char}/review", componentH.Review)
 	r.Put("/api/components/{char}/translation", componentH.UpdateTranslation)
 	r.Get("/api/components/{char}/translations", componentH.GetTranslations)
+	r.Get("/api/audio/char/{char}", audioH.ServeCharAudio)
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
 	r.Get("/api/hanzi/decompose", hanziH.Decompose)
 	r.Post("/api/hmm-quiz/skip", hmmQuizH.Skip)
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
@@ -435,6 +438,81 @@ func TestQuizAnswer_WordNotFound(t *testing.T) {
 	})
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestQuizNext_ListenOnlyMode(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "听", "tīng", []string{"listen"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=listen_only", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeListenOnly {
+		t.Errorf("want mode=%s, got %s", models.ModeListenOnly, card.Mode)
+	}
+	if card.Prompt != "听" {
+		t.Errorf("want zh prompt, got %q", card.Prompt)
+	}
+}
+
+func TestQuizAnswer_ListenOnlyMode(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "听", "tīng", []string{"listen"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeListenOnly,
+		Answer: "listen",
+		Langs:  []string{"en"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Errorf("want correct=true, got false")
+	}
+}
+
+func TestAudioChar_Endpoint(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/audio/char/%E5%90%AC", nil) // URL-encoded "听"
+	// TTS is unavailable in test environment; expect 503, not 404
+	if rec.Code == http.StatusNotFound {
+		t.Errorf("want 503 (TTS unavailable), got 404 (endpoint not registered)")
 	}
 }
 

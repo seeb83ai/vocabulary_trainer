@@ -220,6 +220,7 @@ func main() {
 		r.Post("/import", importH.Import)
 		r.Get("/tags/details", tagsH.Details)
 		r.Put("/tags/{name}", tagsH.Update)
+		r.Get("/audio/char/{char}", audioH.ServeCharAudio)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/mismatches", mismatchH.List)
 		r.Get("/hanzi/decompose", hanziH.Decompose)

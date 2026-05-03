@@ -243,7 +243,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	var mode string
 	switch requestedMode {
-	case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin:
+	case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeListenOnly:
 		mode = requestedMode
 	case models.ModeProgressive:
 		if progress.LearningNewWord {
@@ -275,6 +275,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch mode {
+	case models.ModeListenOnly:
+		card.Prompt = word.Text
 	case models.ModeTranslToZh:
 		// Load translations for ALL selected langs so the user sees every meaning as context.
 		translations := map[string][]string{}
@@ -341,10 +343,16 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		models.ModeTranslToZh:       true,
 		models.ModeZhToTransl:       true,
 		models.ModeZhPinyinToTransl: true,
+		models.ModeListenOnly:       true,
 	}
 	if !validModes[req.Mode] {
 		writeError(w, http.StatusBadRequest, "invalid mode")
 		return
+	}
+	// listen_only is zh→transl direction; alias before answer evaluation.
+	answerMode := req.Mode
+	if answerMode == models.ModeListenOnly {
+		answerMode = models.ModeZhToTransl
 	}
 
 	// Look up the zh word (word_id is always the zh word)
@@ -367,7 +375,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var correctTexts []string
-	switch req.Mode {
+	switch answerMode {
 	case models.ModeTranslToZh:
 		correctTexts = []string{zhWord.ZhText}
 	case models.ModeZhToTransl, models.ModeZhPinyinToTransl:
@@ -460,10 +468,10 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !correct {
-		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Answer, req.Mode, langs)
+		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Answer, answerMode, langs)
 		if err == nil && found {
-			_ = h.Store.UpsertConfusion(r.Context(), req.WordID, confusedWithID, req.Mode)
-			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode, langs)
+			_ = h.Store.UpsertConfusion(r.Context(), req.WordID, confusedWithID, answerMode)
+			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, answerMode, langs)
 			if err == nil {
 				resp.ConfusedWith = confusions
 			}

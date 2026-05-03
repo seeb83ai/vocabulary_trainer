@@ -29,11 +29,13 @@ const I18N = {
     'mode.transl_to_zh': 'To Chinese',
     'mode.zh_to_transl': 'Chinese',
     'mode.zh_pinyin_to_transl': 'Chinese + Pinyin',
+    'mode.listen_only': 'Listen Only',
 
     // Mode labels (result display)
     'modeLabel.transl_to_zh': 'To Chinese',
     'modeLabel.zh_to_transl': 'Chinese',
     'modeLabel.zh_pinyin_to_transl': 'Chinese + Pinyin',
+    'modeLabel.listen_only': 'Listen Only',
     'modeLabel.new_word': 'New Word',
 
     // Tier/Level labels
@@ -50,6 +52,8 @@ const I18N = {
     'filter.mnemonicsOn': 'On',
     'filter.components': 'Components:',
     'filter.componentsOn': 'On',
+    'filter.autoplay': 'Autoplay:',
+    'filter.autoplayOn': '🔊 Autoplay',
     'filter.quizMode': 'Quiz Mode',
     'filter.done': 'Done',
     'filter.edit': '▼ Edit',
@@ -432,11 +436,13 @@ const I18N = {
     'mode.transl_to_zh': '译中文',
     'mode.zh_to_transl': '中文',
     'mode.zh_pinyin_to_transl': '中文＋拼音',
+    'mode.listen_only': '仅听音',
 
     // Mode labels (result display)
     'modeLabel.transl_to_zh': '译中文',
     'modeLabel.zh_to_transl': '中文',
     'modeLabel.zh_pinyin_to_transl': '中文＋拼音',
+    'modeLabel.listen_only': '仅听音',
     'modeLabel.new_word': '新词',
 
     // Tier/Level labels
@@ -453,6 +459,8 @@ const I18N = {
     'filter.mnemonicsOn': '开',
     'filter.components': '部件：',
     'filter.componentsOn': '开',
+    'filter.autoplay': '自动播放：',
+    'filter.autoplayOn': '🔊 自动',
     'filter.quizMode': '测验模式',
     'filter.done': '完成',
     'filter.edit': '▼ 编辑',
