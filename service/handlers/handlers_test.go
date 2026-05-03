@@ -4338,3 +4338,63 @@ func TestComponentGetTranslations_EmptyForUnknown(t *testing.T) {
 		t.Errorf("want empty map, got %v", resp)
 	}
 }
+
+// ── component is_also_word field ─────────────────────────────────────────────
+
+func TestQuizNext_ComponentCard_IsAlsoWord_True(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed hanzi: %v", err)
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.SetComponentSeenForTest(ctx, int64(2), "女")
+	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "女",
+		Translations: map[string][]string{"en": {"woman"}},
+	})
+	if err != nil {
+		t.Fatalf("create word: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if card["card_type"] != "component" {
+		t.Fatalf("want card_type=component, got %v", card["card_type"])
+	}
+	if v, _ := card["is_also_word"].(bool); !v {
+		t.Error("want is_also_word=true when component character is also a word")
+	}
+}
+
+func TestQuizNext_ComponentCard_IsAlsoWord_False(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed hanzi: %v", err)
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.SetComponentSeenForTest(ctx, int64(2), "女")
+	// No corresponding zh word created.
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if card["card_type"] != "component" {
+		t.Fatalf("want card_type=component, got %v", card["card_type"])
+	}
+	if v, _ := card["is_also_word"].(bool); v {
+		t.Error("want is_also_word=false when component character is not a word")
+	}
+}

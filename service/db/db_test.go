@@ -1680,6 +1680,53 @@ func TestGetZhTextByID_NotFound(t *testing.T) {
 	}
 }
 
+func TestIsZhWordForUser_True(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	_, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText: "女", Translations: map[string][]string{"en": {"woman"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+	ok, err := s.IsZhWordForUser(ctx, 2, "女")
+	if err != nil {
+		t.Fatalf("IsZhWordForUser: %v", err)
+	}
+	if !ok {
+		t.Error("want true for existing zh word")
+	}
+}
+
+func TestIsZhWordForUser_False(t *testing.T) {
+	s := openTestDB(t)
+	ok, err := s.IsZhWordForUser(context.Background(), 2, "女")
+	if err != nil {
+		t.Fatalf("IsZhWordForUser: %v", err)
+	}
+	if ok {
+		t.Error("want false for non-existent zh word")
+	}
+}
+
+func TestIsZhWordForUser_DifferentUser(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	_, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText: "女", Translations: map[string][]string{"en": {"woman"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+	ok, err := s.IsZhWordForUser(ctx, 99, "女")
+	if err != nil {
+		t.Fatalf("IsZhWordForUser: %v", err)
+	}
+	if ok {
+		t.Error("want false for word owned by a different user")
+	}
+}
+
 func TestAcknowledgeRandomWords_InitComponents(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
