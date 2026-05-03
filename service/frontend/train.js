@@ -262,7 +262,8 @@ function showCard() {
   show('card-area');
 
   if (currentCard.card_type === 'component') {
-    setText('mode-label', t('component.modeLabel'));
+    const compLabel = currentCard.is_also_word ? t('component.modeLabelAlsoWord') : t('component.modeLabel');
+    setText('mode-label', compLabel);
     setText('prompt-word', currentCard.prompt);
     hide('play-btn');
     if (currentCard.pinyin) {

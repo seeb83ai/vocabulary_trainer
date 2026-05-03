@@ -296,6 +296,15 @@ func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, la
 	return texts, rows.Err()
 }
 
+// IsZhWordForUser reports whether text is an exact zh word in the user's vocabulary.
+func (s *Store) IsZhWordForUser(ctx context.Context, userID int64, text string) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM words WHERE user_id = ? AND text = ? AND language = 'zh'`,
+		userID, text).Scan(&count)
+	return count > 0, err
+}
+
 // GetZhTextByID returns the text of a zh word owned by userID.
 // Returns empty string if the word is not found or not a zh word.
 func (s *Store) GetZhTextByID(ctx context.Context, userID, wordID int64) (string, error) {
