@@ -277,6 +277,97 @@ func TestGetNextComponentCard_MultipleReadingsJoined(t *testing.T) {
 	}
 }
 
+// ── Component HMM scene tests ────────────────────────────────────────────────
+
+func TestUpsertAndGetComponentHMMScene(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+	const char = "木"
+
+	text, err := s.GetComponentHMMSceneText(ctx, userID, char)
+	if err != nil {
+		t.Fatalf("GetComponentHMMSceneText (missing): %v", err)
+	}
+	if text != "" {
+		t.Errorf("want empty string for missing scene, got %q", text)
+	}
+
+	if err := s.UpsertComponentHMMScene(ctx, userID, char, "A tree in the park"); err != nil {
+		t.Fatalf("UpsertComponentHMMScene: %v", err)
+	}
+
+	text, err = s.GetComponentHMMSceneText(ctx, userID, char)
+	if err != nil {
+		t.Fatalf("GetComponentHMMSceneText: %v", err)
+	}
+	if text != "A tree in the park" {
+		t.Errorf("want %q, got %q", "A tree in the park", text)
+	}
+}
+
+func TestUpsertComponentHMMScene_Overwrites(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+	const char = "水"
+
+	if err := s.UpsertComponentHMMScene(ctx, userID, char, "First scene"); err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+	if err := s.UpsertComponentHMMScene(ctx, userID, char, "Second scene"); err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+
+	text, err := s.GetComponentHMMSceneText(ctx, userID, char)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if text != "Second scene" {
+		t.Errorf("want %q, got %q", "Second scene", text)
+	}
+}
+
+func TestDeleteComponentHMMScene(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+	const char = "火"
+
+	if err := s.UpsertComponentHMMScene(ctx, userID, char, "Fire scene"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := s.DeleteComponentHMMScene(ctx, userID, char); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	text, err := s.GetComponentHMMSceneText(ctx, userID, char)
+	if err != nil {
+		t.Fatalf("get after delete: %v", err)
+	}
+	if text != "" {
+		t.Errorf("want empty after delete, got %q", text)
+	}
+}
+
+func TestComponentHMMScene_IsolatedPerUser(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const char = "土"
+
+	if err := s.UpsertComponentHMMScene(ctx, int64(2), char, "User 2 scene"); err != nil {
+		t.Fatalf("upsert user2: %v", err)
+	}
+
+	text, err := s.GetComponentHMMSceneText(ctx, int64(3), char)
+	if err != nil {
+		t.Fatalf("get user3: %v", err)
+	}
+	if text != "" {
+		t.Errorf("user 3 should not see user 2's scene, got %q", text)
+	}
+}
+
 func TestGetComponentList_IncludesPinyin(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

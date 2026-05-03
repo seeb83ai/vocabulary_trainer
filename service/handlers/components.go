@@ -71,6 +71,7 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sceneText, _ := h.Store.GetComponentHMMSceneText(r.Context(), userID, req.Character)
 	writeJSON(w, http.StatusOK, models.ComponentAnswerResponse{
 		Correct:        correct,
 		CorrectAnswers: defs,
@@ -79,6 +80,7 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		TotalCorrect:   progress.TotalCorrect,
 		TotalAttempts:  progress.TotalAttempts,
 		Repetitions:    progress.Repetitions,
+		SceneText:      sceneText,
 	})
 }
 
@@ -228,6 +230,56 @@ func (h *ComponentHandler) UpdateTranslation(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := h.Store.StoreComponentTranslation(char, req.Lang, req.Definition); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetHMMScene returns the saved mnemonic scene text for a component character.
+func (h *ComponentHandler) GetHMMScene(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	text, err := h.Store.GetComponentHMMSceneText(r.Context(), UserIDFromContext(r.Context()), char)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"scene_text": text})
+}
+
+// PutHMMScene saves (or replaces) a mnemonic scene text for a component character.
+func (h *ComponentHandler) PutHMMScene(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	var req struct {
+		SceneText string `json:"scene_text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := h.Store.UpsertComponentHMMScene(r.Context(), UserIDFromContext(r.Context()), char, req.SceneText); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteHMMScene removes the mnemonic scene for a component character.
+func (h *ComponentHandler) DeleteHMMScene(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	if err := h.Store.DeleteComponentHMMScene(r.Context(), UserIDFromContext(r.Context()), char); err != nil {
 		internalError(w, err)
 		return
 	}

@@ -1002,7 +1002,10 @@ function openComponentEdit(char) {
   switchTab('comp');
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
 
-  apiFetch(`/api/components/${encodeURIComponent(char)}/translations`).then(data => {
+  Promise.all([
+    apiFetch(`/api/components/${encodeURIComponent(char)}/translations`),
+    apiFetch(`/api/components/${encodeURIComponent(char)}/hmm-scene`).catch(() => ({ scene_text: '' })),
+  ]).then(([data, sceneData]) => {
     const langs = [primaryLang];
     if (secondaryLang) langs.push(secondaryLang);
     const form = $('comp-edit-form');
@@ -1025,6 +1028,16 @@ function openComponentEdit(char) {
       );
       form.appendChild(section);
     }
+
+    const sceneSection = document.createElement('div');
+    sceneSection.className = 'space-y-2 pt-2 border-t border-gray-100';
+    sceneSection.innerHTML = `
+      <label class="block text-sm font-medium text-gray-700">${escHtml(t('comp.sceneLabel') || 'Mnemonic scene')}</label>
+      <textarea id="comp-edit-scene" rows="3"
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+        placeholder="${escHtml(t('comp.scenePlaceholder') || 'Write a memorable scene for this character…')}"
+      >${escHtml(sceneData.scene_text || '')}</textarea>`;
+    form.appendChild(sceneSection);
   }).catch(e => {
     $('comp-edit-form').innerHTML = `<span class="text-red-500 text-sm">${escHtml(e.message)}</span>`;
   });
@@ -1567,12 +1580,21 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!byLang[lang]) byLang[lang] = [];
       if (val) byLang[lang].push(val);
     });
+    const sceneTextEl = $('comp-edit-scene');
+    const sceneText = sceneTextEl ? sceneTextEl.value.trim() : null;
     try {
       for (const [lang, parts] of Object.entries(byLang)) {
         await apiFetch(`/api/components/${encodeURIComponent(editingCompChar)}/translation`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lang, definition: parts.join(', ') }),
+        });
+      }
+      if (sceneText !== null) {
+        await apiFetch(`/api/components/${encodeURIComponent(editingCompChar)}/hmm-scene`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scene_text: sceneText }),
         });
       }
       if (currentView === 'components') loadComponents();

@@ -311,6 +311,7 @@ type ComponentAnswerResponse struct {
 	TotalCorrect   int               `json:"total_correct"`
 	TotalAttempts  int               `json:"total_attempts"`
 	Repetitions    int               `json:"repetitions"`
+	SceneText      string            `json:"scene_text,omitempty"`
 }
 
 type HanziDecomposition struct {

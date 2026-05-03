@@ -421,6 +421,50 @@ func (s *Store) InsertComponentProgressForTest(ctx context.Context, userID int64
 		userID, character, dueDate.UTC().Format("2006-01-02 15:04:05"))
 }
 
+// GetComponentHMMSceneText returns the mnemonic scene text for a component character
+// for the given user, or "" if none has been saved.
+func (s *Store) GetComponentHMMSceneText(ctx context.Context, userID int64, character string) (string, error) {
+	var text string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT scene_text FROM component_hmm_scenes WHERE user_id = ? AND character = ?`,
+		userID, character,
+	).Scan(&text)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get component hmm scene: %w", err)
+	}
+	return text, nil
+}
+
+// UpsertComponentHMMScene saves (or replaces) the mnemonic scene text for a
+// component character for the given user.
+func (s *Store) UpsertComponentHMMScene(ctx context.Context, userID int64, character, sceneText string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO component_hmm_scenes (character, user_id, scene_text) VALUES (?, ?, ?)
+		 ON CONFLICT(character, user_id) DO UPDATE SET scene_text = excluded.scene_text`,
+		character, userID, sceneText,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert component hmm scene: %w", err)
+	}
+	return nil
+}
+
+// DeleteComponentHMMScene removes the mnemonic scene for a component character
+// for the given user. It is a no-op if no scene exists.
+func (s *Store) DeleteComponentHMMScene(ctx context.Context, userID int64, character string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM component_hmm_scenes WHERE user_id = ? AND character = ?`,
+		userID, character,
+	)
+	if err != nil {
+		return fmt.Errorf("delete component hmm scene: %w", err)
+	}
+	return nil
+}
+
 // SetComponentAttemptsForTest sets total_attempts for a component_progress row.
 // Intended for use in tests only.
 func (s *Store) SetComponentAttemptsForTest(ctx context.Context, userID int64, character string, attempts int) {

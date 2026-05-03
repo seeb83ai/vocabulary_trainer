@@ -139,6 +139,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/components/{char}/review", componentH.Review)
 	r.Put("/api/components/{char}/translation", componentH.UpdateTranslation)
 	r.Get("/api/components/{char}/translations", componentH.GetTranslations)
+	r.Get("/api/components/{char}/hmm-scene", componentH.GetHMMScene)
+	r.Put("/api/components/{char}/hmm-scene", componentH.PutHMMScene)
+	r.Delete("/api/components/{char}/hmm-scene", componentH.DeleteHMMScene)
 	r.Get("/api/hanzi/decompose", hanziH.Decompose)
 	r.Post("/api/hmm-quiz/skip", hmmQuizH.Skip)
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
@@ -4336,5 +4339,139 @@ func TestComponentGetTranslations_EmptyForUnknown(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if len(resp) != 0 {
 		t.Errorf("want empty map, got %v", resp)
+	}
+}
+
+// ── Component HMM scene handler tests ────────────────────────────────────────
+
+func TestComponentGetHMMScene_ReturnsSceneText(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.UpsertComponentHMMScene(ctx, int64(2), "木", "A wooden table"); err != nil {
+		t.Fatalf("seed scene: %v", err)
+	}
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components/木/hmm-scene", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]string
+	decodeJSON(t, rec, &resp)
+	if resp["scene_text"] != "A wooden table" {
+		t.Errorf("want scene_text=%q, got %v", "A wooden table", resp["scene_text"])
+	}
+}
+
+func TestComponentGetHMMScene_EmptyWhenNoScene(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components/木/hmm-scene", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]string
+	decodeJSON(t, rec, &resp)
+	if resp["scene_text"] != "" {
+		t.Errorf("want empty scene_text, got %q", resp["scene_text"])
+	}
+}
+
+func TestComponentPutHMMScene_SavesAndReturns204(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPut, "/api/components/木/hmm-scene", map[string]string{
+		"scene_text": "A wooden table",
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	text, err := s.GetComponentHMMSceneText(context.Background(), int64(2), "木")
+	if err != nil {
+		t.Fatalf("GetComponentHMMSceneText: %v", err)
+	}
+	if text != "A wooden table" {
+		t.Errorf("want %q, got %q", "A wooden table", text)
+	}
+}
+
+func TestComponentPutHMMScene_MissingChar_Returns400(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPut, "/api/components//hmm-scene", map[string]string{
+		"scene_text": "some text",
+	})
+	if rec.Code == http.StatusNoContent {
+		t.Fatal("want non-204 for empty char path param")
+	}
+}
+
+func TestComponentDeleteHMMScene_Removes(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.UpsertComponentHMMScene(ctx, int64(2), "水", "Water flows"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	r := newRouter(s)
+	rec := do(t, r, http.MethodDelete, "/api/components/水/hmm-scene", nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	text, err := s.GetComponentHMMSceneText(ctx, int64(2), "水")
+	if err != nil {
+		t.Fatalf("GetComponentHMMSceneText: %v", err)
+	}
+	if text != "" {
+		t.Errorf("want empty after delete, got %q", text)
+	}
+}
+
+func TestComponentAnswer_IncludesSceneText(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+	if err := s.UpsertComponentHMMScene(ctx, int64(2), "女", "A woman in a park"); err != nil {
+		t.Fatalf("seed scene: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "woman",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["scene_text"] != "A woman in a park" {
+		t.Errorf("want scene_text=%q, got %v", "A woman in a park", resp["scene_text"])
+	}
+}
+
+func TestComponentAnswer_NoSceneText_OmitsField(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "woman",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if _, ok := resp["scene_text"]; ok {
+		t.Errorf("want scene_text omitted when no scene exists, got %v", resp["scene_text"])
 	}
 }
