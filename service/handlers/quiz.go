@@ -190,12 +190,18 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	if compCard != nil {
 		serveComp := word == nil || compCard.DueDate.Before(progress.DueDate)
 		if serveComp {
+			isAlsoWord, err := h.Store.IsZhWordForUser(r.Context(), UserIDFromContext(r.Context()), compCard.Character)
+			if err != nil {
+				internalError(w, err)
+				return
+			}
 			compQuizCard := models.QuizCard{
 				CardType:    "component",
 				Prompt:      compCard.Character,
 				DueDate:     compCard.DueDate,
 				IsNew:       compCard.IsNew,
 				Definitions: compCard.Definitions,
+				IsAlsoWord:  isAlsoWord,
 			}
 			if compCard.Pinyin != "" {
 				compQuizCard.Pinyin = &compCard.Pinyin

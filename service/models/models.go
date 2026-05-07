@@ -82,6 +82,7 @@ type QuizCard struct {
 	// Component card fields (card_type="component"); zero-value for other cards.
 	IsNew       bool              `json:"is_new,omitempty"`
 	Definitions map[string]string `json:"definitions,omitempty"`
+	IsAlsoWord  bool              `json:"is_also_word,omitempty"`
 }
 
 type AnswerRequest struct {

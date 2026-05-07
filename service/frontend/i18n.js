@@ -381,6 +381,7 @@ const I18N = {
 
     // Component cards in word training
     'component.modeLabel': 'Component',
+    'component.modeLabelAlsoWord': 'Component & Word',
     'component.character': 'Character',
     'component.newLabel': 'New Component',
     'component.gotIt': 'Got it!',
@@ -784,6 +785,7 @@ const I18N = {
 
     // Component cards in word training
     'component.modeLabel': '部件',
+    'component.modeLabelAlsoWord': '部件 & 词',
     'component.character': '汉字',
     'component.newLabel': '新部件',
     'component.gotIt': '知道了！',
