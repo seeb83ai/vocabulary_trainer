@@ -376,6 +376,7 @@ type HMMSceneContext struct {
 	Initial        string            `json:"initial"`
 	Final          string            `json:"final"`
 	Tone           int               `json:"tone"`
+	Pinyin         string            `json:"pinyin,omitempty"`
 	Decomposition  string            `json:"decomposition,omitempty"`
 	Radicals       []string          `json:"radicals"`
 	RadicalDefs    map[string]string `json:"radical_defs"`

@@ -90,6 +90,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN", SettingsHandler: settingsH}
 	componentH := &handlers.ComponentHandler{Store: s}
 	hmmH := &handlers.HMMHandler{Store: s}
+	llmH := &handlers.LLMHandler{Store: s}
 	hmmQuizH := &handlers.HMMQuizHandler{Store: s}
 	hanziH := &handlers.HanziHandler{Store: s}
 
@@ -142,6 +143,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/components/{char}/hmm-scene", componentH.GetHMMScene)
 	r.Put("/api/components/{char}/hmm-scene", componentH.PutHMMScene)
 	r.Delete("/api/components/{char}/hmm-scene", componentH.DeleteHMMScene)
+	r.Get("/api/components/{char}/hmm/context", componentH.GetComponentHMMContext)
+	r.Put("/api/components/{char}/hmm", componentH.SaveCompScene)
+	r.Post("/api/components/{char}/hmm/generate-scene", llmH.GenerateCompScene)
 	r.Get("/api/hanzi/decompose", hanziH.Decompose)
 	r.Post("/api/hmm-quiz/skip", hmmQuizH.Skip)
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
@@ -4473,5 +4477,94 @@ func TestComponentAnswer_NoSceneText_OmitsField(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if _, ok := resp["scene_text"]; ok {
 		t.Errorf("want scene_text omitted when no scene exists, got %v", resp["scene_text"])
+	}
+}
+
+// ── Component HMM context handler tests ──────────────────────────────────────
+
+func TestComponentGetHMMContext_ReturnsContext(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	// Seed character with pinyin so initial/final/tone can be parsed.
+	if err := s.SeedHanziDecompositionWithPinyinForTest(ctx, "木", "tree", `["mù"]`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components/木/hmm/context", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	// Must have the shape expected by loadCompHMMBuilder.
+	for _, key := range []string{"initial", "final", "tone", "radicals", "radical_defs", "props"} {
+		if _, ok := resp[key]; !ok {
+			t.Errorf("response missing key %q; got %v", key, resp)
+		}
+	}
+}
+
+func TestComponentGetHMMContext_MissingChar_Returns400(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodGet, "/api/components//hmm/context", nil)
+	if rec.Code == http.StatusOK {
+		t.Fatal("want non-200 for empty char path param")
+	}
+}
+
+func TestComponentGetHMMContext_IncludesExistingScene(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := s.UpsertComponentHMMScene(ctx, int64(2), "水", "Water flows down"); err != nil {
+		t.Fatalf("seed scene: %v", err)
+	}
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/components/水/hmm/context", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	scene, ok := resp["scene"]
+	if !ok {
+		t.Fatalf("want scene key in response, got %v", resp)
+	}
+	sceneMap, ok := scene.(map[string]any)
+	if !ok {
+		t.Fatalf("want scene to be object, got %T", scene)
+	}
+	if sceneMap["scene_text"] != "Water flows down" {
+		t.Errorf("want scene_text=%q, got %v", "Water flows down", sceneMap["scene_text"])
+	}
+}
+
+func TestComponentSaveCompScene_SavesActorLocationRoom(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionWithPinyinForTest(ctx, "火", "fire", `["huǒ"]`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPut, "/api/components/火/hmm", map[string]any{
+		"scene_text":    "Fire burns bright",
+		"actor_name":    "Hugo",
+		"location_name": "Harbor",
+		"room_name":     "Hall",
+		"props":         []any{},
+		"decomposition": "",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Scene must be persisted.
+	text, err := s.GetComponentHMMSceneText(ctx, int64(2), "火")
+	if err != nil {
+		t.Fatalf("GetComponentHMMSceneText: %v", err)
+	}
+	if text != "Fire burns bright" {
+		t.Errorf("want scene_text=%q, got %q", "Fire burns bright", text)
 	}
 }

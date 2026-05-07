@@ -298,9 +298,10 @@ function renderEditableBuilder(container, wordId, ctx, propsLookup = {}, opts = 
     const zhWord   = opts.zh  || '';
     const enTexts  = (opts.en || []).join(', ') || Object.values(opts.translations || {}).flat().join(', ') || '???';
     const propsStr = propNames.length ? propNames.join(', ') : '(none)';
+    const wordLabel = opts.compChar ? 'character' : 'word';
 
     const prompt =
-`I'm building a Hanzi Movie Method mnemonic for the Chinese word "${zhWord}".
+`I'm building a Hanzi Movie Method mnemonic for the Chinese ${wordLabel} "${zhWord}".
 
 My mnemonic setup:
 - Actor: ${actor} (initial consonant: ${ctx.initial === 'null' ? 'Ø' : (ctx.initial || '?')})
@@ -336,7 +337,10 @@ Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${lo
       label.textContent = 'Generating…';
       try {
         // Send only structured data — the backend builds the prompt server-side.
-        const result = await apiFetch(`/api/words/${wordId}/hmm/generate-scene`, {
+        const generateUrl = opts.compChar
+          ? `/api/components/${encodeURIComponent(opts.compChar)}/hmm/generate-scene`
+          : `/api/words/${wordId}/hmm/generate-scene`;
+        const result = await apiFetch(generateUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -442,7 +446,10 @@ Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${lo
         return { radical, prop_name };
       }).filter(p => p.radical);
 
-      await apiFetch(`/api/words/${wordId}/hmm`, {
+      const saveUrl = opts.compChar
+        ? `/api/components/${encodeURIComponent(opts.compChar)}/hmm`
+        : `/api/words/${wordId}/hmm`;
+      await apiFetch(saveUrl, {
         method: 'PUT',
         body: JSON.stringify({
           scene_text: document.getElementById('hmm-scene-text').value,
@@ -462,6 +469,36 @@ Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${lo
       btn.disabled = false;
     }
   });
+}
+
+// loadCompHMMBuilder — same as loadHMMBuilder but keyed by component character.
+// Uses GET /api/components/{char}/hmm/context and PUT /api/components/{char}/hmm.
+// opts.preloadedCtx — if provided, skips the context fetch (avoids duplicate request).
+async function loadCompHMMBuilder(containerId, char, opts = {}) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = `<div class="text-sm text-gray-400">${t('hmm.loadingData')}</div>`;
+
+  let ctx = opts.preloadedCtx;
+  if (!ctx) {
+    try {
+      ctx = await apiFetch(`/api/components/${encodeURIComponent(char)}/hmm/context`);
+    } catch (e) {
+      container.innerHTML = '';
+      return;
+    }
+  }
+
+  const propsLookup = {};
+  try {
+    const allProps = await apiFetch('/api/hmm/props');
+    for (const p of allProps) {
+      if (p.radical && p.prop_name) propsLookup[p.radical] = p.prop_name;
+    }
+  } catch (e) { /* non-fatal */ }
+
+  renderEditableBuilder(container, null, ctx, propsLookup, { ...opts, compChar: char });
 }
 
 function renderHMMSceneReadOnly(containerId, sceneText) {

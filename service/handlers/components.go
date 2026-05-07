@@ -14,6 +14,110 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// GetComponentHMMContext returns actor/location/room/props/scene context for a
+// component character. Same JSON shape as GET /api/words/{id}/hmm/context so
+// that loadCompHMMBuilder in hmm-builder.js can share the rendering code.
+func (h *ComponentHandler) GetComponentHMMContext(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+
+	userID := UserIDFromContext(r.Context())
+	ctx := r.Context()
+
+	pinyin := h.Store.GetComponentPinyin(ctx, char)
+	var initial, final string
+	var tone int
+	if pinyin != "" {
+		initial, final, tone = parsePinyin(pinyin)
+	}
+
+	// Decompose the single character into radicals.
+	runes := []rune(char)
+	var radicals []string
+	radicalDefs := map[string]string{}
+	var decompositionStr string
+	decomps, _ := h.Store.GetHanziDecomposition(ctx, runes)
+	if len(decomps) > 0 {
+		radicals = collectRadicals(decomps[0])
+		radicalDefs = collectRadicalDefs(decomps[0])
+		decompositionStr = decomps[0].Decomposition
+	}
+
+	resp := models.HMMSceneContext{
+		Initial:       initial,
+		Final:         final,
+		Tone:          tone,
+		Pinyin:        pinyin,
+		Decomposition: decompositionStr,
+		Radicals:      radicals,
+		RadicalDefs:   radicalDefs,
+		RadicalDeDefs: map[string]string{},
+	}
+
+	if initial != "" {
+		resp.Actor, _ = h.Store.GetHMMActorByInitial(ctx, userID, initial)
+	}
+	if final != "" {
+		resp.Location, _ = h.Store.GetHMMLocationByFinal(ctx, userID, final)
+	}
+	if tone >= 1 && tone <= 5 {
+		resp.ToneRoom, _ = h.Store.GetHMMToneRoom(ctx, userID, tone)
+	}
+	if len(radicals) > 0 {
+		resp.Props, _ = h.Store.GetHMMPropsByRadicals(ctx, userID, radicals)
+	}
+	if resp.Props == nil {
+		resp.Props = []models.HMMProp{}
+	}
+	if resp.Radicals == nil {
+		resp.Radicals = []string{}
+	}
+
+	resp.Scene, _ = h.Store.GetComponentHMMSceneRecord(ctx, userID, char)
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// SaveCompScene saves the mnemonic scene and library entries for a component character.
+// Mirrors PUT /api/words/{id}/hmm used by the word HMM builder.
+func (h *ComponentHandler) SaveCompScene(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+
+	var req models.HMMSaveSceneRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	ctx := r.Context()
+	userID := UserIDFromContext(ctx)
+
+	pinyin := h.Store.GetComponentPinyin(ctx, char)
+	var initial, final string
+	var tone int
+	if pinyin != "" {
+		initial, final, tone = parsePinyin(pinyin)
+	}
+
+	if err := h.Store.SaveComponentHMMSceneWithLibrary(ctx, userID, char, initial, final, tone, req); err != nil {
+		internalError(w, err)
+		return
+	}
+
+	if req.Decomposition != "" {
+		_ = h.Store.UpsertHanziDecomposition(ctx, char, req.Decomposition)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 type ComponentHandler struct {
 	Store *db.Store
 }
