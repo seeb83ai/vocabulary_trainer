@@ -9,6 +9,8 @@ import (
 	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/llm"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type LLMHandler struct {
@@ -178,6 +180,157 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 			}
 			log.Printf("LLM response: %v\n", res.text)
 			json.NewEncoder(w).Encode(llmGenerateResponse{Text: res.text})
+			return
+		case <-ticker.C:
+			if canFlush {
+				started = true
+				w.Write([]byte(" ")) //nolint:errcheck
+				flusher.Flush()
+			}
+		}
+	}
+}
+
+// GenerateCompScene generates an HMM mnemonic scene for a component character.
+// Mirrors GenerateScene but resolves the character text and meaning from the
+// component definition instead of a word record.
+func (h *LLMHandler) GenerateCompScene(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+
+	client := h.Client
+	if h.SettingsHandler != nil {
+		_, provider, userKey, localURL := h.SettingsHandler.UserAPIKeys(r, userID)
+		if provider != "" && (userKey != "" || provider == "local") {
+			if uc := llm.NewClientFromConfig(provider, userKey, localURL); uc != nil {
+				client = uc
+			}
+		}
+	}
+	if client == nil {
+		writeError(w, http.StatusServiceUnavailable, "LLM not configured")
+		return
+	}
+
+	hasUserKey := h.SettingsHandler != nil && func() bool {
+		_, p, k, _ := h.SettingsHandler.UserAPIKeys(r, userID)
+		return p != "" && k != ""
+	}()
+	if !hasUserKey {
+		role, err := h.Store.GetUserRole(r.Context(), userID)
+		if err != nil || (role != "plus" && role != "admin") {
+			writeError(w, http.StatusForbidden, "feature requires plus account or a personal LLM key")
+			return
+		}
+	}
+
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+
+	defs, err := h.Store.GetComponentDefinitions(r.Context(), char, []string{"en", "de"})
+	if err != nil || len(defs) == 0 {
+		writeError(w, http.StatusNotFound, "component not found")
+		return
+	}
+
+	var req llmGenerateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	pinyin := h.Store.GetComponentPinyin(r.Context(), char)
+	var initial, final string
+	var tone int
+	if pinyin != "" {
+		initial, final, tone = parsePinyin(pinyin)
+	}
+	initialDisplay := initial
+	if initial == "null" || initial == "" {
+		initialDisplay = "Ø"
+	}
+	finalDisplay := final
+	if final == "null" || final == "" {
+		finalDisplay = "Ø"
+	}
+
+	actor := sanitizeLLMField(req.Actor)
+	location := sanitizeLLMField(req.Location)
+	room := sanitizeLLMField(req.Room)
+	props := make([]string, 0, len(req.Props))
+	for _, p := range req.Props {
+		if s := sanitizeLLMField(p); s != "" {
+			props = append(props, s)
+		}
+	}
+	propsStr := "(none)"
+	if len(props) > 0 {
+		propsStr = strings.Join(props, ", ")
+	}
+
+	var defParts []string
+	for _, v := range defs {
+		if v != "" {
+			defParts = append(defParts, v)
+		}
+	}
+	meaning := strings.Join(defParts, ", ")
+	if meaning == "" {
+		meaning = "unknown"
+	}
+
+	userMsg := fmt.Sprintf(
+		"Chinese character: <word>%s</word>\n"+
+			"Meaning: <meaning>%s</meaning>\n"+
+			"Actor: <actor>%s</actor> (initial consonant: <initial>%s</initial>)\n"+
+			"Location: <location>%s</location> (final sound: <final>%s</final>)\n"+
+			"Room: <room>%s</room> (tone: <tone>%d</tone>)\n"+
+			"Props: <props>%s</props>\n\n"+
+			"Answer in German\n"+
+			"Write one vivid, memorable movie scene where the actor is in the location, "+
+			"in the room, interacting with the props in a way that encodes the character's meaning. "+
+			"Be concrete, visual, and strange enough to be memorable.",
+		char, meaning,
+		actor, initialDisplay,
+		location, finalDisplay,
+		room, tone,
+		propsStr,
+	)
+
+	type result struct {
+		text string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		text, err := client.Generate(r.Context(), llm.Request{
+			System: llmSystemPrompt,
+			User:   userMsg,
+		})
+		done <- result{text, err}
+	}()
+
+	flusher, canFlush := w.(http.Flusher)
+	w.Header().Set("Content-Type", "application/json")
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	started := false
+	for {
+		select {
+		case res := <-done:
+			if res.err != nil {
+				log.Printf("Error: LLM request failed: %v\n", res.err)
+				if !started {
+					writeError(w, http.StatusInternalServerError, "LLM request failed")
+				} else {
+					w.Write([]byte(`{"error":"LLM request failed"}`)) //nolint:errcheck
+				}
+				return
+			}
+			log.Printf("LLM response: %v\n", res.text)
+			json.NewEncoder(w).Encode(llmGenerateResponse{Text: res.text}) //nolint:errcheck
 			return
 		case <-ticker.C:
 			if canFlush {

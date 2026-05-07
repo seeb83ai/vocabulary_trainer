@@ -653,11 +653,38 @@ function showComponentResult(resp) {
   show('word-breakdown');
 
   hide('add-translation-btn');
-  hide('result-hmm');
   hide('result-decompose');
   hide('result-decompose-content');
   hide('bucket-info');
   hide('streak-info');
+
+  const hmmEl = $('result-hmm');
+  if (resp.scene_text) {
+    if (!resp.correct) {
+      renderHMMSceneReadOnly('result-hmm', resp.scene_text);
+      show('result-hmm');
+    } else {
+      hmmEl.innerHTML = `
+        <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
+        <div id="hmm-toggle-content" class="hidden mt-2"></div>
+      `;
+      show('result-hmm');
+      $('hmm-toggle-btn').addEventListener('click', () => {
+        const content = $('hmm-toggle-content');
+        if (content.classList.contains('hidden')) {
+          renderHMMSceneReadOnly('hmm-toggle-content', resp.scene_text);
+          content.classList.remove('hidden');
+          $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
+        } else {
+          content.classList.add('hidden');
+          $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
+        }
+      });
+    }
+  } else {
+    hmmEl.innerHTML = `<a href="/vocab?editComp=${encodeURIComponent(currentCard.prompt)}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
+    show('result-hmm');
+  }
 
   const reviewBtn = $('needs-review-btn');
   reviewBtn.textContent = t('result.flagReview');

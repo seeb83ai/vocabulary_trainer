@@ -312,6 +312,7 @@ type ComponentAnswerResponse struct {
 	TotalCorrect   int               `json:"total_correct"`
 	TotalAttempts  int               `json:"total_attempts"`
 	Repetitions    int               `json:"repetitions"`
+	SceneText      string            `json:"scene_text,omitempty"`
 }
 
 type HanziDecomposition struct {
@@ -376,6 +377,7 @@ type HMMSceneContext struct {
 	Initial        string            `json:"initial"`
 	Final          string            `json:"final"`
 	Tone           int               `json:"tone"`
+	Pinyin         string            `json:"pinyin,omitempty"`
 	Decomposition  string            `json:"decomposition,omitempty"`
 	Radicals       []string          `json:"radicals"`
 	RadicalDefs    map[string]string `json:"radical_defs"`

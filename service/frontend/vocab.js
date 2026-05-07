@@ -1002,7 +1002,12 @@ function openComponentEdit(char) {
   switchTab('comp');
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
 
-  apiFetch(`/api/components/${encodeURIComponent(char)}/translations`).then(data => {
+  Promise.all([
+    apiFetch(`/api/components/${encodeURIComponent(char)}/translations`),
+    apiFetch(`/api/components/${encodeURIComponent(char)}/hmm/context`).catch(() => null),
+  ]).then(([data, hmmCtx]) => {
+    $('comp-edit-pinyin').textContent = hmmCtx?.pinyin || '';
+
     const langs = [primaryLang];
     if (secondaryLang) langs.push(secondaryLang);
     const form = $('comp-edit-form');
@@ -1025,6 +1030,17 @@ function openComponentEdit(char) {
       );
       form.appendChild(section);
     }
+
+    const builderSection = document.createElement('div');
+    builderSection.id = 'comp-hmm-builder';
+    builderSection.className = 'pt-2 border-t border-gray-100';
+    form.appendChild(builderSection);
+    const enDef = data['en'] || data['EN'] || '';
+    const deDef = data['de'] || data['DE'] || '';
+    const translations = {};
+    if (enDef) translations['en'] = enDef.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+    if (deDef) translations['de'] = deDef.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+    loadCompHMMBuilder('comp-hmm-builder', char, { preloadedCtx: hmmCtx, zh: char, translations });
   }).catch(e => {
     $('comp-edit-form').innerHTML = `<span class="text-red-500 text-sm">${escHtml(e.message)}</span>`;
   });

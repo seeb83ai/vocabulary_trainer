@@ -22,7 +22,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
 - Bulk import from a structured text file (see `service/cmd/import`)
 - **Character breakdown** — on the training screen, a collapsible "Character breakdown" block appears below each Chinese character; click to reveal radical, definition, etymology hint, and component parts with their meanings (data from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported via `service/cmd/import-hanzi`)
-- **Hanzi Movie Method mnemonics** — for single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorise characters by mapping pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`; compose scenes in the vocabulary edit form; saved scenes appear automatically during training (expanded on wrong answers, collapsed on correct). Choices are remembered globally — set an actor for "b" once and it pre-fills everywhere
+- **Hanzi Movie Method mnemonics** — for single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorise characters by mapping pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`; compose scenes in the vocabulary edit form; saved scenes appear automatically during training (expanded on wrong answers, collapsed on correct). Choices are remembered globally — set an actor for "b" once and it pre-fills everywhere. Mnemonic scenes can also be written for **component characters** (radicals/sub-parts) via the component edit tab on the `/vocab` page; scenes are shown on component quiz result cards the same way as word scenes
 - **Pinyin listening training** — dedicated `/pinyin` page for tone and sound discrimination; hear a pinyin syllable and identify it via multiple choice (learning phase) or typed answer e.g. `ba1` (review phase); SM-2 spaced repetition tracks progress per sound; ~1,600 syllable/tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection; filter by consonant group (b/p/m/f, zh/ch/sh/r, etc.); confusion tracking for commonly mixed-up sounds
 - HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `service/cmd/import-hsk`)
 - Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
@@ -479,6 +479,9 @@ vocabulary_trainer/
 | `GET` | `/api/words/{id}/hmm/context` | Get HMM scene context for a word (parsed pinyin, radicals, library lookups) |
 | `PUT` | `/api/words/{id}/hmm` | Save mnemonic scene and auto-update library |
 | `DELETE` | `/api/words/{id}/hmm` | Delete mnemonic scene |
+| `GET` | `/api/components/{char}/hmm-scene` | Get the saved mnemonic scene text for a component character |
+| `PUT` | `/api/components/{char}/hmm-scene` | Save (or replace) a mnemonic scene text for a component character |
+| `DELETE` | `/api/components/{char}/hmm-scene` | Delete the mnemonic scene for a component character |
 | `GET` | `/api/pinyin-quiz/next` | Get the next pinyin sound to study (`tags` query param) |
 | `POST` | `/api/pinyin-quiz/answer` | Submit a pinyin listening answer |
 | `GET` | `/api/pinyin-quiz/stats` | Get pinyin due-today and total counts (`tags` query param) |

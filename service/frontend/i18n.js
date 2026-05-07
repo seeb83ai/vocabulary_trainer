@@ -385,6 +385,8 @@ const I18N = {
     'component.character': 'Character',
     'component.newLabel': 'New Component',
     'component.gotIt': 'Got it!',
+    'comp.sceneLabel': 'Mnemonic scene',
+    'comp.scenePlaceholder': 'Write a memorable scene for this character…',
 
     // HMM mnemonic cards in word training
     'hmm.modeLabel': 'Mnemonic',
@@ -787,6 +789,8 @@ const I18N = {
     'component.character': '汉字',
     'component.newLabel': '新部件',
     'component.gotIt': '知道了！',
+    'comp.sceneLabel': '记忆场景',
+    'comp.scenePlaceholder': '为这个字写一个印象深刻的场景…',
 
     // HMM mnemonic cards in word training
     'hmm.modeLabel': '记忆法',
