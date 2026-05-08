@@ -457,6 +457,7 @@ vocabulary_trainer/
 | `GET` | `/api/quiz/due-date-distribution` | Get word counts grouped by due date for the next 30 days (`tags` query param) |
 | `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |
 | `POST` | `/api/words` | Create a vocabulary entry |
+| `POST` | `/api/words/upload-csv` | Bulk import from a CSV file (multipart: `file`, `tags`, `start_training_count`) |
 | `GET` | `/api/words/{id}` | Get a single word with translations |
 | `PUT` | `/api/words/{id}` | Update a word |
 | `DELETE` | `/api/words/{id}` | Delete a word |

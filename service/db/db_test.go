@@ -3585,3 +3585,31 @@ func TestGetComponentList_ReviewOnlyFalse(t *testing.T) {
 		t.Errorf("want 2 items, got %d", len(items))
 	}
 }
+
+func TestGetWordIDByZhText_Found(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	req := models.CreateWordRequest{ZhText: "你好", Translations: map[string][]string{"en": {"hello"}}}
+	id, err := s.CreateWord(ctx, 2, req)
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+	got, err := s.GetWordIDByZhText(ctx, 2, "你好")
+	if err != nil {
+		t.Fatalf("GetWordIDByZhText: %v", err)
+	}
+	if got != id {
+		t.Errorf("want id=%d, got %d", id, got)
+	}
+}
+
+func TestGetWordIDByZhText_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	got, err := s.GetWordIDByZhText(context.Background(), 2, "你好")
+	if err != nil {
+		t.Fatalf("want no error for missing word, got: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("want 0 for missing word, got %d", got)
+	}
+}
