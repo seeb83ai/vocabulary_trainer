@@ -305,6 +305,19 @@ func (s *Store) IsZhWordForUser(ctx context.Context, userID int64, text string) 
 	return count > 0, err
 }
 
+// GetWordIDByZhText returns the ID of the zh word owned by userID with the given text.
+// Returns 0, nil if not found.
+func (s *Store) GetWordIDByZhText(ctx context.Context, userID int64, text string) (int64, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id FROM words WHERE user_id = ? AND text = ? AND language = 'zh'`,
+		userID, text).Scan(&id)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return id, err
+}
+
 // GetZhTextByID returns the text of a zh word owned by userID.
 // Returns empty string if the word is not found or not a zh word.
 func (s *Store) GetZhTextByID(ctx context.Context, userID, wordID int64) (string, error) {

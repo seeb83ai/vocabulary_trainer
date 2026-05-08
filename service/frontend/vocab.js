@@ -95,6 +95,11 @@ let importFilterMode = 'any';    // 'any' | 'all'
 // Tags tab state
 let tagsLoaded = false;
 
+// CSV upload state
+let csvUploadTags = [];
+let csvUploadWordCount = 0;
+let csvUploadFile = null;
+
 async function loadWords() {
   const params = new URLSearchParams({
     q: searchQuery,
@@ -773,6 +778,147 @@ function updateDueFilterBtns() {
       btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100';
     }
   });
+}
+
+// ── CSV Upload ────────────────────────────────────────────────────────────────
+
+function openCsvUploadModal() {
+  csvUploadTags = [];
+  csvUploadWordCount = 0;
+  csvUploadFile = null;
+  $('csv-upload-file').value = '';
+  $('csv-upload-tag-input').value = '';
+  $('csv-upload-preview-info').classList.add('hidden');
+  $('csv-upload-slider-row').classList.add('hidden');
+  $('csv-upload-slider').max = 0;
+  $('csv-upload-slider').value = 0;
+  $('csv-upload-slider-val').textContent = '0';
+  $('csv-upload-slider-max').textContent = '0';
+  $('csv-upload-status').classList.add('hidden');
+  $('csv-upload-status').textContent = '';
+  renderCsvUploadTags();
+  updateCsvUploadSubmitState();
+  show('csv-upload-modal');
+}
+
+function closeCsvUploadModal() {
+  hide('csv-upload-modal');
+}
+
+function renderCsvUploadTags() {
+  const container = $('csv-upload-tags');
+  container.innerHTML = '';
+  for (const tag of csvUploadTags) {
+    const pill = document.createElement('span');
+    pill.className = 'inline-flex items-center bg-gray-200 text-gray-700 text-sm px-2 py-0.5 rounded-full';
+    pill.innerHTML = `${escHtml(tag)} <button type="button" class="ml-1 text-gray-400 hover:text-red-500 leading-none">&times;</button>`;
+    pill.querySelector('button').addEventListener('click', () => {
+      csvUploadTags = csvUploadTags.filter(t => t !== tag);
+      renderCsvUploadTags();
+      updateCsvUploadSubmitState();
+    });
+    container.appendChild(pill);
+  }
+}
+
+function showCsvUploadTagAutocomplete(query) {
+  const dropdown = $('csv-upload-tag-autocomplete');
+  const q = query.toLowerCase();
+  const matches = allTags.filter(t => t.toLowerCase().includes(q) && !csvUploadTags.includes(t));
+  if (q && !allTags.includes(query) && !csvUploadTags.includes(query)) {
+    matches.unshift(query);
+  }
+  if (matches.length === 0) {
+    dropdown.classList.add('hidden');
+    return;
+  }
+  dropdown.innerHTML = '';
+  for (const m of matches.slice(0, 10)) {
+    const item = document.createElement('div');
+    item.className = 'px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer';
+    item.textContent = m;
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      addCsvUploadTag(m);
+    });
+    dropdown.appendChild(item);
+  }
+  dropdown.classList.remove('hidden');
+}
+
+function addCsvUploadTag(tag) {
+  tag = tag.trim();
+  if (!tag || csvUploadTags.includes(tag)) return;
+  csvUploadTags.push(tag);
+  renderCsvUploadTags();
+  $('csv-upload-tag-input').value = '';
+  $('csv-upload-tag-autocomplete').classList.add('hidden');
+  updateCsvUploadSubmitState();
+}
+
+function onCsvFileChange(file) {
+  csvUploadFile = file || null;
+  if (!file) {
+    $('csv-upload-preview-info').classList.add('hidden');
+    $('csv-upload-slider-row').classList.add('hidden');
+    updateCsvUploadSubmitState();
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target.result;
+    // Count non-empty lines after the header (rough count for slider max only)
+    const lines = text.split('\n').filter((l, i) => i > 0 && l.trim() !== '');
+    csvUploadWordCount = lines.length;
+    $('csv-upload-slider').max = csvUploadWordCount;
+    $('csv-upload-slider').value = 0;
+    $('csv-upload-slider-val').textContent = '0';
+    $('csv-upload-slider-max').textContent = String(csvUploadWordCount);
+    $('csv-upload-preview-info').textContent = `${csvUploadWordCount} word row${csvUploadWordCount !== 1 ? 's' : ''} detected`;
+    $('csv-upload-preview-info').classList.remove('hidden');
+    $('csv-upload-slider-row').classList.remove('hidden');
+    updateCsvUploadSubmitState();
+  };
+  reader.readAsText(file);
+}
+
+function updateCsvUploadSubmitState() {
+  const ready = csvUploadFile !== null && csvUploadTags.length > 0;
+  $('csv-upload-submit-btn').disabled = !ready;
+}
+
+async function executeCsvUpload() {
+  const btn = $('csv-upload-submit-btn');
+  btn.disabled = true;
+  const status = $('csv-upload-status');
+  status.classList.remove('hidden');
+  status.textContent = 'Uploading…';
+
+  const formData = new FormData();
+  formData.append('file', csvUploadFile);
+  formData.append('tags', csvUploadTags.join(','));
+  formData.append('start_training_count', $('csv-upload-slider').value);
+
+  try {
+    const resp = await fetch('/api/words/upload-csv', { method: 'POST', body: formData });
+    if (resp.status === 401) { window.location.href = '/login'; return; }
+    const data = await resp.json();
+    if (!resp.ok) {
+      status.textContent = `Error: ${data.error || resp.statusText}`;
+      status.className = 'text-sm text-red-600';
+      btn.disabled = false;
+      return;
+    }
+    status.textContent = `Done — imported: ${data.imported}, updated: ${data.updated}, skipped: ${data.skipped}`;
+    status.className = 'text-sm text-green-600';
+    loadWords();
+    loadTags();
+    setTimeout(closeCsvUploadModal, 2000);
+  } catch (err) {
+    status.textContent = `Network error: ${err.message}`;
+    status.className = 'text-sm text-red-600';
+    btn.disabled = false;
+  }
 }
 
 function openDownloadModal() {
@@ -1565,6 +1711,33 @@ document.addEventListener('DOMContentLoaded', () => {
   $('download-modal').addEventListener('click', e => {
     if (e.target === $('download-modal')) hide('download-modal');
   });
+
+  // CSV upload modal
+  $('csv-upload-btn').addEventListener('click', openCsvUploadModal);
+  $('csv-upload-cancel-btn').addEventListener('click', closeCsvUploadModal);
+  $('csv-upload-modal').addEventListener('click', e => {
+    if (e.target === $('csv-upload-modal')) closeCsvUploadModal();
+  });
+  $('csv-upload-file').addEventListener('change', e => {
+    onCsvFileChange(e.target.files[0] || null);
+  });
+  $('csv-upload-slider').addEventListener('input', () => {
+    $('csv-upload-slider-val').textContent = $('csv-upload-slider').value;
+  });
+  $('csv-upload-tag-input').addEventListener('input', e => {
+    showCsvUploadTagAutocomplete(e.target.value.trim());
+  });
+  $('csv-upload-tag-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const v = $('csv-upload-tag-input').value.trim();
+      if (v) addCsvUploadTag(v);
+    }
+  });
+  $('csv-upload-tag-input').addEventListener('blur', () => {
+    setTimeout(() => $('csv-upload-tag-autocomplete').classList.add('hidden'), 150);
+  });
+  $('csv-upload-submit-btn').addEventListener('click', executeCsvUpload);
 
   // Import tab
   $('tab-add').addEventListener('click', () => switchTab('add'));
