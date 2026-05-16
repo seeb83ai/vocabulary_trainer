@@ -10,6 +10,7 @@ const (
 	ModeProgressive      = "progressive"
 	ModeNewWord          = "new_word"
 	ModeMaskPinyin       = "mask_pinyin" // transl_to_zh with pinyin hint forced on
+	ModeCycle            = "cycle"
 )
 
 // UserSettings holds per-user configuration stored in user_settings.
@@ -24,6 +25,7 @@ type UserSettings struct {
 	NewWordMode0       string `json:"new_word_mode_0"`      // TotalCorrect==0
 	NewWordMode1       string `json:"new_word_mode_1"`      // TotalCorrect==1
 	NewWordMode2       string `json:"new_word_mode_2"`      // TotalCorrect>=2
+	CycleSequence      string `json:"cycle_sequence"`
 	DeeplKeySet        bool   `json:"deepl_key_set"`
 	DeeplKeyMasked     string `json:"deepl_key_masked,omitempty"`
 	LLMProvider        string `json:"llm_provider"`

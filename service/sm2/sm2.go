@@ -343,3 +343,36 @@ func SelectMode() string {
 	}
 	return modes[rand.Intn(len(modes))]
 }
+
+// DefaultCycleSequence is the default cycle mode direction sequence.
+const DefaultCycleSequence = "zh_pinyin_to_transl,transl_to_zh,zh_to_transl"
+
+// ParseCycleSequence splits a comma-separated cycle sequence string into a
+// slice of mode strings. Falls back to DefaultCycleSequence when seq is empty
+// or contains only whitespace.
+func ParseCycleSequence(seq string) []string {
+	if seq == "" {
+		seq = DefaultCycleSequence
+	}
+	var result []string
+	for _, p := range strings.Split(seq, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			result = append(result, p)
+		}
+	}
+	if len(result) == 0 {
+		return strings.Split(DefaultCycleSequence, ",")
+	}
+	return result
+}
+
+// SelectCycleMode returns the quiz mode for the current cycle position derived
+// from totalAttempts. Position is (totalAttempts-1) so that a word with
+// total_attempts=1 (just acknowledged) starts at position 0.
+func SelectCycleMode(totalAttempts int, sequence []string) string {
+	pos := totalAttempts - 1
+	if pos < 0 {
+		pos = 0
+	}
+	return sequence[pos%len(sequence)]
+}

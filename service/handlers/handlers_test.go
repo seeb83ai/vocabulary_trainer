@@ -4771,3 +4771,198 @@ func TestUploadCSV_StartTraining(t *testing.T) {
 		t.Errorf("want total=3, got %d", resp["total"])
 	}
 }
+
+// ── Cycle mode ────────────────────────────────────────────────────────────────
+
+func TestSettingsCycleSequence(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Default cycle_sequence should be the canonical 3-step sequence.
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET settings: want 200, got %d", rec.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	want := "zh_pinyin_to_transl,transl_to_zh,zh_to_transl"
+	if st.CycleSequence != want {
+		t.Errorf("default cycle_sequence: want %q, got %q", want, st.CycleSequence)
+	}
+
+	// PATCH with a custom sequence.
+	payload := map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "",
+		"prog_new":             "transl_to_zh",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "transl_to_zh",
+		"new_word_mode_2":      "zh_to_transl",
+		"cycle_sequence":       "transl_to_zh,zh_to_transl",
+	}
+	rec = do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Read back and verify.
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st2 models.UserSettings
+	decodeJSON(t, rec, &st2)
+	if st2.CycleSequence != "transl_to_zh,zh_to_transl" {
+		t.Errorf("after PATCH cycle_sequence: want %q, got %q", "transl_to_zh,zh_to_transl", st2.CycleSequence)
+	}
+}
+
+func TestSettingsCycleSequence_InvalidMode(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]string{
+		"primary_lang":   "en",
+		"secondary_lang": "",
+		"prog_new": "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered": "random",
+		"new_word_mode_0": "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
+		"cycle_sequence": "transl_to_zh,invalid_mode",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for invalid cycle mode, got %d", rec.Code)
+	}
+}
+
+func TestQuizNext_CycleMode(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// total_attempts=1 after acknowledge → (1-1)%3=0 → zh_pinyin_to_transl
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("cycle position 0: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	}
+}
+
+func TestQuizCycleAdvances(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// Set total_attempts=2 directly so position=(2-1)%3=1 → transl_to_zh.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 2
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// total_attempts=2 → (2-1)%3=1 → transl_to_zh
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("cycle position 1: want %s, got %s", models.ModeTranslToZh, card.Mode)
+	}
+}
+
+func TestQuizCycleWraps(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Set total_attempts=4 directly so position=(4-1)%3=0 → back to step 0.
+	// AcknowledgeWord first to set first_seen_date (required for GetNextCard).
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 4
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// total_attempts=4 → (4-1)%3=0 → zh_pinyin_to_transl (wrapped back to step 0)
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("cycle wrapped: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	}
+}
+
+func TestQuizCycleCustomSequence(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	// Set a custom 2-step cycle sequence.
+	patchPayload := map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "",
+		"prog_new":             "transl_to_zh",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "transl_to_zh",
+		"new_word_mode_2":      "zh_to_transl",
+		"cycle_sequence":       "transl_to_zh,zh_to_transl",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// Custom sequence starts with transl_to_zh → position 0 = transl_to_zh
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("custom cycle position 0: want %s, got %s", models.ModeTranslToZh, card.Mode)
+	}
+}

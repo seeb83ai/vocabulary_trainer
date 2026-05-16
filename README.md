@@ -6,7 +6,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations
 - N:N word relationships — the same English or Chinese word can be shared across entries
-- **Four quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English, and **Progressive** (auto-selects direction based on learning progress)
+- **Five quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English, **Progressive** (auto-selects direction based on learning progress), and **Cycle** (rotates through a user-configured sequence of directions per word)
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
 - **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
@@ -142,12 +142,28 @@ The bonus is calculated as the minimum value needed to reach the target accuracy
 
 **Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day without recording an attempt. Useful when you want to clear a stuck card from today's queue but try again tomorrow.
 
+## Cycle mode
+
+The **Cycle** quiz mode rotates through a fixed sequence of quiz directions on every attempt, regardless of whether your answer was correct or wrong. The cycle position is derived from `total_attempts`, so it is automatically persisted per word without any extra database column.
+
+Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation → Chinese → Translation**
+
+| `total_attempts` | Position | Direction |
+|---|---|---|
+| 1 (after "Got it") | 0 | Chinese + Pinyin → Translation |
+| 2 | 1 | Translation → Chinese |
+| 3 | 2 | Chinese → Translation |
+| 4 | 0 (wraps) | Chinese + Pinyin → Translation |
+
+You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*.
+
 ## User settings
 
 Each user has a personal settings page (`/settings`) with:
 
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
+- **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode.
 - **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
 
 ## Auto-translate (DeepL)

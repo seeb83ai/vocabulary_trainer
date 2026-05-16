@@ -3,8 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
+	"vocabulary_trainer/sm2"
 )
 
 // SettingsHandler serves GET/PATCH /api/settings and PUT /api/settings/api-keys.
@@ -43,6 +45,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordMode0       string `json:"new_word_mode_0"`
 		NewWordMode1       string `json:"new_word_mode_1"`
 		NewWordMode2       string `json:"new_word_mode_2"`
+		CycleSequence      string `json:"cycle_sequence"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -70,6 +73,18 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cycleSeq := req.CycleSequence
+	if cycleSeq == "" {
+		cycleSeq = sm2.DefaultCycleSequence
+	} else {
+		for _, step := range strings.Split(cycleSeq, ",") {
+			if !isValidCycleMode(strings.TrimSpace(step)) {
+				writeError(w, http.StatusBadRequest, "invalid cycle mode: "+step)
+				return
+			}
+		}
+	}
+
 	userID := UserIDFromContext(r.Context())
 	st := models.UserSettings{
 		PrimaryLang:        req.PrimaryLang,
@@ -82,6 +97,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordMode0:       req.NewWordMode0,
 		NewWordMode1:       req.NewWordMode1,
 		NewWordMode2:       req.NewWordMode2,
+		CycleSequence:      cycleSeq,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -200,4 +216,15 @@ var validQuizModes = map[string]bool{
 
 func isValidQuizMode(m string) bool {
 	return validQuizModes[m]
+}
+
+var validCycleModes = map[string]bool{
+	models.ModeTranslToZh:       true,
+	models.ModeZhToTransl:       true,
+	models.ModeZhPinyinToTransl: true,
+	models.ModeMaskPinyin:       true,
+}
+
+func isValidCycleMode(m string) bool {
+	return validCycleModes[m]
 }
