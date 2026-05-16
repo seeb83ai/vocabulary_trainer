@@ -26,6 +26,7 @@ const I18N = {
     // Quiz modes
     'mode.progressive': 'Progressive',
     'mode.random': 'Random',
+    'mode.cycle': 'Cycle',
     'mode.transl_to_zh': 'To Chinese',
     'mode.zh_to_transl': 'Chinese',
     'mode.zh_pinyin_to_transl': 'Chinese + Pinyin',
@@ -432,6 +433,7 @@ const I18N = {
     // Quiz modes
     'mode.progressive': '渐进',
     'mode.random': '随机',
+    'mode.cycle': '循环',
     'mode.transl_to_zh': '译中文',
     'mode.zh_to_transl': '中文',
     'mode.zh_pinyin_to_transl': '中文＋拼音',

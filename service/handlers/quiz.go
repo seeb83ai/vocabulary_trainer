@@ -257,6 +257,12 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		} else {
 			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
 		}
+	case models.ModeCycle:
+		seqStr := sm2.DefaultCycleSequence
+		if userSettings != nil && userSettings.CycleSequence != "" {
+			seqStr = userSettings.CycleSequence
+		}
+		mode = sm2.SelectCycleMode(progress.TotalAttempts, sm2.ParseCycleSequence(seqStr))
 	default:
 		mode = sm2.SelectMode()
 	}

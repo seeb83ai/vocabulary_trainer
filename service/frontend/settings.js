@@ -31,6 +31,24 @@ const MODE_OPTIONS = [
   { value: 'random',             label: 'Random' },
 ];
 
+const CYCLE_STEP_OPTIONS = [
+  { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
+  { value: 'transl_to_zh',       label: 'Translation → Chinese' },
+  { value: 'zh_to_transl',       label: 'Chinese → Translation' },
+  { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
+];
+
+function populateCycleSelect(el, value) {
+  el.innerHTML = '';
+  for (const opt of CYCLE_STEP_OPTIONS) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (opt.value === value) o.selected = true;
+    el.appendChild(o);
+  }
+}
+
 function populateModeSelect(el, value) {
   el.innerHTML = '';
   for (const opt of MODE_OPTIONS) {
@@ -118,6 +136,13 @@ async function loadSettings() {
     populateModeSelect(document.getElementById('mode-new-1'), st.new_word_mode_1 || 'transl_to_zh');
     populateModeSelect(document.getElementById('mode-new-2'), st.new_word_mode_2 || 'zh_to_transl');
 
+    // Cycle step selects
+    const defaultSeq = 'zh_pinyin_to_transl,transl_to_zh,zh_to_transl';
+    const cycleSteps = (st.cycle_sequence || defaultSeq).split(',');
+    populateCycleSelect(document.getElementById('cycle-step-0'), cycleSteps[0] || 'zh_pinyin_to_transl');
+    populateCycleSelect(document.getElementById('cycle-step-1'), cycleSteps[1] || 'transl_to_zh');
+    populateCycleSelect(document.getElementById('cycle-step-2'), cycleSteps[2] || 'zh_to_transl');
+
     // API key status
     if (st.deepl_key_masked) {
       const el = document.getElementById('deepl-key-status');
@@ -142,6 +167,10 @@ for (const id of ['mode-prog-new','mode-prog-struggling','mode-prog-learning','m
                    'mode-new-0','mode-new-1','mode-new-2']) {
   const el = document.getElementById(id);
   if (el) populateModeSelect(el, '');
+}
+for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2']) {
+  const el = document.getElementById(id);
+  if (el) populateCycleSelect(el, '');
 }
 
 loadLanguages().then(() => loadSettings());
@@ -177,6 +206,15 @@ document.getElementById('lang-save-btn')?.addEventListener('click', async () => 
 
 // ── Training mode ──────────────────────────────────────────────────────────────
 
+function buildCycleSequence() {
+  const steps = [
+    document.getElementById('cycle-step-0')?.value || 'zh_pinyin_to_transl',
+    document.getElementById('cycle-step-1')?.value || 'transl_to_zh',
+    document.getElementById('cycle-step-2')?.value || 'zh_to_transl',
+  ];
+  return steps.join(',');
+}
+
 function buildModePayload() {
   return {
     prog_new:             document.getElementById('mode-prog-new')?.value        || 'transl_to_zh',
@@ -187,6 +225,7 @@ function buildModePayload() {
     new_word_mode_0:      document.getElementById('mode-new-0')?.value           || 'transl_to_zh',
     new_word_mode_1:      document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
     new_word_mode_2:      document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
+    cycle_sequence:       buildCycleSequence(),
   };
 }
 
@@ -211,6 +250,32 @@ document.getElementById('mode-save-btn')?.addEventListener('click', async () => 
     }
   } catch {
     showMsg('mode-error', 'Network error.', true);
+  }
+});
+
+// ── Cycle mode ────────────────────────────────────────────────────────────────
+
+document.getElementById('cycle-save-btn')?.addEventListener('click', async () => {
+  hideMsg('cycle-success'); hideMsg('cycle-error');
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    ...buildModePayload(),
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('cycle-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('cycle-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('cycle-error', 'Network error.', true);
   }
 });
 
