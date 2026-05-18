@@ -155,6 +155,19 @@ func NormalizeAnswer(s string) string {
 // normalize is the package-internal alias used by expandVariants/CheckAnswer.
 func normalize(s string) string { return NormalizeAnswer(s) }
 
+// stripParens removes all parenthesised segments from s, iterating until stable
+// to handle nested parens (inner-most first).
+func stripParens(s string) string {
+	for {
+		next := strings.TrimSpace(reParens.ReplaceAllString(s, " "))
+		if next == strings.TrimSpace(s) {
+			break
+		}
+		s = next
+	}
+	return s
+}
+
 // expandVariants returns all valid answer strings derived from a single
 // accepted answer by applying the optional-parens and slash-split rules.
 func expandVariants(a string) []string {
@@ -169,24 +182,14 @@ func expandVariants(a string) []string {
 	// Full form (with parens, with slashes)
 	add(a)
 
-	// Form with parens stripped (iterate until stable to handle nested parens)
-	stripped := a
-	for {
-		next := strings.TrimSpace(reParens.ReplaceAllString(stripped, " "))
-		if next == strings.TrimSpace(stripped) {
-			break
-		}
-		stripped = next
-	}
-	noParens := stripped
+	noParens := stripParens(a)
 	add(noParens)
 
 	// Slash-split variants of both the original and the paren-stripped form
 	for _, base := range []string{a, noParens} {
 		for _, part := range strings.Split(base, "/") {
 			add(part)
-			// Also strip parens from each slash part
-			add(strings.TrimSpace(reParens.ReplaceAllString(part, " ")))
+			add(stripParens(part))
 		}
 	}
 
@@ -199,15 +202,27 @@ func expandVariants(a string) []string {
 
 // CheckComponentAnswer checks whether the user's answer matches any part of a
 // hanzi component definition. The definition is split on ';' and ',' — each
-// resulting part is a valid answer after normalisation.
+// resulting part is a valid answer after normalisation. Parenthesised segments
+// within a part are optional (the answer is accepted with or without them).
 func CheckComponentAnswer(userAnswer, definition string) bool {
 	ua := normalize(userAnswer)
 	for _, part := range strings.FieldsFunc(definition, func(r rune) bool { return r == ';' || r == ',' }) {
 		if normalize(part) == ua {
 			return true
 		}
+		if normalize(stripParens(part)) == ua {
+			return true
+		}
 	}
 	return false
+}
+
+// CheckHMMAnswer checks whether userAnswer matches correctName after stripping
+// optional parenthesised segments from both sides (case-insensitive, no
+// trailing-punctuation stripping — matching current HMM quiz behaviour).
+func CheckHMMAnswer(userAnswer, correctName string) bool {
+	norm := func(s string) string { return strings.TrimSpace(stripParens(s)) }
+	return strings.EqualFold(norm(userAnswer), norm(correctName))
 }
 
 // MaskPinyin returns a masked pinyin hint for learning-phase transl_to_zh cards.

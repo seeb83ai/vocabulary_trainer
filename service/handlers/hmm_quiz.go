@@ -5,17 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
 )
-
-// hmmReParens matches parenthesised segments (and surrounding whitespace) that
-// are optional in mnemonic names, e.g. "(人) Arnold" or "Kreuz (十) und ...".
-var hmmReParens = regexp.MustCompile(`\s*\([^)]*\)\s*`)
 
 type HMMQuizHandler struct {
 	Store *db.Store
@@ -147,10 +142,7 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		correctName = props[0].PropName
 	}
 
-	normalizeHMM := func(s string) string {
-		return strings.TrimSpace(hmmReParens.ReplaceAllString(s, " "))
-	}
-	correct := strings.EqualFold(normalizeHMM(req.Answer), normalizeHMM(correctName))
+	correct := sm2.CheckHMMAnswer(req.Answer, correctName)
 
 	progress, err := h.Store.GetHMMProgress(r.Context(), UserIDFromContext(r.Context()), req.EntityType, req.EntityKey)
 	if err != nil {
