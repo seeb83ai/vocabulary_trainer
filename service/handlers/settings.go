@@ -43,6 +43,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordMode0       string `json:"new_word_mode_0"`
 		NewWordMode1       string `json:"new_word_mode_1"`
 		NewWordMode2       string `json:"new_word_mode_2"`
+		AcceptCorrectMode  string `json:"accept_correct_mode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -70,6 +71,14 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if req.AcceptCorrectMode == "" {
+		req.AcceptCorrectMode = "typo"
+	}
+	if !isValidAcceptCorrectMode(req.AcceptCorrectMode) {
+		writeError(w, http.StatusBadRequest, "invalid accept_correct_mode: must be never, typo, or always")
+		return
+	}
+
 	userID := UserIDFromContext(r.Context())
 	st := models.UserSettings{
 		PrimaryLang:        req.PrimaryLang,
@@ -82,6 +91,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordMode0:       req.NewWordMode0,
 		NewWordMode1:       req.NewWordMode1,
 		NewWordMode2:       req.NewWordMode2,
+		AcceptCorrectMode:  req.AcceptCorrectMode,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -200,4 +210,14 @@ var validQuizModes = map[string]bool{
 
 func isValidQuizMode(m string) bool {
 	return validQuizModes[m]
+}
+
+var validAcceptCorrectModes = map[string]bool{
+	"never": true,
+	"typo":  true,
+	"always": true,
+}
+
+func isValidAcceptCorrectMode(m string) bool {
+	return validAcceptCorrectModes[m]
 }

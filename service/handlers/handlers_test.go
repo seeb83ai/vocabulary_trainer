@@ -104,6 +104,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/change-password", authH.ChangePassword)
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/answer", quizH.Answer)
+	r.Post("/api/quiz/accept-correct", quizH.AcceptCorrect)
 	r.Post("/api/quiz/skip", quizH.Skip)
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
 	r.Post("/api/quiz/acknowledge-random", quizH.AcknowledgeRandom)
@@ -4769,5 +4770,210 @@ func TestUploadCSV_StartTraining(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if resp["total"] != 3 {
 		t.Errorf("want total=3, got %d", resp["total"])
+	}
+}
+
+// ── Answer prev_state persistence ────────────────────────────────────────────
+
+func TestAnswerWrongStoresPrevState(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Confirm initial EF before submitting any answer.
+	before, err := s.GetSM2Progress(ctx, id)
+	if err != nil || before == nil {
+		t.Fatalf("GetSM2Progress before answer: %v / %v", err, before)
+	}
+	initialEF := before.Easiness
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+		Answer: "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	prev, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if prev == nil {
+		t.Fatal("expected prev_state to be set after wrong answer, got nil")
+	}
+	if prev.Easiness != initialEF {
+		t.Errorf("prev_state EF: want %v (pre-answer), got %v", initialEF, prev.Easiness)
+	}
+}
+
+func TestAnswerCorrectClearsPrevState(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	// First submit wrong to set prev_state.
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "wrong",
+	})
+
+	// Then submit correct.
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "hello",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	prev, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if prev != nil {
+		t.Errorf("expected prev_state to be cleared after correct answer, got %+v", prev)
+	}
+}
+
+// ── POST /api/quiz/accept-correct ────────────────────────────────────────────
+
+func TestAcceptCorrectNoState(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+	})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404 when no prev_state, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAcceptCorrectRestoresProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	// Seed a graduated SM-2 state (rep=3, EF=2.5, interval=1 day).
+	graduated := models.SM2Progress{
+		WordID:          id,
+		Repetitions:     3,
+		Easiness:        2.5,
+		IntervalDays:    1,
+		DueDate:         time.Now().UTC(),
+		TotalCorrect:    3,
+		TotalAttempts:   3,
+		LearningNewWord: false,
+	}
+	if err := s.UpdateSM2Progress(ctx, graduated); err != nil {
+		t.Fatalf("seed progress: %v", err)
+	}
+	initialEF := graduated.Easiness
+
+	// Submit wrong answer — decrements EF and resets repetitions/interval.
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "wrong",
+	})
+
+	// Accept as correct — restores pre-wrong state and applies correct quality.
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("accept-correct should return correct: true")
+	}
+	if resp.TotalCorrect != 4 {
+		t.Errorf("TotalCorrect: want 4 (pre-answer 3 + 1), got %d", resp.TotalCorrect)
+	}
+	if resp.TotalAttempts != 4 {
+		t.Errorf("TotalAttempts: want 4 (pre-answer 3 + 1), got %d", resp.TotalAttempts)
+	}
+
+	after, _ := s.GetSM2Progress(ctx, id)
+
+	// EF after accept-correct should be >= initial (correct quality on sm2.Update bumps it).
+	if after.Easiness < initialEF {
+		t.Errorf("EF after accept-correct (%v) should be >= initial EF (%v)", after.Easiness, initialEF)
+	}
+
+	// prev_state should be cleared.
+	prev, _ := s.GetSM2PrevState(ctx, id)
+	if prev != nil {
+		t.Errorf("prev_state should be nil after accept-correct, got %+v", prev)
+	}
+
+	// Due date should be at least 1 day away (not the 3-minute wrong penalty).
+	if time.Until(after.DueDate) < 20*time.Hour {
+		t.Errorf("due date after accept-correct should be >= 1 day, got %v from now", time.Until(after.DueDate))
+	}
+}
+
+func TestAcceptCorrectInvalidWordID(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: 0,
+		Mode:   models.ModeZhToTransl,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for word_id=0, got %d", rec.Code)
+	}
+}
+
+// ── Settings: accept_correct_mode ────────────────────────────────────────────
+
+func validSettingsPayload() map[string]string {
+	return map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "de",
+		"prog_new":             "zh_to_transl",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "zh_pinyin_to_transl",
+		"new_word_mode_2":      "zh_to_transl",
+	}
+}
+
+func TestSettingsPatchAcceptCorrectMode(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	payload := validSettingsPayload()
+	payload["accept_correct_mode"] = "always"
+	rec := do(t, r, "PATCH", "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET settings: want 200, got %d", rec2.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec2, &st)
+	if st.AcceptCorrectMode != "always" {
+		t.Errorf("AcceptCorrectMode: want %q, got %q", "always", st.AcceptCorrectMode)
+	}
+}
+
+func TestSettingsPatchAcceptCorrectModeInvalid(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	payload := validSettingsPayload()
+	payload["accept_correct_mode"] = "banana"
+	rec := do(t, r, "PATCH", "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for invalid accept_correct_mode, got %d", rec.Code)
 	}
 }

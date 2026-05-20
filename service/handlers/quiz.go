@@ -434,6 +434,13 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := r.Context()
+	if correct {
+		_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+	} else {
+		_ = h.Store.SaveSM2PrevState(ctx, req.WordID, *progress)
+	}
+
 	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
 
 	resp := models.AnswerResponse{
@@ -476,6 +483,120 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// AcceptCorrect handles POST /api/quiz/accept-correct. It restores the pre-answer
+// SM-2 state stored by Answer() on a wrong submission and applies a correct-quality
+// update, giving the same result as if the user had answered correctly the first time.
+// No SM-2 state is accepted from the client — the DB column is the sole source of truth.
+func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
+	var req models.AcceptCorrectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.WordID <= 0 {
+		writeError(w, http.StatusBadRequest, "word_id is required")
+		return
+	}
+	validModes := map[string]bool{
+		models.ModeTranslToZh:       true,
+		models.ModeZhToTransl:       true,
+		models.ModeZhPinyinToTransl: true,
+	}
+	if !validModes[req.Mode] && req.Mode != "" {
+		writeError(w, http.StatusBadRequest, "invalid mode")
+		return
+	}
+
+	ctx := r.Context()
+	userID := UserIDFromContext(ctx)
+
+	zhWord, err := h.Store.GetWordByID(ctx, userID, req.WordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if zhWord == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+
+	prev, err := h.Store.GetSM2PrevState(ctx, req.WordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if prev == nil {
+		writeError(w, http.StatusNotFound, "no pending accept-correct for this word")
+		return
+	}
+
+	var updated models.SM2Progress
+	var graduated bool
+	if prev.LearningNewWord {
+		updated, graduated = sm2.UpdateLearning(*prev, sm2.QualityCorrect)
+		if !graduated {
+			updated.TotalAttempts = prev.TotalAttempts + 1
+			updated.TotalCorrect = prev.TotalCorrect + 1
+		}
+	} else {
+		updated = sm2.Update(*prev, sm2.QualityCorrect)
+		updated.TotalAttempts = prev.TotalAttempts + 1
+		updated.TotalCorrect = prev.TotalCorrect + 1
+	}
+	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+
+	if err := h.Store.UpdateSM2Progress(ctx, updated); err != nil {
+		internalError(w, err)
+		return
+	}
+	_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+
+	sessionStreak, _ := h.Store.RecordDailyStat(ctx, userID, true)
+
+	langs := req.Langs
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
+	var correctTexts []string
+	switch req.Mode {
+	case models.ModeTranslToZh:
+		correctTexts = []string{zhWord.ZhText}
+	default:
+		for _, lang := range langs {
+			transWords, err := h.Store.GetTranslationsForWord(ctx, req.WordID, lang)
+			if err != nil {
+				internalError(w, err)
+				return
+			}
+			for _, tw := range transWords {
+				correctTexts = append(correctTexts, tw.Text)
+			}
+		}
+	}
+
+	resp := models.AnswerResponse{
+		Correct:         true,
+		CorrectAnswers:  correctTexts,
+		ZhText:          zhWord.ZhText,
+		Pinyin:          zhWord.Pinyin,
+		Translations:    zhWord.Translations,
+		NextDue:         updated.DueDate,
+		IntervalDays:    updated.IntervalDays,
+		TotalCorrect:    updated.TotalCorrect,
+		TotalAttempts:   updated.TotalAttempts,
+		StreakBonus:     updated.StreakBonus,
+		Repetitions:     updated.Repetitions,
+		GraduateReps:    sm2.LearningGraduateReps,
+		LearningNewWord: updated.LearningNewWord,
+		Graduated:       graduated,
+	}
+	if sessionStreak > 1 {
+		resp.SessionStreak = sessionStreak
+	}
+	resp.SceneText, _ = h.Store.GetHMMSceneText(ctx, req.WordID)
 	writeJSON(w, http.StatusOK, resp)
 }
 
