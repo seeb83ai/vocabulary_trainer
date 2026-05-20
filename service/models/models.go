@@ -30,6 +30,7 @@ type UserSettings struct {
 	LLMLocalURL        string `json:"llm_local_url"`
 	LLMKeySet          bool   `json:"llm_key_set"`
 	LLMKeyMasked       string `json:"llm_key_masked,omitempty"`
+	AcceptCorrectMode  string `json:"accept_correct_mode"`
 }
 
 // DB-layer structs
@@ -89,6 +90,12 @@ type AnswerRequest struct {
 	WordID int64    `json:"word_id"`
 	Mode   string   `json:"mode"`
 	Answer string   `json:"answer"`
+	Langs  []string `json:"langs,omitempty"`
+}
+
+type AcceptCorrectRequest struct {
+	WordID int64    `json:"word_id"`
+	Mode   string   `json:"mode"`
 	Langs  []string `json:"langs,omitempty"`
 }
 

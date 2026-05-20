@@ -3,10 +3,29 @@
 // Language settings loaded from /api/settings on init
 let userPrimaryLang = 'en';
 let userSecondaryLang = '';
+let acceptCorrectMode = 'typo';
 const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
+  acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
 }).catch(() => {});
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0)
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
 
 const HMM_TYPE_COLORS = {
   actor:     'bg-purple-100 text-purple-700',
@@ -133,6 +152,7 @@ async function loadNextCard() {
   hide('success-state');
   hide('error-state');
   hide('add-translation-btn');
+  hide('accept-correct-btn');
   hide('result-play-btn');
   hide('new-word-area');
   hide('new-component-area');
@@ -452,11 +472,29 @@ async function submitAnswer(e) {
       } else {
         hide('add-translation-btn');
       }
+
+      // Show "Accept as correct" button based on user's mode setting.
+      const normAnswer = answer.toLowerCase().trim();
+      const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
+      let showAcceptBtn = false;
+      if (acceptCorrectMode === 'always') {
+        showAcceptBtn = !isEmpty;
+      } else if (acceptCorrectMode === 'typo' && !isEmpty) {
+        showAcceptBtn = normCorrects.some(c => levenshtein(normAnswer, c) === 1);
+      }
+      if (showAcceptBtn) {
+        const acceptBtn = $('accept-correct-btn');
+        acceptBtn.textContent = 'Accept as correct (typo)';
+        show('accept-correct-btn');
+      } else {
+        hide('accept-correct-btn');
+      }
     } else {
       breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
       breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       show('word-breakdown');
       hide('add-translation-btn');
+      hide('accept-correct-btn');
 
       if (result.tier) {
         const bucketEl = $('bucket-info');
@@ -994,6 +1032,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('answer-form').addEventListener('submit', submitAnswer);
   $('next-btn').addEventListener('click', loadNextCard);
+  $('accept-correct-btn').addEventListener('click', async () => {
+    const btn = $('accept-correct-btn');
+    btn.disabled = true;
+    try {
+      await apiFetch('/api/quiz/accept-correct', {
+        method: 'POST',
+        body: JSON.stringify({
+          word_id: currentCard.word_id,
+          mode: currentCard.mode,
+          langs: selectedLangs,
+        }),
+      });
+      loadNextCard();
+    } catch (err) {
+      btn.disabled = false;
+      alert('Could not accept as correct: ' + err.message);
+    }
+  });
 
   // Mobile filter overlay
   function openFilterOverlay() {
