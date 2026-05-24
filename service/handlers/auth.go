@@ -62,14 +62,24 @@ type AuthHandler struct {
 	secret      []byte // HMAC signing key, generated at startup
 	emailSender *email.Sender
 	appURL      string
+	devMode     bool // when true, allow auto-verify if SMTP missing
 }
 
 // NewAuthHandler creates an AuthHandler backed by the given store.
-// emailSender may be nil (email disabled — accounts auto-verified on register).
+// emailSender may be nil. When nil and devMode is false (the default),
+// /api/register refuses to auto-verify the account — production
+// deployments must configure SMTP.
+//
 // appURL is used to build email verification links (e.g. "https://example.com").
 // secretHex is an optional hex-encoded 32-byte HMAC key (SESSION_SECRET env var).
 // If empty, a random key is generated — sessions will not survive server restarts.
 func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL, secretHex string) (*AuthHandler, error) {
+	return NewAuthHandlerWithEnv(store, emailSender, appURL, secretHex, "")
+}
+
+// NewAuthHandlerWithEnv is the variant that takes an explicit APP_ENV
+// string (used by main and by tests).
+func NewAuthHandlerWithEnv(store *db.Store, emailSender *email.Sender, appURL, secretHex, appEnv string) (*AuthHandler, error) {
 	var secret []byte
 	if secretHex != "" {
 		decoded, err := hex.DecodeString(secretHex)
@@ -84,7 +94,13 @@ func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL, secretHe
 			return nil, fmt.Errorf("generate auth secret: %w", err)
 		}
 	}
-	return &AuthHandler{store: store, secret: secret, emailSender: emailSender, appURL: appURL}, nil
+	return &AuthHandler{
+		store:       store,
+		secret:      secret,
+		emailSender: emailSender,
+		appURL:      appURL,
+		devMode:     strings.EqualFold(appEnv, "dev"),
+	}, nil
 }
 
 // Secret returns the server's HMAC/encryption secret so other handlers can use
@@ -272,7 +288,14 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if a.emailSender == nil {
-		// No SMTP configured: auto-verify and log token for inspection.
+		// No SMTP configured: auto-verify only in dev. In production this
+		// path would allow anyone to register without proving ownership
+		// of the email address.
+		if !a.devMode {
+			log.Printf("Register: refusing auto-verify in non-dev mode for %s — configure SMTP or set APP_ENV=dev", req.Email)
+			writeError(w, http.StatusServiceUnavailable, "email verification is not configured on this server")
+			return
+		}
 		user, err := a.store.SetUserEmailVerified(r.Context(), verToken)
 		if err != nil || user == nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -397,6 +420,19 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		// Non-fatal: keys become inaccessible until user re-saves them.
 	}
 
+	// Mint a fresh session cookie so the current browser stays logged in.
+	// Any older token (e.g. an exfiltrated cookie) is rejected because it
+	// predates sessions_invalidated_at, which UpdateUserPassword bumped.
+	token := a.mintToken(userID)
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+
 	_ = a.store.RecordAuditLog(r.Context(), userID, db.AuditPasswordChange, ClientIP(r), "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -430,10 +466,13 @@ func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// mintToken creates a signed token: "userID:timestamp:hmac".
+// mintToken creates a signed token: "userID:unixNano:hmac". Nanosecond
+// resolution is required so that password-change session invalidation
+// remains correct when the new cookie is minted in the same second as
+// the password change.
 func (a *AuthHandler) mintToken(userID int64) string {
 	uid := strconv.FormatInt(userID, 10)
-	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	ts := strconv.FormatInt(time.Now().UnixNano(), 10)
 	payload := uid + ":" + ts
 	sig := a.sign(payload)
 	return payload + ":" + sig
@@ -465,8 +504,15 @@ func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
-	if time.Since(time.Unix(ts, 0)) >= sessionTTL {
+	mintedAt := time.Unix(0, ts)
+	if time.Since(mintedAt) >= sessionTTL {
 		return 0, false
+	}
+	// Reject tokens issued before the user's last password change.
+	if cut, err := a.store.GetSessionsInvalidatedAt(r.Context(), userID); err == nil && !cut.IsZero() {
+		if mintedAt.UTC().Before(cut) {
+			return 0, false
+		}
 	}
 	return userID, true
 }

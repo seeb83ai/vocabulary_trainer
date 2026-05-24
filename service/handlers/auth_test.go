@@ -11,11 +11,12 @@ import (
 )
 
 // newAuthRouter builds a chi router with DB-backed auth middleware plus a
-// protected sentinel endpoint GET /api/protected.
+// protected sentinel endpoint GET /api/protected. Tests run in dev mode
+// (no SMTP, auto-verify) so the existing fixtures behave as before.
 func newAuthRouter(t *testing.T) http.Handler {
 	t.Helper()
 	s := openTestDB(t)
-	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
+	authH, err := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,6 +451,108 @@ func TestLogout_ClearsSession(t *testing.T) {
 	}
 	if clearedCookie.MaxAge >= 0 {
 		t.Errorf("logout cookie MaxAge should be negative, got %d", clearedCookie.MaxAge)
+	}
+}
+
+// ── Production safety: auto-verify only in dev ───────────────────────────────
+
+// TestRegister_AutoVerifyDisabledInProduction verifies that when SMTP is
+// not configured and APP_ENV is anything but "dev", the server refuses
+// to auto-verify accounts at registration time. Silently auto-verifying
+// in a production deployment that forgot to configure SMTP is a real
+// foot-gun: any attacker can register without owning the email.
+func TestRegister_AutoVerifyDisabledInProduction(t *testing.T) {
+	s := openTestDB(t)
+	authH, err := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost", "", "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(authH.Middleware)
+	r.Post("/api/register", authH.Register)
+
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email":    "production-user@example.com",
+		"password": "supersecret",
+	})
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503 when SMTP missing in production, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// TestRegister_AutoVerifyAllowedInDev verifies the existing dev-mode
+// behaviour where SMTP-less deployments auto-verify is preserved when
+// the operator explicitly opts in via APP_ENV=dev.
+func TestRegister_AutoVerifyAllowedInDev(t *testing.T) {
+	s := openTestDB(t)
+	authH, err := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost", "", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(authH.Middleware)
+	r.Post("/api/register", authH.Register)
+
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email":    "dev-user@example.com",
+		"password": "supersecret",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dev-mode register should succeed, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── Session invalidation on password change ──────────────────────────────────
+
+// TestChangePassword_InvalidatesOldSessions verifies that after a
+// password change, any previously-minted session token (e.g. a stolen
+// cookie) is no longer accepted.
+func TestChangePassword_InvalidatesOldSessions(t *testing.T) {
+	s := openTestDB(t)
+	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(authH.Middleware)
+	r.Post("/api/login", authH.Login)
+	r.Post("/api/change-password", authH.ChangePassword)
+	r.Get("/api/protected", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Log in once and grab the session cookie.
+	rec := loginReq(t, r, "me@example.de", "I learn zh")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("initial login: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	oldCookie := sessionCookie(t, rec)
+
+	// Confirm the cookie works.
+	if rec := doWithCookie(t, r, "GET", "/api/protected", oldCookie); rec.Code != http.StatusOK {
+		t.Fatalf("pre-change protected: want 200, got %d", rec.Code)
+	}
+
+	// Change the password using the same session cookie.
+	{
+		req := httptest.NewRequest("POST", "/api/change-password",
+			strings.NewReader(`{"current_password":"I learn zh","new_password":"new password 123"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(oldCookie)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("change-password: want 200, got %d: %s", rec.Code, rec.Body)
+		}
+	}
+
+	// The original cookie must now be rejected.
+	rec = doWithCookie(t, r, "GET", "/api/protected", oldCookie)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("after password change, old cookie should be rejected; got %d", rec.Code)
 	}
 }
 

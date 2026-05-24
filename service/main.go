@@ -111,7 +111,7 @@ func main() {
 	if strings.EqualFold(appEnv, "dev") {
 		log.Printf("APP_ENV=dev — relaxed startup checks enabled")
 	}
-	authH, err := handlers.NewAuthHandler(store, emailSender, appURL, sessionSecret)
+	authH, err := handlers.NewAuthHandlerWithEnv(store, emailSender, appURL, sessionSecret, appEnv)
 	if err != nil {
 		log.Fatalf("Failed to initialise auth: %v", err)
 	}

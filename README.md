@@ -71,7 +71,30 @@ AUTH_USER=admin
 AUTH_PASSWORD=yourpassword
 ```
 
-When enabled, all pages and API endpoints require a valid session. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours. The session secret is generated randomly at startup, so all sessions are invalidated when the server restarts.
+When enabled, all pages and API endpoints require a valid session. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours.
+
+### Production hardening
+
+For any deployment that is not your local dev box, set:
+
+```bash
+APP_ENV=production            # default; refuses startup if SESSION_SECRET is missing
+SESSION_SECRET=<64 hex chars>  # `openssl rand -hex 32`
+```
+
+`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart) and lets `/api/register` auto-verify accounts when SMTP is not configured. **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email.
+
+Other security-relevant tunables:
+
+```bash
+RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
+RATE_LIMIT_USER_PER_MIN=300       # per-user budget for all other API traffic
+RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-password, LLM scene generation
+```
+
+A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) is built in; the lockout is cleared on the next successful login.
+
+The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on every response. Configure HTTPS at the reverse proxy (see `deploy/nginx.conf`) — the sample config also sets `Strict-Transport-Security`.
 
 ## Daily new-word cap
 
