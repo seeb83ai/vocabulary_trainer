@@ -276,6 +276,47 @@ func TestSession_GarbageCookieDenied(t *testing.T) {
 	}
 }
 
+// TestSession_TamperedSameLengthSignatureDenied verifies that a signature
+// flipped in place (same length, one byte different) is rejected. This
+// guards against the case where HMAC verification short-circuits on the
+// first differing byte — a timing-attack vector. The behaviour must be
+// identical regardless of where the tamper occurs.
+func TestSession_TamperedSameLengthSignatureDenied(t *testing.T) {
+	r := newAuthRouter(t)
+	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
+	cookie := sessionCookie(t, loginRec)
+
+	// Cookie format: userID:timestamp:hex_hmac — find the last ':' and flip
+	// the first byte of the HMAC. Keep total length identical.
+	v := cookie.Value
+	last := -1
+	for i := len(v) - 1; i >= 0; i-- {
+		if v[i] == ':' {
+			last = i
+			break
+		}
+	}
+	if last < 0 || last >= len(v)-1 {
+		t.Fatalf("unexpected cookie format: %q", v)
+	}
+	first := v[last+1]
+	// Flip to a different hex digit so total length stays the same.
+	var flipped byte = '0'
+	if first == '0' {
+		flipped = '1'
+	}
+	mutated := v[:last+1] + string(flipped) + v[last+2:]
+	if len(mutated) != len(v) {
+		t.Fatalf("mutation changed length: %d vs %d", len(mutated), len(v))
+	}
+
+	rec := doWithCookie(t, r, "GET", "/api/protected",
+		&http.Cookie{Name: cookie.Name, Value: mutated})
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("want 401 for same-length tampered signature, got %d", rec.Code)
+	}
+}
+
 // ── Logout ────────────────────────────────────────────────────────────────────
 
 func TestLogout_ClearsSession(t *testing.T) {

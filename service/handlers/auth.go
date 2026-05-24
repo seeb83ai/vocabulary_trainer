@@ -386,7 +386,7 @@ func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 		return 0, false
 	}
 	payload, sig := c.Value[:lastColon], c.Value[lastColon+1:]
-	if a.sign(payload) != sig {
+	if !hmac.Equal([]byte(a.sign(payload)), []byte(sig)) {
 		return 0, false
 	}
 	parts := strings.SplitN(payload, ":", 2)

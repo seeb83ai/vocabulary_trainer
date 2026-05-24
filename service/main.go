@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/email"
 	"vocabulary_trainer/handlers"
@@ -166,6 +167,16 @@ func main() {
 		llmH = &handlers.LLMHandler{Store: store, SettingsHandler: settingsH}
 	}
 
+	// Rate limiters. Defaults: unauth = 10 req/min per IP (brute-force budget
+	// for login/register/verify-email); auth = 300 req/min per user (≈ 5 rps).
+	authPerMin := envInt("RATE_LIMIT_AUTH_PER_MIN", 10)
+	userPerMin := envInt("RATE_LIMIT_USER_PER_MIN", 300)
+	expensivePerMin := envInt("RATE_LIMIT_EXPENSIVE_PER_MIN", 20)
+	log.Printf("Rate limits per minute: unauth=%d auth-user=%d expensive=%d", authPerMin, userPerMin, expensivePerMin)
+	ipLimiter := handlers.NewRateLimiter(authPerMin, time.Minute)
+	userLimiter := handlers.NewRateLimiter(userPerMin, time.Minute)
+	expensiveLimiter := handlers.NewRateLimiter(expensivePerMin, time.Minute)
+
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -178,16 +189,24 @@ func main() {
 		})
 	})
 	r.Use(authH.Middleware)
+	// Apply the user-bucket limiter to every request that survived auth
+	// middleware (UserOrIPKey falls back to IP for unauth-allowed paths).
+	r.Use(handlers.RateLimitMiddleware(userLimiter, handlers.UserOrIPKey()))
+
+	// IP-based limiter for credential and account-creation endpoints (tight
+	// budget to slow brute-force and enumeration).
+	ipLimit := handlers.RateLimitMiddleware(ipLimiter, handlers.IPKey())
+	expensiveLimit := handlers.RateLimitMiddleware(expensiveLimiter, handlers.UserOrIPKey())
 
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/auth/status", handlers.AuthStatus(authH))
-		r.Post("/login", authH.Login)
+		r.With(ipLimit).Post("/login", authH.Login)
 		r.Post("/logout", authH.Logout)
-		r.Post("/register", authH.Register)
-		r.Get("/verify-email", authH.VerifyEmail)
+		r.With(ipLimit).Post("/register", authH.Register)
+		r.With(ipLimit).Get("/verify-email", authH.VerifyEmail)
 		r.Get("/me", authH.Me)
-		r.Post("/change-password", authH.ChangePassword)
+		r.With(expensiveLimit).Post("/change-password", authH.ChangePassword)
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
 		r.Get("/quiz/langs", quizH.Langs)
@@ -213,7 +232,7 @@ func main() {
 				r.Get("/hmm/context", hmmH.GetSceneContext)
 				r.Put("/hmm", hmmH.SaveScene)
 				r.Delete("/hmm", hmmH.DeleteScene)
-				r.Post("/hmm/generate-scene", llmH.GenerateScene)
+				r.With(expensiveLimit).Post("/hmm/generate-scene", llmH.GenerateScene)
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
@@ -259,12 +278,12 @@ func main() {
 		r.Delete("/components/{char}/hmm-scene", componentH.DeleteHMMScene)
 		r.Get("/components/{char}/hmm/context", componentH.GetComponentHMMContext)
 		r.Put("/components/{char}/hmm", componentH.SaveCompScene)
-		r.Post("/components/{char}/hmm/generate-scene", llmH.GenerateCompScene)
+		r.With(expensiveLimit).Post("/components/{char}/hmm/generate-scene", llmH.GenerateCompScene)
 		r.Get("/settings", settingsH.Get)
 		r.Patch("/settings", settingsH.Patch)
 		r.Put("/settings/api-keys", settingsH.PutAPIKeys)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
-		r.Post("/translate", translateH.Translate)
+		r.With(expensiveLimit).Post("/translate", translateH.Translate)
 	})
 
 	// Static frontend files
@@ -343,6 +362,16 @@ func main() {
 	addr := ":" + port
 	log.Printf("Vocabulary Trainer listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, r))
+}
+
+// envInt reads an integer env var, returning fallback if unset or invalid.
+func envInt(name string, fallback int) int {
+	if v := os.Getenv(name); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return fallback
 }
 
 func serveFileFromFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name string) {
