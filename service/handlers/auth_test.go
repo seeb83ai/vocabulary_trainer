@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"vocabulary_trainer/handlers"
 
@@ -309,6 +310,25 @@ func TestSession_GarbageCookieDenied(t *testing.T) {
 	}
 }
 
+// TestLogin_CookieSameSiteStrict verifies the session cookie uses
+// SameSite=Strict so the browser refuses to attach it to any
+// cross-site request — the strongest CSRF mitigation available without
+// additional tokens.
+func TestLogin_CookieSameSiteStrict(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := loginReq(t, r, "me@example.de", "I learn zh")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login failed: %d %s", rec.Code, rec.Body)
+	}
+	cookie := sessionCookie(t, rec)
+	if cookie.SameSite != http.SameSiteStrictMode {
+		t.Errorf("session cookie SameSite: want Strict, got %v", cookie.SameSite)
+	}
+	if !cookie.HttpOnly {
+		t.Error("session cookie must be HttpOnly")
+	}
+}
+
 // TestSession_TamperedSameLengthSignatureDenied verifies that a signature
 // flipped in place (same length, one byte different) is rejected. This
 // guards against the case where HMAC verification short-circuits on the
@@ -430,6 +450,125 @@ func TestLogout_ClearsSession(t *testing.T) {
 	}
 	if clearedCookie.MaxAge >= 0 {
 		t.Errorf("logout cookie MaxAge should be negative, got %d", clearedCookie.MaxAge)
+	}
+}
+
+// ── Account lockout ───────────────────────────────────────────────────────────
+
+// TestLogin_AccountLocksAfterMaxFailures verifies that after the
+// configured threshold of consecutive wrong-password attempts, further
+// login attempts return 403 with a generic error even when the right
+// password is supplied.
+func TestLogin_AccountLocksAfterMaxFailures(t *testing.T) {
+	r := newAuthRouter(t)
+	const tries = handlers.MaxFailedLogins
+	for i := 0; i < tries; i++ {
+		rec := loginReq(t, r, "me@example.de", "wrong")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: want 401, got %d", i+1, rec.Code)
+		}
+	}
+	// Next attempt — even with the CORRECT password — must be rejected.
+	rec := loginReq(t, r, "me@example.de", "I learn zh")
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("after %d failures, even correct password should return 403, got %d (body: %s)", tries, rec.Code, rec.Body)
+	}
+}
+
+// TestLogin_SuccessResetsFailedCounter verifies that a successful login
+// clears any partial failure count so legitimate users don't accumulate
+// risk across sessions.
+func TestLogin_SuccessResetsFailedCounter(t *testing.T) {
+	r := newAuthRouter(t)
+	// Fewer-than-threshold wrong attempts, then a correct one.
+	for i := 0; i < handlers.MaxFailedLogins-1; i++ {
+		loginReq(t, r, "me@example.de", "wrong")
+	}
+	rec := loginReq(t, r, "me@example.de", "I learn zh")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("correct login after %d failures should succeed, got %d", handlers.MaxFailedLogins-1, rec.Code)
+	}
+
+	// Now we should have a fresh failure budget — exhaust it again.
+	for i := 0; i < handlers.MaxFailedLogins; i++ {
+		rec := loginReq(t, r, "me@example.de", "wrong")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("wrong %d after reset: want 401, got %d", i+1, rec.Code)
+		}
+	}
+}
+
+// ── Audit log integration ─────────────────────────────────────────────────────
+
+// TestAudit_LoginSuccessRecorded verifies a successful login appends an
+// audit entry tagged with the user id and source IP.
+func TestAudit_LoginSuccessRecorded(t *testing.T) {
+	s := openTestDB(t)
+	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/login", authH.Login)
+
+	req := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"email":"me@example.de","password":"I learn zh"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.7:1234"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Look up user 2 (the seed user).
+	rows, err := s.GetAuditLogForUser(t.Context(), 2, 10)
+	if err != nil {
+		t.Fatalf("GetAuditLogForUser: %v", err)
+	}
+	var found bool
+	for _, e := range rows {
+		if e.Action == "login_success" && e.IPAddress == "198.51.100.7" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected login_success audit entry for IP 198.51.100.7, got %+v", rows)
+	}
+}
+
+// TestAudit_LoginFailureRecorded verifies a wrong-password attempt is
+// also logged (with user_id when the email matches, so an account owner
+// can review activity even when the attacker doesn't know the password).
+func TestAudit_LoginFailureRecorded(t *testing.T) {
+	s := openTestDB(t)
+	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/login", authH.Login)
+
+	req := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"email":"me@example.de","password":"wrong"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.8:1234"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", rec.Code)
+	}
+
+	rows, err := s.GetAuditLogForUser(t.Context(), 2, 10)
+	if err != nil {
+		t.Fatalf("GetAuditLogForUser: %v", err)
+	}
+	var found bool
+	for _, e := range rows {
+		if e.Action == "login_failure" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected login_failure audit entry for user 2, got %+v", rows)
 	}
 }
 

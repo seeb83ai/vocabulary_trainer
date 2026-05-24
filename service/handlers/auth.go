@@ -28,6 +28,14 @@ const settingsKeyCookie = "vocab_settings_key"
 const sessionTTL = 24 * time.Hour
 const verificationTTL = 24 * time.Hour
 
+// MaxFailedLogins is the number of consecutive wrong-password attempts a
+// single account tolerates before it is temporarily locked. LockoutDuration
+// is how long the lock holds. Both are exported for tests.
+const (
+	MaxFailedLogins  = 5
+	LockoutDuration  = 15 * time.Minute
+)
+
 type contextKey int
 
 const userIDCtxKey contextKey = iota
@@ -145,12 +153,35 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := ClientIP(r)
 	user, err := a.store.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if user == nil || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+	if user == nil {
+		_ = a.store.RecordAuditLog(r.Context(), 0, db.AuditLoginFailure, ip, req.Email)
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
+	// Refuse any login attempt — right or wrong password — while the
+	// account is locked.
+	if locked, _, lerr := a.store.IsAccountLocked(r.Context(), user.ID); lerr == nil && locked {
+		_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLoginFailure, ip, "locked")
+		writeError(w, http.StatusForbidden, "account temporarily locked due to too many failed login attempts")
+		return
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+		_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLoginFailure, ip, "")
+		n, _ := a.store.IncrementFailedLogins(r.Context(), user.ID)
+		if n >= MaxFailedLogins {
+			until := time.Now().UTC().Add(LockoutDuration)
+			if err := a.store.LockAccountUntil(r.Context(), user.ID, until); err == nil {
+				_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditAccountLocked, ip, until.Format(time.RFC3339))
+			}
+		}
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -158,6 +189,8 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "email_not_verified")
 		return
 	}
+	// Successful authentication clears the failure budget.
+	_ = a.store.ResetFailedLogins(r.Context(), user.ID)
 
 	token := a.mintToken(user.ID)
 	http.SetCookie(w, &http.Cookie{
@@ -165,10 +198,11 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	a.setSettingsKeyCookie(w, r, user.ID, req.Password)
+	_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLogin, ip, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -198,6 +232,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	ip := ClientIP(r)
 	if existing != nil {
 		// Do not reveal that the email is already registered — that would
 		// let an attacker enumerate accounts via the public form. Respond
@@ -206,6 +241,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		// (we deliberately don't issue another verification email), so the
 		// duplicate attempt remains a no-op.
 		log.Printf("Register: duplicate attempt for %s (silently accepted)", req.Email)
+		_ = a.store.RecordAuditLog(r.Context(), existing.ID, db.AuditRegisterDuplicate, ip, "")
 		writeJSON(w, http.StatusOK, map[string]any{"pending_verification": true})
 		return
 	}
@@ -229,6 +265,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	_ = a.store.RecordAuditLog(r.Context(), userID, db.AuditRegister, ip, req.Email)
 
 	if err := a.store.InitPinyinProgressForUser(r.Context(), userID); err != nil {
 		log.Printf("Warning: init pinyin progress for user %d: %v", userID, err)
@@ -248,7 +285,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			Value:    sessionToken,
 			Path:     "/",
 			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteStrictMode,
 			MaxAge:   int(sessionTTL.Seconds()),
 		})
 		a.setSettingsKeyCookie(w, r, user.ID, req.Password)
@@ -290,6 +327,7 @@ func (a *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?error=invalid_token", http.StatusFound)
 		return
 	}
+	_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditEmailVerified, ClientIP(r), "")
 
 	sessionToken := a.mintToken(user.ID)
 	http.SetCookie(w, &http.Cookie{
@@ -297,7 +335,7 @@ func (a *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		Value:    sessionToken,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	http.Redirect(w, r, "/train", http.StatusFound)
@@ -359,6 +397,7 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		// Non-fatal: keys become inaccessible until user re-saves them.
 	}
 
+	_ = a.store.RecordAuditLog(r.Context(), userID, db.AuditPasswordChange, ClientIP(r), "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -371,6 +410,9 @@ func AuthStatus(a *AuthHandler) http.HandlerFunc {
 
 // Logout handles POST /api/logout.
 func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if uid := UserIDFromContext(r.Context()); uid > 0 {
+		_ = a.store.RecordAuditLog(r.Context(), uid, db.AuditLogout, ClientIP(r), "")
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    "",
@@ -588,7 +630,7 @@ func (a *AuthHandler) setSettingsKeyCookie(w http.ResponseWriter, r *http.Reques
 		Value:    sealed,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 }
@@ -653,7 +695,7 @@ func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, u
 		Value:    sealed,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	return nil
