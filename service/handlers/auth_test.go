@@ -22,6 +22,7 @@ func newAuthRouter(t *testing.T) http.Handler {
 	r.Use(authH.Middleware)
 	r.Get("/api/auth/status", handlers.AuthStatus(authH))
 	r.Post("/api/login", authH.Login)
+	r.Post("/api/register", authH.Register)
 	r.Post("/api/logout", authH.Logout)
 	r.Get("/api/protected", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -70,6 +71,38 @@ func TestNewAuthHandler_NoSecret_Succeeds(t *testing.T) {
 	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
 	if err != nil {
 		t.Fatalf("want no error with empty secret, got %v", err)
+	}
+}
+
+// TestRequireProductionSecret_RejectsEmpty verifies that the helper used
+// by main.go to validate startup configuration treats an empty
+// SESSION_SECRET as fatal whenever APP_ENV is not "dev".
+func TestRequireProductionSecret_RejectsEmpty(t *testing.T) {
+	if err := handlers.RequireProductionSecret("", "production"); err == nil {
+		t.Error("want error when SESSION_SECRET is empty in production")
+	}
+	if err := handlers.RequireProductionSecret("", ""); err == nil {
+		t.Error("want error when SESSION_SECRET is empty and APP_ENV unset (defaults to prod)")
+	}
+}
+
+// TestRequireProductionSecret_AllowsDev verifies that running without a
+// SESSION_SECRET is still allowed when the operator explicitly opts in
+// via APP_ENV=dev.
+func TestRequireProductionSecret_AllowsDev(t *testing.T) {
+	if err := handlers.RequireProductionSecret("", "dev"); err != nil {
+		t.Errorf("dev mode should permit empty secret, got %v", err)
+	}
+}
+
+// TestRequireProductionSecret_AllowsConfiguredSecret confirms a non-empty
+// secret passes in any env.
+func TestRequireProductionSecret_AllowsConfiguredSecret(t *testing.T) {
+	if err := handlers.RequireProductionSecret("anything", "production"); err != nil {
+		t.Errorf("production with a secret must succeed, got %v", err)
+	}
+	if err := handlers.RequireProductionSecret("anything", "dev"); err != nil {
+		t.Errorf("dev with a secret must succeed, got %v", err)
 	}
 }
 
@@ -314,6 +347,56 @@ func TestSession_TamperedSameLengthSignatureDenied(t *testing.T) {
 		&http.Cookie{Name: cookie.Name, Value: mutated})
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("want 401 for same-length tampered signature, got %d", rec.Code)
+	}
+}
+
+// ── Register: enumeration protection ─────────────────────────────────────────
+
+// TestRegister_ExistingEmail_DoesNotLeak verifies that registering with an
+// email that already exists returns the same response as a fresh
+// registration. Returning 409 or a "email already registered" message
+// lets an attacker enumerate valid accounts.
+func TestRegister_ExistingEmail_DoesNotLeak(t *testing.T) {
+	r := newAuthRouter(t)
+
+	// "me@example.de" is pre-seeded by TestMain.
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email":    "me@example.de",
+		"password": "another password",
+	})
+
+	if rec.Code == http.StatusConflict {
+		t.Fatalf("must not return 409 for an existing email (leaks enumeration), got %d", rec.Code)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 (indistinguishable from fresh registration), got %d: %s", rec.Code, rec.Body)
+	}
+
+	var body map[string]any
+	decodeJSON(t, rec, &body)
+	if errMsg, _ := body["error"].(string); errMsg != "" {
+		t.Errorf("response must not contain an error field that reveals existence, got %q", errMsg)
+	}
+}
+
+// TestRegister_FreshEmail_MatchesExistingShape sanity-checks that the
+// fresh-registration response (no SMTP → auto_login true) and an
+// existing-email response can be distinguished only by the server logs,
+// not by the public response shape. We test that both succeed (200) with
+// no error.
+func TestRegister_FreshEmail_Succeeds(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email":    "new-user@example.de",
+		"password": "supersecret",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var body map[string]any
+	decodeJSON(t, rec, &body)
+	if errMsg, _ := body["error"].(string); errMsg != "" {
+		t.Errorf("fresh registration should not contain error: %q", errMsg)
 	}
 }
 

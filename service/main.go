@@ -104,6 +104,13 @@ func main() {
 	log.Printf("App URL: %s", appURL)
 
 	sessionSecret := os.Getenv("SESSION_SECRET")
+	appEnv := os.Getenv("APP_ENV")
+	if err := handlers.RequireProductionSecret(sessionSecret, appEnv); err != nil {
+		log.Fatalf("Refusing to start: %v", err)
+	}
+	if strings.EqualFold(appEnv, "dev") {
+		log.Printf("APP_ENV=dev — relaxed startup checks enabled")
+	}
 	authH, err := handlers.NewAuthHandler(store, emailSender, appURL, sessionSecret)
 	if err != nil {
 		log.Fatalf("Failed to initialise auth: %v", err)
@@ -180,14 +187,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.Header().Set("X-Frame-Options", "DENY")
-			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-			next.ServeHTTP(w, r)
-		})
-	})
+	r.Use(handlers.SecurityHeaders)
 	r.Use(authH.Middleware)
 	// Apply the user-bucket limiter to every request that survived auth
 	// middleware (UserOrIPKey falls back to IP for unauth-allowed paths).

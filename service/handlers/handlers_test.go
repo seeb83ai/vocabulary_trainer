@@ -2656,12 +2656,15 @@ func TestRegister_OK(t *testing.T) {
 }
 
 func TestRegister_DuplicateEmail(t *testing.T) {
+	// A duplicate registration must NOT return a distinct status that
+	// reveals the email is already in use. See
+	// TestRegister_ExistingEmail_DoesNotLeak in auth_test.go.
 	r := newRouter(openTestDB(t))
 	payload := map[string]string{"email": "new@example.com", "password": "securepass1"}
 	do(t, r, "POST", "/api/register", payload)
 	rec := do(t, r, "POST", "/api/register", payload)
-	if rec.Code != http.StatusConflict {
-		t.Errorf("want 409, got %d: %s", rec.Code, rec.Body)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 (indistinguishable from a fresh registration), got %d: %s", rec.Code, rec.Body)
 	}
 }
 

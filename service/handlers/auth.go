@@ -83,6 +83,21 @@ func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL, secretHe
 // it for sealing the per-user settings key cookie.
 func (a *AuthHandler) Secret() []byte { return a.secret }
 
+// RequireProductionSecret enforces a non-empty SESSION_SECRET unless the
+// operator has explicitly opted into dev mode by setting APP_ENV=dev.
+// Call this from main before NewAuthHandler so an unconfigured production
+// deployment fails fast instead of generating a per-restart random key
+// (which silently invalidates all sessions on every restart).
+func RequireProductionSecret(sessionSecret, appEnv string) error {
+	if sessionSecret != "" {
+		return nil
+	}
+	if strings.EqualFold(appEnv, "dev") {
+		return nil
+	}
+	return fmt.Errorf("SESSION_SECRET is required in production (set APP_ENV=dev to override; SESSION_SECRET must be a hex-encoded string of at least 32 bytes)")
+}
+
 // Middleware rejects unauthenticated requests and injects the user ID into context.
 // API requests receive 401 JSON; page requests redirect to /.
 func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
@@ -184,7 +199,14 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing != nil {
-		writeError(w, http.StatusConflict, "email already registered")
+		// Do not reveal that the email is already registered — that would
+		// let an attacker enumerate accounts via the public form. Respond
+		// indistinguishably from a fresh registration that requires email
+		// verification. The owner of the address will receive nothing new
+		// (we deliberately don't issue another verification email), so the
+		// duplicate attempt remains a no-op.
+		log.Printf("Register: duplicate attempt for %s (silently accepted)", req.Email)
+		writeJSON(w, http.StatusOK, map[string]any{"pending_verification": true})
 		return
 	}
 
