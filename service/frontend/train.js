@@ -228,8 +228,14 @@ async function loadNextCard() {
     $('new-word-en').innerHTML = transLines.join('<br>') || '—';
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
+    $('new-word-zh-input').value = '';
+    $('new-word-trans-input').value = '';
+    $('new-word-zh-check').textContent = '';
+    $('new-word-trans-check').textContent = '';
+    $('new-word-got-it-btn').disabled = true;
     loadNewWordBreakdown(currentCard.prompt);
     await loadStats();
+    setTimeout(() => $('new-word-zh-input').focus(), 50);
     return;
   }
 
@@ -1054,6 +1060,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadNextCard();
   });
+  function normalizeNewWordInput(s) {
+    return s.trim().toLowerCase();
+  }
+  function isZhCorrect(inputVal, prompt) {
+    return inputVal.trim() === prompt.trim();
+  }
+  function isTransCorrect(inputVal, translations) {
+    const normalized = normalizeNewWordInput(inputVal);
+    if (!normalized) return false;
+    const allTrans = Object.values(translations || {}).flat();
+    return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+  }
+  function updateGotItState() {
+    if (!currentCard) return;
+    const zhVal    = $('new-word-zh-input').value;
+    const transVal = $('new-word-trans-input').value;
+    const zhOk     = isZhCorrect(zhVal, currentCard.prompt);
+    const transOk  = isTransCorrect(transVal, currentCard.translations);
+    $('new-word-zh-check').textContent  = zhVal.trim()    ? (zhOk    ? '✓' : '✗') : '';
+    $('new-word-zh-check').className    = 'text-xl w-6 text-center ' + (zhOk    ? 'text-green-500' : 'text-red-400');
+    $('new-word-trans-check').textContent = transVal.trim() ? (transOk ? '✓' : '✗') : '';
+    $('new-word-trans-check').className   = 'text-xl w-6 text-center ' + (transOk ? 'text-green-500' : 'text-red-400');
+    $('new-word-got-it-btn').disabled = !(zhOk && transOk);
+  }
+  $('new-word-zh-input').addEventListener('input', updateGotItState);
+  $('new-word-trans-input').addEventListener('input', updateGotItState);
+
   $('new-word-got-it-btn').addEventListener('click', async () => {
     if (!currentCard) return;
     try {

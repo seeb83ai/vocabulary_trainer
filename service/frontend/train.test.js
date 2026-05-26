@@ -358,3 +358,78 @@ describe('allTransTexts', () => {
     expect(texts).toEqual([]);
   });
 });
+
+// ── New word input validation ──────────────────────────────────────────────────
+// Mirrors the pure helpers added to train.js for the new-word input fields.
+
+function normalizeNewWordInput(s) {
+  return s.trim().toLowerCase();
+}
+
+function isZhCorrect(inputVal, prompt) {
+  return inputVal.trim() === prompt.trim();
+}
+
+function isTransCorrect(inputVal, translations) {
+  const normalized = normalizeNewWordInput(inputVal);
+  if (!normalized) return false;
+  const allTrans = Object.values(translations || {}).flat();
+  return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+}
+
+describe('isZhCorrect', () => {
+  it('returns true for exact match', () => {
+    expect(isZhCorrect('你好', '你好')).toBe(true);
+  });
+
+  it('trims whitespace from input', () => {
+    expect(isZhCorrect('  你好  ', '你好')).toBe(true);
+  });
+
+  it('returns false for wrong characters', () => {
+    expect(isZhCorrect('再见', '你好')).toBe(false);
+  });
+
+  it('returns false for empty input', () => {
+    expect(isZhCorrect('', '你好')).toBe(false);
+  });
+});
+
+describe('isTransCorrect', () => {
+  it('returns true for exact EN match', () => {
+    expect(isTransCorrect('hello', { en: ['hello', 'hi'], de: ['hallo'] })).toBe(true);
+  });
+
+  it('returns true for case-insensitive match', () => {
+    expect(isTransCorrect('Hello', { en: ['hello'] })).toBe(true);
+  });
+
+  it('returns true for match in any language', () => {
+    expect(isTransCorrect('hallo', { en: ['hello'], de: ['hallo'] })).toBe(true);
+  });
+
+  it('returns false for wrong translation', () => {
+    expect(isTransCorrect('goodbye', { en: ['hello', 'hi'] })).toBe(false);
+  });
+
+  it('returns false for empty input', () => {
+    expect(isTransCorrect('', { en: ['hello'] })).toBe(false);
+  });
+
+  it('returns false for whitespace-only input', () => {
+    expect(isTransCorrect('   ', { en: ['hello'] })).toBe(false);
+  });
+
+  it('matches after trimming whitespace', () => {
+    expect(isTransCorrect('  hello  ', { en: ['hello'] })).toBe(true);
+  });
+
+  it('handles empty translations object', () => {
+    expect(isTransCorrect('hello', {})).toBe(false);
+  });
+
+  it('handles null/undefined translations', () => {
+    expect(isTransCorrect('hello', null)).toBe(false);
+    expect(isTransCorrect('hello', undefined)).toBe(false);
+  });
+});
