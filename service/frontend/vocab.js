@@ -1144,6 +1144,7 @@ let editingCompChar = null;
 function openComponentEdit(char) {
   editingCompChar = char;
   $('comp-edit-char').textContent = char;
+  $('comp-hanziway-link').href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(char);
   $('comp-edit-form').innerHTML = `<span class="text-gray-400 text-sm">${escHtml(t('vocab.loading') || 'Loading…')}</span>`;
   switchTab('comp');
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
