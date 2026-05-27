@@ -20,6 +20,10 @@ export const E2E_PORT = 18080;
 export const BASE_URL = `http://localhost:${E2E_PORT}`;
 export const TEST_EMAIL = 'e2e@test.local';
 export const TEST_PASSWORD = 'E2eTestPassword123!';
+// Second test user — has a single unseen word (start_training: false).
+// Used by quiz.spec.js to test the new-word introduction flow.
+export const TEST_NEWWORD_EMAIL = 'e2e-newword@test.local';
+export const TEST_NEWWORD_PASSWORD = 'E2eNewWordPassword123!';
 
 // A fixed 32-byte hex key for deterministic session tokens across server restarts.
 // This is only used for the isolated E2E test server — not production.
@@ -131,11 +135,44 @@ export default async function globalSetup() {
     console.log(`[E2E] Seeded word: ${word.zh}`);
   }
 
-  // ── 7. Save Playwright storage state ────────────────────────────────────────
+  // ── 7. Save Playwright storage state for main user ──────────────────────────
   mkdirSync(AUTH_DIR, { recursive: true });
   const storageState = { cookies, origins: [] };
   writeFileSync(join(AUTH_DIR, 'user.json'), JSON.stringify(storageState, null, 2));
   console.log('[E2E] Auth state saved to e2e/.auth/user.json');
+
+  // ── 8. Register the new-word test user ───────────────────────────────────────
+  // This user has one unseen word (start_training: false) so the quiz shows the
+  // new-word introduction screen instead of a regular card.
+  const nwRegRes = await fetch(`${BASE_URL}/api/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: TEST_NEWWORD_EMAIL, password: TEST_NEWWORD_PASSWORD }),
+  });
+  if (!nwRegRes.ok) {
+    const body = await nwRegRes.text();
+    throw new Error(`New-word user registration failed (${nwRegRes.status}): ${body}`);
+  }
+  const nwRegData = await nwRegRes.json();
+  if (!nwRegData.auto_login) {
+    throw new Error('Expected auto_login=true for new-word user');
+  }
+  const nwSetCookieHeaders = nwRegRes.headers.getSetCookie?.() ?? [];
+  if (nwSetCookieHeaders.length === 0) {
+    throw new Error('No Set-Cookie header in new-word user registration response');
+  }
+  const nwCookies = parseSetCookieHeaders(nwSetCookieHeaders);
+  const nwCookieHeader = nwCookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+  // Seed one unseen word (水/shuǐ/water) with start_training: false.
+  // total_attempts=0 → quiz returns mode='new_word' for this user.
+  await seedWord(BASE_URL, nwCookieHeader, { zh: '水', pinyin: 'shuǐ', en: ['water'] }, false);
+  console.log('[E2E] Seeded unseen word: 水 (for new-word user)');
+
+  // Save auth state for the new-word user
+  const nwStorageState = { cookies: nwCookies, origins: [] };
+  writeFileSync(join(AUTH_DIR, 'new-word-user.json'), JSON.stringify(nwStorageState, null, 2));
+  console.log('[E2E] Auth state saved to e2e/.auth/new-word-user.json');
 
   console.log('[E2E] Global setup complete ✓');
 }

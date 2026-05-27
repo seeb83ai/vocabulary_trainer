@@ -1,95 +1,205 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 
-// These tests use the auth state created in global-setup (test user + seeded words)
-test.use({ storageState: 'e2e/.auth/user.json' });
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 1: Main user — 3 acknowledged words (total_attempts=1, learning_new_word=1)
+//
+// Seed (from global-setup.js, start_training: true):
+//   你好 → hello, hi
+//   谢谢 → thank you, thanks
+//   再见 → goodbye, bye
+//
+// AcknowledgeWord() sets total_attempts=1, first_seen_date=today, due_date=now.
+// Expected quiz state: #card-area is shown (NOT #new-word-area) because
+// total_attempts > 0.
+//
+// We force mode=zh_to_transl via localStorage so the prompt is the Chinese
+// word and the expected answer is the English translation.
+//
+// In zh_to_transl mode, the /api/quiz/next response does NOT include
+// translations (only the zh prompt). We derive the correct answer from the
+// known seed mapping below.
+// ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Helper: If the new-word-area is visible, click "Got it" to acknowledge
- * the word and wait for the card-area to appear.
- */
-async function acknowledgeNewWordIfNeeded(page) {
-  const newWordArea = page.locator('#new-word-area');
-  const cardArea = page.locator('#card-area');
+/** Translations keyed by zh word — derived from the seed in global-setup.js. */
+const SEED_TRANSLATIONS = {
+  '你好': ['hello', 'hi'],
+  '谢谢': ['thank you', 'thanks'],
+  '再见': ['goodbye', 'bye'],
+};
 
-  // Wait for either area to become visible
-  await Promise.race([
-    newWordArea.waitFor({ state: 'visible', timeout: 10_000 }),
-    cardArea.waitFor({ state: 'visible', timeout: 10_000 }),
-  ]);
+test.describe('Quiz – acknowledged words (main user)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
 
-  // Handle new-word introduction screens (there may be several for the seeded words)
-  let attempts = 0;
-  while (await newWordArea.isVisible() && attempts < 5) {
-    await page.locator('#new-word-got-it-btn').click();
-    // Wait for next state
-    await page.waitForTimeout(800);
-    attempts++;
+  // Set zh_to_transl mode in localStorage before the page scripts run.
+  // This ensures loadNextCard() calls GET /api/quiz/next?mode=zh_to_transl
+  // on every test navigation, giving us a deterministic, predictable card.
+  function useZhToTranslMode(page) {
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
   }
 
-  // Now we should be in card area
-  await expect(cardArea).toBeVisible({ timeout: 10_000 });
-}
+  test('card-area is shown (not new-word-area) for acknowledged words', async ({ page }) => {
+    // Pre-fetch the card the server will return for zh_to_transl mode.
+    // page.request shares session cookies with the browser context (storageState).
+    // This call is read-only and does not modify any SM-2 state.
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
 
-test.describe('Quiz Flow', () => {
-  test('quiz page loads and shows a card or new-word introduction', async ({ page }) => {
+    // The API must return one of the three seeded zh words
+    expect(card.mode).toBe('zh_to_transl');
+    expect(['你好', '谢谢', '再见']).toContain(card.prompt);
+
+    await useZhToTranslMode(page);
     await page.goto('/train');
 
-    // Either the new-word-area (for fresh seeded words) or the card-area should appear
-    const newWordArea = page.locator('#new-word-area');
-    const cardArea = page.locator('#card-area');
+    // card-area appears; new-word-area must NOT be visible
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#new-word-area')).not.toBeVisible();
 
-    const eitherVisible = await Promise.race([
-      newWordArea.waitFor({ state: 'visible', timeout: 12_000 }).then(() => 'new-word'),
-      cardArea.waitFor({ state: 'visible', timeout: 12_000 }).then(() => 'card'),
-    ]);
-
-    expect(['new-word', 'card']).toContain(eitherVisible);
+    // The prompt shown in the UI must exactly match what the API returned
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
   });
 
-  test('correct answer shows ✓ Correct result', async ({ page }) => {
+  test('correct answer (exact translation) shows ✓ Correct!', async ({ page }) => {
+    // Fetch the card so we know which zh word will be shown as the prompt.
+    // In zh_to_transl mode the card response does NOT include translations
+    // (the user must supply the translation from memory), so we look up the
+    // correct answer from the known seed mapping.
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+
+    // card.prompt is one of the seeded zh words; derive the correct answer from seed data
+    const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0]; // e.g. 'hello' for 你好
+    expect(correctAnswer).toBeTruthy(); // guard: prompt must be a known seeded word
+
+    await useZhToTranslMode(page);
     await page.goto('/train');
-    await acknowledgeNewWordIfNeeded(page);
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
-    // Get the expected answer from the prompt
-    const promptText = await page.locator('#prompt-word').textContent();
-    expect(promptText).toBeTruthy();
+    // The prompt shown must be the zh word we fetched
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
 
-    // Type the correct answer — we use the seeded word translation 'hello' for 你好,
-    // 'thank you' for 谢谢, etc. Since we don't know which card appears first,
-    // we use the API-based approach: submit 'hello' and if it's wrong we try 'thank you'.
-    // For robustness, we try 'hello' (the first seeded word's translation).
+    // Submit the exact correct answer
+    await page.locator('#answer-input').fill(correctAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+
+    // Result must show ✓ Correct!
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+  });
+
+  test('wrong answer shows ✗ Wrong and reveals the correct answer in the breakdown', async ({ page }) => {
+    // Fetch the card so we can verify the breakdown shows the correct zh word
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+
+    // Also derive the first correct EN translation from seed data, for completeness
+    const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+    expect(correctAnswer).toBeTruthy();
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Confirm the shown prompt matches the pre-fetched card
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+    // Submit a clearly wrong answer (not any known translation)
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+
+    // Result must show ✗ Wrong
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+
+    // The breakdown must contain the correct zh word (card.prompt) so the
+    // user can see what they should have answered.
+    // The server returns zh_text=card.prompt in the AnswerResponse which is
+    // rendered in the green "Correct" box within #word-breakdown.
+    await expect(page.locator('#word-breakdown')).toBeVisible();
+    await expect(page.locator('#word-breakdown')).toContainText(card.prompt);
+    // And the correct EN translation must also appear
+    await expect(page.locator('#word-breakdown')).toContainText(correctAnswer);
+  });
+
+  test('Next button after answer hides result-area and loads the next state', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Submit any answer to get to result-area
     await page.locator('#answer-input').fill('hello');
     await page.locator('#answer-form button[type="submit"]').click();
-
-    // The result area should appear
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
 
-    // The result icon shows either ✓ Correct! or ✗ Wrong — either is acceptable
-    // since we don't know which word was shown
-    await expect(page.locator('#result-icon')).toBeVisible();
-    await expect(page.locator('#result-icon')).not.toBeEmpty();
+    // Click Next — result-area must be hidden (we moved on to the next card / success state)
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 2: New-word user — one unseen word (total_attempts=0)
+//
+// Seed: 水/shuǐ/['water']  with start_training: false
+//       total_attempts=0 → GetNextCard returns mode='new_word', prompt='水'
+//
+// Expected quiz state: #new-word-area shown (NOT #card-area).
+// After "Got it!" → AcknowledgeWord() → total_attempts=1 → #card-area shown.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – new word introduction (new-word user)', () => {
+  test.use({ storageState: 'e2e/.auth/new-word-user.json' });
+
+  test('new-word-area shown with correct zh word and translation for unseen word', async ({ page }) => {
+    // Confirm the API returns mode=new_word for the unseen word.
+    // This is a read-only call; it does NOT change any state.
+    const cardRes = await page.request.get('/api/quiz/next?langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+    expect(card.mode).toBe('new_word');
+    expect(card.prompt).toBe('水');
+    expect(card.translations?.en).toContain('water');
+
+    await page.goto('/train');
+
+    // new-word-area must appear; card-area must NOT appear
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#card-area')).not.toBeVisible();
+
+    // The zh word and its translation must be shown
+    await expect(page.locator('#new-word-zh')).toHaveText('水');
+    await expect(page.locator('#new-word-area')).toContainText('water');
   });
 
-  test('next button after answer loads the next card or shows no-more-cards', async ({ page }) => {
+  test('"Got it!" acknowledges the word and transitions to card-area', async ({ page }) => {
+    // Use zh_to_transl mode so that after acknowledgement the card shows a
+    // deterministic prompt (the zh word '水') rather than a randomly selected mode.
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
     await page.goto('/train');
-    await acknowledgeNewWordIfNeeded(page);
 
-    // Submit any answer to get a result
-    await page.locator('#answer-input').fill('test-answer');
-    await page.locator('#answer-form button[type="submit"]').click();
+    // The unseen word triggers new-word-area first (mode=new_word overrides
+    // the requested mode when total_attempts=0)
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#new-word-zh')).toHaveText('水');
 
-    // Wait for result area
-    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+    // Click "Got it!" to acknowledge the word
+    // POST /api/quiz/acknowledge → AcknowledgeWord() → total_attempts=1, due_date=now
+    await page.locator('#new-word-got-it-btn').click();
 
-    // Click Next
-    await page.locator('#next-btn').click();
-
-    // After clicking next, either another card appears, or we see new-word-area,
-    // or the empty state, or error state — the page should NOT be stuck on result-area
-    await page.waitForTimeout(1_000);
-    const resultStillVisible = await page.locator('#result-area').isVisible();
-    // Result area should be hidden (we moved on)
-    expect(resultStillVisible).toBe(false);
+    // After acknowledgement: new-word-area hides, card-area appears in zh_to_transl mode
+    // Prompt = '水' (zh word), expected answer = 'water'
+    await expect(page.locator('#new-word-area')).not.toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('水');
   });
 });

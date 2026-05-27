@@ -51,8 +51,12 @@ export function parseSetCookieHeaders(setCookieHeaders) {
  * @param {string} baseURL
  * @param {string} cookieHeader - Value of the Cookie: header (e.g. "vocab_session=...")
  * @param {{ zh: string, pinyin?: string, en: string[] }} word
+ * @param {boolean} [startTraining=true] - Whether to acknowledge the word immediately
+ *   (sets total_attempts=1, first_seen_date=today, due_date=now).
+ *   Pass false to leave the word unseen (total_attempts=0), which causes the quiz to
+ *   show the new-word introduction screen instead of a regular card.
  */
-export async function seedWord(baseURL, cookieHeader, { zh, pinyin, en }) {
+export async function seedWord(baseURL, cookieHeader, { zh, pinyin, en }, startTraining = true) {
   const res = await fetch(`${baseURL}/api/words`, {
     method: 'POST',
     headers: {
@@ -64,7 +68,7 @@ export async function seedWord(baseURL, cookieHeader, { zh, pinyin, en }) {
       pinyin: pinyin || '',
       translations: { en },
       tags: [],
-      start_training: true,
+      start_training: startTraining,
     }),
   });
   if (!res.ok) {
