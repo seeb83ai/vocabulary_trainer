@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup release test test-go test-js
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup release test test-go test-js test-e2e test-all
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -97,6 +97,13 @@ test-go:
 ## test-js: run frontend tests with Vitest (requires Node; run 'npm install' first)
 test-js:
 	npm test
+
+## test-e2e: run end-to-end browser tests with Playwright (builds the Go binary first)
+test-e2e:
+	PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test
+
+## test-all: run all tests — Go unit tests, JS unit tests, and E2E browser tests
+test-all: test-go test-js test-e2e
 
 ## clean: stop containers and remove build artifacts
 clean:

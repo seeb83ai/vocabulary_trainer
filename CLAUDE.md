@@ -18,6 +18,11 @@ the scope of the current task.
 
 **TDD: Implement code changes to fix the failing tests** Only AFTER a new or changes test failed, implement the needed production code changed to make the test succeed. Then write the next failing test to continue
 
+**E2E-first TDD cycle** For any user-visible feature, follow this three-step cycle:
+1. **Write a failing E2E test** (`e2e/*.spec.js`) that describes the user-visible behaviour end-to-end. Run `make test-e2e` and confirm it fails.
+2. **Write failing unit tests and implement the feature** using the existing unit-test TDD loop (`go test ./...` → red → green per the rules below).
+3. **Validate the E2E test passes** — run `make test-e2e` again; it must now be green.
+
 ## Testing rules
 
 **Mandatory:** Every code change that adds or modifies a function, DB query, or HTTP endpoint **must** include
@@ -40,15 +45,23 @@ the changed behaviour.
 - Test files live in `service/frontend/` as `*.test.js`.
 - Run `npm test` to verify.
 
+### E2E tests (Playwright)
+- Test files live in `e2e/` as `*.spec.js`.
+- The server is started automatically by `e2e/global-setup.js` (builds Go binary, starts on port 18080 with a fresh temp SQLite DB, seeds test data via REST API).
+- Auth state is pre-seeded by `globalSetup` and stored in `e2e/.auth/user.json`; use `test.use({ storageState: 'e2e/.auth/user.json' })` to start authenticated.
+- Run `make test-e2e` (or `npm run test:e2e`) to execute the suite.
+- Only test real user-visible flows (login, quiz, vocabulary CRUD). Do not E2E-test internal APIs already covered by Go handler tests.
+
 ### Pre-flight checklist
 
 Before marking any task done:
 1. `cd service && go test ./... -count=1` — no failures.
 2. `npm test` — no failures (if JS was changed).
-3. New route registered in **both** `service/main.go` and `newRouter()` in `handlers_test.go`.
-4. `README.md` updated if user-visible behaviour changed.
-5. No SQL outside `service/db/` package.
-6. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
+3. `make test-e2e` — no failures (if a user-visible flow was added or changed).
+4. New route registered in **both** `service/main.go` and `newRouter()` in `handlers_test.go`.
+5. `README.md` updated if user-visible behaviour changed.
+6. No SQL outside `service/db/` package.
+7. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
 
 ### What must be tested
 | Change type | Required test |
@@ -59,6 +72,7 @@ Before marking any task done:
 | Changed HTTP endpoint behaviour | Update or extend existing handler test |
 | New pure JS utility function | Unit test in the relevant `*.test.js` file |
 | Changed pure JS utility function | Update or extend existing JS test |
+| New or changed user-visible flow | E2E test in `e2e/*.spec.js` |
 
 ## README
 
@@ -186,12 +200,23 @@ Never rename or drop tables.
 | `service/cmd/import-hanzi/main.go` | Import hanzi decomposition dataset |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 
+### E2E tests (`e2e/`)
+| Path | Purpose |
+|---|---|
+| `e2e/global-setup.js` | Builds Go binary, starts server on port 18080 with temp SQLite, seeds test user + words |
+| `e2e/global-teardown.js` | Kills server, removes temp SQLite file |
+| `e2e/helpers/api.js` | `seedWord()`, `parseSetCookieHeaders()` helpers for setup scripts |
+| `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
+| `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
+| `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
+| `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
+
 ### Deployment
 | Path | Purpose |
 |---|---|
 | `deploy/nginx.conf` | Sample nginx reverse-proxy config |
 | `deploy/vocab-trainer.service` | systemd unit (auto-restarts on binary change via `WatchPaths`) |
-| `.github/workflows/test.yml` | CI: runs Go + JS tests on every push/PR |
+| `.github/workflows/test.yml` | CI: runs Go + JS + E2E tests on every push/PR |
 
 ## Large files — do not read proactively
 
