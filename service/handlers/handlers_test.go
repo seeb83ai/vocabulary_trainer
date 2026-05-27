@@ -228,7 +228,7 @@ func TestQuizNext_EmptyDB(t *testing.T) {
 
 func TestQuizNext_ReturnsCard(t *testing.T) {
 	s := openTestDB(t)
-	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
 
 	rec := do(t, r, "GET", "/api/quiz/next", nil)
@@ -237,36 +237,104 @@ func TestQuizNext_ReturnsCard(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	if card.WordID <= 0 {
-		t.Error("word_id should be positive")
+	// A freshly seeded word (total_attempts=0) must be returned as a new-word
+	// introduction — the frontend shows new-word-area, not card-area.
+	if card.Mode != models.ModeNewWord {
+		t.Errorf("fresh word: want mode=%s (new-word-area), got %s", models.ModeNewWord, card.Mode)
 	}
-	if card.Mode == "" {
-		t.Error("mode should not be empty")
+	if card.WordID != id {
+		t.Errorf("want word_id=%d, got %d", id, card.WordID)
 	}
-	if card.Prompt == "" {
-		t.Error("prompt should not be empty")
+	if card.Prompt != "你好" {
+		t.Errorf("prompt: want zh text 你好, got %q", card.Prompt)
+	}
+	if len(card.Translations["en"]) != 1 || card.Translations["en"][0] != "hello" {
+		t.Errorf("translations[en]: want [hello], got %v", card.Translations["en"])
+	}
+}
+
+// TestQuizNext_AcknowledgedWord_ShowsQuizCard verifies that an acknowledged word
+// (moved from new-word-area to card-area) returns a proper quiz card, not a new-word intro.
+func TestQuizNext_AcknowledgedWord_ShowsQuizCard(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	ctx := context.Background()
+
+	// Acknowledge moves the word into learning phase (card-area, not new-word-area).
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// Use progressive mode for deterministic mode selection:
+	// LearningNewWord=true, TotalCorrect=0 → SelectNewWordMode step 0 → transl_to_zh.
+	rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// Acknowledged word must not appear as a new-word introduction.
+	if card.Mode == models.ModeNewWord {
+		t.Errorf("acknowledged word must not return %s; should show as a quiz card (card-area)", models.ModeNewWord)
+	}
+	// Step 0 of the learning phase uses transl_to_zh (default NewWordModeConfig).
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("learning word step 0: want transl_to_zh, got %s", card.Mode)
+	}
+	if card.WordID != id {
+		t.Errorf("want word_id=%d, got %d", id, card.WordID)
+	}
+	if !card.LearningNewWord {
+		t.Error("card should have learning_new_word=true for an acknowledged word")
+	}
+	// transl_to_zh prompt is the English translation, not the zh text.
+	if card.Prompt != "hello" {
+		t.Errorf("transl_to_zh prompt: want %q (English translation), got %q", "hello", card.Prompt)
 	}
 }
 
 func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	s := openTestDB(t)
-	// Word with no pinyin — zh_pinyin_to_en must never be returned
-	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "", // no pinyin
+	// Word with no pinyin — zh_pinyin_to_en must never be chosen as mode.
+	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
+		ZhText:       "你好",
+		Pinyin:       "", // no pinyin
 		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx := context.Background()
+
+	// Graduate the word out of the new-word introduction (total_attempts=0 always
+	// returns new_word mode, bypassing the mode-selection logic that must fall back
+	// from zh_pinyin_to_en when pinyin is absent).
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 10
+	p.TotalCorrect = 8
+	p.LearningNewWord = false
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
 	r := newRouter(s)
 
+	// Over 30 random-mode selections the fallback from zh_pinyin_to_en → zh_to_transl
+	// must always apply when the word has no pinyin.
 	for i := 0; i < 30; i++ {
 		rec := do(t, r, "GET", "/api/quiz/next", nil)
 		var card models.QuizCard
 		decodeJSON(t, rec, &card)
 		if card.Mode == models.ModeZhPinyinToTransl {
-			t.Error("zh_pinyin_to_en should not be returned when pinyin is absent")
+			t.Errorf("iteration %d: zh_pinyin_to_en returned for word with no pinyin", i)
+		}
+		if card.Mode == models.ModeNewWord {
+			t.Errorf("iteration %d: graduated word (total_attempts=10) returned as new_word", i)
 		}
 	}
 }
@@ -2220,7 +2288,9 @@ func newPinyinRouter(t *testing.T, s *db.Store) http.Handler {
 	return r
 }
 
-func seedPinyinSounds(t *testing.T, store *db.Store) {
+// seedPinyinSounds inserts ba1–ba4 and pa1 for user 2 and returns their IDs in
+// insertion order: [ba1ID, ba2ID, ba3ID, ba4ID, pa1ID].
+func seedPinyinSounds(t *testing.T, store *db.Store) []int64 {
 	t.Helper()
 	sounds := []models.PinyinSound{
 		{Initial: "b", Final: "a", Tone: 1, Syllable: "ba", Filename: "ba1.mp3", Tag: "b_p_m_f"},
@@ -2229,11 +2299,15 @@ func seedPinyinSounds(t *testing.T, store *db.Store) {
 		{Initial: "b", Final: "a", Tone: 4, Syllable: "ba", Filename: "ba4.mp3", Tag: "b_p_m_f"},
 		{Initial: "p", Final: "a", Tone: 1, Syllable: "pa", Filename: "pa1.mp3", Tag: "b_p_m_f"},
 	}
+	ids := make([]int64, 0, len(sounds))
 	for _, snd := range sounds {
-		if _, err := store.InsertPinyinSound(context.Background(), 2, snd); err != nil {
+		id, err := store.InsertPinyinSound(context.Background(), 2, snd)
+		if err != nil {
 			t.Fatalf("seedPinyinSounds: %v", err)
 		}
+		ids = append(ids, id)
 	}
+	return ids
 }
 
 func TestPinyinQuizNext_EmptyDB(t *testing.T) {
@@ -2247,9 +2321,23 @@ func TestPinyinQuizNext_EmptyDB(t *testing.T) {
 
 func TestPinyinQuizNext_ReturnsCard(t *testing.T) {
 	s := openTestDB(t)
-	seedPinyinSounds(t, s)
-	r := newPinyinRouter(t, s)
+	// ids = [ba1ID, ba2ID, ba3ID, ba4ID, pa1ID]
+	ids := seedPinyinSounds(t, s)
+	ctx := context.Background()
 
+	// Pin ba1 (ids[0]) as the most overdue card so the result is deterministic.
+	// InsertPinyinSound assigns random due_dates within the last hour; setting ba1
+	// 2 h in the past guarantees it is always returned first.
+	p, err := s.GetPinyinProgress(ctx, 2, ids[0])
+	if err != nil || p == nil {
+		t.Fatalf("GetPinyinProgress ba1: %v / %v", err, p)
+	}
+	p.DueDate = time.Now().UTC().Add(-2 * time.Hour)
+	if err := s.UpdatePinyinProgress(ctx, 2, *p); err != nil {
+		t.Fatalf("UpdatePinyinProgress ba1: %v", err)
+	}
+
+	r := newPinyinRouter(t, s)
 	rec := do(t, r, "GET", "/api/pinyin-quiz/next", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2258,34 +2346,72 @@ func TestPinyinQuizNext_ReturnsCard(t *testing.T) {
 	var card models.PinyinCard
 	decodeJSON(t, rec, &card)
 
-	if card.SoundID == 0 {
-		t.Error("expected non-zero sound_id")
+	// ba1 must be the card returned (most overdue).
+	if card.SoundID != ids[0] {
+		t.Errorf("want ba1 (sound_id=%d), got sound_id=%d", ids[0], card.SoundID)
 	}
+	// All fresh sounds have learning=1 → multiple_choice mode.
 	if card.Mode != models.PinyinModeMultipleChoice {
-		t.Errorf("expected multiple_choice mode for new sound, got %q", card.Mode)
+		t.Errorf("want mode=%s for new sound, got %q", models.PinyinModeMultipleChoice, card.Mode)
 	}
-	if len(card.Options) < 2 {
-		t.Errorf("expected at least 2 options, got %d", len(card.Options))
+	if card.AudioFile != "ba1.mp3" {
+		t.Errorf("want audio_file=ba1.mp3, got %q", card.AudioFile)
 	}
-	if card.AudioFile == "" {
-		t.Error("expected non-empty audio_file")
+	// Distractors for ba1: same-syllable-different-tone = ba2, ba3, ba4 (3 distractors).
+	// Handler sorts options by syllable asc then tone asc → ba1, ba2, ba3, ba4.
+	if len(card.Options) != 4 {
+		t.Fatalf("want 4 options (1 correct + 3 same-syllable distractors), got %d", len(card.Options))
+	}
+	wantOpts := []struct {
+		syllable string
+		tone     int
+		soundID  int64
+	}{
+		{"ba", 1, ids[0]}, // correct answer
+		{"ba", 2, ids[1]}, // distractor
+		{"ba", 3, ids[2]}, // distractor
+		{"ba", 4, ids[3]}, // distractor
+	}
+	for i, want := range wantOpts {
+		got := card.Options[i]
+		if got.Syllable != want.syllable || got.Tone != want.tone || got.SoundID != want.soundID {
+			t.Errorf("option[%d]: want {syllable=%s tone=%d id=%d}, got {syllable=%s tone=%d id=%d}",
+				i, want.syllable, want.tone, want.soundID,
+				got.Syllable, got.Tone, got.SoundID)
+		}
 	}
 }
 
 func TestPinyinQuizAnswer_Correct(t *testing.T) {
 	s := openTestDB(t)
-	seedPinyinSounds(t, s)
+	// ids = [ba1ID, ba2ID, ba3ID, ba4ID, pa1ID]
+	ids := seedPinyinSounds(t, s)
+	ctx := context.Background()
+
+	// Pin ba1 (ids[0]) as most overdue so the card is deterministic.
+	p, err := s.GetPinyinProgress(ctx, 2, ids[0])
+	if err != nil || p == nil {
+		t.Fatalf("GetPinyinProgress ba1: %v / %v", err, p)
+	}
+	p.DueDate = time.Now().UTC().Add(-2 * time.Hour)
+	if err := s.UpdatePinyinProgress(ctx, 2, *p); err != nil {
+		t.Fatalf("UpdatePinyinProgress ba1: %v", err)
+	}
+
 	r := newPinyinRouter(t, s)
 
-	// Get a card first
+	// Confirm ba1 is returned.
 	rec := do(t, r, "GET", "/api/pinyin-quiz/next", nil)
 	var card models.PinyinCard
 	decodeJSON(t, rec, &card)
+	if card.SoundID != ids[0] {
+		t.Fatalf("setup: want ba1 (sound_id=%d), got sound_id=%d", ids[0], card.SoundID)
+	}
 
-	// Submit correct answer (the card's own sound_id)
+	// Submit ba1's own sound_id → correct answer.
 	rec = do(t, r, "POST", "/api/pinyin-quiz/answer", models.PinyinAnswerRequest{
-		SoundID: card.SoundID,
-		Answer:  fmt.Sprintf("%d", card.SoundID),
+		SoundID: ids[0],
+		Answer:  fmt.Sprintf("%d", ids[0]),
 		Mode:    models.PinyinModeMultipleChoice,
 	})
 	if rec.Code != http.StatusOK {
@@ -2295,37 +2421,45 @@ func TestPinyinQuizAnswer_Correct(t *testing.T) {
 	var resp models.PinyinAnswerResponse
 	decodeJSON(t, rec, &resp)
 	if !resp.Correct {
-		t.Error("expected correct=true")
+		t.Error("submitting ba1's own sound_id must be correct")
 	}
-	if resp.CorrectAnswer == "" {
-		t.Error("expected non-empty correct_answer")
+	// FormatPinyinDisplay("ba", 1) = "bā (ba1)"
+	const wantLabel = "bā (ba1)"
+	if resp.CorrectAnswer != wantLabel {
+		t.Errorf("correct_answer: want %q, got %q", wantLabel, resp.CorrectAnswer)
 	}
 }
 
 func TestPinyinQuizAnswer_Wrong(t *testing.T) {
 	s := openTestDB(t)
-	seedPinyinSounds(t, s)
+	// ids = [ba1ID, ba2ID, ba3ID, ba4ID, pa1ID]
+	ids := seedPinyinSounds(t, s)
+	ctx := context.Background()
+
+	// Pin ba1 (ids[0]) as most overdue so the card and its options are deterministic.
+	p, err := s.GetPinyinProgress(ctx, 2, ids[0])
+	if err != nil || p == nil {
+		t.Fatalf("GetPinyinProgress ba1: %v / %v", err, p)
+	}
+	p.DueDate = time.Now().UTC().Add(-2 * time.Hour)
+	if err := s.UpdatePinyinProgress(ctx, 2, *p); err != nil {
+		t.Fatalf("UpdatePinyinProgress ba1: %v", err)
+	}
+
 	r := newPinyinRouter(t, s)
 
+	// Confirm ba1 is returned and options are [ba1, ba2, ba3, ba4] sorted.
 	rec := do(t, r, "GET", "/api/pinyin-quiz/next", nil)
 	var card models.PinyinCard
 	decodeJSON(t, rec, &card)
-
-	// Find a wrong option
-	var wrongID int64
-	for _, opt := range card.Options {
-		if opt.SoundID != card.SoundID {
-			wrongID = opt.SoundID
-			break
-		}
-	}
-	if wrongID == 0 {
-		t.Fatal("no wrong option found")
+	if card.SoundID != ids[0] {
+		t.Fatalf("setup: want ba1 (sound_id=%d), got sound_id=%d", ids[0], card.SoundID)
 	}
 
+	// Submit ba2 (ids[1]) — the second option (tone 2) — as the wrong choice.
 	rec = do(t, r, "POST", "/api/pinyin-quiz/answer", models.PinyinAnswerRequest{
-		SoundID: card.SoundID,
-		Answer:  fmt.Sprintf("%d", wrongID),
+		SoundID: ids[0],         // correct sound is ba1
+		Answer:  fmt.Sprintf("%d", ids[1]), // chosen wrong: ba2
 		Mode:    models.PinyinModeMultipleChoice,
 	})
 	if rec.Code != http.StatusOK {
@@ -2335,10 +2469,21 @@ func TestPinyinQuizAnswer_Wrong(t *testing.T) {
 	var resp models.PinyinAnswerResponse
 	decodeJSON(t, rec, &resp)
 	if resp.Correct {
-		t.Error("expected correct=false")
+		t.Error("choosing ba2 for ba1 must be incorrect")
 	}
 	if resp.ConfusedWith == nil {
-		t.Error("expected confusion detail for wrong MC answer")
+		t.Fatal("expected confusion detail when a wrong option is chosen")
+	}
+	// Confusion: heard ba1, incorrectly chose ba2.
+	// GetPinyinConfusionDetail formats labels as "<syllable><tone>".
+	if resp.ConfusedWith.SoundLabel != "ba1" {
+		t.Errorf("confused_with.sound_label: want %q, got %q", "ba1", resp.ConfusedWith.SoundLabel)
+	}
+	if resp.ConfusedWith.ConfusedWithLabel != "ba2" {
+		t.Errorf("confused_with.confused_with_label: want %q, got %q", "ba2", resp.ConfusedWith.ConfusedWithLabel)
+	}
+	if resp.ConfusedWith.Count != 1 {
+		t.Errorf("confused_with.count: want 1 (first confusion), got %d", resp.ConfusedWith.Count)
 	}
 }
 
