@@ -190,6 +190,7 @@ func main() {
 		r.Post("/change-password", authH.ChangePassword)
 		r.Get("/quiz/next", quizH.Next)
 		r.Post("/quiz/answer", quizH.Answer)
+		r.Post("/quiz/accept-correct", quizH.AcceptCorrect)
 		r.Get("/quiz/langs", quizH.Langs)
 		r.Post("/quiz/skip", quizH.Skip)
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)

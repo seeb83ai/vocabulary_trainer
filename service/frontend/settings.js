@@ -118,6 +118,12 @@ async function loadSettings() {
     populateModeSelect(document.getElementById('mode-new-1'), st.new_word_mode_1 || 'transl_to_zh');
     populateModeSelect(document.getElementById('mode-new-2'), st.new_word_mode_2 || 'zh_to_transl');
 
+    // Accept-as-correct mode
+    const acmValue = st.accept_correct_mode || 'typo';
+    document.querySelectorAll('input[name="accept-correct-mode"]').forEach(el => {
+      el.checked = el.value === acmValue;
+    });
+
     // API key status
     if (st.deepl_key_masked) {
       const el = document.getElementById('deepl-key-status');
@@ -192,9 +198,11 @@ function buildModePayload() {
 
 document.getElementById('mode-save-btn')?.addEventListener('click', async () => {
   hideMsg('mode-success'); hideMsg('mode-error');
+  const acmChecked = document.querySelector('input[name="accept-correct-mode"]:checked');
   const payload = {
-    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang: document.getElementById('secondary-lang')?.value || 'de',
+    primary_lang:        document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang:      document.getElementById('secondary-lang')?.value || '',
+    accept_correct_mode: acmChecked ? acmChecked.value : 'typo',
     ...buildModePayload(),
   };
   try {
@@ -212,6 +220,28 @@ document.getElementById('mode-save-btn')?.addEventListener('click', async () => 
   } catch {
     showMsg('mode-error', 'Network error.', true);
   }
+});
+
+// ── Accept-as-correct mode ─────────────────────────────────────────────────────
+
+document.getElementById('accept-mode-save-btn')?.addEventListener('click', async () => {
+  hideMsg('accept-mode-success');
+  const checked = document.querySelector('input[name="accept-correct-mode"]:checked');
+  const mode = checked ? checked.value : 'typo';
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    ...buildModePayload(),
+    accept_correct_mode: mode,
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) showMsg('accept-mode-success', 'Saved.', false);
+  } catch { /* ignore */ }
 });
 
 // ── API keys ───────────────────────────────────────────────────────────────────
