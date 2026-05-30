@@ -484,6 +484,7 @@ async function submitAnswer(e) {
       }
       if (showAcceptBtn) {
         const acceptBtn = $('accept-correct-btn');
+        acceptBtn.disabled = false;
         acceptBtn.textContent = 'Accept as correct (typo)';
         show('accept-correct-btn');
       } else {
