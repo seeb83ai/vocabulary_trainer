@@ -112,6 +112,28 @@
       <button id="mode-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
+    <!-- Accept as Correct -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-1">Accept as Correct</h2>
+      <p class="text-sm text-gray-500 mb-4">Show an "Accept as correct" button after a wrong answer to override typos without penalising your SM-2 progress.</p>
+      <div class="space-y-2 mb-4">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="radio" name="accept-correct-mode" value="never" class="accent-blue-600">
+          <span class="text-sm text-gray-700"><strong>Never</strong> — always count wrong answers as wrong</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="radio" name="accept-correct-mode" value="typo" class="accent-blue-600">
+          <span class="text-sm text-gray-700"><strong>On typos</strong> (default) — show button when your answer differs by exactly 1 character</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="radio" name="accept-correct-mode" value="always" class="accent-blue-600">
+          <span class="text-sm text-gray-700"><strong>Always</strong> — show button for any wrong answer</span>
+        </label>
+      </div>
+      <div id="accept-mode-success" class="hidden mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
+      <button id="accept-mode-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
+    </div>
+
     <!-- API Keys -->
     <div class="bg-white rounded-2xl shadow p-6">
       <div class="flex items-center gap-2 mb-1">
