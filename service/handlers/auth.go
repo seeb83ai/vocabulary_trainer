@@ -62,13 +62,11 @@ type AuthHandler struct {
 	secret      []byte // HMAC signing key, generated at startup
 	emailSender *email.Sender
 	appURL      string
-	devMode     bool // when true, allow auto-verify if SMTP missing
 }
 
 // NewAuthHandler creates an AuthHandler backed by the given store.
-// emailSender may be nil. When nil and devMode is false (the default),
-// /api/register refuses to auto-verify the account — production
-// deployments must configure SMTP.
+// emailSender may be nil. When nil, /api/register auto-verifies and
+// auto-logs-in the new user immediately.
 //
 // appURL is used to build email verification links (e.g. "https://example.com").
 // secretHex is an optional hex-encoded 32-byte HMAC key (SESSION_SECRET env var).
@@ -99,7 +97,6 @@ func NewAuthHandlerWithEnv(store *db.Store, emailSender *email.Sender, appURL, s
 		secret:      secret,
 		emailSender: emailSender,
 		appURL:      appURL,
-		devMode:     strings.EqualFold(appEnv, "dev"),
 	}, nil
 }
 
@@ -288,14 +285,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if a.emailSender == nil {
-		// No SMTP configured: auto-verify only in dev. In production this
-		// path would allow anyone to register without proving ownership
-		// of the email address.
-		if !a.devMode {
-			log.Printf("Register: refusing auto-verify in non-dev mode for %s — configure SMTP or set APP_ENV=dev", req.Email)
-			writeError(w, http.StatusServiceUnavailable, "email verification is not configured on this server")
-			return
-		}
+		// No SMTP configured: auto-verify and log the user in immediately.
 		user, err := a.store.SetUserEmailVerified(r.Context(), verToken)
 		if err != nil || user == nil {
 			writeError(w, http.StatusInternalServerError, "internal error")

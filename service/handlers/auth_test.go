@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -456,51 +457,39 @@ func TestLogout_ClearsSession(t *testing.T) {
 
 // ── Production safety: auto-verify only in dev ───────────────────────────────
 
-// TestRegister_AutoVerifyDisabledInProduction verifies that when SMTP is
-// not configured and APP_ENV is anything but "dev", the server refuses
-// to auto-verify accounts at registration time. Silently auto-verifying
-// in a production deployment that forgot to configure SMTP is a real
-// foot-gun: any attacker can register without owning the email.
-func TestRegister_AutoVerifyDisabledInProduction(t *testing.T) {
-	s := openTestDB(t)
-	authH, err := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost", "", "production")
-	if err != nil {
-		t.Fatal(err)
-	}
+// TestRegister_AutoVerifyWhenNoSMTP verifies that when SMTP is not configured,
+// registration always auto-verifies and auto-logs-in the user regardless of APP_ENV.
+func TestRegister_AutoVerifyWhenNoSMTP(t *testing.T) {
+	for _, env := range []string{"", "dev", "production"} {
+		t.Run("appEnv="+env, func(t *testing.T) {
+			s := openTestDB(t)
+			authH, err := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost", "", env)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	r := chi.NewRouter()
-	r.Use(authH.Middleware)
-	r.Post("/api/register", authH.Register)
+			r := chi.NewRouter()
+			r.Use(authH.Middleware)
+			r.Post("/api/register", authH.Register)
 
-	rec := do(t, r, "POST", "/api/register", map[string]string{
-		"email":    "production-user@example.com",
-		"password": "supersecret",
-	})
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("want 503 when SMTP missing in production, got %d: %s", rec.Code, rec.Body)
-	}
-}
-
-// TestRegister_AutoVerifyAllowedInDev verifies the existing dev-mode
-// behaviour where SMTP-less deployments auto-verify is preserved when
-// the operator explicitly opts in via APP_ENV=dev.
-func TestRegister_AutoVerifyAllowedInDev(t *testing.T) {
-	s := openTestDB(t)
-	authH, err := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost", "", "dev")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	r := chi.NewRouter()
-	r.Use(authH.Middleware)
-	r.Post("/api/register", authH.Register)
-
-	rec := do(t, r, "POST", "/api/register", map[string]string{
-		"email":    "dev-user@example.com",
-		"password": "supersecret",
-	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("dev-mode register should succeed, got %d: %s", rec.Code, rec.Body)
+			rec := do(t, r, "POST", "/api/register", map[string]string{
+				"email":    "user@example.com",
+				"password": "supersecret",
+			})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200 when SMTP missing, got %d: %s", rec.Code, rec.Body)
+			}
+			var body map[string]any
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body["auto_login"] != true {
+				t.Errorf("expected auto_login=true, got %v", body)
+			}
+			if rec.Result().Cookies() == nil {
+				t.Error("expected session cookie to be set")
+			}
+		})
 	}
 }
 

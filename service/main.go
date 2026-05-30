@@ -90,7 +90,7 @@ func main() {
 	if emailSender != nil {
 		log.Printf("Email enabled: SMTP configured")
 	} else {
-		log.Printf("Email disabled: SMTP not configured (accounts auto-verified)")
+		log.Printf("Email disabled: SMTP not configured (new accounts auto-verified and logged in)")
 	}
 
 	appURL := os.Getenv("APP_URL")
