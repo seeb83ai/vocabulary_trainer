@@ -1144,6 +1144,12 @@ let editingCompChar = null;
 function openComponentEdit(char) {
   editingCompChar = char;
   $('comp-edit-char').textContent = char;
+  const hanziwayLink = $('comp-hanziway-link');
+  hanziwayLink.href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(char);
+  show('comp-hanziway-link');
+  const tabComp = $('tab-comp');
+  tabComp.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none', 'text-gray-400');
+  tabComp.classList.add('hover:text-gray-700', 'text-gray-500');
   $('comp-edit-form').innerHTML = `<span class="text-gray-400 text-sm">${escHtml(t('vocab.loading') || 'Loading…')}</span>`;
   switchTab('comp');
   $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
@@ -1743,7 +1749,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('tab-add').addEventListener('click', () => switchTab('add'));
   $('tab-import').addEventListener('click', () => switchTab('import'));
   $('tab-tags').addEventListener('click', () => switchTab('tags'));
-  $('tab-comp').addEventListener('click', () => switchTab('comp'));
+  $('tab-comp').addEventListener('click', () => { if (editingCompChar) switchTab('comp'); });
 
   $('comp-edit-save-btn').addEventListener('click', async () => {
     if (!editingCompChar) return;
@@ -1774,6 +1780,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('comp-edit-cancel-btn').addEventListener('click', () => {
     editingCompChar = null;
+    hide('comp-hanziway-link');
+    const tabComp = $('tab-comp');
+    tabComp.classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none', 'text-gray-400');
+    tabComp.classList.remove('hover:text-gray-700', 'text-gray-500');
     switchTab('add');
   });
 
