@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 	"vocabulary_trainer/db"
@@ -86,7 +87,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	mismatchH := &handlers.MismatchesHandler{Store: s}
 	importH := &handlers.ImportHandler{Store: s}
 	tagsH := &handlers.TagsHandler{Store: s}
-	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
+	authH, _ := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
 	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
 	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN", SettingsHandler: settingsH}
 	componentH := &handlers.ComponentHandler{Store: s}
@@ -2657,12 +2658,15 @@ func TestRegister_OK(t *testing.T) {
 }
 
 func TestRegister_DuplicateEmail(t *testing.T) {
+	// A duplicate registration must NOT return a distinct status that
+	// reveals the email is already in use. See
+	// TestRegister_ExistingEmail_DoesNotLeak in auth_test.go.
 	r := newRouter(openTestDB(t))
 	payload := map[string]string{"email": "new@example.com", "password": "securepass1"}
 	do(t, r, "POST", "/api/register", payload)
 	rec := do(t, r, "POST", "/api/register", payload)
-	if rec.Code != http.StatusConflict {
-		t.Errorf("want 409, got %d: %s", rec.Code, rec.Body)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 (indistinguishable from a fresh registration), got %d: %s", rec.Code, rec.Body)
 	}
 }
 
@@ -2683,6 +2687,45 @@ func TestRegister_InvalidEmail(t *testing.T) {
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── Audio cache headers ──────────────────────────────────────────────────────
+
+// TestAudio_NotImmutable verifies that the audio handler does NOT mark
+// responses as immutable. Marking them so means a regenerated MP3
+// (e.g. after a zh_text edit) is served stale for up to a year. The
+// existing handler set this and was flagged in the security review.
+func TestAudio_NotImmutable(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{Store: s, AudioDir: tmpDir}
+	if err := os.WriteFile(tmpDir+"/"+fmt.Sprint(id)+".mp3", []byte("fake-mp3"), 0644); err != nil {
+		t.Fatalf("seed mp3: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/audio/%d", id), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	cc := rec.Header().Get("Cache-Control")
+	if cc == "" {
+		t.Fatal("Cache-Control header should be set")
+	}
+	if strings.Contains(cc, "immutable") {
+		t.Errorf("Cache-Control must not include 'immutable' (causes stale audio after regeneration): %q", cc)
+	}
+	if !strings.Contains(cc, "must-revalidate") && !strings.Contains(cc, "no-cache") {
+		t.Errorf("Cache-Control should require revalidation (must-revalidate or no-cache): %q", cc)
 	}
 }
 

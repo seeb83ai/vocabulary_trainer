@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -10,6 +11,14 @@ import (
 	"time"
 	"vocabulary_trainer/models"
 )
+
+// hashVerificationToken returns the SHA-256 hex digest of the plaintext
+// token. We store the digest in the DB and hash incoming tokens on
+// lookup, so a database leak does not expose live verification links.
+func hashVerificationToken(plain string) string {
+	sum := sha256.Sum256([]byte(plain))
+	return hex.EncodeToString(sum[:])
+}
 
 // GetUserByEmail looks up a user by email address. Returns nil, nil if not found.
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
@@ -62,11 +71,13 @@ func (s *Store) GetUserRole(ctx context.Context, userID int64) (string, error) {
 }
 
 // CreateUser inserts a new unverified user and returns its ID.
+// verificationToken is the plaintext token shown to the user; only its
+// SHA-256 digest is persisted.
 func (s *Store) CreateUser(ctx context.Context, email, passwordHash, verificationToken string, expiresAt time.Time) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO users (email, password_hash, email_verified, verification_token, verification_expires_at)
 		 VALUES (?, ?, 0, ?, ?)`,
-		email, passwordHash, verificationToken, expiresAt.UTC().Format("2006-01-02 15:04:05"))
+		email, passwordHash, hashVerificationToken(verificationToken), expiresAt.UTC().Format("2006-01-02 15:04:05"))
 	if err != nil {
 		return 0, fmt.Errorf("create user: %w", err)
 	}
@@ -75,7 +86,9 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, verificatio
 
 // SetUserEmailVerified finds a user by verification token (not expired), marks
 // email_verified = 1, clears the token, and returns the user. Returns nil, nil
-// if the token is unknown or expired.
+// if the token is unknown or expired. The token argument is the plaintext
+// value from the email link; it is hashed before comparing to the stored
+// digest.
 func (s *Store) SetUserEmailVerified(ctx context.Context, token string) (*models.User, error) {
 	var u models.User
 	var verified int
@@ -83,7 +96,7 @@ func (s *Store) SetUserEmailVerified(ctx context.Context, token string) (*models
 		`SELECT id, email, password_hash, COALESCE(email_verified,0), COALESCE(role,'free')
 		 FROM users
 		 WHERE verification_token = ?
-		   AND verification_expires_at > datetime('now')`, token).
+		   AND verification_expires_at > datetime('now')`, hashVerificationToken(token)).
 		Scan(&u.ID, &u.Email, &u.PasswordHash, &verified, &u.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -101,10 +114,15 @@ func (s *Store) SetUserEmailVerified(ctx context.Context, token string) (*models
 	return &u, nil
 }
 
-// UpdateUserPassword replaces the password hash for the given user.
+// UpdateUserPassword replaces the password hash for the given user and
+// stamps sessions_invalidated_at to "now" with sub-second precision, so
+// any session token minted before this call is rejected by the auth
+// middleware (and a token minted immediately afterwards remains valid).
 func (s *Store) UpdateUserPassword(ctx context.Context, userID int64, passwordHash string) error {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05.000000000")
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
+		`UPDATE users SET password_hash = ?, sessions_invalidated_at = ? WHERE id = ?`,
+		passwordHash, now, userID)
 	if err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
@@ -113,6 +131,22 @@ func (s *Store) UpdateUserPassword(ctx context.Context, userID int64, passwordHa
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// GetSessionsInvalidatedAt returns the timestamp before which session
+// tokens for this user are no longer valid. Returns zero-time if the
+// column is unset (no password change has happened yet).
+func (s *Store) GetSessionsInvalidatedAt(ctx context.Context, userID int64) (time.Time, error) {
+	var ts string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(sessions_invalidated_at, '') FROM users WHERE id = ?`, userID).Scan(&ts)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("get sessions_invalidated_at: %w", err)
+	}
+	if ts == "" {
+		return time.Time{}, nil
+	}
+	return parseDateTime(ts), nil
 }
 
 // ensureUserSettings creates a user_settings row with defaults if one does not

@@ -44,7 +44,11 @@ func (h *AudioHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// Cache the audio for an hour, but require revalidation afterwards so a
+	// regenerated MP3 (e.g. after a zh_text edit) is picked up promptly.
+	// http.ServeFile populates Last-Modified, so the revalidation hits 304
+	// when the file hasn't actually changed.
+	w.Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
 	http.ServeFile(w, r, mp3Path)
 }
 

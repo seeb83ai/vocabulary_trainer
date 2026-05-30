@@ -28,6 +28,14 @@ const settingsKeyCookie = "vocab_settings_key"
 const sessionTTL = 24 * time.Hour
 const verificationTTL = 24 * time.Hour
 
+// MaxFailedLogins is the number of consecutive wrong-password attempts a
+// single account tolerates before it is temporarily locked. LockoutDuration
+// is how long the lock holds. Both are exported for tests.
+const (
+	MaxFailedLogins  = 5
+	LockoutDuration  = 15 * time.Minute
+)
+
 type contextKey int
 
 const userIDCtxKey contextKey = iota
@@ -54,14 +62,24 @@ type AuthHandler struct {
 	secret      []byte // HMAC signing key, generated at startup
 	emailSender *email.Sender
 	appURL      string
+	devMode     bool // when true, allow auto-verify if SMTP missing
 }
 
 // NewAuthHandler creates an AuthHandler backed by the given store.
-// emailSender may be nil (email disabled — accounts auto-verified on register).
+// emailSender may be nil. When nil and devMode is false (the default),
+// /api/register refuses to auto-verify the account — production
+// deployments must configure SMTP.
+//
 // appURL is used to build email verification links (e.g. "https://example.com").
 // secretHex is an optional hex-encoded 32-byte HMAC key (SESSION_SECRET env var).
 // If empty, a random key is generated — sessions will not survive server restarts.
 func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL, secretHex string) (*AuthHandler, error) {
+	return NewAuthHandlerWithEnv(store, emailSender, appURL, secretHex, "")
+}
+
+// NewAuthHandlerWithEnv is the variant that takes an explicit APP_ENV
+// string (used by main and by tests).
+func NewAuthHandlerWithEnv(store *db.Store, emailSender *email.Sender, appURL, secretHex, appEnv string) (*AuthHandler, error) {
 	var secret []byte
 	if secretHex != "" {
 		decoded, err := hex.DecodeString(secretHex)
@@ -76,12 +94,33 @@ func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL, secretHe
 			return nil, fmt.Errorf("generate auth secret: %w", err)
 		}
 	}
-	return &AuthHandler{store: store, secret: secret, emailSender: emailSender, appURL: appURL}, nil
+	return &AuthHandler{
+		store:       store,
+		secret:      secret,
+		emailSender: emailSender,
+		appURL:      appURL,
+		devMode:     strings.EqualFold(appEnv, "dev"),
+	}, nil
 }
 
 // Secret returns the server's HMAC/encryption secret so other handlers can use
 // it for sealing the per-user settings key cookie.
 func (a *AuthHandler) Secret() []byte { return a.secret }
+
+// RequireProductionSecret enforces a non-empty SESSION_SECRET unless the
+// operator has explicitly opted into dev mode by setting APP_ENV=dev.
+// Call this from main before NewAuthHandler so an unconfigured production
+// deployment fails fast instead of generating a per-restart random key
+// (which silently invalidates all sessions on every restart).
+func RequireProductionSecret(sessionSecret, appEnv string) error {
+	if sessionSecret != "" {
+		return nil
+	}
+	if strings.EqualFold(appEnv, "dev") {
+		return nil
+	}
+	return fmt.Errorf("SESSION_SECRET is required in production (set APP_ENV=dev to override; SESSION_SECRET must be a hex-encoded string of at least 32 bytes)")
+}
 
 // Middleware rejects unauthenticated requests and injects the user ID into context.
 // API requests receive 401 JSON; page requests redirect to /.
@@ -130,12 +169,35 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := ClientIP(r)
 	user, err := a.store.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if user == nil || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+	if user == nil {
+		_ = a.store.RecordAuditLog(r.Context(), 0, db.AuditLoginFailure, ip, req.Email)
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
+	// Refuse any login attempt — right or wrong password — while the
+	// account is locked.
+	if locked, _, lerr := a.store.IsAccountLocked(r.Context(), user.ID); lerr == nil && locked {
+		_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLoginFailure, ip, "locked")
+		writeError(w, http.StatusForbidden, "account temporarily locked due to too many failed login attempts")
+		return
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+		_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLoginFailure, ip, "")
+		n, _ := a.store.IncrementFailedLogins(r.Context(), user.ID)
+		if n >= MaxFailedLogins {
+			until := time.Now().UTC().Add(LockoutDuration)
+			if err := a.store.LockAccountUntil(r.Context(), user.ID, until); err == nil {
+				_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditAccountLocked, ip, until.Format(time.RFC3339))
+			}
+		}
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -143,6 +205,8 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "email_not_verified")
 		return
 	}
+	// Successful authentication clears the failure budget.
+	_ = a.store.ResetFailedLogins(r.Context(), user.ID)
 
 	token := a.mintToken(user.ID)
 	http.SetCookie(w, &http.Cookie{
@@ -150,10 +214,11 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	a.setSettingsKeyCookie(w, r, user.ID, req.Password)
+	_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLogin, ip, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -183,8 +248,17 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	ip := ClientIP(r)
 	if existing != nil {
-		writeError(w, http.StatusConflict, "email already registered")
+		// Do not reveal that the email is already registered — that would
+		// let an attacker enumerate accounts via the public form. Respond
+		// indistinguishably from a fresh registration that requires email
+		// verification. The owner of the address will receive nothing new
+		// (we deliberately don't issue another verification email), so the
+		// duplicate attempt remains a no-op.
+		log.Printf("Register: duplicate attempt for %s (silently accepted)", req.Email)
+		_ = a.store.RecordAuditLog(r.Context(), existing.ID, db.AuditRegisterDuplicate, ip, "")
+		writeJSON(w, http.StatusOK, map[string]any{"pending_verification": true})
 		return
 	}
 
@@ -207,13 +281,21 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	_ = a.store.RecordAuditLog(r.Context(), userID, db.AuditRegister, ip, req.Email)
 
 	if err := a.store.InitPinyinProgressForUser(r.Context(), userID); err != nil {
 		log.Printf("Warning: init pinyin progress for user %d: %v", userID, err)
 	}
 
 	if a.emailSender == nil {
-		// No SMTP configured: auto-verify and log token for inspection.
+		// No SMTP configured: auto-verify only in dev. In production this
+		// path would allow anyone to register without proving ownership
+		// of the email address.
+		if !a.devMode {
+			log.Printf("Register: refusing auto-verify in non-dev mode for %s — configure SMTP or set APP_ENV=dev", req.Email)
+			writeError(w, http.StatusServiceUnavailable, "email verification is not configured on this server")
+			return
+		}
 		user, err := a.store.SetUserEmailVerified(r.Context(), verToken)
 		if err != nil || user == nil {
 			writeError(w, http.StatusInternalServerError, "internal error")
@@ -226,7 +308,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			Value:    sessionToken,
 			Path:     "/",
 			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteStrictMode,
 			MaxAge:   int(sessionTTL.Seconds()),
 		})
 		a.setSettingsKeyCookie(w, r, user.ID, req.Password)
@@ -268,6 +350,7 @@ func (a *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?error=invalid_token", http.StatusFound)
 		return
 	}
+	_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditEmailVerified, ClientIP(r), "")
 
 	sessionToken := a.mintToken(user.ID)
 	http.SetCookie(w, &http.Cookie{
@@ -275,7 +358,7 @@ func (a *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		Value:    sessionToken,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	http.Redirect(w, r, "/train", http.StatusFound)
@@ -337,6 +420,20 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		// Non-fatal: keys become inaccessible until user re-saves them.
 	}
 
+	// Mint a fresh session cookie so the current browser stays logged in.
+	// Any older token (e.g. an exfiltrated cookie) is rejected because it
+	// predates sessions_invalidated_at, which UpdateUserPassword bumped.
+	token := a.mintToken(userID)
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   int(sessionTTL.Seconds()),
+	})
+
+	_ = a.store.RecordAuditLog(r.Context(), userID, db.AuditPasswordChange, ClientIP(r), "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -349,6 +446,9 @@ func AuthStatus(a *AuthHandler) http.HandlerFunc {
 
 // Logout handles POST /api/logout.
 func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if uid := UserIDFromContext(r.Context()); uid > 0 {
+		_ = a.store.RecordAuditLog(r.Context(), uid, db.AuditLogout, ClientIP(r), "")
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    "",
@@ -366,10 +466,13 @@ func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// mintToken creates a signed token: "userID:timestamp:hmac".
+// mintToken creates a signed token: "userID:unixNano:hmac". Nanosecond
+// resolution is required so that password-change session invalidation
+// remains correct when the new cookie is minted in the same second as
+// the password change.
 func (a *AuthHandler) mintToken(userID int64) string {
 	uid := strconv.FormatInt(userID, 10)
-	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	ts := strconv.FormatInt(time.Now().UnixNano(), 10)
 	payload := uid + ":" + ts
 	sig := a.sign(payload)
 	return payload + ":" + sig
@@ -386,7 +489,7 @@ func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 		return 0, false
 	}
 	payload, sig := c.Value[:lastColon], c.Value[lastColon+1:]
-	if a.sign(payload) != sig {
+	if !hmac.Equal([]byte(a.sign(payload)), []byte(sig)) {
 		return 0, false
 	}
 	parts := strings.SplitN(payload, ":", 2)
@@ -401,8 +504,15 @@ func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
-	if time.Since(time.Unix(ts, 0)) >= sessionTTL {
+	mintedAt := time.Unix(0, ts)
+	if time.Since(mintedAt) >= sessionTTL {
 		return 0, false
+	}
+	// Reject tokens issued before the user's last password change.
+	if cut, err := a.store.GetSessionsInvalidatedAt(r.Context(), userID); err == nil && !cut.IsZero() {
+		if mintedAt.UTC().Before(cut) {
+			return 0, false
+		}
 	}
 	return userID, true
 }
@@ -566,7 +676,7 @@ func (a *AuthHandler) setSettingsKeyCookie(w http.ResponseWriter, r *http.Reques
 		Value:    sealed,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 }
@@ -631,7 +741,7 @@ func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, u
 		Value:    sealed,
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	return nil
