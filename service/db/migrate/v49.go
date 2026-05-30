@@ -4,7 +4,7 @@ import "database/sql"
 
 func init() {
 	register(migration{
-		version: 46,
+		version: 49,
 		fn: func(database *sql.DB) error {
 			for _, stmt := range []string{
 				`ALTER TABLE users ADD COLUMN failed_logins INTEGER NOT NULL DEFAULT 0`,

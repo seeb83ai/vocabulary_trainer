@@ -2,7 +2,7 @@ package migrate
 
 func init() {
 	register(migration{
-		version: 45,
+		version: 48,
 		sql: `CREATE TABLE IF NOT EXISTS audit_log (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id    INTEGER NOT NULL DEFAULT 0,
