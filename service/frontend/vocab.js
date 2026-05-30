@@ -657,7 +657,7 @@ async function initTranslateButton() {
     } else if (cfg.deepl_configured) {
       show('translate-btn');
       btn.disabled = true;
-      btn.title = 'Coming soon — requires plus account';
+      btn.title = 'Coming soon — requires plus account or a personal LLM key';
       btn.classList.add('opacity-50', 'cursor-not-allowed');
     }
   } catch (_) {}
