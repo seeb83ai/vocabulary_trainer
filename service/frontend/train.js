@@ -44,6 +44,8 @@ let includeMnemonics = localStorage.getItem('quizMnemonics') !== 'false';
 let includeComponents = localStorage.getItem('quizComponents') !== 'false';
 let latestStats = null;
 let skipNewWords = false;
+let requireNewWordZh = true;
+let requireNewWordTrans = true;
 
 function applyModeButtons() {
   document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -125,6 +127,14 @@ function applyComponentPill() {
   if (pill) { pill.className = cls; pill.textContent = label; }
   const overlayPill = $('overlay-components-pill');
   if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
+}
+
+async function loadTrainSettings() {
+  try {
+    const st = await apiFetch('/api/settings');
+    requireNewWordZh    = st.new_word_require_zh    !== false;
+    requireNewWordTrans = st.new_word_require_trans !== false;
+  } catch (_) { /* keep defaults */ }
 }
 
 async function loadStats() {
@@ -248,6 +258,21 @@ async function loadNextCard() {
     $('new-word-en').innerHTML = transLines.join('<br>') || '—';
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
+    $('new-word-zh-input').value = '';
+    $('new-word-trans-input').value = '';
+    $('new-word-zh-check').textContent = '';
+    $('new-word-trans-check').textContent = '';
+    requireNewWordZh    ? show('new-word-zh-row')    : hide('new-word-zh-row');
+    requireNewWordTrans ? show('new-word-trans-row') : hide('new-word-trans-row');
+    const needsInput = requireNewWordZh || requireNewWordTrans;
+    if (needsInput) {
+      $('new-word-inputs').classList.remove('hidden');
+      $('new-word-got-it-btn').disabled = true;
+      setTimeout(() => (requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input')).focus(), 50);
+    } else {
+      $('new-word-inputs').classList.add('hidden');
+      $('new-word-got-it-btn').disabled = false;
+    }
     loadNewWordBreakdown(currentCard.prompt);
     await loadStats();
     return;
@@ -1111,6 +1136,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadNextCard();
   });
+  function normalizeNewWordInput(s) {
+    return s.trim().toLowerCase();
+  }
+  function isZhCorrect(inputVal, prompt) {
+    return inputVal.trim() === prompt.trim();
+  }
+  function isTransCorrect(inputVal, translations) {
+    const normalized = normalizeNewWordInput(inputVal);
+    if (!normalized) return false;
+    const allTrans = Object.values(translations || {}).flat();
+    return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+  }
+  function updateGotItState() {
+    if (!currentCard) return;
+    const zhVal    = $('new-word-zh-input').value;
+    const transVal = $('new-word-trans-input').value;
+    const zhCorrect    = isZhCorrect(zhVal, currentCard.prompt);
+    const transCorrect = isTransCorrect(transVal, currentCard.translations);
+    const zhOk    = !requireNewWordZh    || zhCorrect;
+    const transOk = !requireNewWordTrans || transCorrect;
+    if (requireNewWordZh) {
+      $('new-word-zh-check').textContent = zhVal.trim() ? (zhCorrect ? '✓' : '✗') : '';
+      $('new-word-zh-check').className   = 'text-xl w-6 text-center ' + (zhCorrect ? 'text-green-500' : 'text-red-400');
+    }
+    if (requireNewWordTrans) {
+      $('new-word-trans-check').textContent = transVal.trim() ? (transCorrect ? '✓' : '✗') : '';
+      $('new-word-trans-check').className   = 'text-xl w-6 text-center ' + (transCorrect ? 'text-green-500' : 'text-red-400');
+    }
+    $('new-word-got-it-btn').disabled = !(zhOk && transOk);
+  }
+  $('new-word-zh-input').addEventListener('input', updateGotItState);
+  $('new-word-trans-input').addEventListener('input', updateGotItState);
+
   $('new-word-got-it-btn').addEventListener('click', async () => {
     if (!currentCard) return;
     try {
@@ -1400,5 +1458,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('ob:loadtags', obLoadTags, { once: false });
 
-  loadNextCard();
+  loadTrainSettings().then(() => loadNextCard());
 });
