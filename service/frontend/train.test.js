@@ -358,3 +358,124 @@ describe('allTransTexts', () => {
     expect(texts).toEqual([]);
   });
 });
+
+// ── New word input validation ──────────────────────────────────────────────────
+// Mirrors the pure helpers added to train.js for the new-word input fields.
+
+function normalizeNewWordInput(s) {
+  return s.trim().toLowerCase();
+}
+
+function isZhCorrect(inputVal, prompt) {
+  return inputVal.trim() === prompt.trim();
+}
+
+function isTransCorrect(inputVal, translations) {
+  const normalized = normalizeNewWordInput(inputVal);
+  if (!normalized) return false;
+  const allTrans = Object.values(translations || {}).flat();
+  return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+}
+
+describe('isZhCorrect', () => {
+  it('returns true for exact match', () => {
+    expect(isZhCorrect('你好', '你好')).toBe(true);
+  });
+
+  it('trims whitespace from input', () => {
+    expect(isZhCorrect('  你好  ', '你好')).toBe(true);
+  });
+
+  it('returns false for wrong characters', () => {
+    expect(isZhCorrect('再见', '你好')).toBe(false);
+  });
+
+  it('returns false for empty input', () => {
+    expect(isZhCorrect('', '你好')).toBe(false);
+  });
+});
+
+describe('isTransCorrect', () => {
+  it('returns true for exact EN match', () => {
+    expect(isTransCorrect('hello', { en: ['hello', 'hi'], de: ['hallo'] })).toBe(true);
+  });
+
+  it('returns true for case-insensitive match', () => {
+    expect(isTransCorrect('Hello', { en: ['hello'] })).toBe(true);
+  });
+
+  it('returns true for match in any language', () => {
+    expect(isTransCorrect('hallo', { en: ['hello'], de: ['hallo'] })).toBe(true);
+  });
+
+  it('returns false for wrong translation', () => {
+    expect(isTransCorrect('goodbye', { en: ['hello', 'hi'] })).toBe(false);
+  });
+
+  it('returns false for empty input', () => {
+    expect(isTransCorrect('', { en: ['hello'] })).toBe(false);
+  });
+
+  it('returns false for whitespace-only input', () => {
+    expect(isTransCorrect('   ', { en: ['hello'] })).toBe(false);
+  });
+
+  it('matches after trimming whitespace', () => {
+    expect(isTransCorrect('  hello  ', { en: ['hello'] })).toBe(true);
+  });
+
+  it('handles empty translations object', () => {
+    expect(isTransCorrect('hello', {})).toBe(false);
+  });
+
+  it('handles null/undefined translations', () => {
+    expect(isTransCorrect('hello', null)).toBe(false);
+    expect(isTransCorrect('hello', undefined)).toBe(false);
+  });
+});
+
+// ── levenshtein distance ───────────────────────────────────────────────────────
+// Standard DP edit-distance; inlined per project convention (tests are self-contained).
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0)
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+describe('levenshtein', () => {
+  it('returns 1 for a single deletion', () => {
+    expect(levenshtein('hello', 'helo')).toBe(1);
+  });
+
+  it('returns 4 for unrelated short words', () => {
+    expect(levenshtein('hello', 'world')).toBe(4);
+  });
+
+  it('returns 1 for empty vs single char', () => {
+    expect(levenshtein('', 'a')).toBe(1);
+  });
+
+  it('returns 0 for identical strings', () => {
+    expect(levenshtein('abc', 'abc')).toBe(0);
+  });
+
+  it('returns 1 for a single substitution', () => {
+    expect(levenshtein('cat', 'bat')).toBe(1);
+  });
+
+  it('returns 1 for a single insertion', () => {
+    expect(levenshtein('helo', 'hello')).toBe(1);
+  });
+});

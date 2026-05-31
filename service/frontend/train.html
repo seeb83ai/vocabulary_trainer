@@ -261,11 +261,37 @@
           <div id="new-word-en" class="text-lg text-gray-700 mb-4"></div>
           <div id="new-word-breakdown" class="hidden mb-4"></div>
 
+          <!-- Input practice area -->
+          <div id="new-word-inputs" class="mb-6 space-y-3 text-left">
+            <div id="new-word-zh-row">
+              <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1"
+                   data-i18n="newWord.typeZh">Type the Chinese</div>
+              <div class="flex items-center gap-2">
+                <input type="text" id="new-word-zh-input"
+                       class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+                       autocomplete="off" spellcheck="false">
+                <span id="new-word-zh-check" class="text-xl w-6 text-center"></span>
+              </div>
+            </div>
+            <div id="new-word-trans-row">
+              <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1"
+                   data-i18n="newWord.typeTrans">Type the translation</div>
+              <div class="flex items-center gap-2">
+                <input type="text" id="new-word-trans-input"
+                       class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+                       autocomplete="off">
+                <span id="new-word-trans-check" class="text-xl w-6 text-center"></span>
+              </div>
+            </div>
+          </div>
+
           <div class="flex gap-3">
             <button id="new-word-skip-btn" class="flex-1 border border-gray-300 hover:border-gray-400 text-gray-600 font-semibold py-3 rounded-xl text-lg transition" data-i18n="newWord.skip">
               Skip (7 days)
             </button>
-            <button id="new-word-got-it-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition" data-i18n="newWord.gotIt">
+            <button id="new-word-got-it-btn" disabled
+                    class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl text-lg transition"
+                    data-i18n="newWord.gotIt">
               Got it
             </button>
           </div>
@@ -295,6 +321,7 @@
 
           <div id="word-breakdown" class="hidden mb-2"></div>
           <button id="add-translation-btn" class="hidden"></button>
+          <button id="accept-correct-btn" class="hidden w-full border border-green-400 hover:border-green-500 text-green-700 hover:text-green-800 font-medium py-2 rounded-xl text-sm transition mb-2"></button>
 
           <div id="review-edit-row" class="flex gap-3 mb-3">
             <button
