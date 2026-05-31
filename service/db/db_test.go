@@ -3613,3 +3613,123 @@ func TestGetWordIDByZhText_NotFound(t *testing.T) {
 		t.Errorf("want 0 for missing word, got %d", got)
 	}
 }
+
+// ── SaveSM2PrevState / GetSM2PrevState / ClearSM2PrevState ───────────────────
+
+func TestSaveSM2PrevState_RoundTrips(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	prog, err := s.GetSM2Progress(ctx, id)
+	if err != nil || prog == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, prog)
+	}
+	prog.Easiness = 2.9
+	prog.Repetitions = 5
+	prog.IntervalDays = 21
+	prog.TotalCorrect = 10
+	prog.TotalAttempts = 12
+	prog.StreakBonus = 2
+	prog.LearningNewWord = false
+
+	if err := s.SaveSM2PrevState(ctx, id, *prog); err != nil {
+		t.Fatalf("SaveSM2PrevState: %v", err)
+	}
+
+	got, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetSM2PrevState: expected non-nil, got nil")
+	}
+	if got.Easiness != prog.Easiness {
+		t.Errorf("Easiness: want %v, got %v", prog.Easiness, got.Easiness)
+	}
+	if got.Repetitions != prog.Repetitions {
+		t.Errorf("Repetitions: want %d, got %d", prog.Repetitions, got.Repetitions)
+	}
+	if got.IntervalDays != prog.IntervalDays {
+		t.Errorf("IntervalDays: want %d, got %d", prog.IntervalDays, got.IntervalDays)
+	}
+	if got.TotalCorrect != prog.TotalCorrect {
+		t.Errorf("TotalCorrect: want %d, got %d", prog.TotalCorrect, got.TotalCorrect)
+	}
+	if got.TotalAttempts != prog.TotalAttempts {
+		t.Errorf("TotalAttempts: want %d, got %d", prog.TotalAttempts, got.TotalAttempts)
+	}
+	if got.LearningNewWord != prog.LearningNewWord {
+		t.Errorf("LearningNewWord: want %v, got %v", prog.LearningNewWord, got.LearningNewWord)
+	}
+}
+
+func TestClearSM2PrevState_ReturnsNil(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "谢谢", "", []string{"thank you"})
+
+	prog, _ := s.GetSM2Progress(ctx, id)
+	s.SaveSM2PrevState(ctx, id, *prog)
+
+	if err := s.ClearSM2PrevState(ctx, id); err != nil {
+		t.Fatalf("ClearSM2PrevState: %v", err)
+	}
+	got, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState after clear: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil after clear, got %+v", got)
+	}
+}
+
+func TestGetSM2PrevState_NilWhenUnset(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "水", "", []string{"water"})
+
+	got, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil for fresh word, got %+v", got)
+	}
+}
+
+// ── accept_correct_mode setting ───────────────────────────────────────────────
+
+func TestAcceptCorrectModeDefault(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	settings, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if settings.AcceptCorrectMode != "typo" {
+		t.Errorf("default AcceptCorrectMode: want %q, got %q", "typo", settings.AcceptCorrectMode)
+	}
+}
+
+func TestAcceptCorrectModeRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	settings, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	settings.AcceptCorrectMode = "always"
+	if err := s.UpdateUserSettings(ctx, 2, *settings); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+	got, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetUserSettings after update: %v", err)
+	}
+	if got.AcceptCorrectMode != "always" {
+		t.Errorf("AcceptCorrectMode: want %q, got %q", "always", got.AcceptCorrectMode)
+	}
+}

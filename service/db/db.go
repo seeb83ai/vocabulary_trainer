@@ -44,7 +44,9 @@ func ParseDateTime(s string) time.Time {
 // parseDateTime is the package-internal implementation.
 func parseDateTime(s string) time.Time {
 	for _, layout := range []string{
+		time.RFC3339Nano,
 		time.RFC3339,
+		"2006-01-02 15:04:05.000000000",
 		"2006-01-02 15:04:05",
 		"2006-01-02T15:04:05",
 	} {

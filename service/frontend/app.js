@@ -92,7 +92,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const res = await fetch('/api/auth/status');
     if (res.ok) {
       const btn = document.getElementById('logout-btn');
-      if (btn) btn.classList.remove('hidden');
+      if (btn) {
+        btn.classList.remove('hidden');
+        btn.addEventListener('click', logout);
+      }
     }
   } catch (_) {}
 });
