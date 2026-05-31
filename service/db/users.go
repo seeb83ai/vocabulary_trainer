@@ -150,12 +150,14 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       prog_new, prog_tier_struggling, prog_tier_learning,
 		       prog_tier_practicing, prog_tier_mastered,
 		       new_word_mode_0, new_word_mode_1, new_word_mode_2,
+		       new_word_require_zh, new_word_require_trans,
 		       api_key_salt, deepl_key_enc, llm_provider, llm_key_enc, llm_local_url
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
 		&st.ProgTierPracticing, &st.ProgTierMastered,
 		&st.NewWordMode0, &st.NewWordMode1, &st.NewWordMode2,
+		&st.NewWordRequireZh, &st.NewWordRequireTrans,
 		&salt, &deeplEnc, &st.LLMProvider, &llmEnc, &st.LLMLocalURL,
 	)
 	if err != nil {
@@ -180,12 +182,15 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			prog_tier_mastered   = ?,
 			new_word_mode_0      = ?,
 			new_word_mode_1      = ?,
-			new_word_mode_2      = ?
+			new_word_mode_2      = ?,
+			new_word_require_zh    = ?,
+			new_word_require_trans = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
 		st.ProgTierPracticing, st.ProgTierMastered,
 		st.NewWordMode0, st.NewWordMode1, st.NewWordMode2,
+		st.NewWordRequireZh, st.NewWordRequireTrans,
 		userID,
 	)
 	return err

@@ -3189,6 +3189,12 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.NewWordMode2 != "zh_to_transl" {
 		t.Errorf("want new_word_mode_2=zh_to_transl, got %q", st.NewWordMode2)
 	}
+	if !st.NewWordRequireZh {
+		t.Error("want new_word_require_zh=true by default")
+	}
+	if !st.NewWordRequireTrans {
+		t.Error("want new_word_require_trans=true by default")
+	}
 }
 
 func TestUpdateUserSettings_RoundTrip(t *testing.T) {
@@ -3197,16 +3203,18 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	const userID = int64(2)
 
 	in := models.UserSettings{
-		PrimaryLang:        "de",
-		SecondaryLang:      "en",
-		ProgNew:            "zh_to_transl",
-		ProgTierStruggling: "zh_pinyin_to_transl",
-		ProgTierLearning:   "mask_pinyin",
-		ProgTierPracticing: "random",
-		ProgTierMastered:   "random",
-		NewWordMode0:       "zh_pinyin_to_transl",
-		NewWordMode1:       "zh_to_transl",
-		NewWordMode2:       "random",
+		PrimaryLang:         "de",
+		SecondaryLang:       "en",
+		ProgNew:             "zh_to_transl",
+		ProgTierStruggling:  "zh_pinyin_to_transl",
+		ProgTierLearning:    "mask_pinyin",
+		ProgTierPracticing:  "random",
+		ProgTierMastered:    "random",
+		NewWordMode0:        "zh_pinyin_to_transl",
+		NewWordMode1:        "zh_to_transl",
+		NewWordMode2:        "random",
+		NewWordRequireZh:    false,
+		NewWordRequireTrans: true,
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -3223,6 +3231,12 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if out.NewWordMode0 != "zh_pinyin_to_transl" {
 		t.Errorf("new_word_mode_0: want zh_pinyin_to_transl, got %q", out.NewWordMode0)
+	}
+	if out.NewWordRequireZh {
+		t.Error("new_word_require_zh: want false after update")
+	}
+	if !out.NewWordRequireTrans {
+		t.Error("new_word_require_trans: want true after update")
 	}
 }
 
