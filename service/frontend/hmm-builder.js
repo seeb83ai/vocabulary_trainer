@@ -326,7 +326,7 @@ Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${lo
     generateBtn.classList.remove('hidden');
     if (!cfg.llm_available) {
       generateBtn.disabled = true;
-      generateBtn.title = 'Coming soon — requires plus account';
+      generateBtn.title = 'Coming soon — requires plus account or a personal LLM key';
       generateBtn.classList.add('opacity-50', 'cursor-not-allowed');
       return;
     }
