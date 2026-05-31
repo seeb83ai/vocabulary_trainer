@@ -192,6 +192,12 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
     await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 12_000 });
     await expect(page.locator('#new-word-zh')).toHaveText('水');
 
+    // Fill the required input fields (require_zh and require_trans default to true)
+    await page.locator('#new-word-zh-input').fill('水');
+    await page.locator('#new-word-zh-input').dispatchEvent('input');
+    await page.locator('#new-word-trans-input').fill('water');
+    await page.locator('#new-word-trans-input').dispatchEvent('input');
+
     // Click "Got it!" to acknowledge the word
     // POST /api/quiz/acknowledge → AcknowledgeWord() → total_attempts=1, due_date=now
     await page.locator('#new-word-got-it-btn').click();

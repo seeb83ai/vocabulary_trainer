@@ -100,7 +100,7 @@ test-js:
 
 ## test-e2e: run end-to-end browser tests with Playwright (builds the Go binary first)
 test-e2e:
-	PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers npx playwright test
+	npx playwright test
 
 ## test-all: run all tests — Go unit tests, JS unit tests, and E2E browser tests
 test-all: test-go test-js test-e2e
