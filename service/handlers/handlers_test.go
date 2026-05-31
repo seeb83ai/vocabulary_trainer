@@ -3971,6 +3971,12 @@ func TestGetSettings_Defaults(t *testing.T) {
 	if st.DeeplKeySet {
 		t.Error("want deepl_key_set=false by default")
 	}
+	if !st.NewWordRequireZh {
+		t.Error("want new_word_require_zh=true by default")
+	}
+	if !st.NewWordRequireTrans {
+		t.Error("want new_word_require_trans=true by default")
+	}
 }
 
 // ── PATCH /api/settings ──────────────────────────────────────────────────────
@@ -4011,6 +4017,40 @@ func TestPatchSettings_Valid(t *testing.T) {
 	}
 	if st.NewWordMode1 != "zh_pinyin_to_transl" {
 		t.Errorf("want new_word_mode_1=zh_pinyin_to_transl, got %q", st.NewWordMode1)
+	}
+}
+
+func TestPatchSettings_NewWordRequire(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]interface{}{
+		"primary_lang":          "en",
+		"secondary_lang":        "de",
+		"prog_new":              "transl_to_zh",
+		"prog_tier_struggling":  "transl_to_zh",
+		"prog_tier_learning":    "zh_pinyin_to_transl",
+		"prog_tier_practicing":  "zh_to_transl",
+		"prog_tier_mastered":    "random",
+		"new_word_mode_0":       "transl_to_zh",
+		"new_word_mode_1":       "transl_to_zh",
+		"new_word_mode_2":       "zh_to_transl",
+		"new_word_require_zh":   false,
+		"new_word_require_trans": true,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.NewWordRequireZh {
+		t.Error("want new_word_require_zh=false after patch")
+	}
+	if !st.NewWordRequireTrans {
+		t.Error("want new_word_require_trans=true after patch")
 	}
 }
 

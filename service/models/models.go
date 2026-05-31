@@ -23,8 +23,10 @@ type UserSettings struct {
 	ProgTierMastered   string `json:"prog_tier_mastered"`   // accuracy>=85%
 	NewWordMode0       string `json:"new_word_mode_0"`      // TotalCorrect==0
 	NewWordMode1       string `json:"new_word_mode_1"`      // TotalCorrect==1
-	NewWordMode2       string `json:"new_word_mode_2"`      // TotalCorrect>=2
-	DeeplKeySet        bool   `json:"deepl_key_set"`
+	NewWordMode2            string `json:"new_word_mode_2"`           // TotalCorrect>=2
+	NewWordRequireZh        bool   `json:"new_word_require_zh"`
+	NewWordRequireTrans     bool   `json:"new_word_require_trans"`
+	DeeplKeySet             bool   `json:"deepl_key_set"`
 	DeeplKeyMasked     string `json:"deepl_key_masked,omitempty"`
 	LLMProvider        string `json:"llm_provider"`
 	LLMLocalURL        string `json:"llm_local_url"`

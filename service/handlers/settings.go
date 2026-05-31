@@ -33,17 +33,19 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Patch handles PATCH /api/settings — updates language prefs and quiz mode settings.
 func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PrimaryLang        string `json:"primary_lang"`
-		SecondaryLang      string `json:"secondary_lang"`
-		ProgNew            string `json:"prog_new"`
-		ProgTierStruggling string `json:"prog_tier_struggling"`
-		ProgTierLearning   string `json:"prog_tier_learning"`
-		ProgTierPracticing string `json:"prog_tier_practicing"`
-		ProgTierMastered   string `json:"prog_tier_mastered"`
-		NewWordMode0       string `json:"new_word_mode_0"`
-		NewWordMode1       string `json:"new_word_mode_1"`
-		NewWordMode2       string `json:"new_word_mode_2"`
-		AcceptCorrectMode  string `json:"accept_correct_mode"`
+		PrimaryLang         string `json:"primary_lang"`
+		SecondaryLang       string `json:"secondary_lang"`
+		ProgNew             string `json:"prog_new"`
+		ProgTierStruggling  string `json:"prog_tier_struggling"`
+		ProgTierLearning    string `json:"prog_tier_learning"`
+		ProgTierPracticing  string `json:"prog_tier_practicing"`
+		ProgTierMastered    string `json:"prog_tier_mastered"`
+		NewWordMode0        string `json:"new_word_mode_0"`
+		NewWordMode1        string `json:"new_word_mode_1"`
+		NewWordMode2        string `json:"new_word_mode_2"`
+		NewWordRequireZh    bool   `json:"new_word_require_zh"`
+		NewWordRequireTrans bool   `json:"new_word_require_trans"`
+		AcceptCorrectMode   string `json:"accept_correct_mode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -81,17 +83,19 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 
 	userID := UserIDFromContext(r.Context())
 	st := models.UserSettings{
-		PrimaryLang:        req.PrimaryLang,
-		SecondaryLang:      req.SecondaryLang,
-		ProgNew:            req.ProgNew,
-		ProgTierStruggling: req.ProgTierStruggling,
-		ProgTierLearning:   req.ProgTierLearning,
-		ProgTierPracticing: req.ProgTierPracticing,
-		ProgTierMastered:   req.ProgTierMastered,
-		NewWordMode0:       req.NewWordMode0,
-		NewWordMode1:       req.NewWordMode1,
-		NewWordMode2:       req.NewWordMode2,
-		AcceptCorrectMode:  req.AcceptCorrectMode,
+		PrimaryLang:         req.PrimaryLang,
+		SecondaryLang:       req.SecondaryLang,
+		ProgNew:             req.ProgNew,
+		ProgTierStruggling:  req.ProgTierStruggling,
+		ProgTierLearning:    req.ProgTierLearning,
+		ProgTierPracticing:  req.ProgTierPracticing,
+		ProgTierMastered:    req.ProgTierMastered,
+		NewWordMode0:        req.NewWordMode0,
+		NewWordMode1:        req.NewWordMode1,
+		NewWordMode2:        req.NewWordMode2,
+		NewWordRequireZh:    req.NewWordRequireZh,
+		NewWordRequireTrans: req.NewWordRequireTrans,
+		AcceptCorrectMode:   req.AcceptCorrectMode,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

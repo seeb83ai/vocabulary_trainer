@@ -44,6 +44,8 @@ let includeMnemonics = localStorage.getItem('quizMnemonics') !== 'false';
 let includeComponents = localStorage.getItem('quizComponents') !== 'false';
 let latestStats = null;
 let skipNewWords = false;
+let requireNewWordZh = true;
+let requireNewWordTrans = true;
 
 function applyModeButtons() {
   document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -125,6 +127,14 @@ function applyComponentPill() {
   if (pill) { pill.className = cls; pill.textContent = label; }
   const overlayPill = $('overlay-components-pill');
   if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
+}
+
+async function loadTrainSettings() {
+  try {
+    const st = await apiFetch('/api/settings');
+    requireNewWordZh    = st.new_word_require_zh    !== false;
+    requireNewWordTrans = st.new_word_require_trans !== false;
+  } catch (_) { /* keep defaults */ }
 }
 
 async function loadStats() {
@@ -252,10 +262,19 @@ async function loadNextCard() {
     $('new-word-trans-input').value = '';
     $('new-word-zh-check').textContent = '';
     $('new-word-trans-check').textContent = '';
-    $('new-word-got-it-btn').disabled = true;
+    requireNewWordZh    ? show('new-word-zh-row')    : hide('new-word-zh-row');
+    requireNewWordTrans ? show('new-word-trans-row') : hide('new-word-trans-row');
+    const needsInput = requireNewWordZh || requireNewWordTrans;
+    if (needsInput) {
+      $('new-word-inputs').classList.remove('hidden');
+      $('new-word-got-it-btn').disabled = true;
+      setTimeout(() => (requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input')).focus(), 50);
+    } else {
+      $('new-word-inputs').classList.add('hidden');
+      $('new-word-got-it-btn').disabled = false;
+    }
     loadNewWordBreakdown(currentCard.prompt);
     await loadStats();
-    setTimeout(() => $('new-word-zh-input').focus(), 50);
     return;
   }
 
@@ -1133,12 +1152,18 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!currentCard) return;
     const zhVal    = $('new-word-zh-input').value;
     const transVal = $('new-word-trans-input').value;
-    const zhOk     = isZhCorrect(zhVal, currentCard.prompt);
-    const transOk  = isTransCorrect(transVal, currentCard.translations);
-    $('new-word-zh-check').textContent  = zhVal.trim()    ? (zhOk    ? '✓' : '✗') : '';
-    $('new-word-zh-check').className    = 'text-xl w-6 text-center ' + (zhOk    ? 'text-green-500' : 'text-red-400');
-    $('new-word-trans-check').textContent = transVal.trim() ? (transOk ? '✓' : '✗') : '';
-    $('new-word-trans-check').className   = 'text-xl w-6 text-center ' + (transOk ? 'text-green-500' : 'text-red-400');
+    const zhCorrect    = isZhCorrect(zhVal, currentCard.prompt);
+    const transCorrect = isTransCorrect(transVal, currentCard.translations);
+    const zhOk    = !requireNewWordZh    || zhCorrect;
+    const transOk = !requireNewWordTrans || transCorrect;
+    if (requireNewWordZh) {
+      $('new-word-zh-check').textContent = zhVal.trim() ? (zhCorrect ? '✓' : '✗') : '';
+      $('new-word-zh-check').className   = 'text-xl w-6 text-center ' + (zhCorrect ? 'text-green-500' : 'text-red-400');
+    }
+    if (requireNewWordTrans) {
+      $('new-word-trans-check').textContent = transVal.trim() ? (transCorrect ? '✓' : '✗') : '';
+      $('new-word-trans-check').className   = 'text-xl w-6 text-center ' + (transCorrect ? 'text-green-500' : 'text-red-400');
+    }
     $('new-word-got-it-btn').disabled = !(zhOk && transOk);
   }
   $('new-word-zh-input').addEventListener('input', updateGotItState);
@@ -1433,5 +1458,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('ob:loadtags', obLoadTags, { once: false });
 
-  loadNextCard();
+  loadTrainSettings().then(() => loadNextCard());
 });

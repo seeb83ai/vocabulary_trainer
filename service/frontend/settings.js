@@ -124,6 +124,12 @@ async function loadSettings() {
       el.checked = el.value === acmValue;
     });
 
+    // New word confirmation checkboxes (default true when field absent)
+    const requireZhEl = document.getElementById('require-zh');
+    if (requireZhEl) requireZhEl.checked = st.new_word_require_zh !== false;
+    const requireTransEl = document.getElementById('require-trans');
+    if (requireTransEl) requireTransEl.checked = st.new_word_require_trans !== false;
+
     // API key status
     if (st.deepl_key_masked) {
       const el = document.getElementById('deepl-key-status');
@@ -185,14 +191,16 @@ document.getElementById('lang-save-btn')?.addEventListener('click', async () => 
 
 function buildModePayload() {
   return {
-    prog_new:             document.getElementById('mode-prog-new')?.value        || 'transl_to_zh',
-    prog_tier_struggling: document.getElementById('mode-prog-struggling')?.value || 'transl_to_zh',
-    prog_tier_learning:   document.getElementById('mode-prog-learning')?.value   || 'zh_pinyin_to_transl',
-    prog_tier_practicing: document.getElementById('mode-prog-practicing')?.value || 'zh_to_transl',
-    prog_tier_mastered:   document.getElementById('mode-prog-mastered')?.value   || 'random',
-    new_word_mode_0:      document.getElementById('mode-new-0')?.value           || 'transl_to_zh',
-    new_word_mode_1:      document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
-    new_word_mode_2:      document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
+    prog_new:              document.getElementById('mode-prog-new')?.value        || 'transl_to_zh',
+    prog_tier_struggling:  document.getElementById('mode-prog-struggling')?.value || 'transl_to_zh',
+    prog_tier_learning:    document.getElementById('mode-prog-learning')?.value   || 'zh_pinyin_to_transl',
+    prog_tier_practicing:  document.getElementById('mode-prog-practicing')?.value || 'zh_to_transl',
+    prog_tier_mastered:    document.getElementById('mode-prog-mastered')?.value   || 'random',
+    new_word_mode_0:       document.getElementById('mode-new-0')?.value           || 'transl_to_zh',
+    new_word_mode_1:       document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
+    new_word_mode_2:       document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
+    new_word_require_zh:   !!(document.getElementById('require-zh')?.checked),
+    new_word_require_trans: !!(document.getElementById('require-trans')?.checked),
   };
 }
 

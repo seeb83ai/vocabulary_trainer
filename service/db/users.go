@@ -184,6 +184,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       prog_new, prog_tier_struggling, prog_tier_learning,
 		       prog_tier_practicing, prog_tier_mastered,
 		       new_word_mode_0, new_word_mode_1, new_word_mode_2,
+		       new_word_require_zh, new_word_require_trans,
 		       api_key_salt, deepl_key_enc, llm_provider, llm_key_enc, llm_local_url,
 		       COALESCE(accept_correct_mode, 'typo')
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
@@ -191,6 +192,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
 		&st.ProgTierPracticing, &st.ProgTierMastered,
 		&st.NewWordMode0, &st.NewWordMode1, &st.NewWordMode2,
+		&st.NewWordRequireZh, &st.NewWordRequireTrans,
 		&salt, &deeplEnc, &st.LLMProvider, &llmEnc, &st.LLMLocalURL,
 		&st.AcceptCorrectMode,
 	)
@@ -214,15 +216,18 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			prog_tier_learning   = ?,
 			prog_tier_practicing = ?,
 			prog_tier_mastered   = ?,
-			new_word_mode_0      = ?,
-			new_word_mode_1      = ?,
-			new_word_mode_2      = ?,
-			accept_correct_mode  = ?
+			new_word_mode_0        = ?,
+			new_word_mode_1        = ?,
+			new_word_mode_2        = ?,
+			new_word_require_zh    = ?,
+			new_word_require_trans = ?,
+			accept_correct_mode    = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
 		st.ProgTierPracticing, st.ProgTierMastered,
 		st.NewWordMode0, st.NewWordMode1, st.NewWordMode2,
+		st.NewWordRequireZh, st.NewWordRequireTrans,
 		st.AcceptCorrectMode,
 		userID,
 	)
