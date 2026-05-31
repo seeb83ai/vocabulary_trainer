@@ -396,6 +396,88 @@ func TestCheckAnswer_TrailingWhitespace(t *testing.T) {
 	}
 }
 
+// ── CheckComponentAnswer ──────────────────────────────────────────────────────
+
+func TestCheckComponentAnswer_ExactMatch(t *testing.T) {
+	if !CheckComponentAnswer("eat", "eat") {
+		t.Error("exact match should be true")
+	}
+}
+
+func TestCheckComponentAnswer_CaseInsensitive(t *testing.T) {
+	if !CheckComponentAnswer("Eat", "eat") {
+		t.Error("case-insensitive match should be true")
+	}
+}
+
+func TestCheckComponentAnswer_SemicolonSplit(t *testing.T) {
+	if !CheckComponentAnswer("second", "minute;second;hour") {
+		t.Error("should match semicolon-split part")
+	}
+}
+
+func TestCheckComponentAnswer_CommaSplit(t *testing.T) {
+	if !CheckComponentAnswer("ingest", "eat,ingest") {
+		t.Error("should match comma-split part")
+	}
+}
+
+func TestCheckComponentAnswer_OptionalBrackets_WithBrackets(t *testing.T) {
+	if !CheckComponentAnswer("second (unit of time)", "second (unit of time)") {
+		t.Error("full form with brackets should be accepted")
+	}
+}
+
+func TestCheckComponentAnswer_OptionalBrackets_WithoutBrackets(t *testing.T) {
+	if !CheckComponentAnswer("second", "second (unit of time)") {
+		t.Error("answer without optional brackets should be accepted")
+	}
+}
+
+func TestCheckComponentAnswer_OptionalBrackets_InSemicolonPart(t *testing.T) {
+	if !CheckComponentAnswer("second", "minute;second (unit of time);hour") {
+		t.Error("bracket-stripped part in semicolon list should be accepted")
+	}
+}
+
+func TestCheckComponentAnswer_Wrong(t *testing.T) {
+	if CheckComponentAnswer("wrong", "eat;ingest") {
+		t.Error("wrong answer should return false")
+	}
+}
+
+// ── CheckHMMAnswer ────────────────────────────────────────────────────────────
+
+func TestCheckHMMAnswer_ExactMatch(t *testing.T) {
+	if !CheckHMMAnswer("Arnold", "Arnold") {
+		t.Error("exact match should be true")
+	}
+}
+
+func TestCheckHMMAnswer_CaseInsensitive(t *testing.T) {
+	if !CheckHMMAnswer("arnold", "Arnold") {
+		t.Error("case-insensitive match should be true")
+	}
+}
+
+func TestCheckHMMAnswer_BracketStrippedCorrect(t *testing.T) {
+	if !CheckHMMAnswer("Arnold", "(人) Arnold") {
+		t.Error("answer should match with brackets stripped from correct name")
+	}
+}
+
+func TestCheckHMMAnswer_BracketStrippedUser(t *testing.T) {
+	if !CheckHMMAnswer("(人) Arnold", "Arnold") {
+		t.Error("answer with brackets should match bracket-free correct name")
+	}
+}
+
+func TestCheckHMMAnswer_Wrong(t *testing.T) {
+	if CheckHMMAnswer("wrong", "Arnold") {
+		t.Error("wrong answer should return false")
+	}
+}
+
 // ── SelectMode ────────────────────────────────────────────────────────────────
 
 func TestSelectMode_ValidMode(t *testing.T) {
