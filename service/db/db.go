@@ -11,7 +11,8 @@ import (
 )
 
 type Store struct {
-	db *sql.DB
+	db                 *sql.DB
+	DefaultMaxNewWords int // used as initial value when creating user_settings rows
 }
 
 // Open opens (or creates) the SQLite database at the given path and runs schema migrations.

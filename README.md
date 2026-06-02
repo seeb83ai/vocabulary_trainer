@@ -99,15 +99,29 @@ The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`
 
 ## Daily new-word cap
 
-To avoid being overwhelmed when you have a large vocabulary list, the trainer limits how many brand-new words are introduced each day:
+Each user sets their own daily new-word limit in **Settings → Daily Learning** (default: 5). The server-wide `MAX_NEW_WORDS` env var sets the default for new accounts only — users can freely change it higher or lower in their settings.
 
 ```bash
-MAX_NEW_WORDS=5   # default; set to 0 to disable new words entirely
+MAX_NEW_WORDS=5   # default for new accounts
 ```
 
 A *new word* is one that has never appeared as a quiz card before (tracked by a `first_seen_date` column in the database). Once the daily cap is reached, only cards you have already seen at least once will be served — reviews and retry cards are always available regardless of the cap. The counter resets at midnight (server-local date).
 
 The training page stats bar shows **New today: X / Y** so you can see how many new words you have left for the day.
+
+### Baseline gates
+
+In **Settings → Daily Learning**, each user can enable optional gates that pause new-word introductions when the review load is high. Each gate is independently enabled with its own numeric threshold; **all** active gates must pass before a new word is shown.
+
+| Gate | Blocks new words when… |
+|---|---|
+| **Max due words at day start** | The number of review cards due when you first opened the app today is ≥ the threshold |
+| **Max Struggling words** | Your current Struggling bucket count is ≥ the threshold |
+| **Max Learning words** | Your current Learning bucket count is ≥ the threshold |
+
+### Skip button for new words
+
+By default a **Skip** button appears during the new-word introduction screen, letting you defer a word for 7 days. In **Settings → Daily Learning** you can hide this button; when hidden, new words cannot be skipped and must be reviewed.
 
 ## Progressive mode
 
@@ -172,6 +186,7 @@ Each user has a personal settings page (`/settings`) with:
 
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
+- **Daily Learning** — Set the number of new words per day, toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
 - **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
 
 ## Auto-translate (DeepL)

@@ -639,12 +639,25 @@ func tierFilter(bucket string) string {
 	return ""
 }
 
+// NewWordBaselines controls optional gates that prevent new words from being
+// introduced. Each baseline is independently enabled; all enabled baselines
+// must pass for a new word to be shown.
+type NewWordBaselines struct {
+	DueTodayEnabled   bool
+	DueTodayValue     int // max allowed due-at-day-start count
+	StrugglingEnabled bool
+	StrugglingValue   int // max allowed struggling count
+	LearningEnabled   bool
+	LearningValue     int // max allowed learning count
+}
+
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
 // maxNew caps how many new words (first_seen_date IS NULL) can be introduced today; once
 // the count for today reaches maxNew, only already-seen cards are returned.
 // skipNew forces unseen words to be excluded regardless of the daily cap.
-func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool) (*models.Word, *models.SM2Progress, error) {
+// baselines provides optional additional gates; a nil pointer means no baselines.
+func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool, baselines *NewWordBaselines) (*models.Word, *models.SM2Progress, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -672,8 +685,59 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 
 	// When the daily cap is reached or the user chose to skip new words then exclude never-presented words.
 	newWordFilter := ""
+	newWordsBlocked := false
 	if skipNew || newToday >= maxNew {
 		newWordFilter = " AND p.first_seen_date IS NOT NULL"
+		newWordsBlocked = true
+	}
+
+	// Evaluate optional baselines — each enabled gate can block new words.
+	if newWordFilter == "" && baselines != nil {
+		if baselines.DueTodayEnabled {
+			snap, err := s.EnsureDueTodaySnapshot(ctx, userID)
+			if err != nil {
+				return nil, nil, fmt.Errorf("due today snapshot: %w", err)
+			}
+			if snap >= baselines.DueTodayValue {
+				newWordFilter = " AND p.first_seen_date IS NOT NULL"
+			}
+		}
+		if newWordFilter == "" && baselines.StrugglingEnabled {
+			var struggling int
+			if err := s.db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM sm2_progress p
+				 JOIN words w ON w.id = p.word_id
+				 WHERE w.language = 'zh' AND w.user_id = ?
+				   AND p.first_seen_date IS NOT NULL
+				   AND p.learning_new_word = 0
+				   AND (p.total_attempts < 3 OR CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts < 0.50)`,
+				userID).Scan(&struggling); err != nil {
+				return nil, nil, fmt.Errorf("count struggling: %w", err)
+			}
+			if struggling >= baselines.StrugglingValue {
+				newWordFilter = " AND p.first_seen_date IS NOT NULL"
+				newWordsBlocked = true
+			}
+		}
+		if newWordFilter == "" && baselines.LearningEnabled {
+			var learning int
+			if err := s.db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM sm2_progress p
+				 JOIN words w ON w.id = p.word_id
+				 WHERE w.language = 'zh' AND w.user_id = ?
+				   AND p.first_seen_date IS NOT NULL
+				   AND p.learning_new_word = 0
+				   AND p.total_attempts >= 3
+				   AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.50
+				   AND NOT (p.total_attempts >= 10 AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.70)`,
+				userID).Scan(&learning); err != nil {
+				return nil, nil, fmt.Errorf("count learning: %w", err)
+			}
+			if learning >= baselines.LearningValue {
+				newWordFilter = " AND p.first_seen_date IS NOT NULL"
+				newWordsBlocked = true
+			}
+		}
 	}
 
 	// Only quiz on zh words — they are the canonical unit; en words are just
@@ -717,11 +781,11 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 	// cards and inflate the session beyond what due_today reports.
 	todayBound := "AND p.due_date < date('now', '+1 day')"
 
-	// When the cap has not been reached, prefer unseen words — but only when
+	// When new words are allowed, prefer unseen words — but only when
 	// there are no learning_new_word=1 cards currently due. Advanced seen words
 	// may have due_dates shifted far into the past (larger interval = larger
 	// shift), so ORDER BY due_date alone would pick them ahead of unseen words.
-	if !skipNew && newToday < maxNew {
+	if !newWordsBlocked {
 		var learningDue int
 		if err := s.db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM sm2_progress p

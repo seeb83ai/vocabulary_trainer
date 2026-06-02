@@ -33,19 +33,27 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Patch handles PATCH /api/settings — updates language prefs and quiz mode settings.
 func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PrimaryLang         string `json:"primary_lang"`
-		SecondaryLang       string `json:"secondary_lang"`
-		ProgNew             string `json:"prog_new"`
-		ProgTierStruggling  string `json:"prog_tier_struggling"`
-		ProgTierLearning    string `json:"prog_tier_learning"`
-		ProgTierPracticing  string `json:"prog_tier_practicing"`
-		ProgTierMastered    string `json:"prog_tier_mastered"`
-		NewWordMode0        string `json:"new_word_mode_0"`
-		NewWordMode1        string `json:"new_word_mode_1"`
-		NewWordMode2        string `json:"new_word_mode_2"`
-		NewWordRequireZh    bool   `json:"new_word_require_zh"`
-		NewWordRequireTrans bool   `json:"new_word_require_trans"`
-		AcceptCorrectMode   string `json:"accept_correct_mode"`
+		PrimaryLang               string `json:"primary_lang"`
+		SecondaryLang             string `json:"secondary_lang"`
+		ProgNew                   string `json:"prog_new"`
+		ProgTierStruggling        string `json:"prog_tier_struggling"`
+		ProgTierLearning          string `json:"prog_tier_learning"`
+		ProgTierPracticing        string `json:"prog_tier_practicing"`
+		ProgTierMastered          string `json:"prog_tier_mastered"`
+		NewWordMode0              string `json:"new_word_mode_0"`
+		NewWordMode1              string `json:"new_word_mode_1"`
+		NewWordMode2              string `json:"new_word_mode_2"`
+		NewWordRequireZh          bool   `json:"new_word_require_zh"`
+		NewWordRequireTrans       bool   `json:"new_word_require_trans"`
+		AcceptCorrectMode         string `json:"accept_correct_mode"`
+		MaxNewWordsPerDay         *int   `json:"max_new_words_per_day"`
+		SkipNewWordsVisible       bool   `json:"skip_new_words_visible"`
+		BaselineDueTodayEnabled   bool   `json:"baseline_due_today_enabled"`
+		BaselineDueTodayValue     int    `json:"baseline_due_today_value"`
+		BaselineStrugglingEnabled bool   `json:"baseline_struggling_enabled"`
+		BaselineStrugglingValue   int    `json:"baseline_struggling_value"`
+		BaselineLearningEnabled   bool   `json:"baseline_learning_enabled"`
+		BaselineLearningValue     int    `json:"baseline_learning_value"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -81,21 +89,58 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve max_new_words_per_day: nil means field was omitted → keep stored value.
+	var resolvedMaxNew int
+	if req.MaxNewWordsPerDay == nil {
+		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
+			resolvedMaxNew = existing.MaxNewWordsPerDay
+		}
+		if resolvedMaxNew < 1 {
+			resolvedMaxNew = 5
+		}
+	} else {
+		resolvedMaxNew = *req.MaxNewWordsPerDay
+	}
+	if resolvedMaxNew < 1 {
+		writeError(w, http.StatusBadRequest, "max_new_words_per_day must be at least 1")
+		return
+	}
+	if req.BaselineDueTodayValue < 0 {
+		writeError(w, http.StatusBadRequest, "baseline_due_today_value must be >= 0")
+		return
+	}
+	if req.BaselineStrugglingValue < 0 {
+		writeError(w, http.StatusBadRequest, "baseline_struggling_value must be >= 0")
+		return
+	}
+	if req.BaselineLearningValue < 0 {
+		writeError(w, http.StatusBadRequest, "baseline_learning_value must be >= 0")
+		return
+	}
+
 	userID := UserIDFromContext(r.Context())
 	st := models.UserSettings{
-		PrimaryLang:         req.PrimaryLang,
-		SecondaryLang:       req.SecondaryLang,
-		ProgNew:             req.ProgNew,
-		ProgTierStruggling:  req.ProgTierStruggling,
-		ProgTierLearning:    req.ProgTierLearning,
-		ProgTierPracticing:  req.ProgTierPracticing,
-		ProgTierMastered:    req.ProgTierMastered,
-		NewWordMode0:        req.NewWordMode0,
-		NewWordMode1:        req.NewWordMode1,
-		NewWordMode2:        req.NewWordMode2,
-		NewWordRequireZh:    req.NewWordRequireZh,
-		NewWordRequireTrans: req.NewWordRequireTrans,
-		AcceptCorrectMode:   req.AcceptCorrectMode,
+		PrimaryLang:               req.PrimaryLang,
+		SecondaryLang:             req.SecondaryLang,
+		ProgNew:                   req.ProgNew,
+		ProgTierStruggling:        req.ProgTierStruggling,
+		ProgTierLearning:          req.ProgTierLearning,
+		ProgTierPracticing:        req.ProgTierPracticing,
+		ProgTierMastered:          req.ProgTierMastered,
+		NewWordMode0:              req.NewWordMode0,
+		NewWordMode1:              req.NewWordMode1,
+		NewWordMode2:              req.NewWordMode2,
+		NewWordRequireZh:          req.NewWordRequireZh,
+		NewWordRequireTrans:       req.NewWordRequireTrans,
+		AcceptCorrectMode:         req.AcceptCorrectMode,
+		MaxNewWordsPerDay:         resolvedMaxNew,
+		SkipNewWordsVisible:       req.SkipNewWordsVisible,
+		BaselineDueTodayEnabled:   req.BaselineDueTodayEnabled,
+		BaselineDueTodayValue:     req.BaselineDueTodayValue,
+		BaselineStrugglingEnabled: req.BaselineStrugglingEnabled,
+		BaselineStrugglingValue:   req.BaselineStrugglingValue,
+		BaselineLearningEnabled:   req.BaselineLearningEnabled,
+		BaselineLearningValue:     req.BaselineLearningValue,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

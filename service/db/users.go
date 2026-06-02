@@ -157,9 +157,13 @@ func (s *Store) ensureUserSettings(ctx context.Context, userID int64) error {
 		return err
 	}
 	salt := hex.EncodeToString(saltBytes)
+	maxNew := s.DefaultMaxNewWords
+	if maxNew < 1 {
+		maxNew = 5
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO user_settings (user_id, api_key_salt) VALUES (?, ?)`,
-		userID, salt)
+		`INSERT OR IGNORE INTO user_settings (user_id, api_key_salt, max_new_words_per_day) VALUES (?, ?, ?)`,
+		userID, salt, maxNew)
 	return err
 }
 
@@ -186,7 +190,15 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       new_word_mode_0, new_word_mode_1, new_word_mode_2,
 		       new_word_require_zh, new_word_require_trans,
 		       api_key_salt, deepl_key_enc, llm_provider, llm_key_enc, llm_local_url,
-		       COALESCE(accept_correct_mode, 'typo')
+		       COALESCE(accept_correct_mode, 'typo'),
+		       COALESCE(max_new_words_per_day, 5),
+		       COALESCE(skip_new_words_visible, 1),
+		       COALESCE(baseline_due_today_enabled, 0),
+		       COALESCE(baseline_due_today_value, 20),
+		       COALESCE(baseline_struggling_enabled, 0),
+		       COALESCE(baseline_struggling_value, 10),
+		       COALESCE(baseline_learning_enabled, 0),
+		       COALESCE(baseline_learning_value, 20)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -195,6 +207,14 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.NewWordRequireZh, &st.NewWordRequireTrans,
 		&salt, &deeplEnc, &st.LLMProvider, &llmEnc, &st.LLMLocalURL,
 		&st.AcceptCorrectMode,
+		&st.MaxNewWordsPerDay,
+		&st.SkipNewWordsVisible,
+		&st.BaselineDueTodayEnabled,
+		&st.BaselineDueTodayValue,
+		&st.BaselineStrugglingEnabled,
+		&st.BaselineStrugglingValue,
+		&st.BaselineLearningEnabled,
+		&st.BaselineLearningValue,
 	)
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
@@ -209,19 +229,27 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
-			primary_lang         = ?,
-			secondary_lang       = ?,
-			prog_new             = ?,
-			prog_tier_struggling = ?,
-			prog_tier_learning   = ?,
-			prog_tier_practicing = ?,
-			prog_tier_mastered   = ?,
-			new_word_mode_0        = ?,
-			new_word_mode_1        = ?,
-			new_word_mode_2        = ?,
-			new_word_require_zh    = ?,
-			new_word_require_trans = ?,
-			accept_correct_mode    = ?
+			primary_lang               = ?,
+			secondary_lang             = ?,
+			prog_new                   = ?,
+			prog_tier_struggling       = ?,
+			prog_tier_learning         = ?,
+			prog_tier_practicing       = ?,
+			prog_tier_mastered         = ?,
+			new_word_mode_0            = ?,
+			new_word_mode_1            = ?,
+			new_word_mode_2            = ?,
+			new_word_require_zh        = ?,
+			new_word_require_trans     = ?,
+			accept_correct_mode        = ?,
+			max_new_words_per_day      = ?,
+			skip_new_words_visible     = ?,
+			baseline_due_today_enabled = ?,
+			baseline_due_today_value   = ?,
+			baseline_struggling_enabled = ?,
+			baseline_struggling_value  = ?,
+			baseline_learning_enabled  = ?,
+			baseline_learning_value    = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -229,6 +257,14 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.NewWordMode0, st.NewWordMode1, st.NewWordMode2,
 		st.NewWordRequireZh, st.NewWordRequireTrans,
 		st.AcceptCorrectMode,
+		st.MaxNewWordsPerDay,
+		st.SkipNewWordsVisible,
+		st.BaselineDueTodayEnabled,
+		st.BaselineDueTodayValue,
+		st.BaselineStrugglingEnabled,
+		st.BaselineStrugglingValue,
+		st.BaselineLearningEnabled,
+		st.BaselineLearningValue,
 		userID,
 	)
 	return err

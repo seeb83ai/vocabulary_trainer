@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -55,6 +56,24 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// IsLearningNewWord returns true if the given word is currently in the new-word
+// introduction phase (learning_new_word=1) for the given user.
+func (s *Store) IsLearningNewWord(ctx context.Context, userID, wordID int64) (bool, error) {
+	var v int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(p.learning_new_word, 0) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE p.word_id = ? AND w.user_id = ?`,
+		wordID, userID).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("is learning new word: %w", err)
+	}
+	return v == 1, nil
 }
 
 // SkipWord moves a word's due date forward by the given number of days without
