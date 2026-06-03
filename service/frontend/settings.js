@@ -133,6 +133,8 @@ async function loadSettings() {
     // Daily learning
     const maxNewEl = document.getElementById('max-new-words');
     if (maxNewEl) maxNewEl.value = st.max_new_words_per_day ?? 5;
+    const cooldownEl = document.getElementById('new-word-cooldown');
+    if (cooldownEl) cooldownEl.value = st.new_word_cooldown_minutes ?? 1;
     const skipVisEl = document.getElementById('skip-new-visible');
     if (skipVisEl) skipVisEl.checked = st.skip_new_words_visible !== false;
     setBaselineRow('baseline-due-today', st.baseline_due_today_enabled, st.baseline_due_today_value ?? 20);
@@ -216,6 +218,7 @@ function buildModePayload() {
 function buildDailyPayload() {
   return {
     max_new_words_per_day:         parseInt(document.getElementById('max-new-words')?.value || '5', 10),
+    new_word_cooldown_minutes:     parseInt(document.getElementById('new-word-cooldown')?.value || '1', 10),
     skip_new_words_visible:        !!(document.getElementById('skip-new-visible')?.checked),
     baseline_due_today_enabled:    !!(document.getElementById('baseline-due-today-enabled')?.checked),
     baseline_due_today_value:      parseInt(document.getElementById('baseline-due-today-value')?.value || '20', 10),

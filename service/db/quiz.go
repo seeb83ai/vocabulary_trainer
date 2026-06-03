@@ -100,6 +100,7 @@ func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error
 		`UPDATE sm2_progress
 		 SET total_attempts = CASE WHEN total_attempts = 0 THEN 1 ELSE total_attempts END,
 		     first_seen_date = COALESCE(first_seen_date, date('now')),
+		     first_seen_at   = COALESCE(first_seen_at, CURRENT_TIMESTAMP),
 		     due_date = CURRENT_TIMESTAMP
 		 WHERE word_id = ? AND word_id IN (SELECT id FROM words WHERE user_id = ?)`,
 		wordID, userID)

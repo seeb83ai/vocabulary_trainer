@@ -27,6 +27,7 @@ type UserSettings struct {
 	NewWordRequireZh        bool   `json:"new_word_require_zh"`
 	NewWordRequireTrans     bool   `json:"new_word_require_trans"`
 	MaxNewWordsPerDay         int  `json:"max_new_words_per_day"`
+	NewWordCooldownMinutes    int  `json:"new_word_cooldown_minutes"`
 	SkipNewWordsVisible       bool `json:"skip_new_words_visible"`
 	BaselineDueTodayEnabled   bool `json:"baseline_due_today_enabled"`
 	BaselineDueTodayValue     int  `json:"baseline_due_today_value"`

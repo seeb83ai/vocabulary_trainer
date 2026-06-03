@@ -5264,3 +5264,61 @@ func TestSkip_RejectsNewWordWhenHidden(t *testing.T) {
 		t.Errorf("want 400 when skipping new word with skip hidden, got %d: %s", rec.Code, rec.Body)
 	}
 }
+
+// ── Settings: new word cooldown ───────────────────────────────────────────────
+
+func TestGetSettings_CooldownDefault(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.NewWordCooldownMinutes < 0 {
+		t.Errorf("want NewWordCooldownMinutes >= 0, got %d", st.NewWordCooldownMinutes)
+	}
+}
+
+func TestPatchSettings_Cooldown(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	type payload struct {
+		PrimaryLang              string `json:"primary_lang"`
+		SecondaryLang            string `json:"secondary_lang"`
+		ProgNew                  string `json:"prog_new"`
+		ProgTierStruggling       string `json:"prog_tier_struggling"`
+		ProgTierLearning         string `json:"prog_tier_learning"`
+		ProgTierPracticing       string `json:"prog_tier_practicing"`
+		ProgTierMastered         string `json:"prog_tier_mastered"`
+		NewWordMode0             string `json:"new_word_mode_0"`
+		NewWordMode1             string `json:"new_word_mode_1"`
+		NewWordMode2             string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay        int    `json:"max_new_words_per_day"`
+		NewWordCooldownMinutes   int    `json:"new_word_cooldown_minutes"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
+		PrimaryLang:            "en",
+		SecondaryLang:          "de",
+		ProgNew:                "zh_to_transl",
+		ProgTierStruggling:     "transl_to_zh",
+		ProgTierLearning:       "zh_pinyin_to_transl",
+		ProgTierPracticing:     "zh_to_transl",
+		ProgTierMastered:       "random",
+		NewWordMode0:           "transl_to_zh",
+		NewWordMode1:           "zh_pinyin_to_transl",
+		NewWordMode2:           "zh_to_transl",
+		MaxNewWordsPerDay:      5,
+		NewWordCooldownMinutes: 30,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.NewWordCooldownMinutes != 30 {
+		t.Errorf("want NewWordCooldownMinutes=30, got %d", st.NewWordCooldownMinutes)
+	}
+}

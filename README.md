@@ -119,6 +119,10 @@ In **Settings → Daily Learning**, each user can enable optional gates that pau
 | **Max Struggling words** | Your current Struggling bucket count is ≥ the threshold |
 | **Max Learning words** | Your current Learning bucket count is ≥ the threshold |
 
+### Cooldown between new words
+
+In **Settings → Daily Learning**, the **Cooldown between new words** field (default: 1 minute) sets the minimum time that must pass after introducing a new word before another one appears. During the cooldown window the trainer serves only review cards. Set to **0** to disable the cooldown and allow new words back-to-back.
+
 ### Skip button for new words
 
 By default a **Skip** button appears during the new-word introduction screen, letting you defer a word for 7 days. In **Settings → Daily Learning** you can hide this button; when hidden, new words cannot be skipped and must be reviewed.
@@ -186,7 +190,7 @@ Each user has a personal settings page (`/settings`) with:
 
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
-- **Daily Learning** — Set the number of new words per day, toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
+- **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
 - **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
 
 ## Auto-translate (DeepL)

@@ -649,6 +649,7 @@ type NewWordBaselines struct {
 	StrugglingValue   int // max allowed struggling count
 	LearningEnabled   bool
 	LearningValue     int // max allowed learning count
+	CooldownMinutes   int // minutes that must pass since last new word (0 = disabled)
 }
 
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
@@ -715,6 +716,21 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				return nil, nil, fmt.Errorf("count struggling: %w", err)
 			}
 			if struggling >= baselines.StrugglingValue {
+				newWordFilter = " AND p.first_seen_date IS NOT NULL"
+				newWordsBlocked = true
+			}
+		}
+		if newWordFilter == "" && baselines.CooldownMinutes > 0 {
+			var recentCount int
+			if err := s.db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM sm2_progress p
+				 JOIN words w ON w.id = p.word_id
+				 WHERE w.language = 'zh' AND w.user_id = ?
+				   AND p.first_seen_at >= datetime('now', ?)`,
+				userID, fmt.Sprintf("-%d minutes", baselines.CooldownMinutes)).Scan(&recentCount); err != nil {
+				return nil, nil, fmt.Errorf("check cooldown: %w", err)
+			}
+			if recentCount > 0 {
 				newWordFilter = " AND p.first_seen_date IS NOT NULL"
 				newWordsBlocked = true
 			}

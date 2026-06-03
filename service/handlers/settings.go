@@ -47,6 +47,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordRequireTrans       bool   `json:"new_word_require_trans"`
 		AcceptCorrectMode         string `json:"accept_correct_mode"`
 		MaxNewWordsPerDay         *int   `json:"max_new_words_per_day"`
+		NewWordCooldownMinutes    int    `json:"new_word_cooldown_minutes"`
 		SkipNewWordsVisible       bool   `json:"skip_new_words_visible"`
 		BaselineDueTodayEnabled   bool   `json:"baseline_due_today_enabled"`
 		BaselineDueTodayValue     int    `json:"baseline_due_today_value"`
@@ -134,6 +135,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordRequireTrans:       req.NewWordRequireTrans,
 		AcceptCorrectMode:         req.AcceptCorrectMode,
 		MaxNewWordsPerDay:         resolvedMaxNew,
+		NewWordCooldownMinutes:    req.NewWordCooldownMinutes,
 		SkipNewWordsVisible:       req.SkipNewWordsVisible,
 		BaselineDueTodayEnabled:   req.BaselineDueTodayEnabled,
 		BaselineDueTodayValue:     req.BaselineDueTodayValue,

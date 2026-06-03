@@ -882,6 +882,102 @@ func TestGetNextCard_Baselines_AllDisabled_StillShowsNewWord(t *testing.T) {
 	}
 }
 
+// ── GetNextCard cooldown ──────────────────────────────────────────────────────
+
+func TestGetNextCard_Cooldown_BlocksSecondNewWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Create and acknowledge first word — stamps first_seen_at = now.
+	id1, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, id1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a second unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// With a 60-minute cooldown, the second unseen word should be blocked.
+	baselines := &NewWordBaselines{CooldownMinutes: 60}
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil && w.Text == "火" {
+		t.Error("cooldown should have blocked the second unseen word 火")
+	}
+}
+
+func TestGetNextCard_Cooldown_Zero_DoesNotBlock(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Acknowledge a first word.
+	id1, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, id1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a second unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// CooldownMinutes=0 means disabled — second unseen word should appear.
+	baselines := &NewWordBaselines{CooldownMinutes: 0}
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a word with cooldown disabled")
+	}
+}
+
+func TestAcknowledgeWord_SetsFirstSeenAt(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	id, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, id); err != nil {
+		t.Fatal(err)
+	}
+
+	var firstSeenAt string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(first_seen_at, '') FROM sm2_progress WHERE word_id = ?`, id).
+		Scan(&firstSeenAt); err != nil {
+		t.Fatalf("query first_seen_at: %v", err)
+	}
+	if firstSeenAt == "" {
+		t.Error("AcknowledgeWord should set first_seen_at")
+	}
+}
+
 func TestGetStats_FilterByTag(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
