@@ -732,20 +732,26 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		tags = strings.Split(t, ",")
 	}
 	bucket := r.URL.Query().Get("bucket")
-	due, total, newToday, err := h.Store.GetStats(r.Context(), UserIDFromContext(r.Context()), tags, bucket)
+	userID := UserIDFromContext(r.Context())
+	due, total, newToday, err := h.Store.GetStats(r.Context(), userID, tags, bucket)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
-	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), UserIDFromContext(r.Context()))
+	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), userID)
 	if err != nil {
 		internalError(w, err)
 		return
+	}
+	maxNew := h.MaxNewPerDay
+	userSettings, _ := h.Store.GetUserSettings(r.Context(), userID)
+	if userSettings != nil && h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
+		maxNew = userSettings.MaxNewWordsPerDay
 	}
 	h.mu.Lock()
-	cap := h.MaxNewPerDay
+	cap := maxNew
 	if h.capResetDate == time.Now().Format("2006-01-02") {
-		extra := h.MaxNewPerDay
+		extra := maxNew
 		if extra < 1 {
 			extra = 1
 		}
@@ -791,7 +797,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"due_today":            due,
 		"total":                total,
 		"new_today":            newToday,
-		"max_new_per_day":      h.MaxNewPerDay,
+		"max_new_per_day":      maxNew,
 		"today_attempts":       todayAttempts,
 		"today_mistakes":       todayMistakes,
 		"available_to_advance": availableToAdvance,

@@ -342,10 +342,35 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 
 	// Build a router with maxNew=1 (cap is now reached).
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 1}
+	authH, _ := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
+	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Get("/api/quiz/stats", quizH.Stats)
+	r.Get("/api/settings", settingsH.Get)
+	r.Patch("/api/settings", settingsH.Patch)
+
+	// Align the per-user setting with the server cap so stats reflects 1.
+	type settingsPatch struct {
+		PrimaryLang        string `json:"primary_lang"`
+		ProgNew            string `json:"prog_new"`
+		ProgTierStruggling string `json:"prog_tier_struggling"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
+		ProgTierPracticing string `json:"prog_tier_practicing"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
+	}
+	do(t, r, http.MethodPatch, "/api/settings", settingsPatch{
+		PrimaryLang: "en", ProgNew: "transl_to_zh",
+		ProgTierStruggling: "transl_to_zh", ProgTierLearning: "zh_pinyin_to_transl",
+		ProgTierPracticing: "zh_to_transl", ProgTierMastered: "random",
+		NewWordMode0: "transl_to_zh", NewWordMode1: "transl_to_zh", NewWordMode2: "zh_to_transl",
+		MaxNewWordsPerDay: 1,
+	})
 
 	// Only id1 (already introduced) should be returned — id2 is new and the cap is reached.
 	rec := do(t, r, "GET", "/api/quiz/next", nil)
@@ -5320,5 +5345,52 @@ func TestPatchSettings_Cooldown(t *testing.T) {
 	decodeJSON(t, rec, &st)
 	if st.NewWordCooldownMinutes != 30 {
 		t.Errorf("want NewWordCooldownMinutes=30, got %d", st.NewWordCooldownMinutes)
+	}
+}
+
+// TestQuizStats_MaxNewPerDay_ReflectsUserSetting verifies that the stats
+// endpoint returns the per-user max_new_words_per_day, not the server default.
+func TestQuizStats_MaxNewPerDay_ReflectsUserSetting(t *testing.T) {
+	s := openTestDB(t)
+	// Server default is 100 (set in newRouter via MaxNewPerDay: 100).
+	// Patch the user setting to 3; stats must report 3, not 100.
+	r := newRouter(s)
+
+	type patchPayload struct {
+		PrimaryLang        string `json:"primary_lang"`
+		ProgNew            string `json:"prog_new"`
+		ProgTierStruggling string `json:"prog_tier_struggling"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
+		ProgTierPracticing string `json:"prog_tier_practicing"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload{
+		PrimaryLang:        "en",
+		ProgNew:            "transl_to_zh",
+		ProgTierStruggling: "transl_to_zh",
+		ProgTierLearning:   "zh_pinyin_to_transl",
+		ProgTierPracticing: "zh_to_transl",
+		ProgTierMastered:   "random",
+		NewWordMode0:       "transl_to_zh",
+		NewWordMode1:       "transl_to_zh",
+		NewWordMode2:       "zh_to_transl",
+		MaxNewWordsPerDay:  3,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/quiz/stats: want 200, got %d", rec.Code)
+	}
+	var stats map[string]int
+	decodeJSON(t, rec, &stats)
+	if stats["max_new_per_day"] != 3 {
+		t.Errorf("max_new_per_day: want 3 (user setting), got %d", stats["max_new_per_day"])
 	}
 }
