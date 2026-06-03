@@ -4,10 +4,14 @@
 let userPrimaryLang = 'en';
 let userSecondaryLang = '';
 let acceptCorrectMode = 'typo';
+let skipNewWordsVisible = true;
 const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
   acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
+  skipNewWordsVisible = st?.skip_new_words_visible !== false;
+  const btn = document.getElementById('new-word-skip-btn');
+  if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
 }).catch(() => {});
 
 function levenshtein(a, b) {

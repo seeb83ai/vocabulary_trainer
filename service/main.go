@@ -131,11 +131,12 @@ func main() {
 
 	maxNewWords := 5
 	if v := os.Getenv("MAX_NEW_WORDS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
 			maxNewWords = n
 		}
 	}
-	log.Printf("Daily new-word cap: %d (set MAX_NEW_WORDS to change)", maxNewWords)
+	log.Printf("Daily new-word default: %d (set MAX_NEW_WORDS to change; users can override in settings)", maxNewWords)
+	store.DefaultMaxNewWords = maxNewWords
 
 	pinyinAudioDir := os.Getenv("PINYIN_AUDIO_DIR")
 
