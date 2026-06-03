@@ -65,7 +65,7 @@
 
   <!-- Main content -->
   <main class="flex-1 flex items-start justify-center px-4 py-10">
-    <div class="w-full max-w-xs sm:max-w-lg">
+    <div class="w-full max-w-xs sm:max-w-sm md:max-w-lg">
 
       <!-- Empty state (no vocabulary added yet) — inline import onboarding -->
       <div id="empty-state" class="hidden bg-white rounded-2xl shadow p-8">
@@ -268,7 +268,7 @@
                    data-i18n="newWord.typeZh">Type the Chinese</div>
               <div class="flex items-center gap-2">
                 <input type="text" id="new-word-zh-input"
-                       class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+                       class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-base sm:text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
                        autocomplete="off" spellcheck="false">
                 <span id="new-word-zh-check" class="text-xl w-6 text-center"></span>
               </div>
@@ -278,7 +278,7 @@
                    data-i18n="newWord.typeTrans">Type the translation</div>
               <div class="flex items-center gap-2">
                 <input type="text" id="new-word-trans-input"
-                       class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+                       class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-sm sm:text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
                        autocomplete="off">
                 <span id="new-word-trans-check" class="text-xl w-6 text-center"></span>
               </div>
@@ -286,11 +286,11 @@
           </div>
 
           <div class="flex gap-3">
-            <button id="new-word-skip-btn" class="flex-1 border border-gray-300 hover:border-gray-400 text-gray-600 font-semibold py-3 rounded-xl text-lg transition" data-i18n="newWord.skip">
+            <button id="new-word-skip-btn" class="flex-1 border border-gray-300 hover:border-gray-400 text-gray-600 font-semibold py-2 sm:py-3 rounded-xl text-sm sm:text-lg transition" data-i18n="newWord.skip">
               Skip (7 days)
             </button>
             <button id="new-word-got-it-btn" disabled
-                    class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl text-lg transition"
+                    class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2 sm:py-3 rounded-xl text-sm sm:text-lg transition"
                     data-i18n="newWord.gotIt">
               Got it
             </button>
