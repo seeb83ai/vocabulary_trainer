@@ -521,6 +521,78 @@ func TestQuizAnswer_ResponseContainsZhAndEN(t *testing.T) {
 	}
 }
 
+// ── TranslToZh wrong answer: user_answer_pinyin ───────────────────────────────
+
+func TestQuizAnswer_TranslToZh_WrongIncludesPinyin(t *testing.T) {
+	s := openTestDB(t)
+	correctID := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	_ = seedWord(t, s, "你们", "nǐ men", []string{"you all"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: correctID,
+		Mode:   models.ModeTranslToZh,
+		Answer: "你们",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Fatal("answer '你们' should be wrong")
+	}
+	if resp.UserAnswerPinyin == nil {
+		t.Fatal("expected user_answer_pinyin to be set when wrong answer is in vocab")
+	}
+	if *resp.UserAnswerPinyin != "nǐ men" {
+		t.Errorf("want user_answer_pinyin=%q, got %q", "nǐ men", *resp.UserAnswerPinyin)
+	}
+}
+
+func TestQuizAnswer_TranslToZh_WrongUnknownWordNoPinyin(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeTranslToZh,
+		Answer: "不存在",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Fatal("answer '不存在' should be wrong")
+	}
+	if resp.UserAnswerPinyin != nil {
+		t.Errorf("expected user_answer_pinyin to be nil for unknown word, got %q", *resp.UserAnswerPinyin)
+	}
+}
+
+func TestQuizAnswer_ZhToTransl_WrongNoUserAnswerPinyin(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+		Answer: "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.UserAnswerPinyin != nil {
+		t.Errorf("user_answer_pinyin should not be set for zh_to_transl mode, got %q", *resp.UserAnswerPinyin)
+	}
+}
+
 // ── GET /api/quiz/stats ───────────────────────────────────────────────────────
 
 func TestQuizStats_Empty(t *testing.T) {

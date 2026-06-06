@@ -479,3 +479,70 @@ describe('levenshtein', () => {
     expect(levenshtein('helo', 'hello')).toBe(1);
   });
 });
+
+// ── shouldShowAcceptTypo ───────────────────────────────────────────────────────
+// Inlined here per project convention (self-contained test file).
+
+function shouldShowAcceptTypo(mode, answer, result) {
+  if (!answer || !answer.trim()) return false;
+  if (mode === 'transl_to_zh') {
+    if (!result.user_answer_pinyin || !result.pinyin) return false;
+    const ua = result.user_answer_pinyin.toLowerCase().trim();
+    const ca = result.pinyin.toLowerCase().trim();
+    return levenshtein(ua, ca) <= 1;
+  }
+  const norm = answer.toLowerCase().trim();
+  const corrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
+  return corrects.some(c => levenshtein(norm, c) === 1);
+}
+
+describe('shouldShowAcceptTypo', () => {
+  it('returns false for empty answer', () => {
+    expect(shouldShowAcceptTypo('zh_to_transl', '', { correct_answers: ['hello'] })).toBe(false);
+    expect(shouldShowAcceptTypo('transl_to_zh', '  ', { pinyin: 'nǐ hǎo', user_answer_pinyin: 'nǐ hǎo' })).toBe(false);
+  });
+
+  it('zh_to_transl: true when levenshtein distance is 1', () => {
+    expect(shouldShowAcceptTypo('zh_to_transl', 'helo', { correct_answers: ['hello'] })).toBe(true);
+  });
+
+  it('zh_to_transl: false when distance > 1', () => {
+    expect(shouldShowAcceptTypo('zh_to_transl', 'world', { correct_answers: ['hello'] })).toBe(false);
+  });
+
+  it('transl_to_zh: true when pinyin differs by 1 character (tone mark)', () => {
+    // nǐ hǎo vs nǐ hào — one tone mark different
+    expect(shouldShowAcceptTypo('transl_to_zh', '你号', {
+      pinyin: 'nǐ hǎo',
+      user_answer_pinyin: 'nǐ hào',
+    })).toBe(true);
+  });
+
+  it('transl_to_zh: true when pinyin is identical (homophone characters)', () => {
+    expect(shouldShowAcceptTypo('transl_to_zh', '你好', {
+      pinyin: 'nǐ hǎo',
+      user_answer_pinyin: 'nǐ hǎo',
+    })).toBe(true);
+  });
+
+  it('transl_to_zh: false when pinyins differ by more than 1 character', () => {
+    expect(shouldShowAcceptTypo('transl_to_zh', '大', {
+      pinyin: 'rén',
+      user_answer_pinyin: 'dà',
+    })).toBe(false);
+  });
+
+  it('transl_to_zh: false when user_answer_pinyin is missing', () => {
+    expect(shouldShowAcceptTypo('transl_to_zh', '你们', {
+      pinyin: 'nǐ hǎo',
+      user_answer_pinyin: null,
+    })).toBe(false);
+  });
+
+  it('transl_to_zh: false when correct pinyin is missing', () => {
+    expect(shouldShowAcceptTypo('transl_to_zh', '你们', {
+      pinyin: null,
+      user_answer_pinyin: 'nǐ men',
+    })).toBe(false);
+  });
+});

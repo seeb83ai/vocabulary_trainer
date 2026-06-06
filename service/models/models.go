@@ -125,11 +125,12 @@ type AnswerResponse struct {
 	GraduateReps    int                 `json:"graduate_reps,omitempty"`
 	LearningNewWord bool                `json:"learning_new_word"`
 	Graduated       bool                `json:"graduated,omitempty"`
-	ConfusedWith    *ConfusionDetail    `json:"confused_with,omitempty"`
-	SessionStreak   int                 `json:"session_streak,omitempty"`
-	Tier            string              `json:"tier,omitempty"`
-	PrevTier        string              `json:"prev_tier,omitempty"`
-	SceneText       string              `json:"scene_text,omitempty"`
+	ConfusedWith     *ConfusionDetail    `json:"confused_with,omitempty"`
+	SessionStreak    int                 `json:"session_streak,omitempty"`
+	Tier             string              `json:"tier,omitempty"`
+	PrevTier         string              `json:"prev_tier,omitempty"`
+	SceneText        string              `json:"scene_text,omitempty"`
+	UserAnswerPinyin *string             `json:"user_answer_pinyin,omitempty"`
 }
 
 type CreateWordRequest struct {

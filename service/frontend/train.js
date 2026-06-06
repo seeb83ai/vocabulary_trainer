@@ -14,6 +14,23 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
 }).catch(() => {});
 
+// Returns true if a wrong answer should be offered as an "accept as typo".
+// For transl_to_zh mode, compares pinyin strings (levenshtein ≤ 1) so that
+// sound-alike characters count as a typo rather than raw character differences.
+// For all other modes, compares the answer string against each correct answer.
+function shouldShowAcceptTypo(mode, answer, result) {
+  if (!answer || !answer.trim()) return false;
+  if (mode === 'transl_to_zh') {
+    if (!result.user_answer_pinyin || !result.pinyin) return false;
+    const ua = result.user_answer_pinyin.toLowerCase().trim();
+    const ca = result.pinyin.toLowerCase().trim();
+    return levenshtein(ua, ca) <= 1;
+  }
+  const norm = answer.toLowerCase().trim();
+  const corrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
+  return corrects.some(c => levenshtein(norm, c) === 1);
+}
+
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
   const dp = Array.from({ length: m + 1 }, (_, i) =>
@@ -503,13 +520,11 @@ async function submitAnswer(e) {
       }
 
       // Show "Accept as correct" button based on user's mode setting.
-      const normAnswer = answer.toLowerCase().trim();
-      const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
       let showAcceptBtn = false;
       if (acceptCorrectMode === 'always') {
         showAcceptBtn = !isEmpty;
       } else if (acceptCorrectMode === 'typo' && !isEmpty) {
-        showAcceptBtn = normCorrects.some(c => levenshtein(normAnswer, c) === 1);
+        showAcceptBtn = shouldShowAcceptTypo(currentCard.mode, answer, result);
       }
       if (showAcceptBtn) {
         const acceptBtn = $('accept-correct-btn');

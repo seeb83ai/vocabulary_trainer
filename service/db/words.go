@@ -318,6 +318,25 @@ func (s *Store) GetWordIDByZhText(ctx context.Context, userID int64, text string
 	return id, err
 }
 
+// GetPinyinByZhText returns the pinyin for a zh word owned by userID, or nil if the word
+// has no pinyin or does not exist.
+func (s *Store) GetPinyinByZhText(ctx context.Context, userID int64, text string) (*string, error) {
+	var pinyin sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT pinyin FROM words WHERE user_id = ? AND text = ? AND language = 'zh'`,
+		userID, text).Scan(&pinyin)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !pinyin.Valid || pinyin.String == "" {
+		return nil, nil
+	}
+	return &pinyin.String, nil
+}
+
 // GetZhTextByID returns the text of a zh word owned by userID.
 // Returns empty string if the word is not found or not a zh word.
 func (s *Store) GetZhTextByID(ctx context.Context, userID, wordID int64) (string, error) {
