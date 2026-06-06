@@ -480,8 +480,38 @@ describe('levenshtein', () => {
   });
 });
 
-// ── shouldShowAcceptTypo ───────────────────────────────────────────────────────
+// ── shouldShowAcceptTypo (and its helpers) ────────────────────────────────────
 // Inlined here per project convention (self-contained test file).
+
+function normalizeAnswer(s) {
+  s = s.toLowerCase().trim();
+  s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
+  return s;
+}
+
+function stripParens(s) {
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+  } while (s !== prev);
+  return s;
+}
+
+function expandVariants(a) {
+  const seen = new Set();
+  const add = s => { const n = normalizeAnswer(s); if (n) seen.add(n); };
+  add(a);
+  const noParens = stripParens(a);
+  add(noParens);
+  for (const base of [a, noParens]) {
+    for (const part of base.split('/')) {
+      add(part);
+      add(stripParens(part));
+    }
+  }
+  return [...seen];
+}
 
 function shouldShowAcceptTypo(mode, answer, result) {
   if (!answer || !answer.trim()) return false;
@@ -491,9 +521,9 @@ function shouldShowAcceptTypo(mode, answer, result) {
     const ca = result.pinyin.toLowerCase().trim();
     return levenshtein(ua, ca) <= 1;
   }
-  const norm = answer.toLowerCase().trim();
-  const corrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
-  return corrects.some(c => levenshtein(norm, c) === 1);
+  const norm = normalizeAnswer(answer);
+  const variants = (result.correct_answers || []).flatMap(expandVariants);
+  return variants.some(c => levenshtein(norm, c) === 1);
 }
 
 describe('shouldShowAcceptTypo', () => {
@@ -543,6 +573,24 @@ describe('shouldShowAcceptTypo', () => {
     expect(shouldShowAcceptTypo('transl_to_zh', '你们', {
       pinyin: null,
       user_answer_pinyin: 'nǐ men',
+    })).toBe(false);
+  });
+
+  it('zh_to_transl: true when correct answer has parenthetical suffix (e.g. Morgen vs Morgen (5 Uhr bis 9 Uhr))', () => {
+    expect(shouldShowAcceptTypo('zh_to_transl', 'Mirgen', {
+      correct_answers: ['morning', 'Morgen (5 Uhr bis 9 Uhr)', 'morning (5am to 9 am)'],
+    })).toBe(true);
+  });
+
+  it('zh_to_transl: true when correct answer has slash alternatives', () => {
+    expect(shouldShowAcceptTypo('zh_to_transl', 'helo', {
+      correct_answers: ['hi/hello'],
+    })).toBe(true);
+  });
+
+  it('zh_to_transl: false when stripped variants are all more than 1 away', () => {
+    expect(shouldShowAcceptTypo('zh_to_transl', 'xyz', {
+      correct_answers: ['morning (5am to 9 am)', 'Morgen (5 Uhr bis 9 Uhr)'],
     })).toBe(false);
   });
 });
