@@ -526,6 +526,68 @@ function shouldShowAcceptTypo(mode, answer, result) {
   return variants.some(c => levenshtein(norm, c) === 1);
 }
 
+describe('normalizeAnswer', () => {
+  it('lowercases and trims', () => {
+    expect(normalizeAnswer('  Hello  ')).toBe('hello');
+  });
+
+  it('strips trailing punctuation', () => {
+    expect(normalizeAnswer('hello.')).toBe('hello');
+    expect(normalizeAnswer('hello!')).toBe('hello');
+    expect(normalizeAnswer('hello?')).toBe('hello');
+  });
+
+  it('strips trailing closing paren', () => {
+    expect(normalizeAnswer('morning (5am to 9 am)')).toBe('morning (5am to 9 am');
+  });
+
+  it('preserves internal content', () => {
+    expect(normalizeAnswer('good morning')).toBe('good morning');
+  });
+});
+
+describe('stripParens', () => {
+  it('removes a parenthesised segment', () => {
+    expect(stripParens('Morgen (5 Uhr bis 9 Uhr)')).toBe('Morgen');
+  });
+
+  it('removes multiple parenthesised segments', () => {
+    expect(stripParens('a (b) and (c)')).toBe('a and');
+  });
+
+  it('is a no-op when no parens present', () => {
+    expect(stripParens('hello')).toBe('hello');
+  });
+
+  it('handles nested parens iteratively (inner-most first)', () => {
+    expect(stripParens('a (b (c))')).toBe('a');
+  });
+});
+
+describe('expandVariants', () => {
+  it('returns the normalized form of a plain string', () => {
+    const vs = expandVariants('Hello');
+    expect(vs).toContain('hello');
+  });
+
+  it('includes both full and paren-stripped forms', () => {
+    const vs = expandVariants('Morgen (5 Uhr bis 9 Uhr)');
+    expect(vs).toContain('morgen');
+  });
+
+  it('splits on slash and includes each part', () => {
+    const vs = expandVariants('hi/hello');
+    expect(vs).toContain('hi');
+    expect(vs).toContain('hello');
+  });
+
+  it('combines paren stripping and slash splitting', () => {
+    const vs = expandVariants('good morning (greeting)/morning');
+    expect(vs).toContain('good morning');
+    expect(vs).toContain('morning');
+  });
+});
+
 describe('shouldShowAcceptTypo', () => {
   it('returns false for empty answer', () => {
     expect(shouldShowAcceptTypo('zh_to_transl', '', { correct_answers: ['hello'] })).toBe(false);
