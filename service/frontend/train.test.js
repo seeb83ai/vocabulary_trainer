@@ -479,3 +479,64 @@ describe('levenshtein', () => {
     expect(levenshtein('helo', 'hello')).toBe(1);
   });
 });
+
+// ── shouldShowAcceptBtn ────────────────────────────────────────────────────────
+// Shared typo-tolerance helper; inlined per project convention.
+
+function levenshteinForAccept(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0)
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+function shouldShowAcceptBtn(answer, normCorrects, mode) {
+  if (!answer || answer.trim() === '') return false;
+  if (mode === 'always') return true;
+  if (mode === 'typo') return normCorrects.some(c => levenshteinForAccept(answer.toLowerCase().trim(), c.toLowerCase().trim()) === 1);
+  return false;
+}
+
+describe('shouldShowAcceptBtn', () => {
+  it('returns false when mode is never', () => {
+    expect(shouldShowAcceptBtn('helo', ['hello'], 'never')).toBe(false);
+  });
+
+  it('returns true when mode is always and answer is non-empty', () => {
+    expect(shouldShowAcceptBtn('anything', ['hello'], 'always')).toBe(true);
+  });
+
+  it('returns false when mode is always but answer is empty', () => {
+    expect(shouldShowAcceptBtn('', ['hello'], 'always')).toBe(false);
+  });
+
+  it('returns true when mode is typo and distance is 1', () => {
+    expect(shouldShowAcceptBtn('helo', ['hello'], 'typo')).toBe(true);
+  });
+
+  it('returns false when mode is typo and distance is 2', () => {
+    expect(shouldShowAcceptBtn('helo', ['hellox'], 'typo')).toBe(false);
+  });
+
+  it('returns true when mode is typo and one of multiple corrects matches within 1', () => {
+    expect(shouldShowAcceptBtn('wman', ['man', 'woman'], 'typo')).toBe(true);
+  });
+
+  it('returns false when mode is typo but answer is empty', () => {
+    expect(shouldShowAcceptBtn('', ['hello'], 'typo')).toBe(false);
+  });
+
+  it('compares case-insensitively (pre-normalised input)', () => {
+    expect(shouldShowAcceptBtn('helo', ['Hello'], 'typo')).toBe(true);
+  });
+});
