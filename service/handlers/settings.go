@@ -3,7 +3,9 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"vocabulary_trainer/db"
+	"vocabulary_trainer/llm"
 	"vocabulary_trainer/models"
 )
 
@@ -162,6 +164,16 @@ func (h *SettingsHandler) PutAPIKeys(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
+	}
+
+	// A user-supplied local LLM URL is an outbound request target: reject
+	// internal/non-public addresses to prevent SSRF before storing it.
+	req.LLMLocalURL = strings.TrimSpace(req.LLMLocalURL)
+	if req.LLMProvider == "local" && req.LLMLocalURL != "" {
+		if err := llm.ValidateExternalURL(req.LLMLocalURL); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid llm_local_url: must be a public http(s) address")
+			return
+		}
 	}
 
 	c, err := r.Cookie(settingsKeyCookie)

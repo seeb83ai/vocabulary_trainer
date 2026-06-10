@@ -745,6 +745,90 @@ func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
 	}
 }
 
+// ── RecordDailyStat ───────────────────────────────────────────────────────────
+
+// words_seen and bucket counts must reflect only the calling user's words,
+// not every user's aggregate.
+func TestRecordDailyStat_UserIsolation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// User 2 (created by openTestDB) has one seen word.
+	id2 := seedWord(t, s, "你好", "", []string{"hello"})
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id2); err != nil {
+		t.Fatal(err)
+	}
+
+	// User 3 has a separate seen word.
+	user3ID, err := s.CreateUser(ctx, "user3@example.com", "hash", "tok-u3", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id3, err := s.CreateWord(ctx, user3ID, models.CreateWordRequest{
+		ZhText: "再见", Translations: map[string][]string{"en": {"goodbye"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id3); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
+		t.Fatal(err)
+	}
+
+	hist, err := s.GetDailyStatsHistory(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hist) == 0 {
+		t.Fatal("expected a daily_stats row for user 2")
+	}
+	if hist[len(hist)-1].WordsSeen != 1 {
+		t.Errorf("user 2 words_seen = %d, want 1 (must not count other users' words)", hist[len(hist)-1].WordsSeen)
+	}
+}
+
+// ── AddTranslation ────────────────────────────────────────────────────────────
+
+// A user must not be able to attach a translation to another user's word.
+func TestAddTranslation_UserIsolation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// User 3 owns a word.
+	user3ID, err := s.CreateUser(ctx, "user3@example.com", "hash", "tok-u3", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	victimID, err := s.CreateWord(ctx, user3ID, models.CreateWordRequest{
+		ZhText: "再见", Translations: map[string][]string{"en": {"goodbye"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User 2 (created by openTestDB) tries to attach a translation to user 3's word.
+	err = s.AddTranslation(ctx, int64(2), victimID, "en", "intruder")
+	if err == nil {
+		t.Fatal("expected AddTranslation to reject a word the caller does not own")
+	}
+
+	// User 3's word must be untouched.
+	wd, err := s.GetWordByID(ctx, user3ID, victimID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, txt := range wd.Translations["en"] {
+		if txt == "intruder" {
+			t.Errorf("victim word gained an unauthorized translation: %v", wd.Translations["en"])
+		}
+	}
+}
+
 // ── EnsureDueTodaySnapshot ────────────────────────────────────────────────────
 
 func TestEnsureDueTodaySnapshot_RecordsCount(t *testing.T) {
