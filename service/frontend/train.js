@@ -730,8 +730,7 @@ function showComponentResult(resp) {
   show('word-breakdown');
 
   hide('add-translation-btn');
-  hide('result-decompose');
-  hide('result-decompose-content');
+  loadDecomposition(currentCard.prompt, 'result-decompose', 'result-decompose-toggle');
   hide('bucket-info');
   hide('streak-info');
 
