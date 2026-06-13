@@ -1,5 +1,51 @@
 import { describe, it, expect } from 'vitest';
 
+// ── wordCell ──────────────────────────────────────────────────────────────────
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function wordCell(text, pinyin, translations, wordId) {
+  const pinyinHtml = pinyin ? `<span class="text-gray-400 text-xs ml-1">${escHtml(pinyin)}</span>` : '';
+  const allTexts = Object.values(translations || {}).flat();
+  const transHtml = allTexts.length ? `<div class="text-gray-500 text-xs mt-0.5">${allTexts.map(escHtml).join(', ')}</div>` : '';
+  const audioBtn = wordId
+    ? `<button class="btn-word-play ml-1 text-gray-400 hover:text-blue-500 transition" data-word-id="${wordId}" data-zh-text="${escHtml(text)}" title="Read aloud">🔊</button>`
+    : '';
+  return `<div class="flex items-center gap-1 text-base font-medium text-gray-800">${escHtml(text)}${pinyinHtml}${audioBtn}</div>${transHtml}`;
+}
+
+describe('wordCell', () => {
+  it('renders text and pinyin without audio button when no wordId given', () => {
+    const html = wordCell('苹果', 'píngguǒ', { en: ['apple'] });
+    expect(html).toContain('苹果');
+    expect(html).toContain('píngguǒ');
+    expect(html).not.toContain('btn-word-play');
+    expect(html).not.toContain('🔊');
+  });
+
+  it('renders audio button with correct data-word-id when wordId provided', () => {
+    const html = wordCell('手', 'shǒu', {}, 42);
+    expect(html).toContain('btn-word-play');
+    expect(html).toContain('data-word-id="42"');
+  });
+
+  it('renders audio button with correct data-zh-text when wordId provided', () => {
+    const html = wordCell('手', 'shǒu', {}, 42);
+    expect(html).toContain('data-zh-text="手"');
+  });
+
+  it('escapes special chars in data-zh-text attribute', () => {
+    const html = wordCell('<test>', null, {}, 1);
+    expect(html).toContain('data-zh-text="&lt;test&gt;"');
+  });
+});
+
 // ── MISMATCH_MODE_LABELS ───────────────────────────────────────────────────────
 
 const MISMATCH_MODE_LABELS = {

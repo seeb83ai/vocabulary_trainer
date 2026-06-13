@@ -270,6 +270,7 @@ func main() {
 		r.Post("/hmm-quiz/skip", hmmQuizH.Skip)
 		r.Get("/components", componentH.List)
 		r.Post("/component/answer", componentH.Answer)
+		r.Post("/component/accept-correct", componentH.AcceptCorrect)
 		r.Post("/component/seen", componentH.Seen)
 		r.Post("/component/skip", componentH.Skip)
 		r.Get("/component/stats", componentH.Stats)

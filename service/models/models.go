@@ -110,6 +110,10 @@ type AcceptCorrectRequest struct {
 	Langs  []string `json:"langs,omitempty"`
 }
 
+type ComponentAcceptCorrectRequest struct {
+	Character string `json:"character"`
+}
+
 type AnswerResponse struct {
 	Correct         bool                `json:"correct"`
 	CorrectAnswers  []string            `json:"correct_answers"`

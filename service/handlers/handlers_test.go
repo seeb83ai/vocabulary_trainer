@@ -140,6 +140,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/translate", translateH.Translate)
 	r.Get("/api/components", componentH.List)
 	r.Post("/api/component/answer", componentH.Answer)
+	r.Post("/api/component/accept-correct", componentH.AcceptCorrect)
 	r.Post("/api/component/seen", componentH.Seen)
 	r.Post("/api/component/skip", componentH.Skip)
 	r.Get("/api/component/stats", componentH.Stats)
@@ -5075,6 +5076,78 @@ func TestAcceptCorrectInvalidWordID(t *testing.T) {
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for word_id=0, got %d", rec.Code)
+	}
+}
+
+// ── POST /api/component/accept-correct ───────────────────────────────────────
+
+func TestComponentAcceptCorrect_NoState(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": "女"})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404 when no prev_state, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestComponentAcceptCorrect_RestoresProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+	// Mark as seen so it enters quiz rotation
+	s.SetComponentSeenForTest(ctx, int64(2), "女")
+
+	r := newRouter(s)
+	// Submit a wrong answer — this saves prev_state and applies wrong quality.
+	do(t, r, "POST", "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "man",
+	})
+
+	// Now accept as correct.
+	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": "女"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if correct, _ := resp["correct"].(bool); !correct {
+		t.Error("accept-correct should return correct: true")
+	}
+
+	// prev_state should be cleared after accept.
+	prev, err := s.GetComponentPrevState(ctx, int64(2), "女")
+	if err != nil {
+		t.Fatalf("GetComponentPrevState: %v", err)
+	}
+	if prev != nil {
+		t.Errorf("prev_state should be nil after accept-correct, got %+v", prev)
+	}
+
+	// The SM-2 state after accept-correct must have interval >= 1 day (not the wrong-penalty value).
+	p, _, err := s.GetComponentProgressForTest(ctx, int64(2), "女")
+	if err != nil {
+		t.Fatalf("GetComponentProgressForTest: %v", err)
+	}
+	if p.IntervalDays < 1 {
+		t.Errorf("interval_days after accept-correct should be >= 1, got %d", p.IntervalDays)
+	}
+}
+
+func TestComponentAcceptCorrect_MissingCharacter(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": ""})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for empty character, got %d", rec.Code)
 	}
 }
 
