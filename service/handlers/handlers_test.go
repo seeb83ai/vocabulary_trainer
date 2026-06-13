@@ -115,6 +115,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
+	r.Post("/api/quiz/record-time", quizH.RecordTime)
 	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
@@ -1553,6 +1554,45 @@ func TestDailyStats_BucketCounts(t *testing.T) {
 	}
 	if day.BucketMastered != 0 {
 		t.Errorf("bucket_mastered: want 0, got %d", day.BucketMastered)
+	}
+}
+
+func TestRecordTime_AccumulatesAndAppearsInDailyStats(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/record-time", map[string]any{"seconds": 60})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, "POST", "/api/quiz/record-time", map[string]any{"seconds": 30})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/daily-stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DailyStatsResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Days) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(resp.Days))
+	}
+	if resp.Days[0].TrainingSeconds != 90 {
+		t.Errorf("training_seconds: want 90, got %d", resp.Days[0].TrainingSeconds)
+	}
+}
+
+func TestRecordTime_RejectsInvalidSeconds(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	for _, secs := range []int{0, -1, 3601} {
+		rec := do(t, r, "POST", "/api/quiz/record-time", map[string]any{"seconds": secs})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("seconds=%d: want 400, got %d", secs, rec.Code)
+		}
 	}
 }
 

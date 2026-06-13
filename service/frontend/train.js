@@ -41,6 +41,61 @@ const HMM_TYPE_COLORS = {
 let currentCard = null;
 let isSubmitted = false;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
+
+// ── Training-time tracking ──────────────────────────────────────────────────
+// Counts seconds while this tab is visible and the window has focus.
+// _flushTime() is called at the start of loadNextCard() and on beforeunload.
+let _trainStartMs = null;
+let _pendingSeconds = 0;
+
+function _isTrainActive() {
+  return document.visibilityState === 'visible' && document.hasFocus();
+}
+
+function _onFocusOrVisibility() {
+  if (_isTrainActive()) {
+    if (_trainStartMs === null) _trainStartMs = Date.now();
+  } else if (_trainStartMs !== null) {
+    _pendingSeconds += Math.floor((Date.now() - _trainStartMs) / 1000);
+    _trainStartMs = null;
+  }
+}
+
+async function _flushTime() {
+  if (_trainStartMs !== null) {
+    _pendingSeconds += Math.floor((Date.now() - _trainStartMs) / 1000);
+    _trainStartMs = null;
+  }
+  // Restart the timer immediately so time keeps accumulating across card loads
+  if (_isTrainActive()) _trainStartMs = Date.now();
+  if (_pendingSeconds <= 0) return;
+  const secs = _pendingSeconds;
+  _pendingSeconds = 0;
+  try {
+    await apiFetch('/api/quiz/record-time', { method: 'POST', body: JSON.stringify({ seconds: secs }) });
+  } catch (_) {}
+}
+
+document.addEventListener('visibilitychange', _onFocusOrVisibility);
+window.addEventListener('focus', _onFocusOrVisibility);
+window.addEventListener('blur', _onFocusOrVisibility);
+window.addEventListener('beforeunload', () => {
+  if (_trainStartMs !== null) {
+    _pendingSeconds += Math.floor((Date.now() - _trainStartMs) / 1000);
+    _trainStartMs = null;
+  }
+  if (_pendingSeconds <= 0) return;
+  const secs = _pendingSeconds;
+  _pendingSeconds = 0;
+  navigator.sendBeacon(
+    '/api/quiz/record-time',
+    new Blob([JSON.stringify({ seconds: secs })], { type: 'application/json' }),
+  );
+});
+document.addEventListener('DOMContentLoaded', () => {
+  if (_isTrainActive()) _trainStartMs = Date.now();
+});
+// ── End training-time tracking ───────────────────────────────────────────────
 let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 let selectedBucket = localStorage.getItem('quizBucket') || '';
 let selectedLangs = JSON.parse(localStorage.getItem('quizLangs') || '["en"]');
@@ -159,6 +214,7 @@ async function loadStats() {
 }
 
 async function loadNextCard() {
+  await _flushTime();
   isSubmitted = false;
   hide('card-area');
   hide('result-area');

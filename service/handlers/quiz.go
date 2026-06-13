@@ -638,9 +638,30 @@ func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
 			BucketLearning:   s.BucketLearning,
 			BucketPracticing: s.BucketPracticing,
 			BucketMastered:   s.BucketMastered,
+			TrainingSeconds:  s.TrainingSeconds,
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// RecordTime accumulates focused training seconds for today's daily stats.
+func (h *QuizHandler) RecordTime(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Seconds int `json:"seconds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Seconds <= 0 || req.Seconds > 3600 {
+		writeError(w, http.StatusBadRequest, "seconds must be between 1 and 3600")
+		return
+	}
+	if err := h.Store.RecordTrainingTime(r.Context(), UserIDFromContext(r.Context()), req.Seconds); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Skip moves a word's due date forward by the requested number of days

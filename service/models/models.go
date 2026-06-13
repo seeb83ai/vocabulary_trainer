@@ -199,6 +199,7 @@ type DailyStat struct {
 	BucketLearning   int
 	BucketPracticing int
 	BucketMastered   int
+	TrainingSeconds  int
 }
 
 type DailyStatsResponse struct {
@@ -294,6 +295,7 @@ type DailyStatEntry struct {
 	BucketLearning   int    `json:"bucket_learning"`
 	BucketPracticing int    `json:"bucket_practicing"`
 	BucketMastered   int    `json:"bucket_mastered"`
+	TrainingSeconds  int    `json:"training_seconds"`
 }
 
 // ComponentProgress tracks SM-2 state for a single hanzi component per user.

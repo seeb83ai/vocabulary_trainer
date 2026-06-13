@@ -220,6 +220,7 @@ func main() {
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Get("/quiz/word-stats", quizH.WordStats)
 		r.Get("/quiz/due-date-distribution", quizH.DueDateDistribution)
+		r.Post("/quiz/record-time", quizH.RecordTime)
 		r.Route("/words", func(r chi.Router) {
 			r.Get("/", wordsH.List)
 			r.Post("/", wordsH.Create)
