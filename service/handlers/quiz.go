@@ -275,6 +275,12 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		} else {
 			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
 		}
+	case models.ModeCycle:
+		seqStr := sm2.DefaultCycleSequence
+		if userSettings != nil && userSettings.CycleSequence != "" {
+			seqStr = userSettings.CycleSequence
+		}
+		mode = sm2.SelectCycleMode(progress.TotalAttempts, sm2.ParseCycleSequence(seqStr))
 	default:
 		mode = sm2.SelectMode()
 	}
@@ -326,13 +332,14 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 		card.Translations = translations
 		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
+		// Cycle mode skips the learning-phase hint: the user chose the step explicitly.
 		if word.Pinyin != nil {
 			if forceMaskPinyin && !progress.LearningNewWord {
 				// Tier-based mask_pinyin: always show a level-0 masked hint (first char of each syllable).
 				if masked := sm2.MaskPinyin(*word.Pinyin, 0); masked != "" {
 					card.Pinyin = &masked
 				}
-			} else if progress.LearningNewWord {
+			} else if progress.LearningNewWord && requestedMode != models.ModeCycle {
 				// Intro-phase: fade out hint as correct answers accumulate.
 				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
 					card.Pinyin = &masked

@@ -3,8 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
+	"vocabulary_trainer/sm2"
 )
 
 // SettingsHandler serves GET/PATCH /api/settings and PUT /api/settings/api-keys.
@@ -43,6 +45,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordMode0              string `json:"new_word_mode_0"`
 		NewWordMode1              string `json:"new_word_mode_1"`
 		NewWordMode2              string `json:"new_word_mode_2"`
+		CycleSequence             string `json:"cycle_sequence"`
 		NewWordRequireZh          bool   `json:"new_word_require_zh"`
 		NewWordRequireTrans       bool   `json:"new_word_require_trans"`
 		AcceptCorrectMode         string `json:"accept_correct_mode"`
@@ -79,6 +82,18 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		if !isValidQuizMode(m) {
 			writeError(w, http.StatusBadRequest, "invalid quiz mode: "+m)
 			return
+		}
+	}
+
+	cycleSeq := req.CycleSequence
+	if cycleSeq == "" {
+		cycleSeq = sm2.DefaultCycleSequence
+	} else {
+		for _, step := range strings.Split(cycleSeq, ",") {
+			if !isValidCycleMode(strings.TrimSpace(step)) {
+				writeError(w, http.StatusBadRequest, "invalid cycle mode: "+step)
+				return
+			}
 		}
 	}
 
@@ -131,6 +146,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordMode0:              req.NewWordMode0,
 		NewWordMode1:              req.NewWordMode1,
 		NewWordMode2:              req.NewWordMode2,
+		CycleSequence:             cycleSeq,
 		NewWordRequireZh:          req.NewWordRequireZh,
 		NewWordRequireTrans:       req.NewWordRequireTrans,
 		AcceptCorrectMode:         req.AcceptCorrectMode,
@@ -263,9 +279,20 @@ func isValidQuizMode(m string) bool {
 	return validQuizModes[m]
 }
 
+var validCycleModes = map[string]bool{
+	models.ModeTranslToZh:       true,
+	models.ModeZhToTransl:       true,
+	models.ModeZhPinyinToTransl: true,
+	models.ModeMaskPinyin:       true,
+}
+
+func isValidCycleMode(m string) bool {
+	return validCycleModes[m]
+}
+
 var validAcceptCorrectModes = map[string]bool{
-	"never": true,
-	"typo":  true,
+	"never":  true,
+	"typo":   true,
 	"always": true,
 }
 
