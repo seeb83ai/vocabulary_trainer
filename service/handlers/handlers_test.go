@@ -5076,6 +5076,49 @@ func TestQuizCycleCustomSequence(t *testing.T) {
 	}
 }
 
+func TestQuizCycleMode_NoLearningPinyinHint(t *testing.T) {
+	// transl_to_zh in cycle mode must NOT expose the learning-phase pinyin hint,
+	// even when the word is still in the intro phase (LearningNewWord=true).
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	// Word is now LearningNewWord=true, TotalCorrect=0.
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// Step 0 of default cycle is zh_pinyin_to_transl — that's fine to have pinyin.
+	// Advance to step 1 (transl_to_zh) by bumping TotalAttempts to 2.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 2
+	p.DueDate = p.DueDate.Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for cycle step 1, got %d: %s", rec.Code, rec.Body.String())
+	}
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeTranslToZh {
+		t.Fatalf("cycle step 1: want %s, got %s", models.ModeTranslToZh, card.Mode)
+	}
+	if card.Pinyin != nil {
+		t.Errorf("cycle transl_to_zh step must not include pinyin hint, got %q", *card.Pinyin)
+	}
+}
+
 // ── Answer prev_state persistence ────────────────────────────────────────────
 
 func TestAnswerWrongStoresPrevState(t *testing.T) {
