@@ -321,7 +321,9 @@ function showCard() {
     const compLabel = currentCard.is_also_word ? t('component.modeLabelAlsoWord') : t('component.modeLabel');
     setText('mode-label', compLabel);
     setText('prompt-word', currentCard.prompt);
-    hide('play-btn');
+    const playBtn = $('play-btn');
+    playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+    show('play-btn');
     if (currentCard.pinyin) {
       setText('pinyin-hint', currentCard.pinyin);
       show('pinyin-hint');
@@ -472,7 +474,10 @@ async function submitAnswer(e) {
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
             <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
-            <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+            <div class="flex items-center gap-2">
+              <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+              <button class="btn-confused-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+            </div>
             <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
           </div>` : '';
       breakdown.innerHTML = `
@@ -482,6 +487,10 @@ async function submitAnswer(e) {
           ${correctBox}
         </div>`;
       breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
+      const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
+      if (confusedPlayBtn) {
+        confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
+      }
       show('word-breakdown');
 
       if (!isEmpty) {
