@@ -74,28 +74,17 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		tags = strings.Split(t, ",")
 	}
 	bucket := r.URL.Query().Get("bucket")
-	h.mu.Lock()
-	cap := h.MaxNewPerDay
-	if h.capResetDate == time.Now().Format("2006-01-02") {
-		extra := h.MaxNewPerDay
-		if extra < 1 {
-			extra = 1
-		}
-		cap = h.newCapBase + extra
-	}
-	h.mu.Unlock()
-	skipNew := r.URL.Query().Get("skip_new") == "true"
-	word, progress, err := h.Store.GetNextCard(r.Context(), UserIDFromContext(r.Context()), tags, cap, bucket, skipNew)
-	if err != nil {
-		internalError(w, err)
-		return
-	}
 
-	// Load user settings once; used for quiz mode config and language defaults.
-	userSettings, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context()))
+	// Load user settings first — per-user daily cap and baselines override the server default.
+	userID := UserIDFromContext(r.Context())
+	userSettings, _ := h.Store.GetUserSettings(r.Context(), userID)
 	progCfg := sm2.DefaultProgressiveModeConfig()
 	nwCfg := sm2.DefaultNewWordModeConfig()
 	primaryLang := "en"
+	// h.MaxNewPerDay=0 is a test sentinel meaning "block all new words".
+	// Otherwise the per-user setting takes precedence over the server default.
+	maxNew := h.MaxNewPerDay
+	var baselines *db.NewWordBaselines
 	if userSettings != nil {
 		progCfg = sm2.ProgressiveModeConfig{
 			New:        userSettings.ProgNew,
@@ -110,6 +99,35 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			Step2: userSettings.NewWordMode2,
 		}
 		primaryLang = userSettings.PrimaryLang
+		if h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
+			maxNew = userSettings.MaxNewWordsPerDay
+		}
+		baselines = &db.NewWordBaselines{
+			DueTodayEnabled:   userSettings.BaselineDueTodayEnabled,
+			DueTodayValue:     userSettings.BaselineDueTodayValue,
+			StrugglingEnabled: userSettings.BaselineStrugglingEnabled,
+			StrugglingValue:   userSettings.BaselineStrugglingValue,
+			LearningEnabled:   userSettings.BaselineLearningEnabled,
+			LearningValue:     userSettings.BaselineLearningValue,
+			CooldownMinutes:   userSettings.NewWordCooldownMinutes,
+		}
+	}
+
+	h.mu.Lock()
+	cap := maxNew
+	if h.capResetDate == time.Now().Format("2006-01-02") {
+		extra := maxNew
+		if extra < 1 {
+			extra = 1
+		}
+		cap = h.newCapBase + extra
+	}
+	h.mu.Unlock()
+	skipNew := r.URL.Query().Get("skip_new") == "true"
+	word, progress, err := h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines)
+	if err != nil {
+		internalError(w, err)
+		return
 	}
 
 	langs := parseLangs(r, primaryLang)
@@ -643,7 +661,21 @@ func (h *QuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	if req.Days <= 0 {
 		req.Days = 7
 	}
-	if err := h.Store.SkipWord(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Days); err != nil {
+
+	userID := UserIDFromContext(r.Context())
+
+	// When the user has hidden the new-word skip button, reject skip attempts
+	// for words still in the new-word introduction phase.
+	st, _ := h.Store.GetUserSettings(r.Context(), userID)
+	if st != nil && !st.SkipNewWordsVisible {
+		isNew, err := h.Store.IsLearningNewWord(r.Context(), userID, req.WordID)
+		if err == nil && isNew {
+			writeError(w, http.StatusBadRequest, "skipping new words is disabled")
+			return
+		}
+	}
+
+	if err := h.Store.SkipWord(r.Context(), userID, req.WordID, req.Days); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
@@ -700,20 +732,26 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		tags = strings.Split(t, ",")
 	}
 	bucket := r.URL.Query().Get("bucket")
-	due, total, newToday, err := h.Store.GetStats(r.Context(), UserIDFromContext(r.Context()), tags, bucket)
+	userID := UserIDFromContext(r.Context())
+	due, total, newToday, err := h.Store.GetStats(r.Context(), userID, tags, bucket)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
-	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), UserIDFromContext(r.Context()))
+	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), userID)
 	if err != nil {
 		internalError(w, err)
 		return
+	}
+	maxNew := h.MaxNewPerDay
+	userSettings, _ := h.Store.GetUserSettings(r.Context(), userID)
+	if userSettings != nil && h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
+		maxNew = userSettings.MaxNewWordsPerDay
 	}
 	h.mu.Lock()
-	cap := h.MaxNewPerDay
+	cap := maxNew
 	if h.capResetDate == time.Now().Format("2006-01-02") {
-		extra := h.MaxNewPerDay
+		extra := maxNew
 		if extra < 1 {
 			extra = 1
 		}
@@ -759,7 +797,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"due_today":            due,
 		"total":                total,
 		"new_today":            newToday,
-		"max_new_per_day":      h.MaxNewPerDay,
+		"max_new_per_day":      maxNew,
 		"today_attempts":       todayAttempts,
 		"today_mistakes":       todayMistakes,
 		"available_to_advance": availableToAdvance,

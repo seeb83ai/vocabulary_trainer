@@ -90,6 +90,42 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 	return streak, nil
 }
 
+// EnsureDueTodaySnapshot records the number of due seen words at the start of
+// the day the first time it is called for a given user on a given day.
+// Subsequent calls on the same day return the already-stored value.
+// Returns -1 if no daily_stats row exists yet and the snapshot could not be stored.
+func (s *Store) EnsureDueTodaySnapshot(ctx context.Context, userID int64) (int, error) {
+	// Check if snapshot already taken today.
+	var stored int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(due_at_day_start, -1) FROM daily_stats WHERE user_id = ? AND date = date('now')`,
+		userID).Scan(&stored)
+	if err == nil && stored >= 0 {
+		return stored, nil
+	}
+
+	// Count seen words currently due today.
+	var dueCount int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date IS NOT NULL
+		   AND p.due_date <= date('now', '+1 day')`,
+		userID).Scan(&dueCount); err != nil {
+		return 0, fmt.Errorf("count due today: %w", err)
+	}
+
+	// Upsert the daily_stats row with the snapshot value.
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO daily_stats (user_id, date, due_at_day_start)
+		 VALUES (?, date('now'), ?)
+		 ON CONFLICT(user_id, date) DO UPDATE SET due_at_day_start = ?`,
+		userID, dueCount, dueCount); err != nil {
+		return 0, fmt.Errorf("store due_at_day_start: %w", err)
+	}
+	return dueCount, nil
+}
+
 // GetDailyStatsHistory returns all daily stats for the given user ordered by date ascending.
 func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]models.DailyStat, error) {
 	rows, err := s.db.QueryContext(ctx, `

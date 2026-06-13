@@ -269,16 +269,48 @@ func (s *Store) RecordComponentAnswer(ctx context.Context, userID int64, charact
 	}
 
 	newDue := updated.DueDate.UTC().Format("2006-01-02 15:04:05")
-	_, err = s.db.ExecContext(ctx,
-		`UPDATE component_progress
-		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
-		     total_correct = ?, total_attempts = ?,
-		     first_seen_date = COALESCE(first_seen_date, date('now'))
-		 WHERE user_id = ? AND character = ?`,
-		updated.Repetitions, updated.Easiness, updated.IntervalDays, newDue,
-		updated.TotalCorrect, updated.TotalAttempts,
-		userID, character,
-	)
+
+	// Save pre-answer state before applying wrong result so AcceptCorrect can restore it.
+	var prevStateJSON sql.NullString
+	if !correct {
+		blob, merr := json.Marshal(componentPrevState{
+			Repetitions:   p.Repetitions,
+			Easiness:      p.Easiness,
+			IntervalDays:  p.IntervalDays,
+			TotalCorrect:  p.TotalCorrect,
+			TotalAttempts: p.TotalAttempts,
+		})
+		if merr == nil {
+			prevStateJSON = sql.NullString{String: string(blob), Valid: true}
+		}
+	}
+
+	if correct {
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE component_progress
+			 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
+			     total_correct = ?, total_attempts = ?,
+			     first_seen_date = COALESCE(first_seen_date, date('now')),
+			     prev_state = NULL
+			 WHERE user_id = ? AND character = ?`,
+			updated.Repetitions, updated.Easiness, updated.IntervalDays, newDue,
+			updated.TotalCorrect, updated.TotalAttempts,
+			userID, character,
+		)
+	} else {
+		_, err = s.db.ExecContext(ctx,
+			`UPDATE component_progress
+			 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
+			     total_correct = ?, total_attempts = ?,
+			     first_seen_date = COALESCE(first_seen_date, date('now')),
+			     prev_state = ?
+			 WHERE user_id = ? AND character = ?`,
+			updated.Repetitions, updated.Easiness, updated.IntervalDays, newDue,
+			updated.TotalCorrect, updated.TotalAttempts,
+			prevStateJSON,
+			userID, character,
+		)
+	}
 	if err != nil {
 		return p, time.Time{}, fmt.Errorf("update component progress: %w", err)
 	}
@@ -534,12 +566,114 @@ func (s *Store) SaveComponentHMMSceneWithLibrary(ctx context.Context, userID int
 	return tx.Commit()
 }
 
+// componentPrevState is the JSON-serialisable snapshot stored in component_progress.prev_state.
+type componentPrevState struct {
+	Repetitions   int     `json:"reps"`
+	Easiness      float64 `json:"ef"`
+	IntervalDays  int     `json:"iv"`
+	TotalCorrect  int     `json:"tc"`
+	TotalAttempts int     `json:"ta"`
+}
+
+// SaveComponentPrevState serialises p to JSON and stores it in the prev_state column
+// of component_progress. Called before applying a wrong answer so AcceptCorrect can
+// restore the pre-answer state without trusting client data.
+func (s *Store) SaveComponentPrevState(ctx context.Context, userID int64, character string, p models.ComponentProgress) error {
+	blob, err := json.Marshal(componentPrevState{
+		Repetitions:   p.Repetitions,
+		Easiness:      p.Easiness,
+		IntervalDays:  p.IntervalDays,
+		TotalCorrect:  p.TotalCorrect,
+		TotalAttempts: p.TotalAttempts,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal component prev state: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE component_progress SET prev_state = ? WHERE user_id = ? AND character = ?`,
+		string(blob), userID, character)
+	return err
+}
+
+// GetComponentPrevState reads the stored pre-answer state for a component.
+// Returns nil, nil when no previous state is stored.
+func (s *Store) GetComponentPrevState(ctx context.Context, userID int64, character string) (*models.ComponentProgress, error) {
+	var raw sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT prev_state FROM component_progress WHERE user_id = ? AND character = ?`,
+		userID, character).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get component prev state: %w", err)
+	}
+	if !raw.Valid || raw.String == "" {
+		return nil, nil
+	}
+	var prev componentPrevState
+	if err := json.Unmarshal([]byte(raw.String), &prev); err != nil {
+		return nil, fmt.Errorf("unmarshal component prev state: %w", err)
+	}
+	return &models.ComponentProgress{
+		UserID:        userID,
+		Character:     character,
+		Repetitions:   prev.Repetitions,
+		Easiness:      prev.Easiness,
+		IntervalDays:  prev.IntervalDays,
+		TotalCorrect:  prev.TotalCorrect,
+		TotalAttempts: prev.TotalAttempts,
+	}, nil
+}
+
+// ClearComponentPrevState sets prev_state = NULL for the given component.
+// Called after a correct answer or after AcceptCorrect.
+func (s *Store) ClearComponentPrevState(ctx context.Context, userID int64, character string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE component_progress SET prev_state = NULL WHERE user_id = ? AND character = ?`,
+		userID, character)
+	return err
+}
+
 // SetComponentAttemptsForTest sets total_attempts for a component_progress row.
 // Intended for use in tests only.
 func (s *Store) SetComponentAttemptsForTest(ctx context.Context, userID int64, character string, attempts int) {
 	s.db.ExecContext(ctx, //nolint:errcheck
 		`UPDATE component_progress SET total_attempts = ? WHERE user_id = ? AND character = ?`,
 		attempts, userID, character)
+}
+
+// UpdateComponentProgress writes an SM-2 update to component_progress and clears
+// prev_state. Used by AcceptCorrect after applying a correct-quality update.
+func (s *Store) UpdateComponentProgress(ctx context.Context, userID int64, character string, p models.SM2Progress) error {
+	newDue := p.DueDate.UTC().Format("2006-01-02 15:04:05")
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE component_progress
+		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
+		     total_correct = ?, total_attempts = ?, prev_state = NULL
+		 WHERE user_id = ? AND character = ?`,
+		p.Repetitions, p.Easiness, p.IntervalDays, newDue,
+		p.TotalCorrect, p.TotalAttempts,
+		userID, character,
+	)
+	return err
+}
+
+// GetComponentProgressForTest reads a component_progress row directly.
+// Intended for use in tests only.
+func (s *Store) GetComponentProgressForTest(ctx context.Context, userID int64, character string) (models.ComponentProgress, time.Time, error) {
+	var p models.ComponentProgress
+	var dueDateStr string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT repetitions, easiness, interval_days, due_date, total_correct, total_attempts
+		 FROM component_progress WHERE user_id = ? AND character = ?`,
+		userID, character,
+	).Scan(&p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDateStr,
+		&p.TotalCorrect, &p.TotalAttempts)
+	if err != nil {
+		return p, time.Time{}, err
+	}
+	return p, parseDateTime(dueDateStr), nil
 }
 
 // ComponentListItem is one row in the component list view.
