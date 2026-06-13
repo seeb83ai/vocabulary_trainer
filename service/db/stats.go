@@ -126,11 +126,27 @@ func (s *Store) EnsureDueTodaySnapshot(ctx context.Context, userID int64) (int, 
 	return dueCount, nil
 }
 
+// RecordTrainingTime accumulates focused training seconds for today's daily_stats row.
+func (s *Store) RecordTrainingTime(ctx context.Context, userID int64, seconds int) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO daily_stats (user_id, date, training_seconds)
+		VALUES (?, date('now'), ?)
+		ON CONFLICT(user_id, date) DO UPDATE SET
+			training_seconds = training_seconds + ?`,
+		userID, seconds, seconds,
+	)
+	if err != nil {
+		return fmt.Errorf("record training time: %w", err)
+	}
+	return nil
+}
+
 // GetDailyStatsHistory returns all daily stats for the given user ordered by date ascending.
 func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]models.DailyStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT date, attempts, mistakes, words_seen, correct_streak,
-		       bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered
+		       bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered,
+		       COALESCE(training_seconds, 0)
 		FROM daily_stats WHERE user_id = ? ORDER BY date ASC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get daily stats: %w", err)
@@ -140,7 +156,8 @@ func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]model
 	for rows.Next() {
 		var d models.DailyStat
 		if err := rows.Scan(&d.Date, &d.Attempts, &d.Mistakes, &d.WordsSeen, &d.CorrectStreak,
-			&d.BucketNew, &d.BucketStruggling, &d.BucketLearning, &d.BucketPracticing, &d.BucketMastered); err != nil {
+			&d.BucketNew, &d.BucketStruggling, &d.BucketLearning, &d.BucketPracticing, &d.BucketMastered,
+			&d.TrainingSeconds); err != nil {
 			return nil, fmt.Errorf("scan daily stat: %w", err)
 		}
 		stats = append(stats, d)

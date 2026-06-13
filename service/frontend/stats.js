@@ -31,14 +31,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- Words tab ---
   if (wordsResult.status === 'rejected') {
     $('stats-table-body').innerHTML =
-      `<tr><td colspan="11" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
+      `<tr><td colspan="12" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
   } else {
     const days = (wordsResult.value.days) || [];
     if (days.length === 0) {
       $('stats-chart').style.display = 'none';
       show('chart-empty');
       $('stats-table-body').innerHTML =
-        `<tr><td colspan="11" class="py-8 text-center text-gray-400">${escHtml(t('stats.noTrainingDataShort'))}</td></tr>`;
+        `<tr><td colspan="12" class="py-8 text-center text-gray-400">${escHtml(t('stats.noTrainingDataShort'))}</td></tr>`;
     } else {
       renderChart(days);
       renderBucketChart(days);
@@ -107,6 +107,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 });
+
+function formatTrainingTime(seconds) {
+  if (!seconds || seconds <= 0) return '—';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${seconds}s`;
+}
 
 function renderChart(days) {
   const labels = days.map(d => formatDateLabel(d.date));
@@ -236,7 +245,7 @@ function renderTable(days) {
   const recent = days.slice(-14).reverse();
   const tbody = $('stats-table-body');
   if (recent.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="11" class="py-8 text-center text-gray-400">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" class="py-8 text-center text-gray-400">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
     return;
   }
   tbody.innerHTML = recent.map(d => {
@@ -254,7 +263,8 @@ function renderTable(days) {
       <td class="py-2 pr-4 text-right text-red-600">${d.bucket_struggling || 0}</td>
       <td class="py-2 pr-4 text-right text-amber-600">${d.bucket_learning || 0}</td>
       <td class="py-2 pr-4 text-right text-blue-600">${d.bucket_practicing || 0}</td>
-      <td class="py-2 text-right text-green-600">${d.bucket_mastered || 0}</td>
+      <td class="py-2 pr-4 text-right text-green-600">${d.bucket_mastered || 0}</td>
+      <td class="py-2 text-right text-gray-500">${formatTrainingTime(d.training_seconds)}</td>
     </tr>`;
   }).join('');
 }

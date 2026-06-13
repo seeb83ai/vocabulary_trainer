@@ -1772,6 +1772,49 @@ func TestGetTodaySessionInfo_WithData(t *testing.T) {
 	}
 }
 
+func TestRecordTrainingTime_Accumulates(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if err := s.RecordTrainingTime(ctx, int64(2), 45); err != nil {
+		t.Fatalf("first RecordTrainingTime: %v", err)
+	}
+	if err := s.RecordTrainingTime(ctx, int64(2), 30); err != nil {
+		t.Fatalf("second RecordTrainingTime: %v", err)
+	}
+
+	stats, err := s.GetDailyStatsHistory(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetDailyStatsHistory: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(stats))
+	}
+	if stats[0].TrainingSeconds != 75 {
+		t.Errorf("training_seconds: want 75, got %d", stats[0].TrainingSeconds)
+	}
+}
+
+func TestRecordTrainingTime_CreatesRowWhenNoneExists(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if err := s.RecordTrainingTime(ctx, int64(2), 10); err != nil {
+		t.Fatalf("RecordTrainingTime: %v", err)
+	}
+
+	stats, err := s.GetDailyStatsHistory(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetDailyStatsHistory: %v", err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(stats))
+	}
+	if stats[0].TrainingSeconds != 10 {
+		t.Errorf("training_seconds: want 10, got %d", stats[0].TrainingSeconds)
+	}
+}
+
 // ── AdvanceDueDates ───────────────────────────────────────────────────────────
 
 func TestAdvanceDueDates_AdvancesNWords(t *testing.T) {
