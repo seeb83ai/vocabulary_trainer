@@ -31,6 +31,22 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+function shouldShowAcceptBtn(answer, normCorrects, mode) {
+  if (!answer || answer.trim() === '') return false;
+  if (mode === 'always') return true;
+  if (mode === 'typo') return normCorrects.some(c => levenshtein(answer.toLowerCase().trim(), c.toLowerCase().trim()) === 1);
+  return false;
+}
+
+// Splits a component correct_answers object ({lang: "def1, def2"}) into
+// individual normalised alternatives, mirroring CheckComponentAnswer's `,`/`;` split.
+function splitComponentDefs(correctAnswersObj) {
+  return Object.values(correctAnswersObj || {})
+    .flatMap(def => def.split(/[,;]/))
+    .map(s => s.toLowerCase().trim())
+    .filter(s => s.length > 0);
+}
+
 const HMM_TYPE_COLORS = {
   actor:     'bg-purple-100 text-purple-700',
   location:  'bg-blue-100 text-blue-700',
@@ -512,15 +528,8 @@ async function submitAnswer(e) {
       }
 
       // Show "Accept as correct" button based on user's mode setting.
-      const normAnswer = answer.toLowerCase().trim();
       const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
-      let showAcceptBtn = false;
-      if (acceptCorrectMode === 'always') {
-        showAcceptBtn = !isEmpty;
-      } else if (acceptCorrectMode === 'typo' && !isEmpty) {
-        showAcceptBtn = normCorrects.some(c => levenshtein(normAnswer, c) === 1);
-      }
-      if (showAcceptBtn) {
+      if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
         const acceptBtn = $('accept-correct-btn');
         acceptBtn.disabled = false;
         acceptBtn.textContent = 'Accept as correct (typo)';
@@ -730,10 +739,24 @@ function showComponentResult(resp) {
   show('word-breakdown');
 
   hide('add-translation-btn');
-  hide('result-decompose');
-  hide('result-decompose-content');
+  loadDecomposition(currentCard.prompt, 'result-decompose', 'result-decompose-toggle');
   hide('bucket-info');
   hide('streak-info');
+
+  if (!resp.correct) {
+    const answer = $('answer-input').value;
+    const normCorrects = splitComponentDefs(resp.correct_answers);
+    if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
+      const acceptBtn = $('accept-correct-btn');
+      acceptBtn.disabled = false;
+      acceptBtn.textContent = 'Accept as correct (typo)';
+      show('accept-correct-btn');
+    } else {
+      hide('accept-correct-btn');
+    }
+  } else {
+    hide('accept-correct-btn');
+  }
 
   const hmmEl = $('result-hmm');
   if (resp.scene_text) {
@@ -1075,14 +1098,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = $('accept-correct-btn');
     btn.disabled = true;
     try {
-      await apiFetch('/api/quiz/accept-correct', {
-        method: 'POST',
-        body: JSON.stringify({
-          word_id: currentCard.word_id,
-          mode: currentCard.mode,
-          langs: selectedLangs,
-        }),
-      });
+      if (currentCard.card_type === 'component') {
+        await apiFetch('/api/component/accept-correct', {
+          method: 'POST',
+          body: JSON.stringify({ character: currentCard.prompt }),
+        });
+      } else {
+        await apiFetch('/api/quiz/accept-correct', {
+          method: 'POST',
+          body: JSON.stringify({
+            word_id: currentCard.word_id,
+            mode: currentCard.mode,
+            langs: selectedLangs,
+          }),
+        });
+      }
       loadNextCard();
     } catch (err) {
       btn.disabled = false;

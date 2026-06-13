@@ -3980,3 +3980,89 @@ func TestAcceptCorrectModeRoundTrip(t *testing.T) {
 		t.Errorf("AcceptCorrectMode: want %q, got %q", "always", got.AcceptCorrectMode)
 	}
 }
+
+// ── component prev_state (accept-correct support) ─────────────────────────────
+
+func TestComponentPrevState_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, 2, "女", time.Now().Add(-time.Hour))
+
+	p := models.ComponentProgress{
+		Repetitions:   3,
+		Easiness:      2.5,
+		IntervalDays:  6,
+		TotalCorrect:  3,
+		TotalAttempts: 4,
+	}
+	if err := s.SaveComponentPrevState(ctx, 2, "女", p); err != nil {
+		t.Fatalf("SaveComponentPrevState: %v", err)
+	}
+
+	got, err := s.GetComponentPrevState(ctx, 2, "女")
+	if err != nil {
+		t.Fatalf("GetComponentPrevState: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil prev state")
+	}
+	if got.Repetitions != p.Repetitions {
+		t.Errorf("Repetitions: want %d, got %d", p.Repetitions, got.Repetitions)
+	}
+	if got.Easiness != p.Easiness {
+		t.Errorf("Easiness: want %f, got %f", p.Easiness, got.Easiness)
+	}
+	if got.IntervalDays != p.IntervalDays {
+		t.Errorf("IntervalDays: want %d, got %d", p.IntervalDays, got.IntervalDays)
+	}
+	if got.TotalCorrect != p.TotalCorrect {
+		t.Errorf("TotalCorrect: want %d, got %d", p.TotalCorrect, got.TotalCorrect)
+	}
+	if got.TotalAttempts != p.TotalAttempts {
+		t.Errorf("TotalAttempts: want %d, got %d", p.TotalAttempts, got.TotalAttempts)
+	}
+}
+
+func TestComponentPrevState_NilWhenAbsent(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, 2, "女", time.Now().Add(-time.Hour))
+
+	got, err := s.GetComponentPrevState(ctx, 2, "女")
+	if err != nil {
+		t.Fatalf("GetComponentPrevState: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil for fresh component, got %+v", got)
+	}
+}
+
+func TestComponentPrevState_ClearAfterAccept(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, 2, "女", time.Now().Add(-time.Hour))
+
+	p := models.ComponentProgress{Repetitions: 1, Easiness: 2.5, IntervalDays: 1}
+	if err := s.SaveComponentPrevState(ctx, 2, "女", p); err != nil {
+		t.Fatalf("SaveComponentPrevState: %v", err)
+	}
+	if err := s.ClearComponentPrevState(ctx, 2, "女"); err != nil {
+		t.Fatalf("ClearComponentPrevState: %v", err)
+	}
+	got, err := s.GetComponentPrevState(ctx, 2, "女")
+	if err != nil {
+		t.Fatalf("GetComponentPrevState after clear: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil after clear, got %+v", got)
+	}
+}
