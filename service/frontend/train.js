@@ -38,6 +38,15 @@ function shouldShowAcceptBtn(answer, normCorrects, mode) {
   return false;
 }
 
+// Splits a component correct_answers object ({lang: "def1, def2"}) into
+// individual normalised alternatives, mirroring CheckComponentAnswer's `,`/`;` split.
+function splitComponentDefs(correctAnswersObj) {
+  return Object.values(correctAnswersObj || {})
+    .flatMap(def => def.split(/[,;]/))
+    .map(s => s.toLowerCase().trim())
+    .filter(s => s.length > 0);
+}
+
 const HMM_TYPE_COLORS = {
   actor:     'bg-purple-100 text-purple-700',
   location:  'bg-blue-100 text-blue-700',
@@ -737,7 +746,7 @@ function showComponentResult(resp) {
 
   if (!resp.correct) {
     const answer = $('answer-input').value;
-    const normCorrects = Object.values(resp.correct_answers || {}).map(a => a.toLowerCase().trim());
+    const normCorrects = splitComponentDefs(resp.correct_answers);
     if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
       const acceptBtn = $('accept-correct-btn');
       acceptBtn.disabled = false;

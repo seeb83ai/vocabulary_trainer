@@ -540,3 +540,42 @@ describe('shouldShowAcceptBtn', () => {
     expect(shouldShowAcceptBtn('helo', ['Hello'], 'typo')).toBe(true);
   });
 });
+
+// ── splitComponentDefs ─────────────────────────────────────────────────────────
+// Mirrors the `,`/`;` splitting that CheckComponentAnswer does on the backend.
+
+function splitComponentDefs(correctAnswersObj) {
+  return Object.values(correctAnswersObj || {})
+    .flatMap(def => def.split(/[,;]/))
+    .map(s => s.toLowerCase().trim())
+    .filter(s => s.length > 0);
+}
+
+describe('splitComponentDefs', () => {
+  it('splits a single-lang definition on commas', () => {
+    expect(splitComponentDefs({ en: 'son, child' })).toEqual(expect.arrayContaining(['son', 'child']));
+  });
+
+  it('splits on semicolons', () => {
+    expect(splitComponentDefs({ en: 'son; child' })).toEqual(expect.arrayContaining(['son', 'child']));
+  });
+
+  it('combines alternatives from multiple languages', () => {
+    const result = splitComponentDefs({ en: 'son, child', de: 'Sohn, Kind' });
+    expect(result).toEqual(expect.arrayContaining(['son', 'child', 'sohn', 'kind']));
+  });
+
+  it('trims whitespace and lowercases', () => {
+    const result = splitComponentDefs({ en: ' Kind ' });
+    expect(result).toContain('kind');
+  });
+
+  it('filters out empty strings', () => {
+    const result = splitComponentDefs({ en: ',,' });
+    expect(result.every(s => s.length > 0)).toBe(true);
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(splitComponentDefs({})).toEqual([]);
+  });
+});
