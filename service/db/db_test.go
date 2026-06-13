@@ -296,7 +296,7 @@ func TestAddTranslation_NotFound(t *testing.T) {
 
 func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 	s := openTestDB(t)
-	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false)
+	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false)
+	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
 	// GetNextCard should return the word but NOT set first_seen_date.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +355,7 @@ func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, past, id2)
 	_ = id1
 
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
 
 	// With maxNew=1 the daily cap is reached; only id1 (already introduced) should be returned.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 1, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 1, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +389,7 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	}
 
 	// With maxNew=5 new words are still allowed; any of the three words may be returned.
-	w2, _, err := s.GetNextCard(ctx, int64(2), nil, 5, "", false)
+	w2, _, err := s.GetNextCard(ctx, int64(2), nil, 5, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,7 +410,7 @@ func TestGetNextCard_SkipNewExcludesUnseenWords(t *testing.T) {
 	seedWord(t, s, "二", "", []string{"two"})
 
 	// With skipNew=true, only the already-seen word should be returned.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", true)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
 
 	// Even though the daily cap (100) is not reached, the unseen word must not
 	// be returned while a learning word exists.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,7 +684,7 @@ func TestGetNextCard_DoesNotReturnFutureCards(t *testing.T) {
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_date = date('now') WHERE word_id = ?`, future, id)
 
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -703,7 +703,7 @@ func TestGetNextCard_ReturnsTodayNotYetOverdue(t *testing.T) {
 	soon := time.Now().UTC().Add(5 * time.Minute).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_date = date('now') WHERE word_id = ?`, soon, id)
 
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -720,7 +720,7 @@ func TestGetNextCard_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	id2 := seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 
-	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"food"}, 100, "", false)
+	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"food"}, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -736,12 +736,245 @@ func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 
-	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"nonexistent"}, 100, "", false)
+	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"nonexistent"}, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w != nil {
 		t.Error("expected nil when no words match tag filter")
+	}
+}
+
+// ── EnsureDueTodaySnapshot ────────────────────────────────────────────────────
+
+func TestEnsureDueTodaySnapshot_RecordsCount(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// No seen words yet — snapshot should be 0.
+	count, err := s.EnsureDueTodaySnapshot(ctx, userID)
+	if err != nil {
+		t.Fatalf("EnsureDueTodaySnapshot: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("want 0 due words, got %d", count)
+	}
+}
+
+func TestEnsureDueTodaySnapshot_IdempotentOnSecondCall(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	first, err := s.EnsureDueTodaySnapshot(ctx, userID)
+	if err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	second, err := s.EnsureDueTodaySnapshot(ctx, userID)
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if first != second {
+		t.Errorf("snapshot should be stable: first=%d second=%d", first, second)
+	}
+}
+
+// ── GetNextCard with baselines ────────────────────────────────────────────────
+
+func TestGetNextCard_BaselineStruggling_BlocksNewWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Create a seen word and put it in the struggling bucket:
+	// learning_new_word=0, total_attempts=5, total_correct=1 → accuracy=20%
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_date = date('now'), learning_new_word = 0,
+		 total_attempts = 5, total_correct = 1, due_date = CURRENT_TIMESTAMP
+		 WHERE word_id = ?`, wordID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Struggling count is 1; threshold is 1 → block new words.
+	baselines := &NewWordBaselines{StrugglingEnabled: true, StrugglingValue: 1}
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The unseen word should be blocked; GetNextCard returns the seen struggling word instead.
+	if w == nil {
+		t.Fatal("expected a word, got nil")
+	}
+	if w.Text == "火" {
+		t.Error("baseline struggling should have blocked the unseen word 火")
+	}
+}
+
+func TestGetNextCard_BaselineDueToday_BlocksNewWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Create and acknowledge a seen word so there is 1 due word today.
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, wordID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Threshold is 1 — due_at_day_start (1) >= 1 → block new words.
+	baselines := &NewWordBaselines{DueTodayEnabled: true, DueTodayValue: 1}
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil && w.Text == "火" {
+		t.Error("baseline due-today should have blocked the unseen word 火")
+	}
+}
+
+func TestGetNextCard_Baselines_AllDisabled_StillShowsNewWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	baselines := &NewWordBaselines{} // all disabled
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected the unseen word to be returned when baselines are disabled")
+	}
+	if w.Text != "火" {
+		t.Errorf("expected 火, got %s", w.Text)
+	}
+}
+
+// ── GetNextCard cooldown ──────────────────────────────────────────────────────
+
+func TestGetNextCard_Cooldown_BlocksSecondNewWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Create and acknowledge first word — stamps first_seen_at = now.
+	id1, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, id1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a second unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// With a 60-minute cooldown, the second unseen word should be blocked.
+	baselines := &NewWordBaselines{CooldownMinutes: 60}
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil && w.Text == "火" {
+		t.Error("cooldown should have blocked the second unseen word 火")
+	}
+}
+
+func TestGetNextCard_Cooldown_Zero_DoesNotBlock(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Acknowledge a first word.
+	id1, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, id1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a second unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// CooldownMinutes=0 means disabled — second unseen word should appear.
+	baselines := &NewWordBaselines{CooldownMinutes: 0}
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a word with cooldown disabled")
+	}
+}
+
+func TestAcknowledgeWord_SetsFirstSeenAt(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	id, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, id); err != nil {
+		t.Fatal(err)
+	}
+
+	var firstSeenAt string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(first_seen_at, '') FROM sm2_progress WHERE word_id = ?`, id).
+		Scan(&firstSeenAt); err != nil {
+		t.Fatalf("query first_seen_at: %v", err)
+	}
+	if firstSeenAt == "" {
+		t.Error("AcknowledgeWord should set first_seen_at")
 	}
 }
 
@@ -3189,6 +3422,12 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.NewWordMode2 != "zh_to_transl" {
 		t.Errorf("want new_word_mode_2=zh_to_transl, got %q", st.NewWordMode2)
 	}
+	if !st.NewWordRequireZh {
+		t.Error("want new_word_require_zh=true by default")
+	}
+	if !st.NewWordRequireTrans {
+		t.Error("want new_word_require_trans=true by default")
+	}
 }
 
 func TestUpdateUserSettings_RoundTrip(t *testing.T) {
@@ -3197,16 +3436,18 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	const userID = int64(2)
 
 	in := models.UserSettings{
-		PrimaryLang:        "de",
-		SecondaryLang:      "en",
-		ProgNew:            "zh_to_transl",
-		ProgTierStruggling: "zh_pinyin_to_transl",
-		ProgTierLearning:   "mask_pinyin",
-		ProgTierPracticing: "random",
-		ProgTierMastered:   "random",
-		NewWordMode0:       "zh_pinyin_to_transl",
-		NewWordMode1:       "zh_to_transl",
-		NewWordMode2:       "random",
+		PrimaryLang:         "de",
+		SecondaryLang:       "en",
+		ProgNew:             "zh_to_transl",
+		ProgTierStruggling:  "zh_pinyin_to_transl",
+		ProgTierLearning:    "mask_pinyin",
+		ProgTierPracticing:  "random",
+		ProgTierMastered:    "random",
+		NewWordMode0:        "zh_pinyin_to_transl",
+		NewWordMode1:        "zh_to_transl",
+		NewWordMode2:        "random",
+		NewWordRequireZh:    false,
+		NewWordRequireTrans: true,
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -3223,6 +3464,12 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if out.NewWordMode0 != "zh_pinyin_to_transl" {
 		t.Errorf("new_word_mode_0: want zh_pinyin_to_transl, got %q", out.NewWordMode0)
+	}
+	if out.NewWordRequireZh {
+		t.Error("new_word_require_zh: want false after update")
+	}
+	if !out.NewWordRequireTrans {
+		t.Error("new_word_require_trans: want true after update")
 	}
 }
 
@@ -3334,7 +3581,7 @@ func TestGetNextCard_PrefersUnseenOverAdvancedSeen(t *testing.T) {
 
 	// cap=100, no learning_new_word=1 words due → unseen should be preferred
 	// even though the seen word has an older due_date.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3611,5 +3858,125 @@ func TestGetWordIDByZhText_NotFound(t *testing.T) {
 	}
 	if got != 0 {
 		t.Errorf("want 0 for missing word, got %d", got)
+	}
+}
+
+// ── SaveSM2PrevState / GetSM2PrevState / ClearSM2PrevState ───────────────────
+
+func TestSaveSM2PrevState_RoundTrips(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	prog, err := s.GetSM2Progress(ctx, id)
+	if err != nil || prog == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, prog)
+	}
+	prog.Easiness = 2.9
+	prog.Repetitions = 5
+	prog.IntervalDays = 21
+	prog.TotalCorrect = 10
+	prog.TotalAttempts = 12
+	prog.StreakBonus = 2
+	prog.LearningNewWord = false
+
+	if err := s.SaveSM2PrevState(ctx, id, *prog); err != nil {
+		t.Fatalf("SaveSM2PrevState: %v", err)
+	}
+
+	got, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetSM2PrevState: expected non-nil, got nil")
+	}
+	if got.Easiness != prog.Easiness {
+		t.Errorf("Easiness: want %v, got %v", prog.Easiness, got.Easiness)
+	}
+	if got.Repetitions != prog.Repetitions {
+		t.Errorf("Repetitions: want %d, got %d", prog.Repetitions, got.Repetitions)
+	}
+	if got.IntervalDays != prog.IntervalDays {
+		t.Errorf("IntervalDays: want %d, got %d", prog.IntervalDays, got.IntervalDays)
+	}
+	if got.TotalCorrect != prog.TotalCorrect {
+		t.Errorf("TotalCorrect: want %d, got %d", prog.TotalCorrect, got.TotalCorrect)
+	}
+	if got.TotalAttempts != prog.TotalAttempts {
+		t.Errorf("TotalAttempts: want %d, got %d", prog.TotalAttempts, got.TotalAttempts)
+	}
+	if got.LearningNewWord != prog.LearningNewWord {
+		t.Errorf("LearningNewWord: want %v, got %v", prog.LearningNewWord, got.LearningNewWord)
+	}
+}
+
+func TestClearSM2PrevState_ReturnsNil(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "谢谢", "", []string{"thank you"})
+
+	prog, _ := s.GetSM2Progress(ctx, id)
+	s.SaveSM2PrevState(ctx, id, *prog)
+
+	if err := s.ClearSM2PrevState(ctx, id); err != nil {
+		t.Fatalf("ClearSM2PrevState: %v", err)
+	}
+	got, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState after clear: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil after clear, got %+v", got)
+	}
+}
+
+func TestGetSM2PrevState_NilWhenUnset(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "水", "", []string{"water"})
+
+	got, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil for fresh word, got %+v", got)
+	}
+}
+
+// ── accept_correct_mode setting ───────────────────────────────────────────────
+
+func TestAcceptCorrectModeDefault(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	settings, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if settings.AcceptCorrectMode != "typo" {
+		t.Errorf("default AcceptCorrectMode: want %q, got %q", "typo", settings.AcceptCorrectMode)
+	}
+}
+
+func TestAcceptCorrectModeRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	settings, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	settings.AcceptCorrectMode = "always"
+	if err := s.UpdateUserSettings(ctx, 2, *settings); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+	got, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetUserSettings after update: %v", err)
+	}
+	if got.AcceptCorrectMode != "always" {
+		t.Errorf("AcceptCorrectMode: want %q, got %q", "always", got.AcceptCorrectMode)
 	}
 }

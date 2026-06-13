@@ -74,28 +74,17 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		tags = strings.Split(t, ",")
 	}
 	bucket := r.URL.Query().Get("bucket")
-	h.mu.Lock()
-	cap := h.MaxNewPerDay
-	if h.capResetDate == time.Now().Format("2006-01-02") {
-		extra := h.MaxNewPerDay
-		if extra < 1 {
-			extra = 1
-		}
-		cap = h.newCapBase + extra
-	}
-	h.mu.Unlock()
-	skipNew := r.URL.Query().Get("skip_new") == "true"
-	word, progress, err := h.Store.GetNextCard(r.Context(), UserIDFromContext(r.Context()), tags, cap, bucket, skipNew)
-	if err != nil {
-		internalError(w, err)
-		return
-	}
 
-	// Load user settings once; used for quiz mode config and language defaults.
-	userSettings, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context()))
+	// Load user settings first — per-user daily cap and baselines override the server default.
+	userID := UserIDFromContext(r.Context())
+	userSettings, _ := h.Store.GetUserSettings(r.Context(), userID)
 	progCfg := sm2.DefaultProgressiveModeConfig()
 	nwCfg := sm2.DefaultNewWordModeConfig()
 	primaryLang := "en"
+	// h.MaxNewPerDay=0 is a test sentinel meaning "block all new words".
+	// Otherwise the per-user setting takes precedence over the server default.
+	maxNew := h.MaxNewPerDay
+	var baselines *db.NewWordBaselines
 	if userSettings != nil {
 		progCfg = sm2.ProgressiveModeConfig{
 			New:        userSettings.ProgNew,
@@ -110,6 +99,35 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			Step2: userSettings.NewWordMode2,
 		}
 		primaryLang = userSettings.PrimaryLang
+		if h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
+			maxNew = userSettings.MaxNewWordsPerDay
+		}
+		baselines = &db.NewWordBaselines{
+			DueTodayEnabled:   userSettings.BaselineDueTodayEnabled,
+			DueTodayValue:     userSettings.BaselineDueTodayValue,
+			StrugglingEnabled: userSettings.BaselineStrugglingEnabled,
+			StrugglingValue:   userSettings.BaselineStrugglingValue,
+			LearningEnabled:   userSettings.BaselineLearningEnabled,
+			LearningValue:     userSettings.BaselineLearningValue,
+			CooldownMinutes:   userSettings.NewWordCooldownMinutes,
+		}
+	}
+
+	h.mu.Lock()
+	cap := maxNew
+	if h.capResetDate == time.Now().Format("2006-01-02") {
+		extra := maxNew
+		if extra < 1 {
+			extra = 1
+		}
+		cap = h.newCapBase + extra
+	}
+	h.mu.Unlock()
+	skipNew := r.URL.Query().Get("skip_new") == "true"
+	word, progress, err := h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines)
+	if err != nil {
+		internalError(w, err)
+		return
 	}
 
 	langs := parseLangs(r, primaryLang)
@@ -314,13 +332,14 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 		card.Translations = translations
 		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
+		// Cycle mode skips the learning-phase hint: the user chose the step explicitly.
 		if word.Pinyin != nil {
 			if forceMaskPinyin && !progress.LearningNewWord {
 				// Tier-based mask_pinyin: always show a level-0 masked hint (first char of each syllable).
 				if masked := sm2.MaskPinyin(*word.Pinyin, 0); masked != "" {
 					card.Pinyin = &masked
 				}
-			} else if progress.LearningNewWord {
+			} else if progress.LearningNewWord && requestedMode != models.ModeCycle {
 				// Intro-phase: fade out hint as correct answers accumulate.
 				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
 					card.Pinyin = &masked
@@ -440,6 +459,13 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := r.Context()
+	if correct {
+		_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+	} else {
+		_ = h.Store.SaveSM2PrevState(ctx, req.WordID, *progress)
+	}
+
 	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
 
 	resp := models.AnswerResponse{
@@ -482,6 +508,120 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// AcceptCorrect handles POST /api/quiz/accept-correct. It restores the pre-answer
+// SM-2 state stored by Answer() on a wrong submission and applies a correct-quality
+// update, giving the same result as if the user had answered correctly the first time.
+// No SM-2 state is accepted from the client — the DB column is the sole source of truth.
+func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
+	var req models.AcceptCorrectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.WordID <= 0 {
+		writeError(w, http.StatusBadRequest, "word_id is required")
+		return
+	}
+	validModes := map[string]bool{
+		models.ModeTranslToZh:       true,
+		models.ModeZhToTransl:       true,
+		models.ModeZhPinyinToTransl: true,
+	}
+	if !validModes[req.Mode] && req.Mode != "" {
+		writeError(w, http.StatusBadRequest, "invalid mode")
+		return
+	}
+
+	ctx := r.Context()
+	userID := UserIDFromContext(ctx)
+
+	zhWord, err := h.Store.GetWordByID(ctx, userID, req.WordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if zhWord == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+
+	prev, err := h.Store.GetSM2PrevState(ctx, req.WordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if prev == nil {
+		writeError(w, http.StatusNotFound, "no pending accept-correct for this word")
+		return
+	}
+
+	var updated models.SM2Progress
+	var graduated bool
+	if prev.LearningNewWord {
+		updated, graduated = sm2.UpdateLearning(*prev, sm2.QualityCorrect)
+		if !graduated {
+			updated.TotalAttempts = prev.TotalAttempts + 1
+			updated.TotalCorrect = prev.TotalCorrect + 1
+		}
+	} else {
+		updated = sm2.Update(*prev, sm2.QualityCorrect)
+		updated.TotalAttempts = prev.TotalAttempts + 1
+		updated.TotalCorrect = prev.TotalCorrect + 1
+	}
+	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+
+	if err := h.Store.UpdateSM2Progress(ctx, updated); err != nil {
+		internalError(w, err)
+		return
+	}
+	_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+
+	sessionStreak, _ := h.Store.RecordDailyStat(ctx, userID, true)
+
+	langs := req.Langs
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
+	var correctTexts []string
+	switch req.Mode {
+	case models.ModeTranslToZh:
+		correctTexts = []string{zhWord.ZhText}
+	default:
+		for _, lang := range langs {
+			transWords, err := h.Store.GetTranslationsForWord(ctx, req.WordID, lang)
+			if err != nil {
+				internalError(w, err)
+				return
+			}
+			for _, tw := range transWords {
+				correctTexts = append(correctTexts, tw.Text)
+			}
+		}
+	}
+
+	resp := models.AnswerResponse{
+		Correct:         true,
+		CorrectAnswers:  correctTexts,
+		ZhText:          zhWord.ZhText,
+		Pinyin:          zhWord.Pinyin,
+		Translations:    zhWord.Translations,
+		NextDue:         updated.DueDate,
+		IntervalDays:    updated.IntervalDays,
+		TotalCorrect:    updated.TotalCorrect,
+		TotalAttempts:   updated.TotalAttempts,
+		StreakBonus:     updated.StreakBonus,
+		Repetitions:     updated.Repetitions,
+		GraduateReps:    sm2.LearningGraduateReps,
+		LearningNewWord: updated.LearningNewWord,
+		Graduated:       graduated,
+	}
+	if sessionStreak > 1 {
+		resp.SessionStreak = sessionStreak
+	}
+	resp.SceneText, _ = h.Store.GetHMMSceneText(ctx, req.WordID)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -528,7 +668,21 @@ func (h *QuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	if req.Days <= 0 {
 		req.Days = 7
 	}
-	if err := h.Store.SkipWord(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Days); err != nil {
+
+	userID := UserIDFromContext(r.Context())
+
+	// When the user has hidden the new-word skip button, reject skip attempts
+	// for words still in the new-word introduction phase.
+	st, _ := h.Store.GetUserSettings(r.Context(), userID)
+	if st != nil && !st.SkipNewWordsVisible {
+		isNew, err := h.Store.IsLearningNewWord(r.Context(), userID, req.WordID)
+		if err == nil && isNew {
+			writeError(w, http.StatusBadRequest, "skipping new words is disabled")
+			return
+		}
+	}
+
+	if err := h.Store.SkipWord(r.Context(), userID, req.WordID, req.Days); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "word not found")
 			return
@@ -585,20 +739,26 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		tags = strings.Split(t, ",")
 	}
 	bucket := r.URL.Query().Get("bucket")
-	due, total, newToday, err := h.Store.GetStats(r.Context(), UserIDFromContext(r.Context()), tags, bucket)
+	userID := UserIDFromContext(r.Context())
+	due, total, newToday, err := h.Store.GetStats(r.Context(), userID, tags, bucket)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
-	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), UserIDFromContext(r.Context()))
+	todayAttempts, todayMistakes, availableToAdvance, err := h.Store.GetTodaySessionInfo(r.Context(), userID)
 	if err != nil {
 		internalError(w, err)
 		return
+	}
+	maxNew := h.MaxNewPerDay
+	userSettings, _ := h.Store.GetUserSettings(r.Context(), userID)
+	if userSettings != nil && h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
+		maxNew = userSettings.MaxNewWordsPerDay
 	}
 	h.mu.Lock()
-	cap := h.MaxNewPerDay
+	cap := maxNew
 	if h.capResetDate == time.Now().Format("2006-01-02") {
-		extra := h.MaxNewPerDay
+		extra := maxNew
 		if extra < 1 {
 			extra = 1
 		}
@@ -644,7 +804,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"due_today":            due,
 		"total":                total,
 		"new_today":            newToday,
-		"max_new_per_day":      h.MaxNewPerDay,
+		"max_new_per_day":      maxNew,
 		"today_attempts":       todayAttempts,
 		"today_mistakes":       todayMistakes,
 		"available_to_advance": availableToAdvance,

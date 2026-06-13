@@ -3,10 +3,33 @@
 // Language settings loaded from /api/settings on init
 let userPrimaryLang = 'en';
 let userSecondaryLang = '';
+let acceptCorrectMode = 'typo';
+let skipNewWordsVisible = true;
 const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
+  acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
+  skipNewWordsVisible = st?.skip_new_words_visible !== false;
+  const btn = document.getElementById('new-word-skip-btn');
+  if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
 }).catch(() => {});
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0)
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  return dp[m][n];
+}
 
 const HMM_TYPE_COLORS = {
   actor:     'bg-purple-100 text-purple-700',
@@ -25,6 +48,8 @@ let includeMnemonics = localStorage.getItem('quizMnemonics') !== 'false';
 let includeComponents = localStorage.getItem('quizComponents') !== 'false';
 let latestStats = null;
 let skipNewWords = false;
+let requireNewWordZh = true;
+let requireNewWordTrans = true;
 
 function applyModeButtons() {
   document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -108,6 +133,14 @@ function applyComponentPill() {
   if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
 }
 
+async function loadTrainSettings() {
+  try {
+    const st = await apiFetch('/api/settings');
+    requireNewWordZh    = st.new_word_require_zh    !== false;
+    requireNewWordTrans = st.new_word_require_trans !== false;
+  } catch (_) { /* keep defaults */ }
+}
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
@@ -133,6 +166,7 @@ async function loadNextCard() {
   hide('success-state');
   hide('error-state');
   hide('add-translation-btn');
+  hide('accept-correct-btn');
   hide('result-play-btn');
   hide('new-word-area');
   hide('new-component-area');
@@ -228,6 +262,21 @@ async function loadNextCard() {
     $('new-word-en').innerHTML = transLines.join('<br>') || '—';
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     if (!currentCard.pinyin) hide('new-word-pinyin');
+    $('new-word-zh-input').value = '';
+    $('new-word-trans-input').value = '';
+    $('new-word-zh-check').textContent = '';
+    $('new-word-trans-check').textContent = '';
+    requireNewWordZh    ? show('new-word-zh-row')    : hide('new-word-zh-row');
+    requireNewWordTrans ? show('new-word-trans-row') : hide('new-word-trans-row');
+    const needsInput = requireNewWordZh || requireNewWordTrans;
+    if (needsInput) {
+      $('new-word-inputs').classList.remove('hidden');
+      $('new-word-got-it-btn').disabled = true;
+      setTimeout(() => (requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input')).focus(), 50);
+    } else {
+      $('new-word-inputs').classList.add('hidden');
+      $('new-word-got-it-btn').disabled = false;
+    }
     loadNewWordBreakdown(currentCard.prompt);
     await loadStats();
     return;
@@ -265,7 +314,9 @@ function showCard() {
     const compLabel = currentCard.is_also_word ? t('component.modeLabelAlsoWord') : t('component.modeLabel');
     setText('mode-label', compLabel);
     setText('prompt-word', currentCard.prompt);
-    hide('play-btn');
+    const playBtn = $('play-btn');
+    playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+    show('play-btn');
     if (currentCard.pinyin) {
       setText('pinyin-hint', currentCard.pinyin);
       show('pinyin-hint');
@@ -416,7 +467,10 @@ async function submitAnswer(e) {
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
             <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
-            <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+            <div class="flex items-center gap-2">
+              <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+              <button class="btn-confused-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+            </div>
             <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
           </div>` : '';
       breakdown.innerHTML = `
@@ -426,6 +480,10 @@ async function submitAnswer(e) {
           ${correctBox}
         </div>`;
       breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
+      const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
+      if (confusedPlayBtn) {
+        confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
+      }
       show('word-breakdown');
 
       if (!isEmpty) {
@@ -452,11 +510,30 @@ async function submitAnswer(e) {
       } else {
         hide('add-translation-btn');
       }
+
+      // Show "Accept as correct" button based on user's mode setting.
+      const normAnswer = answer.toLowerCase().trim();
+      const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
+      let showAcceptBtn = false;
+      if (acceptCorrectMode === 'always') {
+        showAcceptBtn = !isEmpty;
+      } else if (acceptCorrectMode === 'typo' && !isEmpty) {
+        showAcceptBtn = normCorrects.some(c => levenshtein(normAnswer, c) === 1);
+      }
+      if (showAcceptBtn) {
+        const acceptBtn = $('accept-correct-btn');
+        acceptBtn.disabled = false;
+        acceptBtn.textContent = 'Accept as correct (typo)';
+        show('accept-correct-btn');
+      } else {
+        hide('accept-correct-btn');
+      }
     } else {
       breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
       breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       show('word-breakdown');
       hide('add-translation-btn');
+      hide('accept-correct-btn');
 
       if (result.tier) {
         const bucketEl = $('bucket-info');
@@ -994,6 +1071,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('answer-form').addEventListener('submit', submitAnswer);
   $('next-btn').addEventListener('click', loadNextCard);
+  $('accept-correct-btn').addEventListener('click', async () => {
+    const btn = $('accept-correct-btn');
+    btn.disabled = true;
+    try {
+      await apiFetch('/api/quiz/accept-correct', {
+        method: 'POST',
+        body: JSON.stringify({
+          word_id: currentCard.word_id,
+          mode: currentCard.mode,
+          langs: selectedLangs,
+        }),
+      });
+      loadNextCard();
+    } catch (err) {
+      btn.disabled = false;
+      alert('Could not accept as correct: ' + err.message);
+    }
+  });
 
   // Mobile filter overlay
   function openFilterOverlay() {
@@ -1054,6 +1149,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadNextCard();
   });
+  function normalizeNewWordInput(s) {
+    return s.trim().toLowerCase();
+  }
+  function isZhCorrect(inputVal, prompt) {
+    return inputVal.trim() === prompt.trim();
+  }
+  function isTransCorrect(inputVal, translations) {
+    const normalized = normalizeNewWordInput(inputVal);
+    if (!normalized) return false;
+    const allTrans = Object.values(translations || {}).flat();
+    return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+  }
+  function updateGotItState() {
+    if (!currentCard) return;
+    const zhVal    = $('new-word-zh-input').value;
+    const transVal = $('new-word-trans-input').value;
+    const zhCorrect    = isZhCorrect(zhVal, currentCard.prompt);
+    const transCorrect = isTransCorrect(transVal, currentCard.translations);
+    const zhOk    = !requireNewWordZh    || zhCorrect;
+    const transOk = !requireNewWordTrans || transCorrect;
+    if (requireNewWordZh) {
+      $('new-word-zh-check').textContent = zhVal.trim() ? (zhCorrect ? '✓' : '✗') : '';
+      $('new-word-zh-check').className   = 'text-xl w-6 text-center ' + (zhCorrect ? 'text-green-500' : 'text-red-400');
+    }
+    if (requireNewWordTrans) {
+      $('new-word-trans-check').textContent = transVal.trim() ? (transCorrect ? '✓' : '✗') : '';
+      $('new-word-trans-check').className   = 'text-xl w-6 text-center ' + (transCorrect ? 'text-green-500' : 'text-red-400');
+    }
+    $('new-word-got-it-btn').disabled = !(zhOk && transOk);
+  }
+  $('new-word-zh-input').addEventListener('input', updateGotItState);
+  $('new-word-trans-input').addEventListener('input', updateGotItState);
+
   $('new-word-got-it-btn').addEventListener('click', async () => {
     if (!currentCard) return;
     try {
@@ -1343,5 +1471,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('ob:loadtags', obLoadTags, { once: false });
 
-  loadNextCard();
+  loadTrainSettings().then(() => loadNextCard());
 });

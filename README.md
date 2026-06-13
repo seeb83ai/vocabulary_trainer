@@ -11,6 +11,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
+- **Accept as correct** — if a wrong answer was a typo, click "Accept as correct" to restore your pre-answer SM-2 progress and count the attempt as correct without penalty. Configurable in Settings: never / on 1-character typos (default) / always
 - **Training stats** — daily progress tracking: attempts, mistakes, accuracy, words known, new words learned, and best correct streak; view a Chart.js bar/line chart of the full history and a detailed table of the last 14 days on the `/stats` page
 - **Word-level statistics** — real-time aggregate stats for all seen words on the `/stats` page: correctness milestones (1+/3+/5+/10+ correct), accuracy distribution (doughnut chart), avg/median/P95 of correct answers, attempts, accuracy, and ease factor; tables of the 5 hardest and 5 most-practiced words with translations; includes an info box explaining SM-2 ease factor and all metrics
 - **Due date distribution** — bar chart on the `/stats` page showing how many words are due on each day over the next 30 days; includes tag filter chips to narrow the view to specific word groups
@@ -71,19 +72,60 @@ AUTH_USER=admin
 AUTH_PASSWORD=yourpassword
 ```
 
-When enabled, all pages and API endpoints require a valid session. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours. The session secret is generated randomly at startup, so all sessions are invalidated when the server restarts.
+When enabled, all pages and API endpoints require a valid session. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours.
+
+### Production hardening
+
+For any deployment that is not your local dev box, set:
+
+```bash
+APP_ENV=production            # default; refuses startup if SESSION_SECRET is missing
+SESSION_SECRET=<64 hex chars>  # `openssl rand -hex 32`
+```
+
+`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart) and lets `/api/register` auto-verify accounts when SMTP is not configured. **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email.
+
+Other security-relevant tunables:
+
+```bash
+RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
+RATE_LIMIT_USER_PER_MIN=300       # per-user budget for all other API traffic
+RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-password, LLM scene generation
+```
+
+A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) is built in; the lockout is cleared on the next successful login.
+
+The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on every response. Configure HTTPS at the reverse proxy (see `deploy/nginx.conf`) — the sample config also sets `Strict-Transport-Security`.
 
 ## Daily new-word cap
 
-To avoid being overwhelmed when you have a large vocabulary list, the trainer limits how many brand-new words are introduced each day:
+Each user sets their own daily new-word limit in **Settings → Daily Learning** (default: 5). The server-wide `MAX_NEW_WORDS` env var sets the default for new accounts only — users can freely change it higher or lower in their settings.
 
 ```bash
-MAX_NEW_WORDS=5   # default; set to 0 to disable new words entirely
+MAX_NEW_WORDS=5   # default for new accounts
 ```
 
 A *new word* is one that has never appeared as a quiz card before (tracked by a `first_seen_date` column in the database). Once the daily cap is reached, only cards you have already seen at least once will be served — reviews and retry cards are always available regardless of the cap. The counter resets at midnight (server-local date).
 
 The training page stats bar shows **New today: X / Y** so you can see how many new words you have left for the day.
+
+### Baseline gates
+
+In **Settings → Daily Learning**, each user can enable optional gates that pause new-word introductions when the review load is high. Each gate is independently enabled with its own numeric threshold; **all** active gates must pass before a new word is shown.
+
+| Gate | Blocks new words when… |
+|---|---|
+| **Max due words at day start** | The number of review cards due when you first opened the app today is ≥ the threshold |
+| **Max Struggling words** | Your current Struggling bucket count is ≥ the threshold |
+| **Max Learning words** | Your current Learning bucket count is ≥ the threshold |
+
+### Cooldown between new words
+
+In **Settings → Daily Learning**, the **Cooldown between new words** field (default: 1 minute) sets the minimum time that must pass after introducing a new word before another one appears. During the cooldown window the trainer serves only review cards. Set to **0** to disable the cooldown and allow new words back-to-back.
+
+### Skip button for new words
+
+By default a **Skip** button appears during the new-word introduction screen, letting you defer a word for 7 days. In **Settings → Daily Learning** you can hide this button; when hidden, new words cannot be skipped and must be reviewed.
 
 ## Progressive mode
 
@@ -164,6 +206,7 @@ Each user has a personal settings page (`/settings`) with:
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
 - **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode.
+- **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
 - **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
 
 ## Auto-translate (DeepL)

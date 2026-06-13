@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -10,6 +11,14 @@ import (
 	"time"
 	"vocabulary_trainer/models"
 )
+
+// hashVerificationToken returns the SHA-256 hex digest of the plaintext
+// token. We store the digest in the DB and hash incoming tokens on
+// lookup, so a database leak does not expose live verification links.
+func hashVerificationToken(plain string) string {
+	sum := sha256.Sum256([]byte(plain))
+	return hex.EncodeToString(sum[:])
+}
 
 // GetUserByEmail looks up a user by email address. Returns nil, nil if not found.
 func (s *Store) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
@@ -62,11 +71,13 @@ func (s *Store) GetUserRole(ctx context.Context, userID int64) (string, error) {
 }
 
 // CreateUser inserts a new unverified user and returns its ID.
+// verificationToken is the plaintext token shown to the user; only its
+// SHA-256 digest is persisted.
 func (s *Store) CreateUser(ctx context.Context, email, passwordHash, verificationToken string, expiresAt time.Time) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO users (email, password_hash, email_verified, verification_token, verification_expires_at)
 		 VALUES (?, ?, 0, ?, ?)`,
-		email, passwordHash, verificationToken, expiresAt.UTC().Format("2006-01-02 15:04:05"))
+		email, passwordHash, hashVerificationToken(verificationToken), expiresAt.UTC().Format("2006-01-02 15:04:05"))
 	if err != nil {
 		return 0, fmt.Errorf("create user: %w", err)
 	}
@@ -75,7 +86,9 @@ func (s *Store) CreateUser(ctx context.Context, email, passwordHash, verificatio
 
 // SetUserEmailVerified finds a user by verification token (not expired), marks
 // email_verified = 1, clears the token, and returns the user. Returns nil, nil
-// if the token is unknown or expired.
+// if the token is unknown or expired. The token argument is the plaintext
+// value from the email link; it is hashed before comparing to the stored
+// digest.
 func (s *Store) SetUserEmailVerified(ctx context.Context, token string) (*models.User, error) {
 	var u models.User
 	var verified int
@@ -83,7 +96,7 @@ func (s *Store) SetUserEmailVerified(ctx context.Context, token string) (*models
 		`SELECT id, email, password_hash, COALESCE(email_verified,0), COALESCE(role,'free')
 		 FROM users
 		 WHERE verification_token = ?
-		   AND verification_expires_at > datetime('now')`, token).
+		   AND verification_expires_at > datetime('now')`, hashVerificationToken(token)).
 		Scan(&u.ID, &u.Email, &u.PasswordHash, &verified, &u.Role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -101,10 +114,15 @@ func (s *Store) SetUserEmailVerified(ctx context.Context, token string) (*models
 	return &u, nil
 }
 
-// UpdateUserPassword replaces the password hash for the given user.
+// UpdateUserPassword replaces the password hash for the given user and
+// stamps sessions_invalidated_at to "now" with sub-second precision, so
+// any session token minted before this call is rejected by the auth
+// middleware (and a token minted immediately afterwards remains valid).
 func (s *Store) UpdateUserPassword(ctx context.Context, userID int64, passwordHash string) error {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05.000000000")
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
+		`UPDATE users SET password_hash = ?, sessions_invalidated_at = ? WHERE id = ?`,
+		passwordHash, now, userID)
 	if err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
@@ -115,6 +133,22 @@ func (s *Store) UpdateUserPassword(ctx context.Context, userID int64, passwordHa
 	return nil
 }
 
+// GetSessionsInvalidatedAt returns the timestamp before which session
+// tokens for this user are no longer valid. Returns zero-time if the
+// column is unset (no password change has happened yet).
+func (s *Store) GetSessionsInvalidatedAt(ctx context.Context, userID int64) (time.Time, error) {
+	var ts string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(sessions_invalidated_at, '') FROM users WHERE id = ?`, userID).Scan(&ts)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("get sessions_invalidated_at: %w", err)
+	}
+	if ts == "" {
+		return time.Time{}, nil
+	}
+	return parseDateTime(ts), nil
+}
+
 // ensureUserSettings creates a user_settings row with defaults if one does not
 // already exist for the given user.
 func (s *Store) ensureUserSettings(ctx context.Context, userID int64) error {
@@ -123,9 +157,13 @@ func (s *Store) ensureUserSettings(ctx context.Context, userID int64) error {
 		return err
 	}
 	salt := hex.EncodeToString(saltBytes)
+	maxNew := s.DefaultMaxNewWords
+	if maxNew < 1 {
+		maxNew = 5
+	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO user_settings (user_id, api_key_salt) VALUES (?, ?)`,
-		userID, salt)
+		`INSERT OR IGNORE INTO user_settings (user_id, api_key_salt, max_new_words_per_day) VALUES (?, ?, ?)`,
+		userID, salt, maxNew)
 	return err
 }
 
@@ -150,15 +188,37 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       prog_new, prog_tier_struggling, prog_tier_learning,
 		       prog_tier_practicing, prog_tier_mastered,
 		       new_word_mode_0, new_word_mode_1, new_word_mode_2,
+		       new_word_require_zh, new_word_require_trans,
 		       api_key_salt, deepl_key_enc, llm_provider, llm_key_enc, llm_local_url,
-		       cycle_sequence
+		       COALESCE(cycle_sequence, 'zh_pinyin_to_transl,transl_to_zh,zh_to_transl'),
+		       COALESCE(accept_correct_mode, 'typo'),
+		       COALESCE(max_new_words_per_day, 5),
+		       COALESCE(new_word_cooldown_minutes, 1),
+		       COALESCE(skip_new_words_visible, 1),
+		       COALESCE(baseline_due_today_enabled, 0),
+		       COALESCE(baseline_due_today_value, 20),
+		       COALESCE(baseline_struggling_enabled, 0),
+		       COALESCE(baseline_struggling_value, 10),
+		       COALESCE(baseline_learning_enabled, 0),
+		       COALESCE(baseline_learning_value, 20)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
 		&st.ProgTierPracticing, &st.ProgTierMastered,
 		&st.NewWordMode0, &st.NewWordMode1, &st.NewWordMode2,
+		&st.NewWordRequireZh, &st.NewWordRequireTrans,
 		&salt, &deeplEnc, &st.LLMProvider, &llmEnc, &st.LLMLocalURL,
 		&st.CycleSequence,
+		&st.AcceptCorrectMode,
+		&st.MaxNewWordsPerDay,
+		&st.NewWordCooldownMinutes,
+		&st.SkipNewWordsVisible,
+		&st.BaselineDueTodayEnabled,
+		&st.BaselineDueTodayValue,
+		&st.BaselineStrugglingEnabled,
+		&st.BaselineStrugglingValue,
+		&st.BaselineLearningEnabled,
+		&st.BaselineLearningValue,
 	)
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
@@ -173,23 +233,46 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
-			primary_lang         = ?,
-			secondary_lang       = ?,
-			prog_new             = ?,
-			prog_tier_struggling = ?,
-			prog_tier_learning   = ?,
-			prog_tier_practicing = ?,
-			prog_tier_mastered   = ?,
-			new_word_mode_0      = ?,
-			new_word_mode_1      = ?,
-			new_word_mode_2      = ?,
-			cycle_sequence       = ?
+			primary_lang                = ?,
+			secondary_lang              = ?,
+			prog_new                    = ?,
+			prog_tier_struggling        = ?,
+			prog_tier_learning          = ?,
+			prog_tier_practicing        = ?,
+			prog_tier_mastered          = ?,
+			new_word_mode_0             = ?,
+			new_word_mode_1             = ?,
+			new_word_mode_2             = ?,
+			cycle_sequence              = ?,
+			new_word_require_zh         = ?,
+			new_word_require_trans      = ?,
+			accept_correct_mode         = ?,
+			max_new_words_per_day       = ?,
+			new_word_cooldown_minutes   = ?,
+			skip_new_words_visible      = ?,
+			baseline_due_today_enabled  = ?,
+			baseline_due_today_value    = ?,
+			baseline_struggling_enabled = ?,
+			baseline_struggling_value   = ?,
+			baseline_learning_enabled   = ?,
+			baseline_learning_value     = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
 		st.ProgTierPracticing, st.ProgTierMastered,
 		st.NewWordMode0, st.NewWordMode1, st.NewWordMode2,
 		st.CycleSequence,
+		st.NewWordRequireZh, st.NewWordRequireTrans,
+		st.AcceptCorrectMode,
+		st.MaxNewWordsPerDay,
+		st.NewWordCooldownMinutes,
+		st.SkipNewWordsVisible,
+		st.BaselineDueTodayEnabled,
+		st.BaselineDueTodayValue,
+		st.BaselineStrugglingEnabled,
+		st.BaselineStrugglingValue,
+		st.BaselineLearningEnabled,
+		st.BaselineLearningValue,
 		userID,
 	)
 	return err

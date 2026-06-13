@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -56,6 +58,24 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 	return nil
 }
 
+// IsLearningNewWord returns true if the given word is currently in the new-word
+// introduction phase (learning_new_word=1) for the given user.
+func (s *Store) IsLearningNewWord(ctx context.Context, userID, wordID int64) (bool, error) {
+	var v int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(p.learning_new_word, 0) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE p.word_id = ? AND w.user_id = ?`,
+		wordID, userID).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("is learning new word: %w", err)
+	}
+	return v == 1, nil
+}
+
 // SkipWord moves a word's due date forward by the given number of days without
 // touching first_seen_date or attempt counters.
 func (s *Store) SkipWord(ctx context.Context, userID, wordID int64, days int) error {
@@ -80,6 +100,7 @@ func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error
 		`UPDATE sm2_progress
 		 SET total_attempts = CASE WHEN total_attempts = 0 THEN 1 ELSE total_attempts END,
 		     first_seen_date = COALESCE(first_seen_date, date('now')),
+		     first_seen_at   = COALESCE(first_seen_at, CURRENT_TIMESTAMP),
 		     due_date = CURRENT_TIMESTAMP
 		 WHERE word_id = ? AND word_id IN (SELECT id FROM words WHERE user_id = ?)`,
 		wordID, userID)
@@ -482,4 +503,75 @@ func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.Confu
 		items = []models.ConfusionDetail{}
 	}
 	return items, nil
+}
+
+// sm2PrevState is the internal JSON encoding for SaveSM2PrevState.
+type sm2PrevState struct {
+	Easiness        float64 `json:"ef"`
+	Repetitions     int     `json:"reps"`
+	IntervalDays    int     `json:"iv"`
+	TotalCorrect    int     `json:"tc"`
+	TotalAttempts   int     `json:"ta"`
+	StreakBonus     int     `json:"sb"`
+	LearningNewWord bool    `json:"lnw"`
+}
+
+// SaveSM2PrevState serialises p to JSON and stores it in the prev_state column
+// of sm2_progress for the given word. Called before applying a wrong answer so
+// AcceptCorrect can restore the pre-answer state without trusting client data.
+func (s *Store) SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2Progress) error {
+	blob, err := json.Marshal(sm2PrevState{
+		Easiness:        p.Easiness,
+		Repetitions:     p.Repetitions,
+		IntervalDays:    p.IntervalDays,
+		TotalCorrect:    p.TotalCorrect,
+		TotalAttempts:   p.TotalAttempts,
+		StreakBonus:     p.StreakBonus,
+		LearningNewWord: p.LearningNewWord,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal prev state: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET prev_state = ? WHERE word_id = ?`, string(blob), wordID)
+	return err
+}
+
+// GetSM2PrevState reads the stored pre-answer SM-2 state for a word.
+// Returns nil, nil when no previous state is stored (column is NULL).
+func (s *Store) GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2Progress, error) {
+	var raw sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT prev_state FROM sm2_progress WHERE word_id = ?`, wordID).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get prev state: %w", err)
+	}
+	if !raw.Valid || raw.String == "" {
+		return nil, nil
+	}
+	var prev sm2PrevState
+	if err := json.Unmarshal([]byte(raw.String), &prev); err != nil {
+		return nil, fmt.Errorf("unmarshal prev state: %w", err)
+	}
+	return &models.SM2Progress{
+		WordID:          wordID,
+		Easiness:        prev.Easiness,
+		Repetitions:     prev.Repetitions,
+		IntervalDays:    prev.IntervalDays,
+		TotalCorrect:    prev.TotalCorrect,
+		TotalAttempts:   prev.TotalAttempts,
+		StreakBonus:     prev.StreakBonus,
+		LearningNewWord: prev.LearningNewWord,
+	}, nil
+}
+
+// ClearSM2PrevState sets prev_state = NULL for the given word.
+// Called after a correct answer or after AcceptCorrect.
+func (s *Store) ClearSM2PrevState(ctx context.Context, wordID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET prev_state = NULL WHERE word_id = ?`, wordID)
+	return err
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 	"vocabulary_trainer/db"
@@ -86,7 +87,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	mismatchH := &handlers.MismatchesHandler{Store: s}
 	importH := &handlers.ImportHandler{Store: s}
 	tagsH := &handlers.TagsHandler{Store: s}
-	authH, _ := handlers.NewAuthHandler(s, nil, "http://localhost:8080", "")
+	authH, _ := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
 	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
 	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN", SettingsHandler: settingsH}
 	componentH := &handlers.ComponentHandler{Store: s}
@@ -104,6 +105,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/change-password", authH.ChangePassword)
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Post("/api/quiz/answer", quizH.Answer)
+	r.Post("/api/quiz/accept-correct", quizH.AcceptCorrect)
 	r.Post("/api/quiz/skip", quizH.Skip)
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
 	r.Post("/api/quiz/acknowledge-random", quizH.AcknowledgeRandom)
@@ -340,10 +342,35 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 
 	// Build a router with maxNew=1 (cap is now reached).
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 1}
+	authH, _ := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
+	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Get("/api/quiz/stats", quizH.Stats)
+	r.Get("/api/settings", settingsH.Get)
+	r.Patch("/api/settings", settingsH.Patch)
+
+	// Align the per-user setting with the server cap so stats reflects 1.
+	type settingsPatch struct {
+		PrimaryLang        string `json:"primary_lang"`
+		ProgNew            string `json:"prog_new"`
+		ProgTierStruggling string `json:"prog_tier_struggling"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
+		ProgTierPracticing string `json:"prog_tier_practicing"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
+	}
+	do(t, r, http.MethodPatch, "/api/settings", settingsPatch{
+		PrimaryLang: "en", ProgNew: "transl_to_zh",
+		ProgTierStruggling: "transl_to_zh", ProgTierLearning: "zh_pinyin_to_transl",
+		ProgTierPracticing: "zh_to_transl", ProgTierMastered: "random",
+		NewWordMode0: "transl_to_zh", NewWordMode1: "transl_to_zh", NewWordMode2: "zh_to_transl",
+		MaxNewWordsPerDay: 1,
+	})
 
 	// Only id1 (already introduced) should be returned — id2 is new and the cap is reached.
 	rec := do(t, r, "GET", "/api/quiz/next", nil)
@@ -2656,12 +2683,15 @@ func TestRegister_OK(t *testing.T) {
 }
 
 func TestRegister_DuplicateEmail(t *testing.T) {
+	// A duplicate registration must NOT return a distinct status that
+	// reveals the email is already in use. See
+	// TestRegister_ExistingEmail_DoesNotLeak in auth_test.go.
 	r := newRouter(openTestDB(t))
 	payload := map[string]string{"email": "new@example.com", "password": "securepass1"}
 	do(t, r, "POST", "/api/register", payload)
 	rec := do(t, r, "POST", "/api/register", payload)
-	if rec.Code != http.StatusConflict {
-		t.Errorf("want 409, got %d: %s", rec.Code, rec.Body)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 (indistinguishable from a fresh registration), got %d: %s", rec.Code, rec.Body)
 	}
 }
 
@@ -2682,6 +2712,45 @@ func TestRegister_InvalidEmail(t *testing.T) {
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── Audio cache headers ──────────────────────────────────────────────────────
+
+// TestAudio_NotImmutable verifies that the audio handler does NOT mark
+// responses as immutable. Marking them so means a regenerated MP3
+// (e.g. after a zh_text edit) is served stale for up to a year. The
+// existing handler set this and was flagged in the security review.
+func TestAudio_NotImmutable(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{Store: s, AudioDir: tmpDir}
+	if err := os.WriteFile(tmpDir+"/"+fmt.Sprint(id)+".mp3", []byte("fake-mp3"), 0644); err != nil {
+		t.Fatalf("seed mp3: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/audio/%d", id), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	cc := rec.Header().Get("Cache-Control")
+	if cc == "" {
+		t.Fatal("Cache-Control header should be set")
+	}
+	if strings.Contains(cc, "immutable") {
+		t.Errorf("Cache-Control must not include 'immutable' (causes stale audio after regeneration): %q", cc)
+	}
+	if !strings.Contains(cc, "must-revalidate") && !strings.Contains(cc, "no-cache") {
+		t.Errorf("Cache-Control should require revalidation (must-revalidate or no-cache): %q", cc)
 	}
 }
 
@@ -3927,6 +3996,12 @@ func TestGetSettings_Defaults(t *testing.T) {
 	if st.DeeplKeySet {
 		t.Error("want deepl_key_set=false by default")
 	}
+	if !st.NewWordRequireZh {
+		t.Error("want new_word_require_zh=true by default")
+	}
+	if !st.NewWordRequireTrans {
+		t.Error("want new_word_require_trans=true by default")
+	}
 }
 
 // ── PATCH /api/settings ──────────────────────────────────────────────────────
@@ -3967,6 +4042,40 @@ func TestPatchSettings_Valid(t *testing.T) {
 	}
 	if st.NewWordMode1 != "zh_pinyin_to_transl" {
 		t.Errorf("want new_word_mode_1=zh_pinyin_to_transl, got %q", st.NewWordMode1)
+	}
+}
+
+func TestPatchSettings_NewWordRequire(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]interface{}{
+		"primary_lang":          "en",
+		"secondary_lang":        "de",
+		"prog_new":              "transl_to_zh",
+		"prog_tier_struggling":  "transl_to_zh",
+		"prog_tier_learning":    "zh_pinyin_to_transl",
+		"prog_tier_practicing":  "zh_to_transl",
+		"prog_tier_mastered":    "random",
+		"new_word_mode_0":       "transl_to_zh",
+		"new_word_mode_1":       "transl_to_zh",
+		"new_word_mode_2":       "zh_to_transl",
+		"new_word_require_zh":   false,
+		"new_word_require_trans": true,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.NewWordRequireZh {
+		t.Error("want new_word_require_zh=false after patch")
+	}
+	if !st.NewWordRequireTrans {
+		t.Error("want new_word_require_trans=true after patch")
 	}
 }
 
@@ -4964,5 +5073,519 @@ func TestQuizCycleCustomSequence(t *testing.T) {
 	// Custom sequence starts with transl_to_zh → position 0 = transl_to_zh
 	if card.Mode != models.ModeTranslToZh {
 		t.Errorf("custom cycle position 0: want %s, got %s", models.ModeTranslToZh, card.Mode)
+	}
+}
+
+// ── Answer prev_state persistence ────────────────────────────────────────────
+
+func TestAnswerWrongStoresPrevState(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Confirm initial EF before submitting any answer.
+	before, err := s.GetSM2Progress(ctx, id)
+	if err != nil || before == nil {
+		t.Fatalf("GetSM2Progress before answer: %v / %v", err, before)
+	}
+	initialEF := before.Easiness
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+		Answer: "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	prev, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if prev == nil {
+		t.Fatal("expected prev_state to be set after wrong answer, got nil")
+	}
+	if prev.Easiness != initialEF {
+		t.Errorf("prev_state EF: want %v (pre-answer), got %v", initialEF, prev.Easiness)
+	}
+}
+
+func TestAnswerCorrectClearsPrevState(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	// First submit wrong to set prev_state.
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "wrong",
+	})
+
+	// Then submit correct.
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "hello",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	prev, err := s.GetSM2PrevState(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if prev != nil {
+		t.Errorf("expected prev_state to be cleared after correct answer, got %+v", prev)
+	}
+}
+
+// ── POST /api/quiz/accept-correct ────────────────────────────────────────────
+
+func TestAcceptCorrectNoState(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+	})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404 when no prev_state, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAcceptCorrectRestoresProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	// Seed a graduated SM-2 state (rep=3, EF=2.5, interval=1 day).
+	graduated := models.SM2Progress{
+		WordID:          id,
+		Repetitions:     3,
+		Easiness:        2.5,
+		IntervalDays:    1,
+		DueDate:         time.Now().UTC(),
+		TotalCorrect:    3,
+		TotalAttempts:   3,
+		LearningNewWord: false,
+	}
+	if err := s.UpdateSM2Progress(ctx, graduated); err != nil {
+		t.Fatalf("seed progress: %v", err)
+	}
+	initialEF := graduated.Easiness
+
+	// Submit wrong answer — decrements EF and resets repetitions/interval.
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "wrong",
+	})
+
+	// Accept as correct — restores pre-wrong state and applies correct quality.
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("accept-correct should return correct: true")
+	}
+	if resp.TotalCorrect != 4 {
+		t.Errorf("TotalCorrect: want 4 (pre-answer 3 + 1), got %d", resp.TotalCorrect)
+	}
+	if resp.TotalAttempts != 4 {
+		t.Errorf("TotalAttempts: want 4 (pre-answer 3 + 1), got %d", resp.TotalAttempts)
+	}
+
+	after, _ := s.GetSM2Progress(ctx, id)
+
+	// EF after accept-correct should be >= initial (correct quality on sm2.Update bumps it).
+	if after.Easiness < initialEF {
+		t.Errorf("EF after accept-correct (%v) should be >= initial EF (%v)", after.Easiness, initialEF)
+	}
+
+	// prev_state should be cleared.
+	prev, _ := s.GetSM2PrevState(ctx, id)
+	if prev != nil {
+		t.Errorf("prev_state should be nil after accept-correct, got %+v", prev)
+	}
+
+	// Due date should be at least 1 day away (not the 3-minute wrong penalty).
+	if time.Until(after.DueDate) < 20*time.Hour {
+		t.Errorf("due date after accept-correct should be >= 1 day, got %v from now", time.Until(after.DueDate))
+	}
+}
+
+func TestAcceptCorrectInvalidWordID(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: 0,
+		Mode:   models.ModeZhToTransl,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for word_id=0, got %d", rec.Code)
+	}
+}
+
+// ── Settings: accept_correct_mode ────────────────────────────────────────────
+
+func validSettingsPayload() map[string]string {
+	return map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "de",
+		"prog_new":             "zh_to_transl",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "zh_pinyin_to_transl",
+		"new_word_mode_2":      "zh_to_transl",
+	}
+}
+
+func TestSettingsPatchAcceptCorrectMode(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	payload := validSettingsPayload()
+	payload["accept_correct_mode"] = "always"
+	rec := do(t, r, "PATCH", "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET settings: want 200, got %d", rec2.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec2, &st)
+	if st.AcceptCorrectMode != "always" {
+		t.Errorf("AcceptCorrectMode: want %q, got %q", "always", st.AcceptCorrectMode)
+	}
+}
+
+func TestSettingsPatchAcceptCorrectModeInvalid(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	payload := validSettingsPayload()
+	payload["accept_correct_mode"] = "banana"
+	rec := do(t, r, "PATCH", "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for invalid accept_correct_mode, got %d", rec.Code)
+	}
+}
+
+// ── Settings: daily learning ──────────────────────────────────────────────────
+
+func TestGetSettings_DailyLearningDefaults(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+
+	if st.MaxNewWordsPerDay < 1 {
+		t.Errorf("want MaxNewWordsPerDay >= 1, got %d", st.MaxNewWordsPerDay)
+	}
+	if !st.SkipNewWordsVisible {
+		t.Error("want SkipNewWordsVisible=true by default")
+	}
+	if st.BaselineDueTodayEnabled {
+		t.Error("want BaselineDueTodayEnabled=false by default")
+	}
+	if st.BaselineDueTodayValue <= 0 {
+		t.Errorf("want BaselineDueTodayValue > 0, got %d", st.BaselineDueTodayValue)
+	}
+	if st.BaselineStrugglingEnabled {
+		t.Error("want BaselineStrugglingEnabled=false by default")
+	}
+	if st.BaselineStrugglingValue <= 0 {
+		t.Errorf("want BaselineStrugglingValue > 0, got %d", st.BaselineStrugglingValue)
+	}
+	if st.BaselineLearningEnabled {
+		t.Error("want BaselineLearningEnabled=false by default")
+	}
+	if st.BaselineLearningValue <= 0 {
+		t.Errorf("want BaselineLearningValue > 0, got %d", st.BaselineLearningValue)
+	}
+}
+
+func TestPatchSettings_DailyLearning(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	payload := validSettingsPayload()
+	// Overlay daily learning fields using a combined map
+	type dailyPayload struct {
+		PrimaryLang               string `json:"primary_lang"`
+		SecondaryLang             string `json:"secondary_lang"`
+		ProgNew                   string `json:"prog_new"`
+		ProgTierStruggling        string `json:"prog_tier_struggling"`
+		ProgTierLearning          string `json:"prog_tier_learning"`
+		ProgTierPracticing        string `json:"prog_tier_practicing"`
+		ProgTierMastered          string `json:"prog_tier_mastered"`
+		NewWordMode0              string `json:"new_word_mode_0"`
+		NewWordMode1              string `json:"new_word_mode_1"`
+		NewWordMode2              string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay         int    `json:"max_new_words_per_day"`
+		SkipNewWordsVisible       bool   `json:"skip_new_words_visible"`
+		BaselineDueTodayEnabled   bool   `json:"baseline_due_today_enabled"`
+		BaselineDueTodayValue     int    `json:"baseline_due_today_value"`
+		BaselineStrugglingEnabled bool   `json:"baseline_struggling_enabled"`
+		BaselineStrugglingValue   int    `json:"baseline_struggling_value"`
+		BaselineLearningEnabled   bool   `json:"baseline_learning_enabled"`
+		BaselineLearningValue     int    `json:"baseline_learning_value"`
+	}
+	req := dailyPayload{
+		PrimaryLang:               payload["primary_lang"],
+		SecondaryLang:             payload["secondary_lang"],
+		ProgNew:                   payload["prog_new"],
+		ProgTierStruggling:        payload["prog_tier_struggling"],
+		ProgTierLearning:          payload["prog_tier_learning"],
+		ProgTierPracticing:        payload["prog_tier_practicing"],
+		ProgTierMastered:          payload["prog_tier_mastered"],
+		NewWordMode0:              payload["new_word_mode_0"],
+		NewWordMode1:              payload["new_word_mode_1"],
+		NewWordMode2:              payload["new_word_mode_2"],
+		MaxNewWordsPerDay:         3,
+		SkipNewWordsVisible:       false,
+		BaselineDueTodayEnabled:   true,
+		BaselineDueTodayValue:     15,
+		BaselineStrugglingEnabled: true,
+		BaselineStrugglingValue:   8,
+		BaselineLearningEnabled:   false,
+		BaselineLearningValue:     20,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+
+	if st.MaxNewWordsPerDay != 3 {
+		t.Errorf("want MaxNewWordsPerDay=3, got %d", st.MaxNewWordsPerDay)
+	}
+	if st.SkipNewWordsVisible {
+		t.Error("want SkipNewWordsVisible=false after patch")
+	}
+	if !st.BaselineDueTodayEnabled {
+		t.Error("want BaselineDueTodayEnabled=true after patch")
+	}
+	if st.BaselineDueTodayValue != 15 {
+		t.Errorf("want BaselineDueTodayValue=15, got %d", st.BaselineDueTodayValue)
+	}
+	if !st.BaselineStrugglingEnabled {
+		t.Error("want BaselineStrugglingEnabled=true after patch")
+	}
+	if st.BaselineStrugglingValue != 8 {
+		t.Errorf("want BaselineStrugglingValue=8, got %d", st.BaselineStrugglingValue)
+	}
+	if st.BaselineLearningEnabled {
+		t.Error("want BaselineLearningEnabled=false after patch")
+	}
+}
+
+func TestPatchSettings_MaxNewWordsPerDay_Invalid(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	type payload struct {
+		PrimaryLang       string `json:"primary_lang"`
+		SecondaryLang     string `json:"secondary_lang"`
+		ProgNew           string `json:"prog_new"`
+		ProgTierStruggling string `json:"prog_tier_struggling"`
+		ProgTierLearning  string `json:"prog_tier_learning"`
+		ProgTierPracticing string `json:"prog_tier_practicing"`
+		ProgTierMastered  string `json:"prog_tier_mastered"`
+		NewWordMode0      string `json:"new_word_mode_0"`
+		NewWordMode1      string `json:"new_word_mode_1"`
+		NewWordMode2      string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay int    `json:"max_new_words_per_day"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
+		PrimaryLang:        "en",
+		SecondaryLang:      "de",
+		ProgNew:            "zh_to_transl",
+		ProgTierStruggling: "transl_to_zh",
+		ProgTierLearning:   "zh_pinyin_to_transl",
+		ProgTierPracticing: "zh_to_transl",
+		ProgTierMastered:   "random",
+		NewWordMode0:       "transl_to_zh",
+		NewWordMode1:       "zh_pinyin_to_transl",
+		NewWordMode2:       "zh_to_transl",
+		MaxNewWordsPerDay:  0,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for max_new_words_per_day=0, got %d", rec.Code)
+	}
+}
+
+func TestSkip_RejectsNewWordWhenHidden(t *testing.T) {
+	s := openTestDB(t)
+	wordID := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	ctx := context.Background()
+
+	// Mark word as new (learning_new_word=1, first_seen_date=today)
+	if err := s.AcknowledgeWord(ctx, 2, wordID); err != nil {
+		t.Fatalf("acknowledge: %v", err)
+	}
+
+	r := newRouter(s)
+
+	// First disable skip via settings
+	type patchPayload struct {
+		PrimaryLang         string `json:"primary_lang"`
+		SecondaryLang       string `json:"secondary_lang"`
+		ProgNew             string `json:"prog_new"`
+		ProgTierStruggling  string `json:"prog_tier_struggling"`
+		ProgTierLearning    string `json:"prog_tier_learning"`
+		ProgTierPracticing  string `json:"prog_tier_practicing"`
+		ProgTierMastered    string `json:"prog_tier_mastered"`
+		NewWordMode0        string `json:"new_word_mode_0"`
+		NewWordMode1        string `json:"new_word_mode_1"`
+		NewWordMode2        string `json:"new_word_mode_2"`
+		SkipNewWordsVisible bool   `json:"skip_new_words_visible"`
+		MaxNewWordsPerDay   int    `json:"max_new_words_per_day"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload{
+		PrimaryLang:         "en",
+		SecondaryLang:       "de",
+		ProgNew:             "zh_to_transl",
+		ProgTierStruggling:  "transl_to_zh",
+		ProgTierLearning:    "zh_pinyin_to_transl",
+		ProgTierPracticing:  "zh_to_transl",
+		ProgTierMastered:    "random",
+		NewWordMode0:        "transl_to_zh",
+		NewWordMode1:        "zh_pinyin_to_transl",
+		NewWordMode2:        "zh_to_transl",
+		SkipNewWordsVisible: false,
+		MaxNewWordsPerDay:   5,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch settings: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Attempt to skip the new word — should be rejected
+	rec = do(t, r, http.MethodPost, "/api/quiz/skip", map[string]any{
+		"word_id": wordID,
+		"days":    7,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 when skipping new word with skip hidden, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── Settings: new word cooldown ───────────────────────────────────────────────
+
+func TestGetSettings_CooldownDefault(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.NewWordCooldownMinutes < 0 {
+		t.Errorf("want NewWordCooldownMinutes >= 0, got %d", st.NewWordCooldownMinutes)
+	}
+}
+
+func TestPatchSettings_Cooldown(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	type payload struct {
+		PrimaryLang              string `json:"primary_lang"`
+		SecondaryLang            string `json:"secondary_lang"`
+		ProgNew                  string `json:"prog_new"`
+		ProgTierStruggling       string `json:"prog_tier_struggling"`
+		ProgTierLearning         string `json:"prog_tier_learning"`
+		ProgTierPracticing       string `json:"prog_tier_practicing"`
+		ProgTierMastered         string `json:"prog_tier_mastered"`
+		NewWordMode0             string `json:"new_word_mode_0"`
+		NewWordMode1             string `json:"new_word_mode_1"`
+		NewWordMode2             string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay        int    `json:"max_new_words_per_day"`
+		NewWordCooldownMinutes   int    `json:"new_word_cooldown_minutes"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
+		PrimaryLang:            "en",
+		SecondaryLang:          "de",
+		ProgNew:                "zh_to_transl",
+		ProgTierStruggling:     "transl_to_zh",
+		ProgTierLearning:       "zh_pinyin_to_transl",
+		ProgTierPracticing:     "zh_to_transl",
+		ProgTierMastered:       "random",
+		NewWordMode0:           "transl_to_zh",
+		NewWordMode1:           "zh_pinyin_to_transl",
+		NewWordMode2:           "zh_to_transl",
+		MaxNewWordsPerDay:      5,
+		NewWordCooldownMinutes: 30,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.NewWordCooldownMinutes != 30 {
+		t.Errorf("want NewWordCooldownMinutes=30, got %d", st.NewWordCooldownMinutes)
+	}
+}
+
+// TestQuizStats_MaxNewPerDay_ReflectsUserSetting verifies that the stats
+// endpoint returns the per-user max_new_words_per_day, not the server default.
+func TestQuizStats_MaxNewPerDay_ReflectsUserSetting(t *testing.T) {
+	s := openTestDB(t)
+	// Server default is 100 (set in newRouter via MaxNewPerDay: 100).
+	// Patch the user setting to 3; stats must report 3, not 100.
+	r := newRouter(s)
+
+	type patchPayload struct {
+		PrimaryLang        string `json:"primary_lang"`
+		ProgNew            string `json:"prog_new"`
+		ProgTierStruggling string `json:"prog_tier_struggling"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
+		ProgTierPracticing string `json:"prog_tier_practicing"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload{
+		PrimaryLang:        "en",
+		ProgNew:            "transl_to_zh",
+		ProgTierStruggling: "transl_to_zh",
+		ProgTierLearning:   "zh_pinyin_to_transl",
+		ProgTierPracticing: "zh_to_transl",
+		ProgTierMastered:   "random",
+		NewWordMode0:       "transl_to_zh",
+		NewWordMode1:       "transl_to_zh",
+		NewWordMode2:       "zh_to_transl",
+		MaxNewWordsPerDay:  3,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/quiz/stats: want 200, got %d", rec.Code)
+	}
+	var stats map[string]int
+	decodeJSON(t, rec, &stats)
+	if stats["max_new_per_day"] != 3 {
+		t.Errorf("max_new_per_day: want 3 (user setting), got %d", stats["max_new_per_day"])
 	}
 }

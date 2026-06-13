@@ -79,6 +79,8 @@ const I18N = {
     'newWord.skip': 'Skip (7 days)',
     'newWord.gotIt': 'Got it',
     'newWord.noNew': 'No new words for now',
+    'newWord.typeZh': 'Type the Chinese',
+    'newWord.typeTrans': 'Type the translation',
 
     // Result area
     'result.correct': '✓ Correct!',
@@ -486,6 +488,8 @@ const I18N = {
     'newWord.skip': '跳过（7天）',
     'newWord.gotIt': '知道了',
     'newWord.noNew': '暂时不学新词',
+    'newWord.typeZh': '输入汉字',
+    'newWord.typeTrans': '输入翻译',
 
     // Result area
     'result.correct': '✓ 正确！',
