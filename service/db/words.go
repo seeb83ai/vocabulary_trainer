@@ -515,7 +515,7 @@ func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, la
 
 	var exists int
 	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM words WHERE id = ? AND language = 'zh'`, zhID).Scan(&exists); err != nil {
+		`SELECT COUNT(*) FROM words WHERE id = ? AND user_id = ? AND language = 'zh'`, zhID, userID).Scan(&exists); err != nil {
 		return fmt.Errorf("check word: %w", err)
 	}
 	if exists == 0 {

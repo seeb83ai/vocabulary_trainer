@@ -83,7 +83,7 @@ APP_ENV=production            # default; refuses startup if SESSION_SECRET is mi
 SESSION_SECRET=<64 hex chars>  # `openssl rand -hex 32`
 ```
 
-`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart) and lets `/api/register` auto-verify accounts when SMTP is not configured. **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email.
+`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart), lets `/api/register` auto-verify accounts when SMTP is not configured, and omits the `Secure` flag on session cookies so they work over plain HTTP. In production (the default) session cookies are marked `Secure`, so the app must be served over HTTPS (terminate TLS at the reverse proxy). **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email, and session cookies would be sent over unencrypted HTTP.
 
 Other security-relevant tunables:
 
@@ -207,7 +207,7 @@ Each user has a personal settings page (`/settings`) with:
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
 - **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode.
 - **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
-- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
+- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account. A user-supplied local LLM URL must be a public `http(s)` address — internal/loopback/link-local targets are rejected (and blocked at connect time) to prevent server-side request forgery. Operators who run a trusted local model on loopback should configure it via the server-side `LOCAL_LLM_URL` env var instead.
 
 ## Auto-translate (DeepL)
 

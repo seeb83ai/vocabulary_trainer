@@ -67,6 +67,42 @@ func doWithCookie(t *testing.T, r http.Handler, method, path string, cookie *htt
 	return rec
 }
 
+// Session cookies must carry the Secure flag in production so they are never
+// sent over plain HTTP, and must omit it in dev so HTTP-based local/e2e
+// testing keeps working.
+func TestSessionCookie_SecureInProduction(t *testing.T) {
+	s := openTestDB(t)
+	authH, err := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "production")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := chi.NewRouter()
+	r.Use(authH.Middleware)
+	r.Post("/api/register", authH.Register)
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "sec@example.com", "password": "securepass1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
+	}
+	if !sessionCookie(t, rec).Secure {
+		t.Error("session cookie must have Secure set in production")
+	}
+}
+
+func TestSessionCookie_NotSecureInDev(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "dev@example.com", "password": "securepass1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
+	}
+	if sessionCookie(t, rec).Secure {
+		t.Error("session cookie must not be Secure in dev (HTTP)")
+	}
+}
+
 // ── NewAuthHandler ────────────────────────────────────────────────────────────
 
 func TestNewAuthHandler_NoSecret_Succeeds(t *testing.T) {

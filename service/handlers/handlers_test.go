@@ -4045,6 +4045,26 @@ func TestGetSettings_Defaults(t *testing.T) {
 	}
 }
 
+// PutAPIKeys must reject a local LLM URL that points at an internal address
+// (SSRF guard) before doing anything else.
+func TestPutAPIKeys_RejectsInternalLLMURL(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := map[string]any{
+		"llm_provider":  "local",
+		"llm_local_url": "http://169.254.169.254/latest/meta-data/",
+		"llm_key":       "x",
+	}
+	rec := do(t, r, http.MethodPut, "/api/settings/api-keys", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for internal llm_local_url, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "llm_local_url") {
+		t.Errorf("want llm_local_url error, got %s", rec.Body.String())
+	}
+}
+
 // ── PATCH /api/settings ──────────────────────────────────────────────────────
 
 func TestPatchSettings_Valid(t *testing.T) {
