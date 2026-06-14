@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
@@ -658,7 +659,7 @@ type NewWordBaselines struct {
 // the count for today reaches maxNew, only already-seen cards are returned.
 // skipNew forces unseen words to be excluded regardless of the daily cap.
 // baselines provides optional additional gates; a nil pointer means no baselines.
-func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool, baselines *NewWordBaselines) (*models.Word, *models.SM2Progress, error) {
+func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool, baselines *NewWordBaselines, excludeIDs []int64) (*models.Word, *models.SM2Progress, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -848,16 +849,33 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 		}
 	}
 
-	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP")
+	// Build exclusion filter for recently answered words (at most 2 IDs).
+	// Applied to priority queries; the final fallback ignores it so we never
+	// return nil when excluded words are the only option.
+	excludeFilter := ""
+	if len(excludeIDs) > 0 {
+		parts := make([]string, len(excludeIDs))
+		for i, id := range excludeIDs {
+			parts[i] = strconv.FormatInt(id, 10)
+		}
+		excludeFilter = " AND w.id NOT IN (" + strings.Join(parts, ",") + ")"
+	}
+
+	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP" + excludeFilter)
 	if err != nil || w != nil {
 		return w, p, err
 	}
 	// No overdue cards — prefer cards outside the wrong-retry window so a
 	// recently failed card is not immediately repeated.
-	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds') %s", int(sm2.WrongRetryDelay.Seconds()), todayBound))
+	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds') %s", int(sm2.WrongRetryDelay.Seconds()), todayBound) + excludeFilter)
 	if err != nil || w != nil {
 		return w, p, err
 	}
-	// All remaining cards are within the retry window; return the soonest one.
+	// All remaining cards are within the retry window; try with exclusion first.
+	w, p, err = tryQuery(todayBound + excludeFilter)
+	if err != nil || w != nil {
+		return w, p, err
+	}
+	// Absolute fallback: ignore excludeIDs when no other cards are available.
 	return tryQuery(todayBound)
 }

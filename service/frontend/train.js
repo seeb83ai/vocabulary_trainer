@@ -58,6 +58,9 @@ let currentCard = null;
 let isSubmitted = false;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
 
+// IDs of the last two answered vocabulary words, used to avoid immediate re-show.
+let recentWordIDs = [];
+
 // ── Training-time tracking ──────────────────────────────────────────────────
 // Counts seconds while this tab is visible and the window has focus.
 // _flushTime() is called at the start of loadNextCard() and on beforeunload.
@@ -231,6 +234,11 @@ async function loadStats() {
 
 async function loadNextCard() {
   await _flushTime();
+  // Track the word we're leaving so it isn't immediately re-shown.
+  // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
+  if (currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
+    recentWordIDs = [currentCard.word_id, ...recentWordIDs].slice(0, 2);
+  }
   isSubmitted = false;
   hide('card-area');
   hide('result-area');
@@ -291,6 +299,7 @@ async function loadNextCard() {
     if (skipNewWords) params.set('skip_new', 'true');
     if (!includeMnemonics) params.set('mnemonics', 'false');
     if (includeComponents) params.set('trainComponents', '1');
+    if (recentWordIDs.length) params.set('exclude', recentWordIDs.join(','));
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
