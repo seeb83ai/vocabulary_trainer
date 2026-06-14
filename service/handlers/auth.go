@@ -58,10 +58,11 @@ func WithUserID(id int64) func(http.Handler) http.Handler {
 
 // AuthHandler handles login/logout/registration and provides middleware.
 type AuthHandler struct {
-	store       *db.Store
-	secret      []byte // HMAC signing key, generated at startup
-	emailSender *email.Sender
-	appURL      string
+	store         *db.Store
+	secret        []byte // HMAC signing key, generated at startup
+	emailSender   *email.Sender
+	appURL        string
+	secureCookies bool // set Secure flag on cookies (true unless APP_ENV=dev)
 }
 
 // NewAuthHandler creates an AuthHandler backed by the given store.
@@ -93,10 +94,11 @@ func NewAuthHandlerWithEnv(store *db.Store, emailSender *email.Sender, appURL, s
 		}
 	}
 	return &AuthHandler{
-		store:       store,
-		secret:      secret,
-		emailSender: emailSender,
-		appURL:      appURL,
+		store:         store,
+		secret:        secret,
+		emailSender:   emailSender,
+		appURL:        appURL,
+		secureCookies: !strings.EqualFold(appEnv, "dev"),
 	}, nil
 }
 
@@ -212,6 +214,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	a.setSettingsKeyCookie(w, r, user.ID, req.Password)
@@ -299,6 +302,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			Path:     "/",
 			HttpOnly: true,
 			SameSite: http.SameSiteStrictMode,
+			Secure:   a.secureCookies,
 			MaxAge:   int(sessionTTL.Seconds()),
 		})
 		a.setSettingsKeyCookie(w, r, user.ID, req.Password)
@@ -349,6 +353,7 @@ func (a *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	http.Redirect(w, r, "/train", http.StatusFound)
@@ -420,6 +425,7 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 
@@ -667,6 +673,7 @@ func (a *AuthHandler) setSettingsKeyCookie(w http.ResponseWriter, r *http.Reques
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 }
@@ -732,6 +739,7 @@ func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, u
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	return nil

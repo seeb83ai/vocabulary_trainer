@@ -16,7 +16,7 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(&wordsSeen); err != nil {
+		 WHERE w.user_id = ? AND w.language = 'zh' AND p.first_seen_date IS NOT NULL`, userID).Scan(&wordsSeen); err != nil {
 		return 0, fmt.Errorf("count words seen: %w", err)
 	}
 
@@ -43,7 +43,7 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 		    THEN 1 ELSE 0 END), 0)
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(
+		WHERE w.user_id = ? AND w.language = 'zh' AND p.first_seen_date IS NOT NULL`, userID).Scan(
 		&bNew, &bStruggling, &bLearning, &bPracticing, &bMastered,
 	); err != nil {
 		return 0, fmt.Errorf("count buckets: %w", err)

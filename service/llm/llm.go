@@ -60,7 +60,18 @@ func NewClientFromConfig(provider, apiKey, localURL string) Client {
 		if url == "" || model == "" {
 			return nil
 		}
-		return &localClient{baseURL: url, model: model, apiKey: apiKey, httpClient: http.DefaultClient}
+		// A per-user localURL is untrusted input: validate it and dial through
+		// a client that refuses internal addresses (SSRF guard). When url comes
+		// from the operator-set LOCAL_LLM_URL env var it is trusted and may be
+		// loopback (e.g. a local Ollama), so only enforce on user-supplied URLs.
+		client := http.DefaultClient
+		if localURL != "" {
+			if err := ValidateExternalURL(localURL); err != nil {
+				return nil
+			}
+			client = safeOutboundClient()
+		}
+		return &localClient{baseURL: url, model: model, apiKey: apiKey, httpClient: client}
 	}
 	return nil
 }
