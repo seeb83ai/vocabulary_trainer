@@ -7,7 +7,7 @@ import (
 
 func init() {
 	register(migration{
-		version: 58,
+		version: 60,
 		fn: func(db *sql.DB) error {
 			for _, col := range []struct {
 				name string
