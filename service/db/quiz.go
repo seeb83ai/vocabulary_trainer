@@ -77,7 +77,7 @@ func (s *Store) IsLearningNewWord(ctx context.Context, userID, wordID int64) (bo
 }
 
 // SkipWord moves a word's due date forward by the given number of days without
-// touching first_seen_date or attempt counters.
+// touching first_seen_at or attempt counters.
 func (s *Store) SkipWord(ctx context.Context, userID, wordID int64, days int) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress SET due_date = datetime('now', ?)
@@ -94,12 +94,11 @@ func (s *Store) SkipWord(ctx context.Context, userID, wordID int64, days int) er
 }
 
 // AcknowledgeWord marks a new word as "introduced" by setting total_attempts=1,
-// first_seen_date=today, and due_date=now so it becomes immediately available for quizzing.
+// first_seen_at=now, and due_date=now so it becomes immediately available for quizzing.
 func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress
 		 SET total_attempts = CASE WHEN total_attempts = 0 THEN 1 ELSE total_attempts END,
-		     first_seen_date = COALESCE(first_seen_date, date('now')),
 		     first_seen_at   = COALESCE(first_seen_at, CURRENT_TIMESTAMP),
 		     due_date = CURRENT_TIMESTAMP
 		 WHERE word_id = ? AND word_id IN (SELECT id FROM words WHERE user_id = ?)`,
@@ -127,7 +126,7 @@ func (s *Store) AcknowledgeRandomWords(ctx context.Context, userID int64, n int)
 		SELECT w.id, w.text FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh' AND w.user_id = ?
-		  AND p.first_seen_date IS NULL
+		  AND p.first_seen_at IS NULL
 		ORDER BY RANDOM()
 		LIMIT ?`, userID, n)
 	if err != nil {
@@ -152,13 +151,30 @@ func (s *Store) AcknowledgeRandomWords(ctx context.Context, userID int64, n int)
 
 	now := time.Now()
 	nowStr := now.UTC().Format("2006-01-02 15:04:05")
+
+	// Wrap the acknowledgement writes in a single transaction so a mid-loop
+	// failure leaves no partial state (some words acknowledged, others not).
+	// Component initialisation runs after commit: it uses the same single
+	// SQLite connection, so it cannot run while the transaction holds it, and it
+	// is non-fatal (already best-effort/logged).
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin acknowledge tx: %w", err)
+	}
+	defer tx.Rollback()
 	for _, w := range words {
-		if _, err := s.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`UPDATE sm2_progress
-			 SET total_attempts = 1, first_seen_date = date('now'), due_date = ?
+			 SET total_attempts = 1, first_seen_at = CURRENT_TIMESTAMP, due_date = ?
 			 WHERE word_id = ?`, nowStr, w.id); err != nil {
 			return 0, fmt.Errorf("acknowledge word %d: %w", w.id, err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit acknowledge tx: %w", err)
+	}
+
+	for _, w := range words {
 		if err := s.InitComponentsForWord(ctx, userID, w.zhText, now); err != nil {
 			log.Printf("AcknowledgeRandomWords: initComponents %q: %v", w.zhText, err)
 		}
@@ -204,7 +220,7 @@ func (s *Store) GetStats(ctx context.Context, userID int64, tags []string, bucke
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date IS NOT NULL
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL
 		   AND p.due_date < date('now', '+1 day')`+tagFilter+bucketSQL, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
@@ -212,12 +228,12 @@ func (s *Store) GetStats(ctx context.Context, userID int64, tags []string, bucke
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date = date('now')`, userID).Scan(&newToday)
+		 WHERE w.language = 'zh' AND w.user_id = ? AND date(p.first_seen_at) = date('now')`, userID).Scan(&newToday)
 	return
 }
 
 // CountUnseenZhWords returns the number of zh words that have never been presented
-// (first_seen_date IS NULL), optionally filtered by tags.
+// (first_seen_at IS NULL), optionally filtered by tags.
 func (s *Store) CountUnseenZhWords(ctx context.Context, userID int64, tags []string) (int, error) {
 	tagFilter := ""
 	args := []any{userID}
@@ -236,7 +252,7 @@ func (s *Store) CountUnseenZhWords(ctx context.Context, userID int64, tags []str
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date IS NULL`+tagFilter,
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NULL`+tagFilter,
 		args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count unseen zh words: %w", err)
@@ -264,7 +280,7 @@ func (s *Store) CountLearningNewWords(ctx context.Context, userID int64, tags []
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND w.user_id = ? AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`+tagFilter,
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.learning_new_word = 1 AND p.first_seen_at IS NOT NULL`+tagFilter,
 		args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count learning new words: %w", err)
@@ -274,7 +290,7 @@ func (s *Store) CountLearningNewWords(ctx context.Context, userID int64, tags []
 
 // GetWordCountByDueDate returns the number of zh words grouped by due date,
 // covering overdue words (grouped as today), today, and the next 30 days.
-// Unseen words (first_seen_date IS NULL) are excluded.
+// Unseen words (first_seen_at IS NULL) are excluded.
 func (s *Store) GetWordCountByDueDate(ctx context.Context, userID int64, tags []string) ([]models.DueDateCount, error) {
 	tagFilter := ""
 	args := []any{userID}
@@ -299,7 +315,7 @@ func (s *Store) GetWordCountByDueDate(ctx context.Context, userID int64, tags []
 	JOIN words w ON w.id = p.word_id
 	WHERE w.language = 'zh'
 	  AND w.user_id = ?
-	  AND p.first_seen_date IS NOT NULL
+	  AND p.first_seen_at IS NOT NULL
 	  AND date(p.due_date) <= date('now', '+30 days')` + tagFilter + `
 	GROUP BY bucket_date
 	ORDER BY bucket_date`
