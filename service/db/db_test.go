@@ -1162,12 +1162,12 @@ func TestParseDateTime_InvalidReturnsZero(t *testing.T) {
 
 // ── Confusion pairs ───────────────────────────────────────────────────────────
 
-func TestLookupConfusion_ZhToEn_Found(t *testing.T) {
+func TestDetectConfusion_ZhToEn_Found(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	confusedWithID, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Buch", "zh_to_transl", []string{"en"})
+	confusedWithID, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "Buch", "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1179,11 +1179,46 @@ func TestLookupConfusion_ZhToEn_Found(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_ZhToEn_NoMatch(t *testing.T) {
+// TestDetectConfusion_Behaviour consolidates the core contract: detection fires
+// for a shared translation belonging to a *different* entry, returns false for
+// the entry's own (correct) translation, and false for an unknown answer.
+func TestDetectConfusion_Behaviour(t *testing.T) {
+	s := openTestDB(t)
+	shoeID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+	// Different entry's translation → confusion with that entry.
+	confusedWith, found, err := s.DetectConfusion(context.Background(), int64(2), shoeID, "Buch", "zh_to_transl", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion for a different entry's translation")
+	}
+	if confusedWith != bookID {
+		t.Errorf("confused_with = %d, want the book entry %d", confusedWith, bookID)
+	}
+
+	// The entry's own correct translation → not a confusion.
+	if _, found, err := s.DetectConfusion(context.Background(), int64(2), shoeID, "Schuh", "zh_to_transl", []string{"en"}); err != nil {
+		t.Fatal(err)
+	} else if found {
+		t.Error("the correct translation must not be reported as confusion")
+	}
+
+	// Unknown answer → not a confusion.
+	if _, found, err := s.DetectConfusion(context.Background(), int64(2), shoeID, "Tisch", "zh_to_transl", []string{"en"}); err != nil {
+		t.Fatal(err)
+	} else if found {
+		t.Error("an unknown answer must not be reported as confusion")
+	}
+}
+
+func TestDetectConfusion_ZhToEn_NoMatch(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
-	_, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Tisch", "zh_to_transl", []string{"en"})
+	_, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "Tisch", "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1192,12 +1227,12 @@ func TestLookupConfusion_ZhToEn_NoMatch(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_EnToZh_Found(t *testing.T) {
+func TestDetectConfusion_EnToZh_Found(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 	zhID := seedWord(t, s, "五", "", []string{"five"})
 
-	confusedWithID, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "书", "transl_to_zh", nil)
+	confusedWithID, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "书", "transl_to_zh", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1209,11 +1244,11 @@ func TestLookupConfusion_EnToZh_Found(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_SameWord_NotFound(t *testing.T) {
+func TestDetectConfusion_SameWord_NotFound(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
-	_, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Schuh", "zh_to_transl", []string{"en"})
+	_, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "Schuh", "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1268,12 +1303,12 @@ func TestGetConfusions_LastSeenUpdated(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_ZhPinyinToEn_Found(t *testing.T) {
+func TestDetectConfusion_ZhPinyinToEn_Found(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	confusedWithID, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Buch", "zh_pinyin_to_transl", []string{"en"})
+	confusedWithID, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "Buch", "zh_pinyin_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1285,12 +1320,12 @@ func TestLookupConfusion_ZhPinyinToEn_Found(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_InvalidMode_NotFound(t *testing.T) {
+func TestDetectConfusion_InvalidMode_NotFound(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	_, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "Buch", "invalid_mode", []string{"en"})
+	_, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "Buch", "invalid_mode", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1299,11 +1334,11 @@ func TestLookupConfusion_InvalidMode_NotFound(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_EmptyAnswer_NotFound(t *testing.T) {
+func TestDetectConfusion_EmptyAnswer_NotFound(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
-	_, found, err := s.LookupConfusion(context.Background(), int64(2), zhID, "", "zh_to_transl", []string{"en"})
+	_, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "", "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2633,7 +2668,7 @@ func TestImportTemplateWords_NoSM2ForTemplates(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
+func TestDetectConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2658,7 +2693,7 @@ func TestLookupConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 	}
 
 	// Typing "Uhr" (DE translation of 点) while answering for 人 should detect a confusion.
-	confusedWithID, found, err := s.LookupConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_transl", []string{"en", "de"})
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_transl", []string{"en", "de"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2670,7 +2705,7 @@ func TestLookupConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
+func TestDetectConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2692,7 +2727,7 @@ func TestLookupConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	confusedWithID, found, err := s.LookupConfusion(ctx, int64(2), targetID, "good", "zh_to_transl", []string{"en"})
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "good", "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2704,7 +2739,7 @@ func TestLookupConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 	}
 }
 
-func TestLookupConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
+func TestDetectConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2727,7 +2762,7 @@ func TestLookupConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 	}
 
 	// With langs=["en"] only, typing "Uhr" (DE) should not produce a confusion.
-	_, found, err := s.LookupConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_transl", []string{"en"})
+	_, found, err := s.DetectConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}

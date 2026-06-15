@@ -335,13 +335,13 @@ func (s *Store) GetWordCountByDueDate(ctx context.Context, userID int64, tags []
 	return result, rows.Err()
 }
 
-// LookupConfusion checks if the user's wrong answer matches a different known word.
+// DetectConfusion checks if the user's wrong answer matches a different known word.
 // For zh_to_en / zh_pinyin_to_en: looks for a translation word (restricted to langs)
 // whose text matches the answer, then returns the zh word it belongs to (if different
 // from zhWordID).
 // For en_to_zh: looks for a ZH word whose text matches the answer (if different from zhWordID).
 // Returns (confusedWithID, true, nil) if a confusion is found, (0, false, nil) if not.
-func (s *Store) LookupConfusion(ctx context.Context, userID, zhWordID int64, answer, mode string, langs []string) (int64, bool, error) {
+func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, answer, mode string, langs []string) (int64, bool, error) {
 	normalized := sm2.NormalizeAnswer(answer)
 	if normalized == "" {
 		return 0, false, nil

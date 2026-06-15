@@ -65,18 +65,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	maxNew := h.MaxNewPerDay
 	var baselines *db.NewWordBaselines
 	if userSettings != nil {
-		progCfg = sm2.ProgressiveModeConfig{
-			New:        userSettings.ProgNew,
-			Struggling: userSettings.ProgTierStruggling,
-			Learning:   userSettings.ProgTierLearning,
-			Practicing: userSettings.ProgTierPracticing,
-			Mastered:   userSettings.ProgTierMastered,
-		}
-		nwCfg = sm2.NewWordModeConfig{
-			Step0: userSettings.NewWordMode0,
-			Step1: userSettings.NewWordMode1,
-			Step2: userSettings.NewWordMode2,
-		}
+		progCfg = userSettings.QuizConfig()
+		nwCfg = userSettings.NewWordConfig()
 		primaryLang = userSettings.PrimaryLang
 		if h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
 			maxNew = userSettings.MaxNewWordsPerDay
@@ -394,10 +384,6 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	correct := sm2.CheckAnswer(req.Answer, correctTexts)
-	quality := sm2.QualityWrong
-	if correct {
-		quality = sm2.QualityCorrect
-	}
 
 	progress, err := h.Store.GetSM2Progress(r.Context(), req.WordID)
 	if err != nil {
@@ -410,24 +396,8 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 	prevTier := sm2.ClassifyTier(*progress).String()
 
-	var updated models.SM2Progress
-	var graduated bool
-	if progress.LearningNewWord {
-		updated, graduated = sm2.UpdateLearning(*progress, quality)
-		if !graduated {
-			updated.TotalAttempts++
-			if correct {
-				updated.TotalCorrect++
-			}
-		}
-	} else {
-		updated = sm2.Update(*progress, quality)
-		updated.TotalAttempts++
-		if correct {
-			updated.TotalCorrect++
-		}
-	}
-	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+	updated := sm2.ProcessAnswer(*progress, correct)
+	graduated := progress.LearningNewWord && !updated.LearningNewWord
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -488,7 +458,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !correct {
-		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Answer, req.Mode, langs)
+		confusedWithID, found, err := h.Store.DetectConfusion(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Answer, req.Mode, langs)
 		if err == nil && found {
 			_ = h.Store.UpsertConfusion(r.Context(), req.WordID, confusedWithID, req.Mode)
 			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode, langs)
@@ -548,20 +518,8 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updated models.SM2Progress
-	var graduated bool
-	if prev.LearningNewWord {
-		updated, graduated = sm2.UpdateLearning(*prev, sm2.QualityCorrect)
-		if !graduated {
-			updated.TotalAttempts = prev.TotalAttempts + 1
-			updated.TotalCorrect = prev.TotalCorrect + 1
-		}
-	} else {
-		updated = sm2.Update(*prev, sm2.QualityCorrect)
-		updated.TotalAttempts = prev.TotalAttempts + 1
-		updated.TotalCorrect = prev.TotalCorrect + 1
-	}
-	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+	updated := sm2.ProcessAnswer(*prev, true)
+	graduated := prev.LearningNewWord && !updated.LearningNewWord
 
 	if err := h.Store.UpdateSM2Progress(ctx, updated); err != nil {
 		internalError(w, err)
