@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
@@ -23,7 +22,7 @@ const (
 )
 
 type UploadCSVHandler struct {
-	Store *db.Store
+	Store uploadCSVStore
 	Audio *AudioHandler
 	// MaxBytes / MaxRows bound the upload; zero means use the package defaults.
 	MaxBytes int64

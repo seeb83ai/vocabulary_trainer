@@ -68,7 +68,7 @@ func WithUserID(id int64) func(http.Handler) http.Handler {
 
 // AuthHandler handles login/logout/registration and provides middleware.
 type AuthHandler struct {
-	store         *db.Store
+	store         authStore
 	secret        []byte // HMAC signing key, generated at startup
 	emailSender   *email.Sender
 	appURL        string

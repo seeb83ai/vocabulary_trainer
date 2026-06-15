@@ -7,13 +7,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
 )
 
 type HMMQuizHandler struct {
-	Store *db.Store
+	Store hmmQuizStore
 }
 
 // hmmTier returns the accuracy bucket label for an HMM progress record.
