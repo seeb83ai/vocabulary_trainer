@@ -106,12 +106,11 @@ func TestRateLimitMiddleware_EmptyKeySkips(t *testing.T) {
 	}
 }
 
-// TestClientIP_ExtractsFromXForwardedFor verifies the helper extracts the
-// first IP from X-Forwarded-For (so deployments behind nginx see the
-// original client, not the proxy).
-func TestClientIP_ExtractsFromXForwardedFor(t *testing.T) {
+// TestClientIP_PrefersXRealIP verifies the helper uses X-Real-IP (set by the
+// trusted reverse proxy) ahead of the connection's RemoteAddr.
+func TestClientIP_PrefersXRealIP(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("X-Forwarded-For", "203.0.113.5, 10.0.0.1")
+	req.Header.Set("X-Real-IP", "203.0.113.5")
 	req.RemoteAddr = "10.0.0.1:5555"
 
 	got := handlers.ClientIP(req)
@@ -120,8 +119,22 @@ func TestClientIP_ExtractsFromXForwardedFor(t *testing.T) {
 	}
 }
 
-// TestClientIP_FallsBackToRemoteAddr verifies that without X-Forwarded-For
-// we use the connection's remote address (host only, port stripped).
+// TestClientIP_IgnoresXFF verifies X-Forwarded-For is never consulted: a
+// spoofable header must not influence the derived client IP. With no
+// X-Real-IP present we fall back to RemoteAddr, ignoring X-Forwarded-For.
+func TestClientIP_IgnoresXFF(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("X-Forwarded-For", "203.0.113.5, 10.0.0.1")
+	req.RemoteAddr = "192.0.2.10:5555"
+
+	got := handlers.ClientIP(req)
+	if got != "192.0.2.10" {
+		t.Errorf("X-Forwarded-For must be ignored; want 192.0.2.10, got %q", got)
+	}
+}
+
+// TestClientIP_FallsBackToRemoteAddr verifies that without X-Real-IP we use
+// the connection's remote address (host only, port stripped).
 func TestClientIP_FallsBackToRemoteAddr(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "192.0.2.10:5555"

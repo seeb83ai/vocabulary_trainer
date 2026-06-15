@@ -14,7 +14,7 @@ import (
 )
 
 type HMMHandler struct {
-	Store       *db.Store
+	Store       hmmStore
 	DeepLAPIKey string // optional; when set, missing translations are fetched and cached
 }
 

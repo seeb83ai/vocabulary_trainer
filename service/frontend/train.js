@@ -64,13 +64,14 @@ let isSubmitted = false;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
 
 // ── Training-time tracking ──────────────────────────────────────────────────
-// Counts seconds while this tab is visible and the window has focus.
-// _flushTime() is called at the start of loadNextCard() and on beforeunload.
+// Counts seconds while this tab is visible, the window has focus, and a card
+// is available to train. Timer pauses on success-state / empty-state.
 let _trainStartMs = null;
 let _pendingSeconds = 0;
+let _noCardsPaused = false; // true while no cards are due (success/empty state)
 
 function _isTrainActive() {
-  return document.visibilityState === 'visible' && document.hasFocus();
+  return document.visibilityState === 'visible' && document.hasFocus() && !_noCardsPaused;
 }
 
 function _onFocusOrVisibility() {
@@ -235,6 +236,7 @@ async function loadStats() {
 }
 
 async function loadNextCard() {
+  _noCardsPaused = true;  // pause until we confirm a card is ready
   await _flushTime();
   isSubmitted = false;
   hide('card-area');
@@ -329,6 +331,7 @@ async function loadNextCard() {
   if (currentCard.mode === 'new_word') {
     hide('card-area');
     hide('new-component-area');
+    _noCardsPaused = false; _onFocusOrVisibility();
     show('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
@@ -363,6 +366,7 @@ async function loadNextCard() {
   if (currentCard.card_type === 'component' && currentCard.is_new) {
     hide('card-area');
     hide('new-word-area');
+    _noCardsPaused = false; _onFocusOrVisibility();
     show('new-component-area');
     setText('new-component-char', currentCard.prompt);
     const compPinyin = currentCard.pinyin || null;
@@ -380,6 +384,7 @@ async function loadNextCard() {
   }
 
   hide('new-component-area');
+  _noCardsPaused = false; _onFocusOrVisibility();
   showCard();
   await loadStats();
 }

@@ -13,8 +13,8 @@ func init() {
 		fn: func(db *sql.DB) error {
 			// Add daily learning columns to user_settings
 			userSettingsCols := []struct {
-				name         string
-				def          string
+				name string
+				def  string
 			}{
 				{"max_new_words_per_day", "INTEGER NOT NULL DEFAULT 5"},
 				{"skip_new_words_visible", "INTEGER NOT NULL DEFAULT 1"},

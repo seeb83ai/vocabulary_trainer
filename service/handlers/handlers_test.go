@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -258,8 +260,8 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	s := openTestDB(t)
 	// Word with no pinyin — zh_pinyin_to_en must never be returned
 	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "", // no pinyin
+		ZhText:       "你好",
+		Pinyin:       "", // no pinyin
 		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if err != nil {
@@ -588,8 +590,8 @@ func TestWordsList_Search(t *testing.T) {
 func TestWordsCreate_Valid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}},
 	})
 	if rec.Code != http.StatusCreated {
@@ -625,7 +627,7 @@ func TestWordsCreate_NoTranslations(t *testing.T) {
 func TestWordsCreate_DeOnlyValid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "你好",
+		ZhText:       "你好",
 		Translations: map[string][]string{"de": {"Hallo"}},
 	})
 	if rec.Code != http.StatusCreated {
@@ -651,7 +653,7 @@ func TestWordsCreate_StartTraining(t *testing.T) {
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:        "学习",
 		Pinyin:        "xuéxí",
-		Translations: map[string][]string{"en": {"to study"}},
+		Translations:  map[string][]string{"en": {"to study"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusCreated {
@@ -677,7 +679,7 @@ func TestWordsUpdate_StartTraining(t *testing.T) {
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
 		ZhText:        "你好",
 		Pinyin:        "nǐ hǎo",
-		Translations: map[string][]string{"en": {"hello"}},
+		Translations:  map[string][]string{"en": {"hello"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusOK {
@@ -732,8 +734,8 @@ func TestWordsUpdate_Valid(t *testing.T) {
 	r := newRouter(s)
 
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好吗",
-		Pinyin:  "nǐ hǎo ma",
+		ZhText:       "你好吗",
+		Pinyin:       "nǐ hǎo ma",
 		Translations: map[string][]string{"en": {"how are you"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -749,7 +751,7 @@ func TestWordsUpdate_Valid(t *testing.T) {
 func TestWordsUpdate_NotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "PUT", "/api/words/9999", models.UpdateWordRequest{
-		ZhText:  "test",
+		ZhText:       "test",
 		Translations: map[string][]string{"en": {"test"}},
 	})
 	if rec.Code != http.StatusNotFound {
@@ -1151,7 +1153,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		p, _ := s.GetSM2Progress(ctx, id)
 		p.TotalCorrect = correct
 		p.TotalAttempts = attempts
-		p.LearningNewWord = false // graduated: use progressive tier logic
+		p.LearningNewWord = false                    // graduated: use progressive tier logic
 		p.DueDate = time.Now().UTC().Add(-time.Hour) // ensure due
 		s.UpdateSM2Progress(ctx, *p)
 	}
@@ -1369,8 +1371,8 @@ func TestMarkReview_ClearedOnUpdate(t *testing.T) {
 	do(t, r, "POST", fmt.Sprintf("/api/words/%d/review", id), nil)
 
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -2081,7 +2083,7 @@ func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:        "学",
-		Translations: map[string][]string{"en": {"study"}},
+		Translations:  map[string][]string{"en": {"study"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusCreated {
@@ -2108,7 +2110,7 @@ func TestWordsCreate_ZhTextTooLong(t *testing.T) {
 		long201 += "好"
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  long201,
+		ZhText:       long201,
 		Translations: map[string][]string{"en": {"ok"}},
 	})
 	if rec.Code != http.StatusBadRequest {
@@ -2138,9 +2140,9 @@ func TestWordsCreate_TooManyTags(t *testing.T) {
 		tags[i] = fmt.Sprintf("tag%d", i)
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "好",
+		ZhText:       "好",
 		Translations: map[string][]string{"en": {"ok"}},
-		Tags:    tags,
+		Tags:         tags,
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for > 20 tags, got %d", rec.Code)
@@ -2481,8 +2483,8 @@ func TestQuizLangs_ENandDE(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2511,8 +2513,8 @@ func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2541,8 +2543,8 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
@@ -2573,8 +2575,8 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2605,8 +2607,8 @@ func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2640,8 +2642,8 @@ func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {
 
 	// Re-save with the exact same zh_text — should not return 500.
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello", "hi"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -2665,8 +2667,8 @@ func TestWordsList_MissingLangDE(t *testing.T) {
 
 	// Word with both EN and DE.
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
@@ -2794,6 +2796,95 @@ func TestAudio_NotImmutable(t *testing.T) {
 	}
 	if !strings.Contains(cc, "must-revalidate") && !strings.Contains(cc, "no-cache") {
 		t.Errorf("Cache-Control should require revalidation (must-revalidate or no-cache): %q", cc)
+	}
+}
+
+// TestServeAudio_OtherUserForbidden verifies that the cached-audio path enforces
+// word ownership: a user must not be able to fetch a cached <id>.mp3 for a word
+// they do not own (IDOR). The ownership check must run BEFORE serving the file.
+func TestServeAudio_OtherUserForbidden(t *testing.T) {
+	s := openTestDB(t)
+	// Word belongs to user 2 (seedWord default owner).
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{Store: s, AudioDir: tmpDir}
+	// Pre-seed a cached MP3 so the lazy-generation branch is skipped.
+	if err := os.WriteFile(tmpDir+"/"+fmt.Sprint(id)+".mp3", []byte("fake-mp3"), 0644); err != nil {
+		t.Fatalf("seed mp3: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(999)) // a different user
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/audio/%d", id), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for non-owner, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "fake-mp3") {
+		t.Errorf("must not serve cached audio to non-owner")
+	}
+}
+
+// TestGenerateAsync_LogsErrorOnFailure asserts the fire-and-forget TTS helper
+// logs a failure with word-ID context instead of swallowing the error.
+func TestGenerateAsync_LogsErrorOnFailure(t *testing.T) {
+	// Force generate() to fail deterministically: point AudioDir at a path whose
+	// parent is a regular file, so os.MkdirAll cannot create the directory.
+	tmp := t.TempDir()
+	blocker := filepath.Join(tmp, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0644); err != nil {
+		t.Fatalf("seed blocker: %v", err)
+	}
+	audioH := &handlers.AudioHandler{AudioDir: filepath.Join(blocker, "audio")}
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	audioH.GenerateAsync(4242, "你好")
+
+	if !strings.Contains(buf.String(), "async tts generate word 4242") {
+		t.Fatalf("expected async tts error log with word id, got: %q", buf.String())
+	}
+}
+
+// TestServeAudio_TTSFailureLogged verifies that a TTS synthesis failure is
+// logged with word-ID context (and surfaced as 503) instead of being swallowed.
+func TestServeAudio_TTSFailureLogged(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{
+		Store:    s,
+		AudioDir: tmpDir,
+		Synth:    func(string) ([]byte, error) { return nil, fmt.Errorf("tts boom") },
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/audio/%d", id), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", rec.Code)
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, fmt.Sprint(id)) || !strings.Contains(logged, "tts boom") {
+		t.Errorf("expected TTS failure logged with word-ID context, got: %q", logged)
 	}
 }
 
@@ -3185,7 +3276,9 @@ func TestImport_DeFlag(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
-	var resp struct{ Imported int `json:"imported"` }
+	var resp struct {
+		Imported int `json:"imported"`
+	}
 	decodeJSON(t, rec, &resp)
 	if resp.Imported != 1 {
 		t.Fatalf("want imported=1, got %d", resp.Imported)
@@ -3252,7 +3345,9 @@ func TestImport_ApplyCustomTags(t *testing.T) {
 
 	// Verify both tags are on the imported word
 	listRec := do(t, r, "GET", "/api/words/?tags=my-review", nil)
-	var listResp struct{ Total int `json:"total"` }
+	var listResp struct {
+		Total int `json:"total"`
+	}
 	decodeJSON(t, listRec, &listResp)
 	if listResp.Total != 1 {
 		t.Errorf("want 1 word tagged my-review, got %d", listResp.Total)
@@ -4062,6 +4157,26 @@ func TestGetSettings_Defaults(t *testing.T) {
 	}
 }
 
+// PutAPIKeys must reject a local LLM URL that points at an internal address
+// (SSRF guard) before doing anything else.
+func TestPutAPIKeys_RejectsInternalLLMURL(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := map[string]any{
+		"llm_provider":  "local",
+		"llm_local_url": "http://169.254.169.254/latest/meta-data/",
+		"llm_key":       "x",
+	}
+	rec := do(t, r, http.MethodPut, "/api/settings/api-keys", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for internal llm_local_url, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "llm_local_url") {
+		t.Errorf("want llm_local_url error, got %s", rec.Body.String())
+	}
+}
+
 // ── PATCH /api/settings ──────────────────────────────────────────────────────
 
 func TestPatchSettings_Valid(t *testing.T) {
@@ -4108,17 +4223,17 @@ func TestPatchSettings_NewWordRequire(t *testing.T) {
 	r := newRouter(s)
 
 	payload := map[string]interface{}{
-		"primary_lang":          "en",
-		"secondary_lang":        "de",
-		"prog_new":              "transl_to_zh",
-		"prog_tier_struggling":  "transl_to_zh",
-		"prog_tier_learning":    "zh_pinyin_to_transl",
-		"prog_tier_practicing":  "zh_to_transl",
-		"prog_tier_mastered":    "random",
-		"new_word_mode_0":       "transl_to_zh",
-		"new_word_mode_1":       "transl_to_zh",
-		"new_word_mode_2":       "zh_to_transl",
-		"new_word_require_zh":   false,
+		"primary_lang":           "en",
+		"secondary_lang":         "de",
+		"prog_new":               "transl_to_zh",
+		"prog_tier_struggling":   "transl_to_zh",
+		"prog_tier_learning":     "zh_pinyin_to_transl",
+		"prog_tier_practicing":   "zh_to_transl",
+		"prog_tier_mastered":     "random",
+		"new_word_mode_0":        "transl_to_zh",
+		"new_word_mode_1":        "transl_to_zh",
+		"new_word_mode_2":        "zh_to_transl",
+		"new_word_require_zh":    false,
 		"new_word_require_trans": true,
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
@@ -4224,7 +4339,7 @@ func TestQuizNext_UsesUserPrimaryLang(t *testing.T) {
 		"prog_new": "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
 		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
 		"prog_tier_mastered": "random",
-		"new_word_mode_0": "transl_to_zh", "new_word_mode_1": "transl_to_zh",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh",
 		"new_word_mode_2": "zh_to_transl",
 	}
 	do(t, r, http.MethodPatch, "/api/settings", payload)
@@ -4408,7 +4523,7 @@ func TestComponentUpdateTranslation_Sets204(t *testing.T) {
 		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	defs, err := s.GetComponentDefinitions(ctx, "水", []string{"de"})
+	defs, err := s.GetComponentDefinitions(ctx, 2, "水", []string{"de"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions: %v", err)
 	}
@@ -4480,10 +4595,10 @@ func TestComponentGetTranslations_ReturnsMap(t *testing.T) {
 	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := s.StoreComponentTranslation("水", "en", "water"); err != nil {
+	if err := s.StoreComponentTranslation(context.Background(), 2, "水", "en", "water"); err != nil {
 		t.Fatalf("store en: %v", err)
 	}
-	if err := s.StoreComponentTranslation("水", "de", "Wasser"); err != nil {
+	if err := s.StoreComponentTranslation(context.Background(), 2, "水", "de", "Wasser"); err != nil {
 		t.Fatalf("store de: %v", err)
 	}
 
@@ -4992,10 +5107,10 @@ func TestSettingsCycleSequence_InvalidMode(t *testing.T) {
 	payload := map[string]string{
 		"primary_lang":   "en",
 		"secondary_lang": "",
-		"prog_new": "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_new":       "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
 		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
 		"prog_tier_mastered": "random",
-		"new_word_mode_0": "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
 		"cycle_sequence": "transl_to_zh,invalid_mode",
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
@@ -5573,17 +5688,17 @@ func TestPatchSettings_MaxNewWordsPerDay_Invalid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 
 	type payload struct {
-		PrimaryLang       string `json:"primary_lang"`
-		SecondaryLang     string `json:"secondary_lang"`
-		ProgNew           string `json:"prog_new"`
+		PrimaryLang        string `json:"primary_lang"`
+		SecondaryLang      string `json:"secondary_lang"`
+		ProgNew            string `json:"prog_new"`
 		ProgTierStruggling string `json:"prog_tier_struggling"`
-		ProgTierLearning  string `json:"prog_tier_learning"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
 		ProgTierPracticing string `json:"prog_tier_practicing"`
-		ProgTierMastered  string `json:"prog_tier_mastered"`
-		NewWordMode0      string `json:"new_word_mode_0"`
-		NewWordMode1      string `json:"new_word_mode_1"`
-		NewWordMode2      string `json:"new_word_mode_2"`
-		MaxNewWordsPerDay int    `json:"max_new_words_per_day"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
 		PrimaryLang:        "en",
@@ -5677,18 +5792,18 @@ func TestPatchSettings_Cooldown(t *testing.T) {
 	r := newRouter(openTestDB(t))
 
 	type payload struct {
-		PrimaryLang              string `json:"primary_lang"`
-		SecondaryLang            string `json:"secondary_lang"`
-		ProgNew                  string `json:"prog_new"`
-		ProgTierStruggling       string `json:"prog_tier_struggling"`
-		ProgTierLearning         string `json:"prog_tier_learning"`
-		ProgTierPracticing       string `json:"prog_tier_practicing"`
-		ProgTierMastered         string `json:"prog_tier_mastered"`
-		NewWordMode0             string `json:"new_word_mode_0"`
-		NewWordMode1             string `json:"new_word_mode_1"`
-		NewWordMode2             string `json:"new_word_mode_2"`
-		MaxNewWordsPerDay        int    `json:"max_new_words_per_day"`
-		NewWordCooldownMinutes   int    `json:"new_word_cooldown_minutes"`
+		PrimaryLang            string `json:"primary_lang"`
+		SecondaryLang          string `json:"secondary_lang"`
+		ProgNew                string `json:"prog_new"`
+		ProgTierStruggling     string `json:"prog_tier_struggling"`
+		ProgTierLearning       string `json:"prog_tier_learning"`
+		ProgTierPracticing     string `json:"prog_tier_practicing"`
+		ProgTierMastered       string `json:"prog_tier_mastered"`
+		NewWordMode0           string `json:"new_word_mode_0"`
+		NewWordMode1           string `json:"new_word_mode_1"`
+		NewWordMode2           string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay      int    `json:"max_new_words_per_day"`
+		NewWordCooldownMinutes int    `json:"new_word_cooldown_minutes"`
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
 		PrimaryLang:            "en",
@@ -5760,6 +5875,46 @@ func TestQuizStats_MaxNewPerDay_ReflectsUserSetting(t *testing.T) {
 	decodeJSON(t, rec, &stats)
 	if stats["max_new_per_day"] != 3 {
 		t.Errorf("max_new_per_day: want 3 (user setting), got %d", stats["max_new_per_day"])
+	}
+}
+
+// uploadRouterWithLimits builds a minimal authenticated router whose CSV handler
+// uses the given DoS limits, so the body-size and row caps can be exercised
+// without constructing multi-megabyte payloads.
+func uploadRouterWithLimits(s *db.Store, maxBytes int64, maxRows int) http.Handler {
+	h := &handlers.UploadCSVHandler{Store: s, MaxBytes: maxBytes, MaxRows: maxRows}
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Post("/api/words/upload-csv", h.UploadCSV)
+	return r
+}
+
+func TestUploadCSV_RejectsOversizedBody(t *testing.T) {
+	// Tiny body cap; the multipart payload below exceeds it.
+	r := uploadRouterWithLimits(openTestDB(t), 500, 5000)
+	var b strings.Builder
+	b.WriteString("chinese,pinyin,en\n")
+	for i := 0; i < 50; i++ {
+		fmt.Fprintf(&b, "字%d,zì,meaning number %d here padding padding\n", i, i)
+	}
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "t", "start_training_count": "0"}, b.String())
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("want 413 for oversized body, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
+	// Row cap of 2; the CSV below has 3 data rows.
+	r := uploadRouterWithLimits(openTestDB(t), 0, 2)
+	csv := "chinese,pinyin,en\n一,yī,one\n二,èr,two\n三,sān,three"
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "t", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for too many rows, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "too many rows") {
+		t.Errorf("expected a 'too many rows' message, got %s", rec.Body.String())
 	}
 }
 

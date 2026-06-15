@@ -13,9 +13,11 @@ echo "Downloading Go modules..."
 cd "${CLAUDE_PROJECT_DIR}/service"
 go mod download
 
-# Install Node.js dependencies for frontend tests
+# Install Node.js dependencies (including Playwright test runner)
 echo "Installing npm dependencies..."
 cd "${CLAUDE_PROJECT_DIR}"
-npm install
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: environment pre-installs Chromium at
+# /opt/pw-browsers (set via PLAYWRIGHT_BROWSERS_PATH). No download needed.
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install
 
 echo "Environment setup complete."

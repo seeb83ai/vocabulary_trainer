@@ -75,8 +75,8 @@ func newRouterForUser(s *db.Store, userID int64) http.Handler {
 func seedWordForUser(t *testing.T, s *db.Store, userID int64, zhText, pinyin string, enTexts []string) int64 {
 	t.Helper()
 	id, err := s.CreateWord(context.Background(), userID, models.CreateWordRequest{
-		ZhText:  zhText,
-		Pinyin:  pinyin,
+		ZhText:       zhText,
+		Pinyin:       pinyin,
 		Translations: map[string][]string{"en": enTexts},
 	})
 	if err != nil {
@@ -186,8 +186,8 @@ func TestIsolation_UpdateWord_CannotUpdateOtherUsersWord(t *testing.T) {
 	r2 := newRouterForUser(s, 2)
 
 	rec := do(t, r2, "PUT", fmt.Sprintf("/api/words/%d/", idA), models.UpdateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"see you"}},
 	})
 	if rec.Code != http.StatusNotFound {
@@ -437,8 +437,8 @@ func TestIsolation_CreateWord_WordOnlyVisibleToCreator(t *testing.T) {
 
 	// User 1 creates a word via the HTTP API.
 	rec := do(t, r1, "POST", "/api/words/", models.CreateWordRequest{
-		ZhText:  "学习",
-		Pinyin:  "xuéxí",
+		ZhText:       "学习",
+		Pinyin:       "xuéxí",
 		Translations: map[string][]string{"en": {"to study"}},
 	})
 	if rec.Code != http.StatusCreated {
