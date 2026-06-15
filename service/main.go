@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/email"
@@ -199,8 +203,12 @@ func main() {
 	ipLimit := handlers.RateLimitMiddleware(ipLimiter, handlers.IPKey())
 	expensiveLimit := handlers.RateLimitMiddleware(expensiveLimiter, handlers.UserOrIPKey())
 
-	// API routes
+	// API routes. Cap JSON request bodies so an unbounded upload cannot
+	// exhaust memory; oversized bodies make the JSON decoders fail with 400.
+	maxBodyBytes := int64(envInt("MAX_BODY_BYTES", 1<<20))
+	log.Printf("Max request body: %d bytes (set MAX_BODY_BYTES to change)", maxBodyBytes)
 	r.Route("/api", func(r chi.Router) {
+		r.Use(handlers.MaxBytes(maxBodyBytes))
 		r.Get("/auth/status", handlers.AuthStatus(authH))
 		r.With(ipLimit).Post("/login", authH.Login)
 		r.Post("/logout", authH.Logout)
@@ -364,8 +372,46 @@ func main() {
 		port = "8080"
 	}
 	addr := ":" + port
-	log.Printf("Vocabulary Trainer listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, r))
+	srv := newServer(addr, r)
+
+	// Start the server in the background so the main goroutine can wait for a
+	// shutdown signal and drain in-flight requests gracefully.
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("Vocabulary Trainer listening on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-serverErr:
+		log.Fatalf("Server error: %v", err)
+	case sig := <-stop:
+		log.Printf("Received %s — shutting down gracefully", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Graceful shutdown failed: %v", err)
+		}
+		log.Printf("Shutdown complete")
+	}
+}
+
+// newServer builds the HTTP server with conservative timeouts so a slow or
+// stalled client cannot tie up the single SQLite connection indefinitely.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 }
 
 // envInt reads an integer env var, returning fallback if unset or invalid.
