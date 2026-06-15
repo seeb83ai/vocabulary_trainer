@@ -46,6 +46,47 @@ type UserSettings struct {
 	AcceptCorrectMode  string `json:"accept_correct_mode"`
 }
 
+// ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
+// A zero-value string in any field uses the built-in default for that tier.
+// Defined here (not in sm2) so UserSettings can project to it without an import
+// cycle; sm2 aliases this type.
+type ProgressiveModeConfig struct {
+	New        string // totalAttempts<3; default: ModeTranslToZh
+	Struggling string // totalAttempts>=3 and accuracy<50%; default: ModeTranslToZh
+	Learning   string // accuracy<70% or totalAttempts<10; default: ModeZhPinyinToTransl
+	Practicing string // accuracy<85%; default: ModeZhToTransl
+	Mastered   string // accuracy>=85%; default: random via SelectMode()
+}
+
+// NewWordModeConfig holds per-step mode choices for LearningNewWord words.
+type NewWordModeConfig struct {
+	Step0 string // TotalCorrect==0; default: ModeTranslToZh
+	Step1 string // TotalCorrect==1; default: ModeTranslToZh
+	Step2 string // TotalCorrect>=2; default: ModeZhToTransl
+}
+
+// QuizConfig projects the user's progressive-mode settings into a
+// ProgressiveModeConfig. Empty fields fall back to per-tier defaults downstream.
+func (s UserSettings) QuizConfig() ProgressiveModeConfig {
+	return ProgressiveModeConfig{
+		New:        s.ProgNew,
+		Struggling: s.ProgTierStruggling,
+		Learning:   s.ProgTierLearning,
+		Practicing: s.ProgTierPracticing,
+		Mastered:   s.ProgTierMastered,
+	}
+}
+
+// NewWordConfig projects the user's new-word step settings into a
+// NewWordModeConfig.
+func (s UserSettings) NewWordConfig() NewWordModeConfig {
+	return NewWordModeConfig{
+		Step0: s.NewWordMode0,
+		Step1: s.NewWordMode1,
+		Step2: s.NewWordMode2,
+	}
+}
+
 // DB-layer structs
 
 type User struct {
