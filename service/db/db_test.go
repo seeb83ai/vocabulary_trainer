@@ -4463,7 +4463,7 @@ func TestCreateWord_StartTraining(t *testing.T) {
 
 	var firstSeen *string
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT first_seen_date FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen); err != nil {
+		`SELECT first_seen_at FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen); err != nil {
 		t.Fatalf("read first_seen_date: %v", err)
 	}
 	if firstSeen == nil {
@@ -4496,7 +4496,7 @@ func TestCreateWord_NoStartTraining(t *testing.T) {
 
 	var firstSeen *string
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT first_seen_date FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen); err != nil {
+		`SELECT first_seen_at FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen); err != nil {
 		t.Fatalf("read first_seen_date: %v", err)
 	}
 	if firstSeen != nil {
