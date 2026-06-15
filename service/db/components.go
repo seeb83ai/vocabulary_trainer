@@ -21,13 +21,24 @@ import (
 // Rows are INSERT OR IGNORE so calling this multiple times is safe.
 // dueDate is copied from the origin zh word's sm2_progress.due_date.
 func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error {
+	return initComponentsForWord(ctx, s.db, userID, zhText, dueDate)
+}
+
+// querier is satisfied by both *sql.DB and *sql.Tx, letting initComponentsForWord
+// run either standalone or inside an enclosing transaction (e.g. CreateWord).
+type querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText string, dueDate time.Time) error {
 	dueDateStr := dueDate.UTC().Format("2006-01-02 15:04:05")
 	for _, r := range []rune(zhText) {
 		if !unicode.Is(unicode.Han, r) {
 			continue
 		}
 		var decomp, etymology, radical, parentPinyin sql.NullString
-		err := s.db.QueryRowContext(ctx,
+		err := q.QueryRowContext(ctx,
 			`SELECT decomposition, etymology, radical, pinyin FROM hanzi_decomposition WHERE character = ?`,
 			string(r),
 		).Scan(&decomp, &etymology, &radical, &parentPinyin)
@@ -40,7 +51,7 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 		parentPy := parsePinyinJSON(parentPinyin.String)
 		for _, comp := range extractComponents(decomp.String) {
 			var def, compPinyin sql.NullString
-			err := s.db.QueryRowContext(ctx,
+			err := q.QueryRowContext(ctx,
 				`SELECT definition, pinyin FROM hanzi_decomposition WHERE character = ?`,
 				string(comp),
 			).Scan(&def, &compPinyin)
@@ -56,7 +67,7 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 			if !shouldKeepComponent(r, comp, etymology.String, radical.String, parentPy, parsePinyinJSON(compPinyin.String)) {
 				continue
 			}
-			if _, err := s.db.ExecContext(ctx,
+			if _, err := q.ExecContext(ctx,
 				`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
 				userID, string(comp), dueDateStr,
 			); err != nil {
@@ -119,7 +130,7 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		return nil, fmt.Errorf("get next component card: %w", err)
 	}
 
-	defs, err := s.GetComponentTranslations(c.Character)
+	defs, err := s.GetComponentTranslations(ctx, userID, c.Character)
 	if err != nil {
 		return nil, err
 	}
@@ -137,17 +148,19 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 }
 
 // GetComponentDefinitions returns definitions for a character keyed by lowercase lang code.
-// All langs (including EN) are read from hanzi_decomposition_translation.
-// Missing or empty definitions are omitted from the result.
-func (s *Store) GetComponentDefinitions(ctx context.Context, character string, langs []string) (map[string]string, error) {
+// Each definition prefers the user's own override (user_id = userID) and falls back to
+// the shared seeded default (user_id IS NULL). Missing/empty definitions are omitted.
+func (s *Store) GetComponentDefinitions(ctx context.Context, userID int64, character string, langs []string) (map[string]string, error) {
 	defs := make(map[string]string)
 	for _, lang := range langs {
 		langUpper := strings.ToUpper(lang)
 		langLower := strings.ToLower(lang)
 		var def string
 		err := s.db.QueryRowContext(ctx,
-			`SELECT COALESCE(definition, '') FROM hanzi_decomposition_translation WHERE character = ? AND lang = ?`,
-			character, langUpper,
+			`SELECT COALESCE(definition, '') FROM hanzi_decomposition_translation
+			 WHERE character = ? AND lang = ? AND (user_id = ? OR user_id IS NULL)
+			 ORDER BY user_id IS NULL LIMIT 1`,
+			character, langUpper, userID,
 		).Scan(&def)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, fmt.Errorf("get %s definition for %q: %w", langLower, character, err)
@@ -159,37 +172,63 @@ func (s *Store) GetComponentDefinitions(ctx context.Context, character string, l
 	return defs, nil
 }
 
-// StoreComponentTranslation upserts a translation for a hanzi component character.
-func (s *Store) StoreComponentTranslation(character, lang, definition string) error {
-	_, err := s.db.Exec(
-		`INSERT INTO hanzi_decomposition_translation (character, lang, definition)
-		 VALUES (?, ?, ?)
-		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
-		character, strings.ToUpper(lang), definition,
+// StoreComponentTranslation upserts a per-user override translation for a hanzi
+// component character. Seeded shared defaults (user_id IS NULL) are never touched.
+func (s *Store) StoreComponentTranslation(ctx context.Context, userID int64, character, lang, definition string) error {
+	langUpper := strings.ToUpper(lang)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE hanzi_decomposition_translation SET definition = ?
+		 WHERE character = ? AND lang = ? AND user_id = ?`,
+		definition, character, langUpper, userID,
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO hanzi_decomposition_translation (character, lang, definition, user_id)
+		 VALUES (?, ?, ?, ?)`,
+		character, langUpper, definition, userID,
 	)
 	return err
 }
 
 // GetComponentTranslations returns all language translations for a component character,
-// keyed by lowercase language code.
-func (s *Store) GetComponentTranslations(character string) (map[string]string, error) {
-	rows, err := s.db.Query(
-		`SELECT lang, definition FROM hanzi_decomposition_translation WHERE character = ?`,
-		character,
+// keyed by lowercase language code. The user's own overrides take precedence over the
+// shared seeded defaults.
+func (s *Store) GetComponentTranslations(ctx context.Context, userID int64, character string) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT lang, definition, user_id FROM hanzi_decomposition_translation
+		 WHERE character = ? AND (user_id = ? OR user_id IS NULL)`,
+		character, userID,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	result := make(map[string]string)
+	global := make(map[string]string)
+	userDefs := make(map[string]string)
 	for rows.Next() {
 		var lang, def string
-		if err := rows.Scan(&lang, &def); err != nil {
+		var uid *int64
+		if err := rows.Scan(&lang, &def, &uid); err != nil {
 			return nil, err
 		}
-		result[strings.ToLower(lang)] = def
+		if uid != nil {
+			userDefs[strings.ToLower(lang)] = def
+		} else {
+			global[strings.ToLower(lang)] = def
+		}
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for lang, def := range userDefs {
+		global[lang] = def // user override wins
+	}
+	return global, nil
 }
 
 // MarkComponentForReview sets needs_review = 1 for a component_progress row.
@@ -383,7 +422,7 @@ func (s *Store) GetComponentStatsHistory(ctx context.Context, userID int64) ([]m
 func (s *Store) SeedHanziTranslationForTest(ctx context.Context, character, lang, definition string) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, ?, ?)
-		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		 ON CONFLICT(character, lang) WHERE user_id IS NULL DO UPDATE SET definition = excluded.definition`,
 		character, strings.ToUpper(lang), definition)
 	return err
 }
@@ -399,7 +438,7 @@ func (s *Store) SeedHanziDecompositionForTest(ctx context.Context, character, de
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
-		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		 ON CONFLICT(character, lang) WHERE user_id IS NULL DO UPDATE SET definition = excluded.definition`,
 		character, definition)
 	return err
 }
@@ -416,7 +455,7 @@ func (s *Store) SeedHanziDecompositionWithDecompForTest(ctx context.Context, cha
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
-		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		 ON CONFLICT(character, lang) WHERE user_id IS NULL DO UPDATE SET definition = excluded.definition`,
 		character, definition)
 	return err
 }
@@ -433,7 +472,7 @@ func (s *Store) SeedHanziDecompositionWithPinyinForTest(ctx context.Context, cha
 	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
-		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		 ON CONFLICT(character, lang) WHERE user_id IS NULL DO UPDATE SET definition = excluded.definition`,
 		character, definition)
 	return err
 }

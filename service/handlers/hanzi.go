@@ -3,12 +3,11 @@ package handlers
 import (
 	"net/http"
 	"strings"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
 type HanziHandler struct {
-	Store *db.Store
+	Store hanziStore
 }
 
 func (h *HanziHandler) Decompose(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +33,7 @@ func (h *HanziHandler) Decompose(w http.ResponseWriter, r *http.Request) {
 
 	if langsParam := r.URL.Query().Get("langs"); langsParam != "" {
 		langs := strings.Split(langsParam, ",")
-		if err := h.Store.AnnotateComponentDefinitions(r.Context(), results, langs); err != nil {
+		if err := h.Store.AnnotateComponentDefinitions(r.Context(), UserIDFromContext(r.Context()), results, langs); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to annotate component definitions")
 			return
 		}

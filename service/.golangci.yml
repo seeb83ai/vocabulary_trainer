@@ -1,0 +1,20 @@
+# Conservative golangci-lint config: a focused set of high-signal linters that
+# pass clean on the current tree. errcheck is intentionally disabled — the code
+# deliberately ignores certain errors (audit logging, fire-and-forget writes),
+# and those that matter are handled explicitly.
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
