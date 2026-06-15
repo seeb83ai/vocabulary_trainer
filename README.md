@@ -91,7 +91,13 @@ Other security-relevant tunables:
 RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
 RATE_LIMIT_USER_PER_MIN=300       # per-user budget for all other API traffic
 RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-password, LLM scene generation
+CSV_MAX_UPLOAD_MB=8               # max CSV upload body size; oversized uploads are rejected (413)
+CSV_MAX_ROWS=5000                 # max data rows per CSV upload; over-cap uploads are rejected (400)
 ```
+
+The CSV import endpoint (`POST /api/words/upload-csv`) is also covered by the
+expensive-request rate limiter, and its per-row text-to-speech generation runs
+in a bounded background worker pool so a large import can't exhaust resources.
 
 A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) is built in; the lockout is cleared on the next successful login.
 

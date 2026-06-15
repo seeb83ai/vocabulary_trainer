@@ -159,7 +159,15 @@ func main() {
 	log.Printf("Pinyin audio dirs: %v", pinyinAudioDirs)
 
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
-	uploadCSVH := &handlers.UploadCSVHandler{Store: store, Audio: audioH}
+	csvMaxMB := envInt("CSV_MAX_UPLOAD_MB", 8)
+	csvMaxRows := envInt("CSV_MAX_ROWS", 5000)
+	log.Printf("CSV upload limits: max=%dMB rows=%d (set CSV_MAX_UPLOAD_MB / CSV_MAX_ROWS to change)", csvMaxMB, csvMaxRows)
+	uploadCSVH := &handlers.UploadCSVHandler{
+		Store:    store,
+		Audio:    audioH,
+		MaxBytes: int64(csvMaxMB) << 20,
+		MaxRows:  csvMaxRows,
+	}
 	importH := &handlers.ImportHandler{Store: store}
 	tagsH := &handlers.TagsHandler{Store: store}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
@@ -233,7 +241,7 @@ func main() {
 			r.Get("/", wordsH.List)
 			r.Post("/", wordsH.Create)
 			r.Get("/export", wordsH.Export)
-			r.Post("/upload-csv", uploadCSVH.UploadCSV)
+			r.With(expensiveLimit).Post("/upload-csv", uploadCSVH.UploadCSV)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", wordsH.GetByID)
 				r.Put("/", wordsH.Update)

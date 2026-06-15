@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -90,7 +91,8 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		}
 		translated, err := deeplTranslate([]string{req.ZhText}, targetLang, "ZH", apiKey, instructions)
 		if err != nil {
-			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
+			log.Printf("deepl translate: %v", err) // full upstream detail stays server-side
+			writeError(w, http.StatusBadGateway, "translation service unavailable")
 			return
 		}
 		parts := splitTranslations(translated[0])
@@ -101,7 +103,8 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		// Source language text provided → translate to Chinese
 		translated, err := deeplTranslate([]string{req.SourceText}, "ZH", "", apiKey, nil)
 		if err != nil {
-			writeError(w, http.StatusBadGateway, "DeepL error: "+err.Error())
+			log.Printf("deepl translate: %v", err) // full upstream detail stays server-side
+			writeError(w, http.StatusBadGateway, "translation service unavailable")
 			return
 		}
 		resp.ZhText = translated[0]
@@ -227,7 +230,11 @@ func deeplTranslate(texts []string, targetLang, sourceLang, apiKey string, custo
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("DeepL returned HTTP %d: %s", resp.StatusCode, respBytes)
+		detail := respBytes
+		if len(detail) > 200 {
+			detail = detail[:200]
+		}
+		return nil, fmt.Errorf("DeepL returned HTTP %d: %s", resp.StatusCode, detail)
 	}
 
 	var result struct {
