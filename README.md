@@ -95,6 +95,14 @@ RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-passw
 
 A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) is built in; the lockout is cleared on the next successful login.
 
+JSON request bodies on `/api` routes are capped (default 1 MiB) so an unbounded upload cannot exhaust memory — oversized bodies are rejected with `400`:
+
+```bash
+MAX_BODY_BYTES=1048576   # max /api request body in bytes (default 1 MiB)
+```
+
+The HTTP server runs with read/write/idle timeouts so a slow or stalled client cannot tie up the single SQLite connection, and it shuts down gracefully on `SIGINT`/`SIGTERM`, draining in-flight requests (up to 30 s) before exiting. This makes systemd auto-restarts (see `deploy/vocab-trainer.service`) drop fewer in-flight requests.
+
 The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on every response. Configure HTTPS at the reverse proxy (see `deploy/nginx.conf`) — the sample config also sets `Strict-Transport-Security`.
 
 ## Daily new-word cap
