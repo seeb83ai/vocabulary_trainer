@@ -169,7 +169,23 @@ func (s *Store) ensureUserSettings(ctx context.Context, userID int64) error {
 
 // GetUserSettings returns the settings for a user (creating defaults on first access).
 func (s *Store) GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error) {
+	now := time.Now()
+	s.settingsMu.Lock()
+	if e, ok := s.settingsCache[userID]; ok && now.Before(e.expires) {
+		s.settingsMu.Unlock()
+		return e.settings, nil
+	}
+	s.settingsMu.Unlock()
+
 	settings, _, _, _, err := s.GetUserSettingsRaw(ctx, userID)
+	if err == nil {
+		s.settingsMu.Lock()
+		if s.settingsCache == nil {
+			s.settingsCache = make(map[int64]settingsCacheEntry)
+		}
+		s.settingsCache[userID] = settingsCacheEntry{settings: settings, expires: now.Add(settingsCacheTTL)}
+		s.settingsMu.Unlock()
+	}
 	return settings, err
 }
 
@@ -275,6 +291,9 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.BaselineLearningValue,
 		userID,
 	)
+	if err == nil {
+		s.invalidateSettingsCache(userID)
+	}
 	return err
 }
 
@@ -292,6 +311,9 @@ func (s *Store) UpdateUserAPIKeys(ctx context.Context, userID int64, deeplEnc, l
 		WHERE user_id = ?`,
 		deeplEnc, llmProvider, llmEnc, llmLocalURL, userID,
 	)
+	if err == nil {
+		s.invalidateSettingsCache(userID)
+	}
 	return err
 }
 

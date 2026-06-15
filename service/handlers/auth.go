@@ -63,7 +63,13 @@ type AuthHandler struct {
 	emailSender   *email.Sender
 	appURL        string
 	secureCookies bool // set Secure flag on cookies (true unless APP_ENV=dev)
+	// sessionCache caches per-user sessions-invalidated-at cutoffs so session
+	// validation avoids a DB lookup on every request. Invalidated on password change.
+	sessionCache *invalidationCache
 }
+
+// sessionCacheTTL bounds how long a stale invalidation cutoff may be served.
+const sessionCacheTTL = 10 * time.Second
 
 // NewAuthHandler creates an AuthHandler backed by the given store.
 // emailSender may be nil. When nil, /api/register auto-verifies and
@@ -99,6 +105,7 @@ func NewAuthHandlerWithEnv(store *db.Store, emailSender *email.Sender, appURL, s
 		emailSender:   emailSender,
 		appURL:        appURL,
 		secureCookies: !strings.EqualFold(appEnv, "dev"),
+		sessionCache:  newInvalidationCache(sessionCacheTTL),
 	}, nil
 }
 
@@ -408,6 +415,9 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Drop the cached invalidation cutoff so the freshly-bumped value is read
+	// immediately and older tokens are rejected without waiting for the TTL.
+	a.sessionCache.invalidate(userID)
 
 	// Re-encrypt API keys with the new derived key.
 	if err := a.reencryptAPIKeys(w, r, userID, req.NewPassword); err != nil {
@@ -504,8 +514,13 @@ func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 	if time.Since(mintedAt) >= sessionTTL {
 		return 0, false
 	}
-	// Reject tokens issued before the user's last password change.
-	if cut, err := a.store.GetSessionsInvalidatedAt(r.Context(), userID); err == nil && !cut.IsZero() {
+	// Reject tokens issued before the user's last password change. The cutoff is
+	// served from a short-TTL cache so this isn't a per-request DB lookup; it is
+	// invalidated immediately on password change.
+	cut, err := a.sessionCache.lookup(userID, time.Now(), func() (time.Time, error) {
+		return a.store.GetSessionsInvalidatedAt(r.Context(), userID)
+	})
+	if err == nil && !cut.IsZero() {
 		if mintedAt.UTC().Before(cut) {
 			return 0, false
 		}

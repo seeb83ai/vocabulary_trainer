@@ -4193,3 +4193,41 @@ func TestComponentPrevState_ClearAfterAccept(t *testing.T) {
 		t.Errorf("expected nil after clear, got %+v", got)
 	}
 }
+
+// TestGetUserSettings_CachesAndInvalidates verifies the short-TTL settings cache
+// (issue 04 / plan item 1.10): a second read within the TTL returns the cached
+// snapshot (same pointer = no second DB load), and a settings write invalidates it.
+func TestGetUserSettings_CachesAndInvalidates(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.UpdateUserSettings(ctx, 2, models.UserSettings{PrimaryLang: "en"}); err != nil {
+		t.Fatal(err)
+	}
+
+	p1, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p1 != p2 {
+		t.Fatal("second GetUserSettings within TTL should return the cached pointer (single DB load)")
+	}
+
+	// A settings write must invalidate the cache so the next read reloads.
+	if err := s.UpdateUserSettings(ctx, 2, models.UserSettings{PrimaryLang: "de"}); err != nil {
+		t.Fatal(err)
+	}
+	p3, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p3 == p2 {
+		t.Fatal("GetUserSettings after a write should reload (a new pointer), not serve the stale cache")
+	}
+	if p3.PrimaryLang != "de" {
+		t.Fatalf("reloaded settings should reflect the write, got PrimaryLang=%q", p3.PrimaryLang)
+	}
+}
