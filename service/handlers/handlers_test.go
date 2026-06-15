@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -2792,6 +2794,95 @@ func TestAudio_NotImmutable(t *testing.T) {
 	}
 	if !strings.Contains(cc, "must-revalidate") && !strings.Contains(cc, "no-cache") {
 		t.Errorf("Cache-Control should require revalidation (must-revalidate or no-cache): %q", cc)
+	}
+}
+
+// TestServeAudio_OtherUserForbidden verifies that the cached-audio path enforces
+// word ownership: a user must not be able to fetch a cached <id>.mp3 for a word
+// they do not own (IDOR). The ownership check must run BEFORE serving the file.
+func TestServeAudio_OtherUserForbidden(t *testing.T) {
+	s := openTestDB(t)
+	// Word belongs to user 2 (seedWord default owner).
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{Store: s, AudioDir: tmpDir}
+	// Pre-seed a cached MP3 so the lazy-generation branch is skipped.
+	if err := os.WriteFile(tmpDir+"/"+fmt.Sprint(id)+".mp3", []byte("fake-mp3"), 0644); err != nil {
+		t.Fatalf("seed mp3: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(999)) // a different user
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/audio/%d", id), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for non-owner, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "fake-mp3") {
+		t.Errorf("must not serve cached audio to non-owner")
+	}
+}
+
+// TestGenerateAsync_LogsErrorOnFailure asserts the fire-and-forget TTS helper
+// logs a failure with word-ID context instead of swallowing the error.
+func TestGenerateAsync_LogsErrorOnFailure(t *testing.T) {
+	// Force generate() to fail deterministically: point AudioDir at a path whose
+	// parent is a regular file, so os.MkdirAll cannot create the directory.
+	tmp := t.TempDir()
+	blocker := filepath.Join(tmp, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0644); err != nil {
+		t.Fatalf("seed blocker: %v", err)
+	}
+	audioH := &handlers.AudioHandler{AudioDir: filepath.Join(blocker, "audio")}
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	audioH.GenerateAsync(4242, "你好")
+
+	if !strings.Contains(buf.String(), "async tts generate word 4242") {
+		t.Fatalf("expected async tts error log with word id, got: %q", buf.String())
+	}
+}
+
+// TestServeAudio_TTSFailureLogged verifies that a TTS synthesis failure is
+// logged with word-ID context (and surfaced as 503) instead of being swallowed.
+func TestServeAudio_TTSFailureLogged(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{
+		Store:    s,
+		AudioDir: tmpDir,
+		Synth:    func(string) ([]byte, error) { return nil, fmt.Errorf("tts boom") },
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/audio/%d", id), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", rec.Code)
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, fmt.Sprint(id)) || !strings.Contains(logged, "tts boom") {
+		t.Errorf("expected TTS failure logged with word-ID context, got: %q", logged)
 	}
 }
 

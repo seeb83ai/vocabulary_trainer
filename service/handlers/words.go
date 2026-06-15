@@ -127,7 +127,7 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		initComponents(r.Context(), h.Store, UserIDFromContext(r.Context()), id, req.ZhText)
 	}
 	if h.Audio != nil {
-		go h.Audio.generate(id, req.ZhText)
+		go h.Audio.GenerateAsync(id, req.ZhText)
 	}
 	writeJSON(w, http.StatusCreated, map[string]int64{"id": id})
 }
@@ -229,7 +229,7 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		initComponents(r.Context(), h.Store, UserIDFromContext(r.Context()), id, req.ZhText)
 	}
 	if h.Audio != nil {
-		go h.Audio.regenerate(id, req.ZhText)
+		go h.Audio.RegenerateAsync(id, req.ZhText)
 	}
 	wd, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil {

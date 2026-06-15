@@ -13,6 +13,9 @@ import (
 type AudioHandler struct {
 	Store    *db.Store
 	AudioDir string // absolute path where MP3 files are stored, e.g. /data/audio
+	// Synth synthesises speech for the given text. Defaults to tts.Synthesize
+	// when nil; overridable in tests to exercise the failure path.
+	Synth func(string) ([]byte, error)
 }
 
 // ServeAudio handles GET /api/audio/{id}.
@@ -24,19 +27,23 @@ func (h *AudioHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce word ownership BEFORE serving any cached file. Running this check
+	// only in the lazy-generation branch left an IDOR: a cached <id>.mp3 was
+	// served to any authenticated user regardless of who owns the word.
+	wd, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if wd == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+
 	mp3Path := filepath.Join(h.AudioDir, fmt.Sprintf("%d.mp3", id))
 
 	// Generate lazily if the file doesn't exist yet
 	if _, err := os.Stat(mp3Path); os.IsNotExist(err) {
-		wd, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
-		if err != nil {
-			internalError(w, err)
-			return
-		}
-		if wd == nil {
-			writeError(w, http.StatusNotFound, "word not found")
-			return
-		}
 		if err := h.generate(id, wd.ZhText); err != nil {
 			// TTS unavailable — tell the client so it can fall back
 			writeError(w, http.StatusServiceUnavailable, "tts unavailable")
@@ -52,6 +59,22 @@ func (h *AudioHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, mp3Path)
 }
 
+// GenerateAsync runs generate in a fire-and-forget context, logging any
+// failure with word-ID context instead of silently discarding the error.
+func (h *AudioHandler) GenerateAsync(wordID int64, zhText string) {
+	if err := h.generate(wordID, zhText); err != nil {
+		log.Printf("async tts generate word %d: %v", wordID, err)
+	}
+}
+
+// RegenerateAsync runs regenerate in a fire-and-forget context, logging any
+// failure with word-ID context instead of silently discarding the error.
+func (h *AudioHandler) RegenerateAsync(wordID int64, zhText string) {
+	if err := h.regenerate(wordID, zhText); err != nil {
+		log.Printf("async tts regenerate word %d: %v", wordID, err)
+	}
+}
+
 // regenerate deletes the cached file and regenerates it (used when zh_text changes).
 func (h *AudioHandler) regenerate(wordID int64, zhText string) error {
 	mp3Path := filepath.Join(h.AudioDir, fmt.Sprintf("%d.mp3", wordID))
@@ -65,7 +88,11 @@ func (h *AudioHandler) generate(wordID int64, zhText string) error {
 		log.Printf("tts mkdir %s: %v", h.AudioDir, err)
 		return err
 	}
-	data, err := tts.Synthesize(zhText)
+	synth := h.Synth
+	if synth == nil {
+		synth = tts.Synthesize
+	}
+	data, err := synth(zhText)
 	if err != nil {
 		log.Printf("tts generate word %d: %v", wordID, err)
 		return err
