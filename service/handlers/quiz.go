@@ -21,28 +21,6 @@ type QuizHandler struct {
 	newCapBase   int    // newToday count at cap-reset time; cap = newCapBase + MaxNewPerDay
 }
 
-// wordTier returns the accuracy bucket label for a progress record.
-// Must stay in sync with wordTier() in app.js and tierFilter() in db.go.
-func wordTier(p models.SM2Progress) string {
-	if p.TotalAttempts == 0 {
-		return ""
-	}
-	if p.LearningNewWord {
-		return "New"
-	}
-	acc := float64(p.TotalCorrect+p.StreakBonus) / float64(p.TotalAttempts)
-	switch {
-	case p.TotalAttempts >= 10 && acc >= 0.85:
-		return "Mastered"
-	case p.TotalAttempts >= 10 && acc >= 0.70:
-		return "Practicing"
-	case p.TotalAttempts >= 3 && acc >= 0.50:
-		return "Learning"
-	default:
-		return "Struggling"
-	}
-}
-
 // Langs returns the distinct translation languages available in the database.
 func (h *QuizHandler) Langs(w http.ResponseWriter, r *http.Request) {
 	langs, err := h.Store.GetTranslationLanguages(r.Context())
@@ -429,7 +407,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "progress not found")
 		return
 	}
-	prevTier := wordTier(*progress)
+	prevTier := sm2.ClassifyTier(*progress).String()
 
 	var updated models.SM2Progress
 	var graduated bool
@@ -491,7 +469,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		if sessionStreak > 1 {
 			resp.SessionStreak = sessionStreak
 		}
-		resp.Tier = wordTier(updated)
+		resp.Tier = sm2.ClassifyTier(updated).String()
 		if prevTier != "" && prevTier != resp.Tier {
 			resp.PrevTier = prevTier
 		}

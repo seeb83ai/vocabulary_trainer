@@ -622,19 +622,25 @@ func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, target
 //	50-69  : ≥ 3 attempts AND acc ≥ 50 % (but not qualifying for 70-84 or 85-100)
 //	70-84  : ≥ 10 attempts AND 70 % ≤ acc < 85 %
 //	85-100 : ≥ 10 attempts AND acc ≥ 85 %
+// tierFilter derives its SQL thresholds from the sm2 Tier constants so the
+// accuracy/attempt boundaries are defined in exactly one place (sm2.ClassifyTier).
 func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts`
 	switch bucket {
 	case "new":
 		return ` AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`
-	case "0-49":
-		return ` AND p.learning_new_word = 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
-	case "50-69":
-		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 3 AND ` + acc + ` >= 0.50 AND NOT (p.total_attempts >= 10 AND ` + acc + ` >= 0.70)`
-	case "70-84":
-		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.70 AND ` + acc + ` < 0.85`
-	case "85-100":
-		return ` AND p.learning_new_word = 0 AND p.total_attempts >= 10 AND ` + acc + ` >= 0.85`
+	case "0-49": // Struggling
+		return fmt.Sprintf(` AND p.learning_new_word = 0 AND (p.total_attempts < %d OR %s < %g)`,
+			sm2.TierLearningAttempts, acc, sm2.TierLearningAccuracy)
+	case "50-69": // Learning
+		return fmt.Sprintf(` AND p.learning_new_word = 0 AND p.total_attempts >= %d AND %s >= %g AND NOT (p.total_attempts >= %d AND %s >= %g)`,
+			sm2.TierLearningAttempts, acc, sm2.TierLearningAccuracy, sm2.TierGraduatedAttempts, acc, sm2.TierPracticingAccuracy)
+	case "70-84": // Practicing
+		return fmt.Sprintf(` AND p.learning_new_word = 0 AND p.total_attempts >= %d AND %s >= %g AND %s < %g`,
+			sm2.TierGraduatedAttempts, acc, sm2.TierPracticingAccuracy, acc, sm2.TierMasteredAccuracy)
+	case "85-100": // Mastered
+		return fmt.Sprintf(` AND p.learning_new_word = 0 AND p.total_attempts >= %d AND %s >= %g`,
+			sm2.TierGraduatedAttempts, acc, sm2.TierMasteredAccuracy)
 	}
 	return ""
 }
