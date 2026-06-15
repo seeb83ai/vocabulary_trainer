@@ -1,0 +1,12 @@
+# Runs the vocab-trainer database backup nightly.
+
+[Unit]
+Description=Nightly vocab-trainer database backup
+
+[Timer]
+# 03:30 local time every day; catch up if the machine was off.
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

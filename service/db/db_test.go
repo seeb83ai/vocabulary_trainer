@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -4191,5 +4192,39 @@ func TestComponentPrevState_ClearAfterAccept(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("expected nil after clear, got %+v", got)
+	}
+}
+
+// TestBackupRestore_RoundTrip verifies the SQLite online-backup primitive used by
+// the scheduled backup (VACUUM INTO, the same mechanism as `sqlite3 .backup`)
+// produces a restorable copy with data intact. Production uses `sqlite3 .backup`;
+// this exercises the equivalent via the Go driver so it runs without the CLI.
+func TestBackupRestore_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	src, err := Open(filepath.Join(dir, "vocab.db"))
+	if err != nil {
+		t.Fatalf("open source: %v", err)
+	}
+	id := seedWord(t, src, "備份測試詞", "bèi fèn cí", []string{"backup marker"})
+
+	backupPath := filepath.Join(dir, "vocab_backup.sq3")
+	if _, err := src.db.Exec("VACUUM INTO ?", backupPath); err != nil {
+		t.Fatalf("backup (VACUUM INTO): %v", err)
+	}
+	src.Close()
+
+	// Restore = open the backup file as a normal DB.
+	restored, err := Open(backupPath)
+	if err != nil {
+		t.Fatalf("open restored backup: %v", err)
+	}
+	defer restored.Close()
+
+	wd, err := restored.GetWordByID(context.Background(), 2, id)
+	if err != nil {
+		t.Fatalf("read restored word: %v", err)
+	}
+	if wd == nil || wd.ZhText != "備份測試詞" {
+		t.Fatalf("seeded word did not survive backup/restore: %+v", wd)
 	}
 }
