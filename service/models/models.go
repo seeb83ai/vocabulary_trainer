@@ -43,7 +43,9 @@ type UserSettings struct {
 	LLMLocalURL        string `json:"llm_local_url"`
 	LLMKeySet          bool   `json:"llm_key_set"`
 	LLMKeyMasked       string `json:"llm_key_masked,omitempty"`
-	AcceptCorrectMode  string `json:"accept_correct_mode"`
+	AcceptCorrectMode    string `json:"accept_correct_mode"`
+	GamificationEnabled  bool   `json:"gamification_enabled"`
+	GamificationFrequency int   `json:"gamification_frequency"`
 }
 
 // DB-layer structs
@@ -553,8 +555,16 @@ type PinyinToneVariant struct {
 	Current  bool   `json:"current"`
 }
 
-type PinyinConfusionDetail struct {
-	SoundID           int64  `json:"sound_id"`
+type MatchGameResponse struct {
+	Pairs []ConfusionDetail `json:"pairs"`
+}
+
+type MatchAnswerRequest struct {
+	ZhWordID int64 `json:"zh_word_id"`
+	Correct  bool  `json:"correct"`
+}
+
+type PinyinConfusionDetail struct {	SoundID           int64  `json:"sound_id"`
 	SoundLabel        string `json:"sound_label"`
 	ConfusedWithID    int64  `json:"confused_with_id"`
 	ConfusedWithLabel string `json:"confused_with_label"`

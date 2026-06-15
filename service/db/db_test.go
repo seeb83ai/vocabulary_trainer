@@ -4109,3 +4109,103 @@ func TestComponentPrevState_ClearAfterAccept(t *testing.T) {
 		t.Errorf("expected nil after clear, got %+v", got)
 	}
 }
+
+// ── GetRecentMismatches ───────────────────────────────────────────────────────
+
+func TestGetRecentMismatches_Empty(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	since := time.Now().UTC().AddDate(0, 0, -7)
+	items, err := s.GetRecentMismatches(ctx, int64(2), since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Errorf("expected 0 items, got %d", len(items))
+	}
+}
+
+func TestGetRecentMismatches_ReturnsOnlyRecent(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+
+	// recent confusion (1 day ago)
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (?, ?, 'zh_to_transl', 1, datetime('now', '-1 day'))`, id1, id2); err != nil {
+		t.Fatal(err)
+	}
+	// old confusion (10 days ago — outside 7-day window)
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (?, ?, 'transl_to_zh', 1, datetime('now', '-10 days'))`, id2, id1); err != nil {
+		t.Fatal(err)
+	}
+
+	since := time.Now().UTC().AddDate(0, 0, -7)
+	items, err := s.GetRecentMismatches(ctx, int64(2), since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Errorf("expected 1 item, got %d", len(items))
+	}
+	if items[0].ZhWordID != id1 {
+		t.Errorf("expected zh_word_id=%d, got %d", id1, items[0].ZhWordID)
+	}
+}
+
+func TestGetRecentMismatches_Limit(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+
+	for _, pair := range [][2]int64{{id1, id2}, {id2, id3}, {id3, id1}} {
+		if _, err := s.db.ExecContext(ctx, `
+			INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
+			VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	since := time.Now().UTC().AddDate(0, 0, -7)
+	items, err := s.GetRecentMismatches(ctx, int64(2), since, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Errorf("expected 2 items (limit), got %d", len(items))
+	}
+}
+
+func TestGetRecentMismatches_HydratesTranslations(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
+		t.Fatal(err)
+	}
+
+	since := time.Now().UTC().AddDate(0, 0, -7)
+	items, err := s.GetRecentMismatches(ctx, int64(2), since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if len(items[0].ZhTranslations["en"]) == 0 {
+		t.Error("expected ZhTranslations to be hydrated")
+	}
+	if len(items[0].ConfusedWithTranslations["en"]) == 0 {
+		t.Error("expected ConfusedWithTranslations to be hydrated")
+	}
+}

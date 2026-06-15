@@ -110,6 +110,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
 	r.Post("/api/quiz/acknowledge-random", quizH.AcknowledgeRandom)
 	r.Post("/api/quiz/advance", quizH.Advance)
+	r.Get("/api/quiz/match-game", quizH.MatchGame)
+	r.Post("/api/quiz/match-answer", quizH.MatchAnswer)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/langs", quizH.Langs)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
@@ -4003,6 +4005,21 @@ func TestHMMBreakdown_Empty(t *testing.T) {
 	}
 }
 
+// baseSettingsPatch returns a minimal valid PATCH /api/settings payload.
+func baseSettingsPatch() map[string]any {
+	return map[string]any{
+		"primary_lang":         "en",
+		"prog_new":             "zh_to_transl",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "zh_pinyin_to_transl",
+		"new_word_mode_2":      "zh_to_transl",
+	}
+}
+
 // ── GET /api/settings ────────────────────────────────────────────────────────
 
 func TestGetSettings_Defaults(t *testing.T) {
@@ -5743,5 +5760,145 @@ func TestQuizStats_MaxNewPerDay_ReflectsUserSetting(t *testing.T) {
 	decodeJSON(t, rec, &stats)
 	if stats["max_new_per_day"] != 3 {
 		t.Errorf("max_new_per_day: want 3 (user setting), got %d", stats["max_new_per_day"])
+	}
+}
+
+// ── GET /api/quiz/match-game ──────────────────────────────────────────────────
+
+func TestMatchGame_EmptyWhenFewerThan3Pairs(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	// Only 2 confusion pairs — game should not trigger
+	if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'transl_to_zh', 1, datetime('now'))`, id2, id1); err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	pairs := resp["pairs"].([]any)
+	if len(pairs) != 0 {
+		t.Errorf("expected 0 pairs, got %d", len(pairs))
+	}
+}
+
+func TestMatchGame_Returns3PairsWhen3Exist(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	for _, pair := range [][2]int64{{id1, id2}, {id2, id3}, {id3, id1}} {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	pairs := resp["pairs"].([]any)
+	if len(pairs) != 3 {
+		t.Errorf("expected 3 pairs, got %d", len(pairs))
+	}
+}
+
+// ── POST /api/quiz/match-answer ───────────────────────────────────────────────
+
+func TestMatchAnswer_Correct(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	body := map[string]any{"zh_word_id": id, "correct": true}
+	rec := do(t, r, "POST", "/api/quiz/match-answer", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["correct"] != true {
+		t.Errorf("expected correct=true, got %v", resp["correct"])
+	}
+	if resp["zh_text"] != "你好" {
+		t.Errorf("expected zh_text=你好, got %v", resp["zh_text"])
+	}
+}
+
+func TestMatchAnswer_Wrong(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	body := map[string]any{"zh_word_id": id, "correct": false}
+	rec := do(t, r, "POST", "/api/quiz/match-answer", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["correct"] != false {
+		t.Errorf("expected correct=false, got %v", resp["correct"])
+	}
+}
+
+func TestMatchAnswer_MissingWordID(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"correct": true})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMatchAnswer_WordNotFound(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"zh_word_id": 9999, "correct": true})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+// ── PATCH /api/settings — gamification ───────────────────────────────────────
+
+func TestSettingsPatch_GamificationFields(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	body := baseSettingsPatch()
+	body["gamification_enabled"] = true
+	body["gamification_frequency"] = 10
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec2, &st)
+	if st["gamification_enabled"] != true {
+		t.Errorf("gamification_enabled: got %v", st["gamification_enabled"])
+	}
+	if st["gamification_frequency"].(float64) != 10 {
+		t.Errorf("gamification_frequency: got %v", st["gamification_frequency"])
+	}
+}
+
+func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	for _, freq := range []int{0, 1441} {
+		body := baseSettingsPatch()
+		body["gamification_frequency"] = freq
+		rec := do(t, r, "PATCH", "/api/settings", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("frequency=%d: expected 400, got %d", freq, rec.Code)
+		}
 	}
 }

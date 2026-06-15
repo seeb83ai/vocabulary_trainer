@@ -36,6 +36,11 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// ExecForTest executes a raw SQL statement. Only for use in tests.
+func (s *Store) ExecForTest(query string, args ...any) (sql.Result, error) {
+	return s.db.Exec(query, args...)
+}
+
 // ParseDateTime parses SQLite datetime strings into time.Time.
 // SQLite stores datetimes as "2006-01-02 15:04:05" or RFC3339; handle both.
 func ParseDateTime(s string) time.Time {

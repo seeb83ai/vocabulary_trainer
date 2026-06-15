@@ -505,6 +505,74 @@ func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.Confu
 	return items, nil
 }
 
+// GetRecentMismatches returns confusion pairs with last_seen >= since, up to limit rows.
+func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since time.Time, limit int) ([]models.ConfusionDetail, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT cp.zh_word_id, wz.text, wz.pinyin,
+		       cp.confused_with_id, wc.text, wc.pinyin,
+		       cp.mode, cp.count, cp.last_seen
+		FROM confusion_pairs cp
+		JOIN words wz ON wz.id = cp.zh_word_id
+		JOIN words wc ON wc.id = cp.confused_with_id
+		WHERE wz.user_id = ?
+		  AND cp.last_seen >= ?
+		ORDER BY cp.last_seen DESC
+		LIMIT ?`,
+		userID, since.UTC().Format("2006-01-02 15:04:05"), limit)
+	if err != nil {
+		return nil, fmt.Errorf("get recent mismatches: %w", err)
+	}
+	defer rows.Close()
+
+	var items []models.ConfusionDetail
+	for rows.Next() {
+		var d models.ConfusionDetail
+		var lastSeen string
+		if err := rows.Scan(
+			&d.ZhWordID, &d.ZhText, &d.ZhPinyin,
+			&d.ConfusedWithID, &d.ConfusedWithText, &d.ConfusedWithPinyin,
+			&d.Mode, &d.Count, &lastSeen,
+		); err != nil {
+			return nil, fmt.Errorf("scan recent mismatch: %w", err)
+		}
+		d.LastSeen = parseDateTime(lastSeen)
+		items = append(items, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+
+	allLangs, err := s.GetTranslationLanguages(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].ZhTranslations = map[string][]string{}
+		items[i].ConfusedWithTranslations = map[string][]string{}
+		for _, lang := range allLangs {
+			texts, ferr := s.getTranslationTextsForZhWord(ctx, items[i].ZhWordID, lang)
+			if ferr != nil {
+				return nil, ferr
+			}
+			if len(texts) > 0 {
+				items[i].ZhTranslations[lang] = texts
+			}
+			texts, ferr = s.getTranslationTextsForZhWord(ctx, items[i].ConfusedWithID, lang)
+			if ferr != nil {
+				return nil, ferr
+			}
+			if len(texts) > 0 {
+				items[i].ConfusedWithTranslations[lang] = texts
+			}
+		}
+	}
+	if items == nil {
+		items = []models.ConfusionDetail{}
+	}
+	return items, nil
+}
+
 // sm2PrevState is the internal JSON encoding for SaveSM2PrevState.
 type sm2PrevState struct {
 	Easiness        float64 `json:"ef"`

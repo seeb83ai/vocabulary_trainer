@@ -910,3 +910,84 @@ func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
 		"cap_reset": req.ResetNewCap,
 	})
 }
+
+// MatchGame handles GET /api/quiz/match-game.
+// Returns up to 3 confusion pairs from the last 7 days if at least 3 exist.
+func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+	since := time.Now().UTC().AddDate(0, 0, -7)
+	pairs, err := h.Store.GetRecentMismatches(r.Context(), userID, since, 3)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if len(pairs) < 3 {
+		pairs = []models.ConfusionDetail{}
+	}
+	writeJSON(w, http.StatusOK, models.MatchGameResponse{Pairs: pairs})
+}
+
+// MatchAnswer handles POST /api/quiz/match-answer.
+// Updates SM-2 progress for a word after a match-game interaction.
+func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
+	var req models.MatchAnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.ZhWordID <= 0 {
+		writeError(w, http.StatusBadRequest, "zh_word_id is required")
+		return
+	}
+
+	userID := UserIDFromContext(r.Context())
+	zhWord, err := h.Store.GetWordByID(r.Context(), userID, req.ZhWordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if zhWord == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+
+	progress, err := h.Store.GetSM2Progress(r.Context(), req.ZhWordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if progress == nil {
+		writeError(w, http.StatusNotFound, "progress not found")
+		return
+	}
+
+	quality := sm2.QualityWrong
+	if req.Correct {
+		quality = sm2.QualityCorrect
+	}
+
+	updated := sm2.Update(*progress, quality)
+	updated.TotalAttempts++
+	if req.Correct {
+		updated.TotalCorrect++
+	}
+	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+
+	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
+		internalError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.AnswerResponse{
+		Correct:       req.Correct,
+		ZhText:        zhWord.ZhText,
+		Pinyin:        zhWord.Pinyin,
+		NextDue:       updated.DueDate,
+		IntervalDays:  updated.IntervalDays,
+		TotalCorrect:  updated.TotalCorrect,
+		TotalAttempts: updated.TotalAttempts,
+		StreakBonus:   updated.StreakBonus,
+		Repetitions:   updated.Repetitions,
+		Tier:          wordTier(updated),
+	})
+}

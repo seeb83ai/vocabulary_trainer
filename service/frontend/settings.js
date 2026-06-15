@@ -166,6 +166,11 @@ async function loadSettings() {
     setBaselineRow('baseline-struggling', st.baseline_struggling_enabled, st.baseline_struggling_value ?? 10);
     setBaselineRow('baseline-learning', st.baseline_learning_enabled, st.baseline_learning_value ?? 20);
 
+    const gamEnabledEl = document.getElementById('gamification-enabled');
+    if (gamEnabledEl) gamEnabledEl.checked = !!st.gamification_enabled;
+    const gamFreqEl = document.getElementById('gamification-frequency');
+    if (gamFreqEl) gamFreqEl.value = st.gamification_frequency ?? 5;
+
     // API key status
     if (st.deepl_key_masked) {
       const el = document.getElementById('deepl-key-status');
@@ -529,4 +534,38 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
 
   btn.disabled = false;
   btn.textContent = 'Update Password';
+});
+
+// Gamification save
+document.getElementById('gamification-save-btn')?.addEventListener('click', async () => {
+  hideMsg('gamification-success'); hideMsg('gamification-error');
+  const freq = parseInt(document.getElementById('gamification-frequency')?.value || '5', 10);
+  if (!freq || freq < 1 || freq > 1440) {
+    showMsg('gamification-error', 'Frequency must be between 1 and 1440 minutes.', true);
+    return;
+  }
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
+    ...buildModePayload(),
+    ...buildDailyPayload(),
+    gamification_enabled:   !!(document.getElementById('gamification-enabled')?.checked),
+    gamification_frequency: freq,
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('gamification-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('gamification-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('gamification-error', 'Network error.', true);
+  }
 });
