@@ -229,7 +229,7 @@ func (h *LLMHandler) GenerateCompScene(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defs, err := h.Store.GetComponentDefinitions(r.Context(), char, []string{"en", "de"})
+	defs, err := h.Store.GetComponentDefinitions(r.Context(), UserIDFromContext(r.Context()), char, []string{"en", "de"})
 	if err != nil || len(defs) == 0 {
 		writeError(w, http.StatusNotFound, "component not found")
 		return

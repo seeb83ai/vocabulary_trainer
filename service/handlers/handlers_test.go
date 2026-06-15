@@ -4411,7 +4411,7 @@ func TestComponentUpdateTranslation_Sets204(t *testing.T) {
 		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	defs, err := s.GetComponentDefinitions(ctx, "水", []string{"de"})
+	defs, err := s.GetComponentDefinitions(ctx, 2, "水", []string{"de"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions: %v", err)
 	}
@@ -4483,10 +4483,10 @@ func TestComponentGetTranslations_ReturnsMap(t *testing.T) {
 	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := s.StoreComponentTranslation("水", "en", "water"); err != nil {
+	if err := s.StoreComponentTranslation(context.Background(), 2, "水", "en", "water"); err != nil {
 		t.Fatalf("store en: %v", err)
 	}
-	if err := s.StoreComponentTranslation("水", "de", "Wasser"); err != nil {
+	if err := s.StoreComponentTranslation(context.Background(), 2, "水", "de", "Wasser"); err != nil {
 		t.Fatalf("store de: %v", err)
 	}
 
