@@ -7,6 +7,56 @@ on:
     branches: ["**"]
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+
+      # Hard gates (verified clean on the current tree).
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"; echo "$unformatted"; exit 1
+          fi
+        working-directory: service
+
+      - name: go vet
+        run: go vet ./...
+        working-directory: service
+
+      # Report-only: golangci-lint-action installs a toolchain-matched binary.
+      # Surfaced for signal but not yet a merge gate (no clean baseline here).
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        continue-on-error: true
+        with:
+          version: latest
+          working-directory: service
+
+      - name: README route-drift check
+        run: ./scripts/check-route-drift.sh
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      # Report-only: the vanilla-JS frontend has no clean eslint baseline yet.
+      - name: eslint
+        run: npx --yes eslint service/frontend
+        continue-on-error: true
+
   test-go:
     name: Go tests
     runs-on: ubuntu-latest
@@ -23,8 +73,12 @@ jobs:
         run: go mod download
         working-directory: service
 
-      - name: Run tests
-        run: go test ./... -count=1 -race
+      - name: Run tests (with coverage, report-only)
+        run: go test ./... -count=1 -race -coverprofile=coverage.out
+        working-directory: service
+
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1
         working-directory: service
 
   test-js:
@@ -42,8 +96,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests (with coverage, report-only)
+        run: npx vitest run --coverage
 
   test-e2e:
     name: E2E tests

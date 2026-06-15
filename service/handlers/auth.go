@@ -32,8 +32,8 @@ const verificationTTL = 24 * time.Hour
 // single account tolerates before it is temporarily locked. LockoutDuration
 // is how long the lock holds. Both are exported for tests.
 const (
-	MaxFailedLogins  = 5
-	LockoutDuration  = 15 * time.Minute
+	MaxFailedLogins = 5
+	LockoutDuration = 15 * time.Minute
 )
 
 // dummyBcryptHash is a fixed, valid bcrypt hash used to run a real password

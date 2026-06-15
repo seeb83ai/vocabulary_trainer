@@ -250,4 +250,3 @@ func (h *HMMQuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-

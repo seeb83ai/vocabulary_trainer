@@ -156,4 +156,3 @@ func TestRenderTemplate_UnknownName(t *testing.T) {
 		t.Errorf("status = %d, want 500", rr.Code)
 	}
 }
-

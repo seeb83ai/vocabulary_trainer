@@ -768,11 +768,11 @@ func TestSelectProgressiveMode_Below85Pct(t *testing.T) {
 
 func TestSelectProgressiveMode_CustomConfig(t *testing.T) {
 	cfg := ProgressiveModeConfig{
-		New:        models.ModeZhToTransl,        // override: new words → zh_to_transl
-		Struggling: models.ModeZhPinyinToTransl,  // override: struggling → zh_pinyin
-		Learning:   models.ModeTranslToZh,        // override: learning → transl_to_zh
-		Practicing: models.ModeZhPinyinToTransl,  // override: practicing → zh_pinyin
-		Mastered:   models.ModeZhToTransl,        // override: mastered → always zh_to_transl
+		New:        models.ModeZhToTransl,       // override: new words → zh_to_transl
+		Struggling: models.ModeZhPinyinToTransl, // override: struggling → zh_pinyin
+		Learning:   models.ModeTranslToZh,       // override: learning → transl_to_zh
+		Practicing: models.ModeZhPinyinToTransl, // override: practicing → zh_pinyin
+		Mastered:   models.ModeZhToTransl,       // override: mastered → always zh_to_transl
 	}
 
 	// New (< 3 attempts) → ZhToTransl

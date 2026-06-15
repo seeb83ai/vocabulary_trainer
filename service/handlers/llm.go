@@ -13,7 +13,7 @@ import (
 )
 
 type LLMHandler struct {
-	Client          llm.Client      // server-configured client (may be nil)
+	Client          llm.Client // server-configured client (may be nil)
 	Store           llmStore
 	SettingsHandler *SettingsHandler // may be nil when auth is disabled
 }

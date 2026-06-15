@@ -299,8 +299,8 @@ func localOKResponse(text string) map[string]any {
 	return map[string]any{
 		"output": []map[string]any{
 			{
-				"type": "message",
-				"role": "assistant",
+				"type":    "message",
+				"role":    "assistant",
 				"content": []map[string]string{{"type": "output_text", "text": text}},
 			},
 		},
