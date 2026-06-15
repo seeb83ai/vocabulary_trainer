@@ -9,13 +9,12 @@ import (
 	"strings"
 
 	"github.com/mozillazg/go-pinyin"
-	"vocabulary_trainer/db"
 )
 
 type TranslateHandler struct {
 	APIKey          string
 	TargetLang      string
-	Store           *db.Store
+	Store           translateStore
 	SettingsHandler *SettingsHandler // may be nil when auth is disabled
 }
 

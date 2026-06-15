@@ -10,14 +10,13 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type WordsHandler struct {
-	Store *db.Store
+	Store wordsStore
 	Audio *AudioHandler // optional; nil = TTS disabled
 }
 
@@ -363,7 +362,7 @@ func parseID(r *http.Request) (int64, error) {
 
 // initComponents adds component_progress rows for a zh word after it enters
 // training. Errors are non-fatal: we log them and continue.
-func initComponents(ctx context.Context, s *db.Store, userID, wordID int64, zhText string) {
+func initComponents(ctx context.Context, s componentIniter, userID, wordID int64, zhText string) {
 	p, err := s.GetSM2Progress(ctx, wordID)
 	if err != nil || p == nil {
 		return

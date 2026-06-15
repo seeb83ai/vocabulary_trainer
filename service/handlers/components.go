@@ -119,7 +119,7 @@ func (h *ComponentHandler) SaveCompScene(w http.ResponseWriter, r *http.Request)
 }
 
 type ComponentHandler struct {
-	Store *db.Store
+	Store componentStore
 }
 
 // Answer processes a component quiz answer.

@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/llm"
 
 	"github.com/go-chi/chi/v5"
@@ -15,7 +14,7 @@ import (
 
 type LLMHandler struct {
 	Client          llm.Client      // server-configured client (may be nil)
-	Store           *db.Store
+	Store           llmStore
 	SettingsHandler *SettingsHandler // may be nil when auth is disabled
 }
 

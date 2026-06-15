@@ -12,7 +12,7 @@ import (
 
 // SettingsHandler serves GET/PATCH /api/settings and PUT /api/settings/api-keys.
 type SettingsHandler struct {
-	store  *db.Store
+	store  settingsStore
 	secret []byte
 }
 

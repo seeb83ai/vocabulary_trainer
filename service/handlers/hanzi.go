@@ -3,12 +3,11 @@ package handlers
 import (
 	"net/http"
 	"strings"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
 type HanziHandler struct {
-	Store *db.Store
+	Store hanziStore
 }
 
 func (h *HanziHandler) Decompose(w http.ResponseWriter, r *http.Request) {

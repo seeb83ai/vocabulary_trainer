@@ -6,12 +6,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/tts"
 )
 
 type AudioHandler struct {
-	Store    *db.Store
+	Store    audioStore
 	AudioDir string // absolute path where MP3 files are stored, e.g. /data/audio
 }
 

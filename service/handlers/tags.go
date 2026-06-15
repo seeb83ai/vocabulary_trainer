@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 	"unicode/utf8"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 
 	"github.com/go-chi/chi/v5"
@@ -13,7 +12,7 @@ import (
 
 // TagsHandler handles tag metadata (description, importable flag) for the current user.
 type TagsHandler struct {
-	Store *db.Store
+	Store tagsStore
 }
 
 // Details returns all tags for the current user with their description and importable flag.

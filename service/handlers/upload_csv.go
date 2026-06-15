@@ -8,12 +8,11 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
 type UploadCSVHandler struct {
-	Store *db.Store
+	Store uploadCSVStore
 	Audio *AudioHandler
 }
 

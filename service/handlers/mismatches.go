@@ -2,11 +2,10 @@ package handlers
 
 import (
 	"net/http"
-	"vocabulary_trainer/db"
 )
 
 type MismatchesHandler struct {
-	Store *db.Store
+	Store mismatchesStore
 }
 
 func (h *MismatchesHandler) List(w http.ResponseWriter, r *http.Request) {

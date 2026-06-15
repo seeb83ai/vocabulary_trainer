@@ -14,7 +14,7 @@ import (
 )
 
 type QuizHandler struct {
-	Store        *db.Store
+	Store        quizStore
 	MaxNewPerDay int
 	mu           sync.Mutex
 	capResetDate string // date string (YYYY-MM-DD) on which the new-word cap was reset
