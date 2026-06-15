@@ -36,6 +36,16 @@ const (
 	LockoutDuration  = 15 * time.Minute
 )
 
+// dummyBcryptHash is a fixed, valid bcrypt hash used to run a real password
+// comparison on the "no such user" login path. This keeps that path's timing
+// indistinguishable from the "wrong password" path, defeating user
+// enumeration via timing. The password it hashes is irrelevant.
+const dummyBcryptHash = "$2a$10$AQpVzglAWskWV/xdd18PyuQx5DkMYvdeFDebf0ZOnAxP/hbKeh2aO"
+
+// bcryptCompare is an indirection over bcrypt.CompareHashAndPassword so tests
+// can count how often the password comparison runs.
+var bcryptCompare = bcrypt.CompareHashAndPassword
+
 type contextKey int
 
 const userIDCtxKey contextKey = iota
@@ -175,6 +185,10 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user == nil {
+		// Run a comparison against a dummy hash so the timing of this path
+		// matches the wrong-password path and the email's existence cannot
+		// be inferred from response latency.
+		_ = bcryptCompare([]byte(dummyBcryptHash), []byte(req.Password))
 		_ = a.store.RecordAuditLog(r.Context(), 0, db.AuditLoginFailure, ip, req.Email)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -188,7 +202,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+	if bcryptCompare([]byte(user.PasswordHash), []byte(req.Password)) != nil {
 		_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLoginFailure, ip, "")
 		n, _ := a.store.IncrementFailedLogins(r.Context(), user.ID)
 		if n >= MaxFailedLogins {

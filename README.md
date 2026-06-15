@@ -97,6 +97,8 @@ A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) 
 
 The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on every response. Configure HTTPS at the reverse proxy (see `deploy/nginx.conf`) — the sample config also sets `Strict-Transport-Security`.
 
+Always deploy behind a reverse proxy (e.g. nginx) that sets `X-Real-IP` to the real client address; rate limiting derives the client IP from that header. Do not expose the binary directly to the internet — the spoofable `X-Forwarded-For` header is deliberately never trusted, so a directly-exposed binary would rate-limit on `RemoteAddr` only.
+
 ## Daily new-word cap
 
 Each user sets their own daily new-word limit in **Settings → Daily Learning** (default: 5). The server-wide `MAX_NEW_WORDS` env var sets the default for new accounts only — users can freely change it higher or lower in their settings.

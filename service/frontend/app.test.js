@@ -9,7 +9,8 @@ function escHtml(s) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 describe('escHtml', () => {
@@ -31,6 +32,10 @@ describe('escHtml', () => {
 
   it('escapes double quotes', () => {
     expect(escHtml('"quoted"')).toBe('&quot;quoted&quot;');
+  });
+
+  it('escapes single quotes', () => {
+    expect(escHtml("it's a 'test'")).toBe('it&#39;s a &#39;test&#39;');
   });
 
   it('escapes all special chars together', () => {
