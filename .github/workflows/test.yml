@@ -35,7 +35,7 @@ jobs:
       # Report-only: golangci-lint-action installs a toolchain-matched binary.
       # Surfaced for signal but not yet a merge gate (no clean baseline here).
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         continue-on-error: true
         with:
           version: latest
