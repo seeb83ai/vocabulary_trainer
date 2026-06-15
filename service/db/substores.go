@@ -49,7 +49,7 @@ type QuizStore interface {
 	CountUnseenZhWords(ctx context.Context, userID int64, tags []string) (int, error)
 	CountLearningNewWords(ctx context.Context, userID int64, tags []string) (int, error)
 	GetWordCountByDueDate(ctx context.Context, userID int64, tags []string) ([]models.DueDateCount, error)
-	LookupConfusion(ctx context.Context, userID, zhWordID int64, answer, mode string, langs []string) (int64, bool, error)
+	DetectConfusion(ctx context.Context, userID, zhWordID int64, answer, mode string, langs []string) (int64, bool, error)
 	UpsertConfusion(ctx context.Context, zhWordID, confusedWithID int64, mode string) error
 	GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error)
 	GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error)
@@ -119,9 +119,9 @@ type PinyinStore interface {
 type ComponentStore interface {
 	InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error
 	GetNextComponentCard(ctx context.Context, userID int64, langs []string) (*componentCard, error)
-	GetComponentDefinitions(ctx context.Context, character string, langs []string) (map[string]string, error)
-	StoreComponentTranslation(character, lang, definition string) error
-	GetComponentTranslations(character string) (map[string]string, error)
+	GetComponentDefinitions(ctx context.Context, userID int64, character string, langs []string) (map[string]string, error)
+	StoreComponentTranslation(ctx context.Context, userID int64, character, lang, definition string) error
+	GetComponentTranslations(ctx context.Context, userID int64, character string) (map[string]string, error)
 	MarkComponentForReview(userID int64, character string) error
 	MarkComponentSeen(ctx context.Context, userID int64, character string) error
 	SkipComponent(ctx context.Context, userID int64, character string, days int) error
@@ -141,7 +141,7 @@ type ComponentStore interface {
 	GetComponentPinyin(ctx context.Context, character string) string
 	GetComponentCounts(ctx context.Context, userID int64) (dueToday, total int, err error)
 	GetHanziDecomposition(ctx context.Context, chars []rune) ([]models.HanziDecomposition, error)
-	AnnotateComponentDefinitions(ctx context.Context, results []models.HanziDecomposition, langs []string) error
+	AnnotateComponentDefinitions(ctx context.Context, userID int64, results []models.HanziDecomposition, langs []string) error
 	AnnotateNewComponents(ctx context.Context, userID int64, results []models.HanziDecomposition) error
 	GetHanziDecompositionString(ctx context.Context, char string) (string, error)
 	UpsertHanziDecomposition(ctx context.Context, char, decomp string) error
