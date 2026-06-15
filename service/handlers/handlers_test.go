@@ -5765,3 +5765,43 @@ func TestQuizStats_MaxNewPerDay_ReflectsUserSetting(t *testing.T) {
 		t.Errorf("max_new_per_day: want 3 (user setting), got %d", stats["max_new_per_day"])
 	}
 }
+
+// uploadRouterWithLimits builds a minimal authenticated router whose CSV handler
+// uses the given DoS limits, so the body-size and row caps can be exercised
+// without constructing multi-megabyte payloads.
+func uploadRouterWithLimits(s *db.Store, maxBytes int64, maxRows int) http.Handler {
+	h := &handlers.UploadCSVHandler{Store: s, MaxBytes: maxBytes, MaxRows: maxRows}
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Post("/api/words/upload-csv", h.UploadCSV)
+	return r
+}
+
+func TestUploadCSV_RejectsOversizedBody(t *testing.T) {
+	// Tiny body cap; the multipart payload below exceeds it.
+	r := uploadRouterWithLimits(openTestDB(t), 500, 5000)
+	var b strings.Builder
+	b.WriteString("chinese,pinyin,en\n")
+	for i := 0; i < 50; i++ {
+		fmt.Fprintf(&b, "字%d,zì,meaning number %d here padding padding\n", i, i)
+	}
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "t", "start_training_count": "0"}, b.String())
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("want 413 for oversized body, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
+	// Row cap of 2; the CSV below has 3 data rows.
+	r := uploadRouterWithLimits(openTestDB(t), 0, 2)
+	csv := "chinese,pinyin,en\n一,yī,one\n二,èr,two\n三,sān,three"
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "t", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for too many rows, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "too many rows") {
+		t.Errorf("expected a 'too many rows' message, got %s", rec.Body.String())
+	}
+}
