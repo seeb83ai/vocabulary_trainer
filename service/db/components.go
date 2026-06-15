@@ -21,13 +21,24 @@ import (
 // Rows are INSERT OR IGNORE so calling this multiple times is safe.
 // dueDate is copied from the origin zh word's sm2_progress.due_date.
 func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error {
+	return initComponentsForWord(ctx, s.db, userID, zhText, dueDate)
+}
+
+// querier is satisfied by both *sql.DB and *sql.Tx, letting initComponentsForWord
+// run either standalone or inside an enclosing transaction (e.g. CreateWord).
+type querier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText string, dueDate time.Time) error {
 	dueDateStr := dueDate.UTC().Format("2006-01-02 15:04:05")
 	for _, r := range []rune(zhText) {
 		if !unicode.Is(unicode.Han, r) {
 			continue
 		}
 		var decomp, etymology, radical, parentPinyin sql.NullString
-		err := s.db.QueryRowContext(ctx,
+		err := q.QueryRowContext(ctx,
 			`SELECT decomposition, etymology, radical, pinyin FROM hanzi_decomposition WHERE character = ?`,
 			string(r),
 		).Scan(&decomp, &etymology, &radical, &parentPinyin)
@@ -40,7 +51,7 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 		parentPy := parsePinyinJSON(parentPinyin.String)
 		for _, comp := range extractComponents(decomp.String) {
 			var def, compPinyin sql.NullString
-			err := s.db.QueryRowContext(ctx,
+			err := q.QueryRowContext(ctx,
 				`SELECT definition, pinyin FROM hanzi_decomposition WHERE character = ?`,
 				string(comp),
 			).Scan(&def, &compPinyin)
@@ -56,7 +67,7 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 			if !shouldKeepComponent(r, comp, etymology.String, radical.String, parentPy, parsePinyinJSON(compPinyin.String)) {
 				continue
 			}
-			if _, err := s.db.ExecContext(ctx,
+			if _, err := q.ExecContext(ctx,
 				`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
 				userID, string(comp), dueDateStr,
 			); err != nil {

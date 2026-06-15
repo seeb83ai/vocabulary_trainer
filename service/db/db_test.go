@@ -4193,3 +4193,70 @@ func TestComponentPrevState_ClearAfterAccept(t *testing.T) {
 		t.Errorf("expected nil after clear, got %+v", got)
 	}
 }
+
+// TestCreateWord_StartTraining covers issue 13 (5.5): CreateWord with
+// StartTraining=true atomically acknowledges the word (first_seen_date set) and
+// initialises its component cards, inside the same transaction.
+func TestCreateWord_StartTraining(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDecomp(t, s, "好", "⿰女子")
+	seedHanziDef(t, s, "女", "woman; female")
+	seedHanziDef(t, s, "子", "child; son")
+
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "好",
+		Translations:  map[string][]string{"en": {"good"}},
+		StartTraining: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	var firstSeen *string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT first_seen_date FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen); err != nil {
+		t.Fatalf("read first_seen_date: %v", err)
+	}
+	if firstSeen == nil {
+		t.Errorf("StartTraining=true should set first_seen_date, got NULL")
+	}
+	var comps int
+	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM component_progress WHERE user_id = 2`).Scan(&comps)
+	if comps != 2 {
+		t.Errorf("StartTraining=true should create 2 component rows (女, 子), got %d", comps)
+	}
+}
+
+// TestCreateWord_NoStartTraining verifies StartTraining=false leaves the word
+// unseen (first_seen_date NULL) and creates no component rows.
+func TestCreateWord_NoStartTraining(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDecomp(t, s, "明", "⿰日月")
+	seedHanziDef(t, s, "日", "sun; day")
+	seedHanziDef(t, s, "月", "moon; month")
+
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "明",
+		Translations:  map[string][]string{"en": {"bright"}},
+		StartTraining: false,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	var firstSeen *string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT first_seen_date FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen); err != nil {
+		t.Fatalf("read first_seen_date: %v", err)
+	}
+	if firstSeen != nil {
+		t.Errorf("StartTraining=false should leave first_seen_date NULL, got %q", *firstSeen)
+	}
+	var comps int
+	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM component_progress WHERE user_id = 2`).Scan(&comps)
+	if comps != 0 {
+		t.Errorf("StartTraining=false should create no component rows, got %d", comps)
+	}
+}

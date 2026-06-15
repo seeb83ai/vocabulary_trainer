@@ -152,13 +152,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch component candidate (filtered to langs the user is currently training).
-	var compCard *struct {
-		Character   string
-		Pinyin      string
-		DueDate     time.Time
-		IsNew       bool
-		Definitions map[string]string
-	}
+	var compCard *componentCard
 	if trainComponents {
 		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs)
 		if ccErr != nil {
@@ -166,13 +160,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if cc != nil {
-			compCard = &struct {
-				Character   string
-				Pinyin      string
-				DueDate     time.Time
-				IsNew       bool
-				Definitions map[string]string
-			}{
+			compCard = &componentCard{
 				Character:   cc.Character,
 				Pinyin:      cc.Pinyin,
 				DueDate:     db.ParseDateTime(cc.Progress.DueDate),
@@ -183,52 +171,59 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Pick the card with the lowest due_date across word, HMM, and component.
-	// HMM check.
+	// Candidates are ordered [word, hmm, component] so SelectNextCard reproduces
+	// the historical tie-break (word > hmm > component on an exact due-date tie).
+	wordCand := CardCandidate{Kind: cardWord, Present: word != nil, Word: word, WordProgress: progress}
+	if word != nil {
+		wordCand.DueDate = progress.DueDate
+	}
+	candidates := []CardCandidate{wordCand}
 	if hmmCard != nil {
-		serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
-		if compCard != nil && serveHMM {
-			serveHMM = hmmCard.DueDate.Before(compCard.DueDate) || hmmCard.DueDate.Equal(compCard.DueDate)
-		}
-		if serveHMM {
-			writeJSON(w, http.StatusOK, models.QuizCard{
-				CardType:     "hmm",
-				EntityType:   hmmCard.EntityType,
-				EntityKey:    hmmCard.EntityKey,
-				Prompt:       hmmCard.Prompt,
-				Category:     hmmCard.Category,
-				Hint:         hmmCard.Hint,
-				DueDate:      hmmCard.DueDate,
-				IntervalDays: hmmCard.IntervalDays,
-			})
-			return
-		}
+		candidates = append(candidates, CardCandidate{Kind: cardHMM, Present: true, DueDate: hmmCard.DueDate, HMM: hmmCard})
 	}
-
-	// Component check.
 	if compCard != nil {
-		serveComp := word == nil || compCard.DueDate.Before(progress.DueDate)
-		if serveComp {
-			isAlsoWord, err := h.Store.IsZhWordForUser(r.Context(), UserIDFromContext(r.Context()), compCard.Character)
-			if err != nil {
-				internalError(w, err)
-				return
-			}
-			compQuizCard := models.QuizCard{
-				CardType:    "component",
-				Prompt:      compCard.Character,
-				DueDate:     compCard.DueDate,
-				IsNew:       compCard.IsNew,
-				Definitions: compCard.Definitions,
-				IsAlsoWord:  isAlsoWord,
-			}
-			if compCard.Pinyin != "" {
-				compQuizCard.Pinyin = &compCard.Pinyin
-			}
-			writeJSON(w, http.StatusOK, compQuizCard)
-			return
-		}
+		candidates = append(candidates, CardCandidate{Kind: cardComponent, Present: true, DueDate: compCard.DueDate, Component: compCard})
 	}
 
+	best, ok := SelectNextCard(candidates)
+	switch {
+	case ok && best.Kind == cardHMM:
+		hc := best.HMM
+		writeJSON(w, http.StatusOK, models.QuizCard{
+			CardType:     "hmm",
+			EntityType:   hc.EntityType,
+			EntityKey:    hc.EntityKey,
+			Prompt:       hc.Prompt,
+			Category:     hc.Category,
+			Hint:         hc.Hint,
+			DueDate:      hc.DueDate,
+			IntervalDays: hc.IntervalDays,
+		})
+		return
+	case ok && best.Kind == cardComponent:
+		cc := best.Component
+		isAlsoWord, err := h.Store.IsZhWordForUser(r.Context(), UserIDFromContext(r.Context()), cc.Character)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		compQuizCard := models.QuizCard{
+			CardType:    "component",
+			Prompt:      cc.Character,
+			DueDate:     cc.DueDate,
+			IsNew:       cc.IsNew,
+			Definitions: cc.Definitions,
+			IsAlsoWord:  isAlsoWord,
+		}
+		if cc.Pinyin != "" {
+			compQuizCard.Pinyin = &cc.Pinyin
+		}
+		writeJSON(w, http.StatusOK, compQuizCard)
+		return
+	}
+
+	// The word candidate won (or nothing is present) — fall through to the word
+	// serialisation below.
 	if word == nil {
 		writeError(w, http.StatusNotFound, "no words available")
 		return

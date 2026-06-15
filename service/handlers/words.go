@@ -114,17 +114,12 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Translations = cleaned
 
+	// CreateWord handles StartTraining (acknowledge + component init) atomically
+	// inside its transaction; the handler only fires async TTS afterwards.
 	id, err := h.Store.CreateWord(r.Context(), UserIDFromContext(r.Context()), req)
 	if err != nil {
 		internalError(w, err)
 		return
-	}
-	if req.StartTraining {
-		if err := h.Store.AcknowledgeWord(r.Context(), UserIDFromContext(r.Context()), id); err != nil {
-			internalError(w, err)
-			return
-		}
-		initComponents(r.Context(), h.Store, UserIDFromContext(r.Context()), id, req.ZhText)
 	}
 	if h.Audio != nil {
 		go h.Audio.generate(id, req.ZhText)

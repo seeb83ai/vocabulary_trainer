@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
 )
@@ -418,6 +419,24 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 
 	if err := setWordTags(ctx, tx, zhID, req.Tags); err != nil {
 		return 0, err
+	}
+
+	// When the caller requests immediate training, acknowledge the new word and
+	// initialise its component cards inside the same transaction so the word is
+	// never left half-created (e.g. acknowledged but missing component rows).
+	if req.StartTraining {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE sm2_progress
+			 SET total_attempts = CASE WHEN total_attempts = 0 THEN 1 ELSE total_attempts END,
+			     first_seen_date = COALESCE(first_seen_date, date('now')),
+			     first_seen_at   = COALESCE(first_seen_at, CURRENT_TIMESTAMP),
+			     due_date = CURRENT_TIMESTAMP
+			 WHERE word_id = ?`, zhID); err != nil {
+			return 0, fmt.Errorf("acknowledge new word: %w", err)
+		}
+		if err := initComponentsForWord(ctx, tx, userID, req.ZhText, time.Now()); err != nil {
+			return 0, fmt.Errorf("init components: %w", err)
+		}
 	}
 
 	return zhID, tx.Commit()
