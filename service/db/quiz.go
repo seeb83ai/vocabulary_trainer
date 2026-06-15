@@ -521,7 +521,8 @@ func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.Confu
 	return items, nil
 }
 
-// GetRecentMismatches returns confusion pairs with last_seen >= since, up to limit rows.
+// GetRecentMismatches returns confusion pairs with last_seen >= since that have
+// not yet been shown in a game (or have been re-confused since last shown), up to limit rows.
 func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since time.Time, limit int) ([]models.ConfusionDetail, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT cp.zh_word_id, wz.text, wz.pinyin,
@@ -532,6 +533,7 @@ func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since tim
 		JOIN words wc ON wc.id = cp.confused_with_id
 		WHERE wz.user_id = ?
 		  AND cp.last_seen >= ?
+		  AND (cp.last_shown_in_game IS NULL OR cp.last_seen > cp.last_shown_in_game)
 		ORDER BY cp.last_seen DESC
 		LIMIT ?`,
 		userID, since.UTC().Format("2006-01-02 15:04:05"), limit)
@@ -587,6 +589,22 @@ func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since tim
 		items = []models.ConfusionDetail{}
 	}
 	return items, nil
+}
+
+// MarkConfusionsShownInGame stamps the given (zh_word_id, confused_with_id) pairs
+// with the current time so they are excluded from future match-game sessions unless
+// the user confuses them again after this timestamp.
+func (s *Store) MarkConfusionsShownInGame(ctx context.Context, pairs [][2]int64) error {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	for _, p := range pairs {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE confusion_pairs SET last_shown_in_game = ? WHERE zh_word_id = ? AND confused_with_id = ?`,
+			now, p[0], p[1],
+		); err != nil {
+			return fmt.Errorf("mark confusion shown: %w", err)
+		}
+	}
+	return nil
 }
 
 // sm2PrevState is the internal JSON encoding for SaveSM2PrevState.

@@ -596,8 +596,15 @@ type PinyinToneVariant struct {
 	Current  bool   `json:"current"`
 }
 
+type MatchGameWord struct {
+	ZhWordID     int64               `json:"zh_word_id"`
+	ZhText       string              `json:"zh_text"`
+	Pinyin       string              `json:"pinyin"`
+	Translations map[string][]string `json:"translations"`
+}
+
 type MatchGameResponse struct {
-	Pairs []ConfusionDetail `json:"pairs"`
+	Words []MatchGameWord `json:"words"`
 }
 
 type MatchAnswerRequest struct {

@@ -1584,30 +1584,39 @@ async function _maybeShowMatchGame() {
   } catch {
     return;
   }
-  if (!data?.pairs || data.pairs.length < 3) return;
+  if (!data?.words || data.words.length < 2) return;
   _lastGameShownAt = Date.now();
-  await showMatchGame(data.pairs.slice(0, 3));
+  await showMatchGame(data.words);
 }
 
-function showMatchGame(pairs) {
+// showMatchGame accepts the flat words array returned by GET /api/quiz/match-game.
+// Each word: { zh_word_id, zh_text, pinyin, translations }
+// Left column shows Chinese words; right column shows one translation each, shuffled.
+function showMatchGame(words) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.id = 'match-game-overlay';
     overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
 
-    const zhItems = pairs.map((p, i) => ({ id: i, zh_word_id: p.zh_word_id, text: p.zh_text, pinyin: p.zh_pinyin }));
-    const enItems = pairs.map((p, i) => ({
-      id: i,
-      text: Object.values(p.zh_translations || {})[0]?.[0] || p.zh_text,
+    // Build left items (Chinese) and right items (first EN translation), indexed by position.
+    const leftItems = words.map((w, i) => ({
+      idx: i,
+      zh_word_id: w.zh_word_id,
+      text: w.zh_text,
+      pinyin: w.pinyin,
     }));
-    const shuffledEn = [...enItems].sort(() => Math.random() - 0.5);
+    const rightItems = words.map((w, i) => ({
+      idx: i,   // idx matches leftItems position — used to identify the correct pair
+      text: Object.values(w.translations || {})[0]?.[0] || w.zh_text,
+    }));
+    const shuffledRight = [...rightItems].sort(() => Math.random() - 0.5);
 
     let selectedLeft = null;
     const matched = new Set();
 
-    function renderBox(text, sub, extraClass = '') {
+    function renderBox(text, sub) {
       const div = document.createElement('div');
-      div.className = `border-2 border-gray-300 rounded-xl p-3 cursor-pointer select-none transition text-center ${extraClass}`;
+      div.className = 'border-2 border-gray-300 rounded-xl p-3 cursor-pointer select-none transition text-center';
       const t = document.createElement('div');
       t.className = 'font-semibold text-gray-800';
       t.textContent = text;
@@ -1628,14 +1637,14 @@ function showMatchGame(pairs) {
     const grid = document.createElement('div');
     grid.className = 'grid grid-cols-2 gap-3 mb-4';
 
-    const leftBoxes = zhItems.map(item => renderBox(item.text, item.pinyin));
-    const rightBoxes = shuffledEn.map(item => renderBox(item.text));
+    const leftBoxes = leftItems.map(item => renderBox(item.text, item.pinyin));
+    const rightBoxes = shuffledRight.map(item => renderBox(item.text));
 
-    leftBoxes.forEach((box, idx) => {
+    leftBoxes.forEach((box, lIdx) => {
       box.addEventListener('click', () => {
-        if (matched.has(idx)) return;
+        if (matched.has(lIdx)) return;
         leftBoxes.forEach(b => b.classList.remove('border-blue-500', 'bg-blue-50'));
-        selectedLeft = idx;
+        selectedLeft = lIdx;
         box.classList.add('border-blue-500', 'bg-blue-50');
       });
     });
@@ -1644,10 +1653,10 @@ function showMatchGame(pairs) {
       box.addEventListener('click', async () => {
         if (selectedLeft === null) return;
         const lIdx = selectedLeft;
-        const enId = shuffledEn[rIdx].id;
         if (matched.has(lIdx)) return;
+        const rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
 
-        if (enId === lIdx) {
+        if (rightIdx === lIdx) {
           // Correct match
           leftBoxes[lIdx].classList.remove('border-blue-500', 'bg-blue-50');
           leftBoxes[lIdx].classList.add('border-green-500', 'bg-green-50', 'cursor-default');
@@ -1657,17 +1666,14 @@ function showMatchGame(pairs) {
           try {
             await apiFetch('/api/quiz/match-answer', {
               method: 'POST',
-              body: JSON.stringify({ zh_word_id: pairs[lIdx].zh_word_id, correct: true }),
+              body: JSON.stringify({ zh_word_id: leftItems[lIdx].zh_word_id, correct: true }),
             });
           } catch { /* best effort */ }
-          if (matched.size === pairs.length) {
-            setTimeout(() => {
-              overlay.remove();
-              resolve();
-            }, 600);
+          if (matched.size === words.length) {
+            setTimeout(() => { overlay.remove(); resolve(); }, 600);
           }
         } else {
-          // Wrong match — flash red
+          // Wrong match — flash red both boxes, then reset
           leftBoxes[lIdx].classList.add('border-red-500', 'bg-red-50');
           box.classList.add('border-red-500', 'bg-red-50');
           setTimeout(() => {
@@ -1678,11 +1684,11 @@ function showMatchGame(pairs) {
           try {
             await apiFetch('/api/quiz/match-answer', {
               method: 'POST',
-              body: JSON.stringify({ zh_word_id: pairs[lIdx].zh_word_id, correct: false }),
+              body: JSON.stringify({ zh_word_id: leftItems[lIdx].zh_word_id, correct: false }),
             });
             await apiFetch('/api/quiz/match-answer', {
               method: 'POST',
-              body: JSON.stringify({ zh_word_id: pairs[enId].zh_word_id, correct: false }),
+              body: JSON.stringify({ zh_word_id: leftItems[rightIdx].zh_word_id, correct: false }),
             });
           } catch { /* best effort */ }
         }
@@ -1704,10 +1710,7 @@ function showMatchGame(pairs) {
     const skipBtn = document.createElement('button');
     skipBtn.textContent = 'Skip game';
     skipBtn.className = 'w-full text-sm text-gray-400 hover:text-gray-600 mt-2';
-    skipBtn.addEventListener('click', () => {
-      overlay.remove();
-      resolve();
-    });
+    skipBtn.addEventListener('click', () => { overlay.remove(); resolve(); });
     modal.appendChild(skipBtn);
 
     overlay.appendChild(modal);

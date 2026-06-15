@@ -855,19 +855,61 @@ func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
 }
 
 // MatchGame handles GET /api/quiz/match-game.
-// Returns up to 3 confusion pairs from the last 7 days if at least 3 exist.
+// Loads 2 recent confusion pairs (each with zh_word + confused_with), extracts
+// up to 4 unique words, marks the pairs as shown, and returns the word list.
+// Returns {words:[]} when fewer than 2 eligible pairs exist.
 func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromContext(r.Context())
 	since := time.Now().UTC().AddDate(0, 0, -7)
-	pairs, err := h.Store.GetRecentMismatches(r.Context(), userID, since, 3)
+	pairs, err := h.Store.GetRecentMismatches(r.Context(), userID, since, 2)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
-	if len(pairs) < 3 {
-		pairs = []models.ConfusionDetail{}
+	if len(pairs) < 2 {
+		writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: []models.MatchGameWord{}})
+		return
 	}
-	writeJSON(w, http.StatusOK, models.MatchGameResponse{Pairs: pairs})
+
+	ptrStr := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+
+	// Collect unique words from both zh_word and confused_with sides of each pair.
+	seen := map[int64]bool{}
+	var words []models.MatchGameWord
+	for _, p := range pairs {
+		for _, candidate := range []struct {
+			id           int64
+			text, pinyin string
+			translations map[string][]string
+		}{
+			{p.ZhWordID, p.ZhText, ptrStr(p.ZhPinyin), p.ZhTranslations},
+			{p.ConfusedWithID, p.ConfusedWithText, ptrStr(p.ConfusedWithPinyin), p.ConfusedWithTranslations},
+		} {
+			if !seen[candidate.id] {
+				seen[candidate.id] = true
+				words = append(words, models.MatchGameWord{
+					ZhWordID:     candidate.id,
+					ZhText:       candidate.text,
+					Pinyin:       candidate.pinyin,
+					Translations: candidate.translations,
+				})
+			}
+		}
+	}
+
+	// Mark the source pairs as shown so they are suppressed until re-confused.
+	pairKeys := make([][2]int64, len(pairs))
+	for i, p := range pairs {
+		pairKeys[i] = [2]int64{p.ZhWordID, p.ConfusedWithID}
+	}
+	_ = h.Store.MarkConfusionsShownInGame(r.Context(), pairKeys)
+
+	writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: words})
 }
 
 // MatchAnswer handles POST /api/quiz/match-answer.

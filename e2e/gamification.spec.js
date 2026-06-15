@@ -51,12 +51,12 @@ test.describe('Gamification — match game', () => {
     expect(st.gamification_frequency).toBe(1);
   });
 
-  test('match-game endpoint returns empty when < 3 confusion pairs', async ({ request }) => {
+  test('match-game endpoint returns words array', async ({ request }) => {
     const res = await request.get(`${BASE_URL}/api/quiz/match-game`);
     const body = await res.json();
-    // The test DB may or may not have ≥3 pairs from other tests; just verify shape.
-    expect(body).toHaveProperty('pairs');
-    expect(Array.isArray(body.pairs)).toBe(true);
+    // Verify shape — may be empty if < 2 eligible pairs in this DB.
+    expect(body).toHaveProperty('words');
+    expect(Array.isArray(body.words)).toBe(true);
   });
 
   test('match-answer endpoint accepts correct=true', async ({ request }) => {

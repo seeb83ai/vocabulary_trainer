@@ -5920,15 +5920,12 @@ func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
 
 // ── GET /api/quiz/match-game ──────────────────────────────────────────────────
 
-func TestMatchGame_EmptyWhenFewerThan3Pairs(t *testing.T) {
+func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
-	// Only 2 confusion pairs — game should not trigger
+	// Only 1 confusion pair — game should not trigger
 	if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'transl_to_zh', 1, datetime('now'))`, id2, id1); err != nil {
 		t.Fatal(err)
 	}
 	r := newRouter(s)
@@ -5938,18 +5935,20 @@ func TestMatchGame_EmptyWhenFewerThan3Pairs(t *testing.T) {
 	}
 	var resp map[string]any
 	decodeJSON(t, rec, &resp)
-	pairs := resp["pairs"].([]any)
-	if len(pairs) != 0 {
-		t.Errorf("expected 0 pairs, got %d", len(pairs))
+	words := resp["words"].([]any)
+	if len(words) != 0 {
+		t.Errorf("expected 0 words, got %d", len(words))
 	}
 }
 
-func TestMatchGame_Returns3PairsWhen3Exist(t *testing.T) {
+func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
-	for _, pair := range [][2]int64{{id1, id2}, {id2, id3}, {id3, id1}} {
+	id4 := seedWord(t, s, "对不起", "duì bu qǐ", []string{"sorry"})
+	// 2 distinct pairs → 4 unique words
+	for _, pair := range [][2]int64{{id1, id2}, {id3, id4}} {
 		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
 			t.Fatal(err)
 		}
@@ -5961,9 +5960,63 @@ func TestMatchGame_Returns3PairsWhen3Exist(t *testing.T) {
 	}
 	var resp map[string]any
 	decodeJSON(t, rec, &resp)
-	pairs := resp["pairs"].([]any)
-	if len(pairs) != 3 {
-		t.Errorf("expected 3 pairs, got %d", len(pairs))
+	words := resp["words"].([]any)
+	if len(words) != 4 {
+		t.Errorf("expected 4 words, got %d", len(words))
+	}
+}
+
+func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	// Pair (1→2) and (2→3): word id2 appears in both, so only 3 unique words
+	for _, pair := range [][2]int64{{id1, id2}, {id2, id3}} {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	words := resp["words"].([]any)
+	if len(words) != 3 {
+		t.Errorf("expected 3 unique words, got %d", len(words))
+	}
+}
+
+func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	id4 := seedWord(t, s, "对不起", "duì bu qǐ", []string{"sorry"})
+	for _, pair := range [][2]int64{{id1, id2}, {id3, id4}} {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newRouter(s)
+
+	// First call returns words
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp1 map[string]any
+	decodeJSON(t, rec, &resp1)
+	if len(resp1["words"].([]any)) == 0 {
+		t.Fatal("first call: expected words")
+	}
+
+	// Second call returns empty (pairs marked as shown)
+	rec2 := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp2 map[string]any
+	decodeJSON(t, rec2, &resp2)
+	if len(resp2["words"].([]any)) != 0 {
+		t.Errorf("second call: expected 0 words, got %d", len(resp2["words"].([]any)))
 	}
 }
 
