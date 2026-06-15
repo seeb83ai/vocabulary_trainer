@@ -1,0 +1,25 @@
+# Oneshot SQLite backup for vocab-trainer (triggered by vocab-backup.timer).
+#
+# Install:
+#   sudo cp deploy/backup.sh /opt/vocab-trainer/backup.sh
+#   sudo cp deploy/vocab-backup.service /etc/systemd/system/
+#   sudo cp deploy/vocab-backup.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now vocab-backup.timer
+
+[Unit]
+Description=Vocabulary Trainer nightly database backup
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+Environment=DB_PATH=/opt/vocab-trainer/data/vocab.db
+Environment=BACKUP_DIR=/opt/vocab-trainer/data/backups
+Environment=RETAIN_DAYS=14
+EnvironmentFile=-/opt/vocab-trainer/.env
+ExecStart=/opt/vocab-trainer/backup.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vocab-backup

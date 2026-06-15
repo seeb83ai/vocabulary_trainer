@@ -448,6 +448,36 @@ sudo nginx -t && sudo systemctl reload nginx
 
 just running `make release` is good enough now to build the binary, deploy it and restart the service
 
+### Backups
+
+The database is a single SQLite file, so backups are simple. A scheduled nightly
+backup with retention is provided:
+
+```bash
+sudo cp deploy/backup.sh /opt/vocab-trainer/backup.sh
+sudo cp deploy/vocab-backup.service /etc/systemd/system/
+sudo cp deploy/vocab-backup.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now vocab-backup.timer
+```
+
+`deploy/backup.sh` uses the SQLite online-backup API (`sqlite3 .backup`), which
+takes a consistent snapshot while the server is running (safe with WAL mode). It
+writes timestamped copies to `BACKUP_DIR` (default `data/backups/`) and prunes
+files older than `RETAIN_DAYS` (default 14). The `vocab-backup.timer` runs it
+nightly.
+
+**Restore** — stop the server, copy a backup over the live DB, and restart:
+
+```bash
+sudo systemctl stop vocab-trainer
+make restore FROM=data/backups/vocab-2026-06-15_033000.sq3   # or: cp <backup> data/vocab.db
+sudo systemctl start vocab-trainer
+```
+
+The backup/restore round-trip is covered by a unit test
+(`TestBackupRestore_RoundTrip`) that exercises the same online-backup primitive.
+
 ## Text-to-speech (TTS)
 
 Audio is generated using the Microsoft Edge neural TTS WebSocket API (`zh-CN-XiaoxiaoNeural` voice) — implemented directly in Go with no Python dependency or API key required. MP3 files are cached in `AUDIO_DIR` (default: `data/audio/`) and served by the Go server.
