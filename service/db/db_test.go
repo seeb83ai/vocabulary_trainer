@@ -3157,7 +3157,7 @@ func seedHanziDef(t *testing.T, s *Store, character, definition string) {
 	// Also seed EN in translation table since GetComponentDefinitions reads from there.
 	_, err = s.db.Exec(
 		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
-		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		 ON CONFLICT(character, lang) WHERE user_id IS NULL DO UPDATE SET definition = excluded.definition`,
 		character, definition,
 	)
 	if err != nil {
@@ -3345,7 +3345,7 @@ func seedHanziTranslation(t *testing.T, s *Store, character, lang, definition st
 	t.Helper()
 	_, err := s.db.Exec(
 		`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, ?, ?)
-		 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+		 ON CONFLICT(character, lang) WHERE user_id IS NULL DO UPDATE SET definition = excluded.definition`,
 		character, strings.ToUpper(lang), definition,
 	)
 	if err != nil {
@@ -3357,7 +3357,7 @@ func TestGetComponentDefinitions_ENOnly(t *testing.T) {
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman; female")
 
-	defs, err := s.GetComponentDefinitions(context.Background(), "女", []string{"en"})
+	defs, err := s.GetComponentDefinitions(context.Background(), 2, "女", []string{"en"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions: %v", err)
 	}
@@ -3374,7 +3374,7 @@ func TestGetComponentDefinitions_ENAndDE(t *testing.T) {
 	seedHanziDef(t, s, "女", "woman; female")
 	seedHanziTranslation(t, s, "女", "de", "Frau; weiblich")
 
-	defs, err := s.GetComponentDefinitions(context.Background(), "女", []string{"en", "de"})
+	defs, err := s.GetComponentDefinitions(context.Background(), 2, "女", []string{"en", "de"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions: %v", err)
 	}
@@ -3391,7 +3391,7 @@ func TestGetComponentDefinitions_MissingDEOmitted(t *testing.T) {
 	seedHanziDef(t, s, "女", "woman")
 	// No DE translation seeded.
 
-	defs, err := s.GetComponentDefinitions(context.Background(), "女", []string{"en", "de"})
+	defs, err := s.GetComponentDefinitions(context.Background(), 2, "女", []string{"en", "de"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions: %v", err)
 	}
@@ -3651,7 +3651,7 @@ func TestAnnotateComponentDefinitions_PopulatesENAndDE(t *testing.T) {
 		t.Skip("no components — decomposition not seeded correctly")
 	}
 
-	if err := s.AnnotateComponentDefinitions(ctx, results, []string{"en", "de"}); err != nil {
+	if err := s.AnnotateComponentDefinitions(ctx, 2, results, []string{"en", "de"}); err != nil {
 		t.Fatalf("AnnotateComponentDefinitions: %v", err)
 	}
 
@@ -3682,7 +3682,7 @@ func TestAnnotateComponentDefinitions_NoLangsIsNoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetHanziDecomposition: %v", err)
 	}
-	if err := s.AnnotateComponentDefinitions(ctx, results, nil); err != nil {
+	if err := s.AnnotateComponentDefinitions(ctx, 2, results, nil); err != nil {
 		t.Fatalf("AnnotateComponentDefinitions: %v", err)
 	}
 	for _, comp := range results[0].Components {
@@ -3798,10 +3798,10 @@ func TestStoreComponentTranslation_UpsertAndRetrieve(t *testing.T) {
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman")
 
-	if err := s.StoreComponentTranslation("女", "de", "Frau"); err != nil {
+	if err := s.StoreComponentTranslation(context.Background(), 2, "女", "de", "Frau"); err != nil {
 		t.Fatalf("StoreComponentTranslation: %v", err)
 	}
-	defs, err := s.GetComponentDefinitions(ctx, "女", []string{"de"})
+	defs, err := s.GetComponentDefinitions(ctx, 2, "女", []string{"de"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions after store: %v", err)
 	}
@@ -3816,10 +3816,10 @@ func TestStoreComponentTranslation_UpdateExisting(t *testing.T) {
 	seedHanziDef(t, s, "女", "woman")
 	seedHanziTranslation(t, s, "女", "de", "alt")
 
-	if err := s.StoreComponentTranslation("女", "de", "Frau neu"); err != nil {
+	if err := s.StoreComponentTranslation(context.Background(), 2, "女", "de", "Frau neu"); err != nil {
 		t.Fatalf("StoreComponentTranslation update: %v", err)
 	}
-	defs, err := s.GetComponentDefinitions(ctx, "女", []string{"de"})
+	defs, err := s.GetComponentDefinitions(ctx, 2, "女", []string{"de"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions: %v", err)
 	}
@@ -3836,7 +3836,7 @@ func TestGetComponentTranslations_ReturnsAllLangs(t *testing.T) {
 	seedHanziTranslation(t, s, "女", "en", "woman")
 	seedHanziTranslation(t, s, "女", "de", "Frau")
 
-	got, err := s.GetComponentTranslations("女")
+	got, err := s.GetComponentTranslations(context.Background(), 2, "女")
 	if err != nil {
 		t.Fatalf("GetComponentTranslations: %v", err)
 	}
@@ -3850,7 +3850,7 @@ func TestGetComponentTranslations_ReturnsAllLangs(t *testing.T) {
 
 func TestGetComponentTranslations_EmptyForUnknownChar(t *testing.T) {
 	s := openTestDB(t)
-	got, err := s.GetComponentTranslations("X")
+	got, err := s.GetComponentTranslations(context.Background(), 2, "X")
 	if err != nil {
 		t.Fatalf("GetComponentTranslations: %v", err)
 	}
@@ -3871,7 +3871,7 @@ func TestGetComponentDefinitions_ENFromTranslationTable(t *testing.T) {
 	}
 	seedHanziTranslation(t, s, "水", "en", "water")
 
-	defs, err := s.GetComponentDefinitions(ctx, "水", []string{"en"})
+	defs, err := s.GetComponentDefinitions(ctx, 2, "水", []string{"en"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions: %v", err)
 	}
@@ -4318,5 +4318,91 @@ func TestAcknowledgeRandomWords_AtomicAndConsolidated(t *testing.T) {
 	}
 	if attempts1 != 4 {
 		t.Errorf("want 4 words with total_attempts=1, got %d", attempts1)
+	}
+}
+
+// ── Per-user component dictionary overlay (issue 09) ──────────────────────────
+
+func TestComponentTranslation_FallsBackToGlobal(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "女", "woman") // seeds the shared global EN default
+
+	defs, err := s.GetComponentDefinitions(ctx, 2, "女", []string{"en"})
+	if err != nil {
+		t.Fatalf("GetComponentDefinitions: %v", err)
+	}
+	if defs["en"] != "woman" {
+		t.Errorf("want global fallback 'woman', got %q", defs["en"])
+	}
+}
+
+func TestComponentTranslation_UserOverride(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "女", "woman")
+
+	uid, err := s.CreateUserWithSettings(ctx, "override@example.de", "h", "", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	if err := s.StoreComponentTranslation(ctx, uid, "女", "en", "female"); err != nil {
+		t.Fatalf("StoreComponentTranslation: %v", err)
+	}
+
+	// The editing user sees their override...
+	defs, err := s.GetComponentDefinitions(ctx, uid, "女", []string{"en"})
+	if err != nil {
+		t.Fatalf("GetComponentDefinitions: %v", err)
+	}
+	if defs["en"] != "female" {
+		t.Errorf("want user override 'female', got %q", defs["en"])
+	}
+	// ...and the shared default is unchanged for everyone else.
+	other, _ := s.GetComponentDefinitions(ctx, 999999, "女", []string{"en"})
+	if other["en"] != "woman" {
+		t.Errorf("global default must be untouched, got %q", other["en"])
+	}
+	// GetComponentTranslations applies the same overlay.
+	tr, err := s.GetComponentTranslations(ctx, uid, "女")
+	if err != nil {
+		t.Fatalf("GetComponentTranslations: %v", err)
+	}
+	if tr["en"] != "female" {
+		t.Errorf("GetComponentTranslations override: want 'female', got %q", tr["en"])
+	}
+}
+
+func TestComponentTranslation_UserIsolation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "女", "woman")
+
+	uA, err := s.CreateUserWithSettings(ctx, "a@example.de", "h", "", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create user A: %v", err)
+	}
+	uB, err := s.CreateUserWithSettings(ctx, "b@example.de", "h", "", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create user B: %v", err)
+	}
+	if err := s.StoreComponentTranslation(ctx, uA, "女", "en", "A-def"); err != nil {
+		t.Fatalf("store A: %v", err)
+	}
+	if err := s.StoreComponentTranslation(ctx, uB, "女", "en", "B-def"); err != nil {
+		t.Fatalf("store B: %v", err)
+	}
+
+	a, _ := s.GetComponentDefinitions(ctx, uA, "女", []string{"en"})
+	b, _ := s.GetComponentDefinitions(ctx, uB, "女", []string{"en"})
+	g, _ := s.GetComponentDefinitions(ctx, 999999, "女", []string{"en"})
+	if a["en"] != "A-def" {
+		t.Errorf("user A should see own def, got %q", a["en"])
+	}
+	if b["en"] != "B-def" {
+		t.Errorf("user B should see own def, got %q", b["en"])
+	}
+	if g["en"] != "woman" {
+		t.Errorf("a user without an override should see the global default, got %q", g["en"])
 	}
 }

@@ -145,7 +145,7 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	defs, err := h.Store.GetComponentDefinitions(r.Context(), req.Character, langs)
+	defs, err := h.Store.GetComponentDefinitions(r.Context(), UserIDFromContext(r.Context()), req.Character, langs)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -366,7 +366,7 @@ func (h *ComponentHandler) GetTranslations(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "character is required")
 		return
 	}
-	translations, err := h.Store.GetComponentTranslations(char)
+	translations, err := h.Store.GetComponentTranslations(r.Context(), UserIDFromContext(r.Context()), char)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -393,7 +393,7 @@ func (h *ComponentHandler) UpdateTranslation(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "lang is required")
 		return
 	}
-	if err := h.Store.StoreComponentTranslation(char, req.Lang, req.Definition); err != nil {
+	if err := h.Store.StoreComponentTranslation(r.Context(), UserIDFromContext(r.Context()), char, req.Lang, req.Definition); err != nil {
 		internalError(w, err)
 		return
 	}
