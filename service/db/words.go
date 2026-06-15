@@ -626,7 +626,7 @@ func tierFilter(bucket string) string {
 	const acc = `CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts`
 	switch bucket {
 	case "new":
-		return ` AND p.learning_new_word = 1 AND p.first_seen_date IS NOT NULL`
+		return ` AND p.learning_new_word = 1 AND p.first_seen_at IS NOT NULL`
 	case "0-49":
 		return ` AND p.learning_new_word = 0 AND (p.total_attempts < 3 OR ` + acc + ` < 0.50)`
 	case "50-69":
@@ -654,7 +654,7 @@ type NewWordBaselines struct {
 
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
 // Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
-// maxNew caps how many new words (first_seen_date IS NULL) can be introduced today; once
+// maxNew caps how many new words (first_seen_at IS NULL) can be introduced today; once
 // the count for today reaches maxNew, only already-seen cards are returned.
 // skipNew forces unseen words to be excluded regardless of the daily cap.
 // baselines provides optional additional gates; a nil pointer means no baselines.
@@ -680,7 +680,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date = date('now')`, userID).Scan(&newToday); err != nil {
+		 WHERE w.language = 'zh' AND w.user_id = ? AND date(p.first_seen_at) = date('now')`, userID).Scan(&newToday); err != nil {
 		return nil, nil, fmt.Errorf("count new today: %w", err)
 	}
 
@@ -688,7 +688,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 	newWordFilter := ""
 	newWordsBlocked := false
 	if skipNew || newToday >= maxNew {
-		newWordFilter = " AND p.first_seen_date IS NOT NULL"
+		newWordFilter = " AND p.first_seen_at IS NOT NULL"
 		newWordsBlocked = true
 	}
 
@@ -700,7 +700,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				return nil, nil, fmt.Errorf("due today snapshot: %w", err)
 			}
 			if snap >= baselines.DueTodayValue {
-				newWordFilter = " AND p.first_seen_date IS NOT NULL"
+				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 			}
 		}
 		if newWordFilter == "" && baselines.StrugglingEnabled {
@@ -709,14 +709,14 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				`SELECT COUNT(*) FROM sm2_progress p
 				 JOIN words w ON w.id = p.word_id
 				 WHERE w.language = 'zh' AND w.user_id = ?
-				   AND p.first_seen_date IS NOT NULL
+				   AND p.first_seen_at IS NOT NULL
 				   AND p.learning_new_word = 0
 				   AND (p.total_attempts < 3 OR CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts < 0.50)`,
 				userID).Scan(&struggling); err != nil {
 				return nil, nil, fmt.Errorf("count struggling: %w", err)
 			}
 			if struggling >= baselines.StrugglingValue {
-				newWordFilter = " AND p.first_seen_date IS NOT NULL"
+				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}
 		}
@@ -731,7 +731,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				return nil, nil, fmt.Errorf("check cooldown: %w", err)
 			}
 			if recentCount > 0 {
-				newWordFilter = " AND p.first_seen_date IS NOT NULL"
+				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}
 		}
@@ -741,7 +741,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				`SELECT COUNT(*) FROM sm2_progress p
 				 JOIN words w ON w.id = p.word_id
 				 WHERE w.language = 'zh' AND w.user_id = ?
-				   AND p.first_seen_date IS NOT NULL
+				   AND p.first_seen_at IS NOT NULL
 				   AND p.learning_new_word = 0
 				   AND p.total_attempts >= 3
 				   AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.50
@@ -750,7 +750,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				return nil, nil, fmt.Errorf("count learning: %w", err)
 			}
 			if learning >= baselines.LearningValue {
-				newWordFilter = " AND p.first_seen_date IS NOT NULL"
+				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}
 		}
@@ -808,7 +808,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 			 JOIN words w ON w.id = p.word_id
 			 WHERE w.language = 'zh' AND w.user_id = ?
 			   AND p.learning_new_word = 1
-			   AND p.first_seen_date IS NOT NULL
+			   AND p.first_seen_at IS NOT NULL
 			   AND p.due_date <= CURRENT_TIMESTAMP`,
 			userID).Scan(&learningDue); err != nil {
 			return nil, nil, fmt.Errorf("count learning due: %w", err)
@@ -821,7 +821,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				FROM words w
 				JOIN sm2_progress p ON p.word_id = w.id
 				WHERE w.language = 'zh' AND w.user_id = ?` + tagFilter + `
-				  AND p.first_seen_date IS NULL
+				  AND p.first_seen_at IS NULL
 				ORDER BY p.due_date ASC
 				LIMIT 1`
 			args := append([]any{userID}, tagArgs...)

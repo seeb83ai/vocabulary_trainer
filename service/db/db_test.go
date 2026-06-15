@@ -328,7 +328,7 @@ func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	// GetNextCard should return the word but NOT set first_seen_date.
+	// GetNextCard should return the word but NOT set first_seen_at.
 	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -338,9 +338,9 @@ func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
 	}
 
 	var firstSeen *string
-	s.db.QueryRowContext(ctx, `SELECT first_seen_date FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen)
+	s.db.QueryRowContext(ctx, `SELECT first_seen_at FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeen)
 	if firstSeen != nil {
-		t.Errorf("GetNextCard should not set first_seen_date, but got %q", *firstSeen)
+		t.Errorf("GetNextCard should not set first_seen_at, but got %q", *firstSeen)
 	}
 }
 
@@ -368,13 +368,13 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	// Seed 3 words; none have been seen yet (first_seen_date IS NULL).
+	// Seed 3 words; none have been seen yet (first_seen_at IS NULL).
 	id1 := seedWord(t, s, "一", "", []string{"one"})
 	seedWord(t, s, "二", "", []string{"two"})
 	seedWord(t, s, "三", "", []string{"three"})
 
-	// Simulate having already introduced 1 word today by stamping its first_seen_date.
-	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
+	// Simulate having already introduced 1 word today by stamping its first_seen_at.
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_at = date('now') WHERE word_id = ?`, id1)
 
 	// With maxNew=1 the daily cap is reached; only id1 (already introduced) should be returned.
 	w, _, err := s.GetNextCard(ctx, int64(2), nil, 1, "", false, nil)
@@ -402,11 +402,11 @@ func TestGetNextCard_SkipNewExcludesUnseenWords(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	// id1: already introduced (first_seen_date set).
+	// id1: already introduced (first_seen_at set).
 	id1 := seedWord(t, s, "一", "", []string{"one"})
-	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_at = date('now') WHERE word_id = ?`, id1)
 
-	// id2: never presented (first_seen_date IS NULL).
+	// id2: never presented (first_seen_at IS NULL).
 	seedWord(t, s, "二", "", []string{"two"})
 
 	// With skipNew=true, only the already-seen word should be returned.
@@ -429,10 +429,10 @@ func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
 	// idLearning: already seen today, still in learning phase (learning_new_word=1).
 	idLearning := seedWord(t, s, "一", "", []string{"one"})
 	s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now'), learning_new_word = 1 WHERE word_id = ?`,
+		`UPDATE sm2_progress SET first_seen_at = date('now'), learning_new_word = 1 WHERE word_id = ?`,
 		idLearning)
 
-	// idUnseen: never presented (first_seen_date IS NULL).
+	// idUnseen: never presented (first_seen_at IS NULL).
 	seedWord(t, s, "二", "", []string{"two"})
 
 	// Even though the daily cap (100) is not reached, the unseen word must not
@@ -519,7 +519,7 @@ func TestGetStats_DueTodayCount(t *testing.T) {
 
 	// Mark both words as seen so they count as due
 	ctx := context.Background()
-	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now')`)
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_at = date('now')`)
 
 	// Move one word into the future so it's NOT due
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
@@ -541,7 +541,7 @@ func TestGetStats_NewTodayCount(t *testing.T) {
 	seedWord(t, s, "二", "", []string{"two"})
 
 	// Stamp one word as introduced today.
-	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id1)
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_at = date('now') WHERE word_id = ?`, id1)
 
 	_, _, newToday, err := s.GetStats(ctx, int64(2), nil, "")
 	if err != nil {
@@ -679,10 +679,10 @@ func TestGetNextCard_DoesNotReturnFutureCards(t *testing.T) {
 
 	id := seedWord(t, s, "一", "", []string{"one"})
 
-	// Mark the word as seen (first_seen_date set) and place its due_date
+	// Mark the word as seen (first_seen_at set) and place its due_date
 	// 2 days in the future — it should NOT be returned by GetNextCard.
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
-	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_date = date('now') WHERE word_id = ?`, future, id)
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now') WHERE word_id = ?`, future, id)
 
 	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
@@ -701,7 +701,7 @@ func TestGetNextCard_ReturnsTodayNotYetOverdue(t *testing.T) {
 
 	// Place due_date 5 minutes from now (today but not yet overdue).
 	soon := time.Now().UTC().Add(5 * time.Minute).Format("2006-01-02 15:04:05")
-	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_date = date('now') WHERE word_id = ?`, soon, id)
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now') WHERE word_id = ?`, soon, id)
 
 	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
 	if err != nil {
@@ -756,7 +756,7 @@ func TestRecordDailyStat_UserIsolation(t *testing.T) {
 	// User 2 (created by openTestDB) has one seen word.
 	id2 := seedWord(t, s, "你好", "", []string{"hello"})
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id2); err != nil {
+		`UPDATE sm2_progress SET first_seen_at = date('now') WHERE word_id = ?`, id2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -772,7 +772,7 @@ func TestRecordDailyStat_UserIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now') WHERE word_id = ?`, id3); err != nil {
+		`UPDATE sm2_progress SET first_seen_at = date('now') WHERE word_id = ?`, id3); err != nil {
 		t.Fatal(err)
 	}
 
@@ -880,7 +880,7 @@ func TestGetNextCard_BaselineStruggling_BlocksNewWords(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now'), learning_new_word = 0,
+		`UPDATE sm2_progress SET first_seen_at = date('now'), learning_new_word = 0,
 		 total_attempts = 5, total_correct = 1, due_date = CURRENT_TIMESTAMP
 		 WHERE word_id = ?`, wordID); err != nil {
 		t.Fatal(err)
@@ -1317,7 +1317,7 @@ func TestCountLearningNewWords_BeforePresented(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	// Newly created word: learning_new_word=1 (default), first_seen_date=NULL
+	// Newly created word: learning_new_word=1 (default), first_seen_at=NULL
 	wordId := seedWord(t, s, "一", "", []string{"one"})
 
 	count, err := s.CountLearningNewWords(ctx, int64(2), nil)
@@ -1713,7 +1713,7 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 
 	// Mark the word as seen and meeting the "known" threshold (≥10 attempts, ≥85% accuracy)
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now'), total_correct = 9, total_attempts = 10`); err != nil {
+		`UPDATE sm2_progress SET first_seen_at = date('now'), total_correct = 9, total_attempts = 10`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1832,7 +1832,7 @@ func TestGetTodaySessionInfo_WithData(t *testing.T) {
 
 	// Mark the word as seen with a future due date.
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now'), due_date = datetime('now', '+1 day') WHERE word_id = ?`, id); err != nil {
+		`UPDATE sm2_progress SET first_seen_at = date('now'), due_date = datetime('now', '+1 day') WHERE word_id = ?`, id); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1911,7 +1911,7 @@ func TestAdvanceDueDates_AdvancesNWords(t *testing.T) {
 		ids[i] = seedWord(t, s, []string{"一", "二", "三", "四", "五"}[i], "", []string{"en"})
 		days := i + 1 // 1 day, 2 days, ..., 5 days from now
 		if _, err := s.db.ExecContext(ctx,
-			`UPDATE sm2_progress SET first_seen_date = date('now'), due_date = datetime('now', ? || ' days') WHERE word_id = ?`,
+			`UPDATE sm2_progress SET first_seen_at = date('now'), due_date = datetime('now', ? || ' days') WHERE word_id = ?`,
 			days, ids[i]); err != nil {
 			t.Fatal(err)
 		}
@@ -1929,11 +1929,11 @@ func TestAdvanceDueDates_AdvancesNWords(t *testing.T) {
 	// Verify exactly 3 are due and 2 are still future.
 	var due, future int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sm2_progress WHERE due_date <= CURRENT_TIMESTAMP AND first_seen_date IS NOT NULL`).Scan(&due); err != nil {
+		`SELECT COUNT(*) FROM sm2_progress WHERE due_date <= CURRENT_TIMESTAMP AND first_seen_at IS NOT NULL`).Scan(&due); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sm2_progress WHERE due_date > CURRENT_TIMESTAMP AND first_seen_date IS NOT NULL`).Scan(&future); err != nil {
+		`SELECT COUNT(*) FROM sm2_progress WHERE due_date > CURRENT_TIMESTAMP AND first_seen_at IS NOT NULL`).Scan(&future); err != nil {
 		t.Fatal(err)
 	}
 	if due != 3 {
@@ -1952,7 +1952,7 @@ func TestAdvanceDueDates_FewerThanN(t *testing.T) {
 	for i, zh := range []string{"一", "二"} {
 		id := seedWord(t, s, zh, "", []string{"en"})
 		if _, err := s.db.ExecContext(ctx,
-			`UPDATE sm2_progress SET first_seen_date = date('now'), due_date = datetime('now', ? || ' days') WHERE word_id = ?`,
+			`UPDATE sm2_progress SET first_seen_at = date('now'), due_date = datetime('now', ? || ' days') WHERE word_id = ?`,
 			i+1, id); err != nil {
 			t.Fatal(err)
 		}
@@ -3700,7 +3700,7 @@ func TestGetNextCard_PrefersUnseenOverAdvancedSeen(t *testing.T) {
 	// unseen-priority path.
 	idSeen := seedWord(t, s, "一", "", []string{"one"})
 	s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET first_seen_date = date('now'), due_date = datetime('now', '-30 days'), learning_new_word = 0 WHERE word_id = ?`,
+		`UPDATE sm2_progress SET first_seen_at = date('now'), due_date = datetime('now', '-30 days'), learning_new_word = 0 WHERE word_id = ?`,
 		idSeen)
 
 	// Unseen word whose due_date is the default CURRENT_TIMESTAMP (recent).
@@ -4191,5 +4191,59 @@ func TestComponentPrevState_ClearAfterAccept(t *testing.T) {
 	}
 	if got != nil {
 		t.Errorf("expected nil after clear, got %+v", got)
+	}
+}
+
+// TestAcknowledgeRandomWords_AtomicAndConsolidated covers issue 08:
+//   - 4.3: the duplicate first_seen_date column is gone; first_seen_at is the
+//     single source of truth and is set on acknowledgement.
+//   - 4.4: every selected word is acknowledged atomically (all get first_seen_at
+//     + total_attempts=1).
+func TestAcknowledgeRandomWords_AtomicAndConsolidated(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 4.3: the consolidated schema no longer has first_seen_date on sm2_progress.
+	var cnt int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pragma_table_info('sm2_progress') WHERE name = 'first_seen_date'`).Scan(&cnt); err != nil {
+		t.Fatalf("pragma: %v", err)
+	}
+	if cnt != 0 {
+		t.Fatalf("sm2_progress.first_seen_date should have been dropped, still present")
+	}
+
+	for i := 0; i < 4; i++ {
+		req := models.CreateWordRequest{ZhText: string(rune('甲' + i)), Translations: map[string][]string{"en": {"word"}}}
+		if _, err := s.CreateWord(ctx, 2, req); err != nil {
+			t.Fatalf("CreateWord: %v", err)
+		}
+	}
+
+	n, err := s.AcknowledgeRandomWords(ctx, 2, 4)
+	if err != nil {
+		t.Fatalf("AcknowledgeRandomWords: %v", err)
+	}
+	if n != 4 {
+		t.Fatalf("want 4 acknowledged, got %d", n)
+	}
+
+	// 4.4: all four rows acknowledged atomically — first_seen_at set, attempts=1.
+	var seen, attempts1 int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p JOIN words w ON w.id = p.word_id
+		 WHERE w.user_id = 2 AND w.language = 'zh' AND p.first_seen_at IS NOT NULL`).Scan(&seen); err != nil {
+		t.Fatalf("count seen: %v", err)
+	}
+	if seen != 4 {
+		t.Errorf("want 4 words with first_seen_at set, got %d", seen)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p JOIN words w ON w.id = p.word_id
+		 WHERE w.user_id = 2 AND w.language = 'zh' AND p.total_attempts = 1`).Scan(&attempts1); err != nil {
+		t.Fatalf("count attempts: %v", err)
+	}
+	if attempts1 != 4 {
+		t.Errorf("want 4 words with total_attempts=1, got %d", attempts1)
 	}
 }
