@@ -68,7 +68,7 @@ func TestCreateWord_Idempotent(t *testing.T) {
 func TestCreateWord_MultipleTranslations(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "吃饭", "chī fàn", []string{"eat", "have a meal"})
-	wd, err := s.GetWordByID(context.Background(), int64(2),id)
+	wd, err := s.GetWordByID(context.Background(), int64(2), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestCreateWord_MultipleTranslations(t *testing.T) {
 
 func TestGetWordByID_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	wd, err := s.GetWordByID(context.Background(), int64(2),9999)
+	wd, err := s.GetWordByID(context.Background(), int64(2), 9999)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestGetWordByID_NotFound(t *testing.T) {
 func TestGetWordByID_ContainsZhAndPinyin(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
-	wd, err := s.GetWordByID(context.Background(), int64(2),id)
+	wd, err := s.GetWordByID(context.Background(), int64(2), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestGetWordByID_ContainsZhAndPinyin(t *testing.T) {
 func TestGetWordByID_SM2FieldsPresent(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "再见", "zàijiàn", []string{"goodbye"})
-	wd, err := s.GetWordByID(context.Background(), int64(2),id)
+	wd, err := s.GetWordByID(context.Background(), int64(2), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestUpdateWord_ChangesZhText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2), id)
 	if wd.ZhText != "妳好" {
 		t.Errorf("ZhText: want 妳好, got %q", wd.ZhText)
 	}
@@ -230,10 +230,10 @@ func TestUpdateWord_NotFound(t *testing.T) {
 func TestDeleteWord_Removes(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	if err := s.DeleteWord(context.Background(), int64(2),id); err != nil {
+	if err := s.DeleteWord(context.Background(), int64(2), id); err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2), id)
 	if wd != nil {
 		t.Error("word should be gone after delete")
 	}
@@ -241,7 +241,7 @@ func TestDeleteWord_Removes(t *testing.T) {
 
 func TestDeleteWord_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.DeleteWord(context.Background(), int64(2),9999)
+	err := s.DeleteWord(context.Background(), int64(2), 9999)
 	if err == nil {
 		t.Error("expected error when deleting non-existent word")
 	}
@@ -255,7 +255,7 @@ func TestAddTranslation_AddsNewEN(t *testing.T) {
 	if err := s.AddTranslation(context.Background(), int64(2), id, "en", "hi"); err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2), id)
 	found := false
 	for _, e := range wd.Translations["en"] {
 		if e == "hi" {
@@ -272,7 +272,7 @@ func TestAddTranslation_Idempotent(t *testing.T) {
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	s.AddTranslation(context.Background(), int64(2), id, "en", "hi")
 	s.AddTranslation(context.Background(), int64(2), id, "en", "hi") // second call is no-op
-	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2), id)
 	count := 0
 	for _, e := range wd.Translations["en"] {
 		if e == "hi" {
@@ -601,7 +601,7 @@ func seedWordWithTags(t *testing.T, s *Store, zhText, pinyin string, enTexts, ta
 func TestCreateWord_WithTags(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"greetings", "HSK1"})
-	wd, err := s.GetWordByID(context.Background(), int64(2),id)
+	wd, err := s.GetWordByID(context.Background(), int64(2), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +625,7 @@ func TestUpdateWord_ReplacesTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2), id)
 	if len(wd.Tags) != 1 || wd.Tags[0] != "new-tag" {
 		t.Errorf("expected [new-tag], got %v", wd.Tags)
 	}
@@ -1594,7 +1594,7 @@ func TestDeleteWord_CascadesToConfusionPairs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.DeleteWord(context.Background(), int64(2),idA); err != nil {
+	if err := s.DeleteWord(context.Background(), int64(2), idA); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1613,11 +1613,11 @@ func TestMarkWordForReview_SetsFlag(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	if err := s.MarkWordForReview(context.Background(), int64(2),id); err != nil {
+	if err := s.MarkWordForReview(context.Background(), int64(2), id); err != nil {
 		t.Fatalf("MarkWordForReview: %v", err)
 	}
 
-	wd, err := s.GetWordByID(context.Background(), int64(2),id)
+	wd, err := s.GetWordByID(context.Background(), int64(2), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1628,7 +1628,7 @@ func TestMarkWordForReview_SetsFlag(t *testing.T) {
 
 func TestMarkWordForReview_NotFound(t *testing.T) {
 	s := openTestDB(t)
-	err := s.MarkWordForReview(context.Background(), int64(2),9999)
+	err := s.MarkWordForReview(context.Background(), int64(2), 9999)
 	if err == nil {
 		t.Error("expected error for missing word, got nil")
 	}
@@ -1638,19 +1638,19 @@ func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	if err := s.MarkWordForReview(context.Background(), int64(2),id); err != nil {
+	if err := s.MarkWordForReview(context.Background(), int64(2), id); err != nil {
 		t.Fatal(err)
 	}
 
 	if err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}},
 	}); err != nil {
 		t.Fatalf("UpdateWord: %v", err)
 	}
 
-	wd, err := s.GetWordByID(context.Background(), int64(2),id)
+	wd, err := s.GetWordByID(context.Background(), int64(2), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1664,7 +1664,7 @@ func TestGetWords_ReviewOnlyFilter(t *testing.T) {
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 
-	if err := s.MarkWordForReview(context.Background(), int64(2),id1); err != nil {
+	if err := s.MarkWordForReview(context.Background(), int64(2), id1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2153,8 +2153,8 @@ func TestGetTranslationLanguages_ENandDE(t *testing.T) {
 	s := openTestDB(t)
 	// Create a word with both EN and DE translations.
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil || id <= 0 {
@@ -2178,8 +2178,8 @@ func TestGetTranslationLanguages_ENandDE(t *testing.T) {
 func TestGetTranslationsForWord_DE(t *testing.T) {
 	s := openTestDB(t)
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen", "tschüss"}},
 	})
 	if err != nil {
@@ -2202,8 +2202,8 @@ func TestGetTranslationsForWord_DE(t *testing.T) {
 func TestGetTranslationsForWord_DEvsEN_NoMix(t *testing.T) {
 	s := openTestDB(t)
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "吃",
-		Pinyin:  "chī",
+		ZhText:       "吃",
+		Pinyin:       "chī",
 		Translations: map[string][]string{"en": {"eat"}, "de": {"essen"}},
 	})
 	if err != nil {
@@ -2233,8 +2233,8 @@ func TestGetWords_MissingLangEN(t *testing.T) {
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	// Word with both EN and DE.
 	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
@@ -2269,8 +2269,8 @@ func TestGetWords_MissingLangDE(t *testing.T) {
 
 	// Word with both EN and DE.
 	s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 
@@ -2307,14 +2307,14 @@ func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	// Save with the exact same ZhText — should not cause a UNIQUE constraint error.
 	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello", "hi"}},
 	})
 	if err != nil {
 		t.Fatalf("UpdateWord with unchanged ZhText should not fail: %v", err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2), id)
 	if wd.ZhText != "你好" {
 		t.Errorf("ZhText should be unchanged, got %q", wd.ZhText)
 	}
@@ -2328,14 +2328,14 @@ func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
 func TestCreateWord_WithDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo", "guten tag"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd, err := s.GetWordByID(context.Background(), int64(2),id)
+	wd, err := s.GetWordByID(context.Background(), int64(2), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2347,8 +2347,8 @@ func TestCreateWord_WithDeTexts(t *testing.T) {
 func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
@@ -2356,14 +2356,14 @@ func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 	}
 
 	err = s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"tschüss", "ciao"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wd, _ := s.GetWordByID(context.Background(), int64(2),id)
+	wd, _ := s.GetWordByID(context.Background(), int64(2), id)
 	if len(wd.Translations["de"]) != 2 {
 		t.Errorf("expected 2 DeTexts after update, got %d: %v", len(wd.Translations["de"]), wd.Translations["de"])
 	}
@@ -2638,8 +2638,8 @@ func TestLookupConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 
 	// 人 → EN "person", DE "Person"
 	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "人",
-		Pinyin:  "rén",
+		ZhText:       "人",
+		Pinyin:       "rén",
 		Translations: map[string][]string{"en": {"person"}, "de": {"Person"}},
 	})
 	if err != nil {
@@ -2648,8 +2648,8 @@ func TestLookupConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 
 	// 点 → EN "dot", DE "Uhr"
 	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "点",
-		Pinyin:  "diǎn",
+		ZhText:       "点",
+		Pinyin:       "diǎn",
 		Translations: map[string][]string{"en": {"dot"}, "de": {"Uhr"}},
 	})
 	if err != nil {
@@ -2674,8 +2674,8 @@ func TestLookupConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 	ctx := context.Background()
 
 	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "狗",
-		Pinyin:  "gǒu",
+		ZhText:       "狗",
+		Pinyin:       "gǒu",
 		Translations: map[string][]string{"en": {"dog"}, "de": {"Hund"}},
 	})
 	if err != nil {
@@ -2683,8 +2683,8 @@ func TestLookupConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 	}
 
 	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "好",
-		Pinyin:  "hǎo",
+		ZhText:       "好",
+		Pinyin:       "hǎo",
 		Translations: map[string][]string{"en": {"good"}, "de": {"gut"}},
 	})
 	if err != nil {
@@ -2708,8 +2708,8 @@ func TestLookupConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 	ctx := context.Background()
 
 	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "人",
-		Pinyin:  "rén",
+		ZhText:       "人",
+		Pinyin:       "rén",
 		Translations: map[string][]string{"en": {"person"}, "de": {"Person"}},
 	})
 	if err != nil {
@@ -2717,8 +2717,8 @@ func TestLookupConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 	}
 
 	_, err = s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "点",
-		Pinyin:  "diǎn",
+		ZhText:       "点",
+		Pinyin:       "diǎn",
 		Translations: map[string][]string{"en": {"dot"}, "de": {"Uhr"}},
 	})
 	if err != nil {
@@ -2944,9 +2944,9 @@ func TestUpsertTagMeta_AndGetTagDetails(t *testing.T) {
 
 	// Seed a word with a tag so the tag appears in GetTagDetails.
 	if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "测试",
+		ZhText:       "测试",
 		Translations: map[string][]string{"en": {"test"}},
-		Tags:    []string{"hsk1"},
+		Tags:         []string{"hsk1"},
 	}); err != nil {
 		t.Fatalf("CreateWord: %v", err)
 	}
@@ -2996,9 +2996,9 @@ func TestGetImportableSourceTags_FiltersImportable(t *testing.T) {
 	// Seed two tags for user 1 (source/library user).
 	for _, tag := range []string{"hsk1", "hsk2"} {
 		if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
-			ZhText:  tag + "字",
+			ZhText:       tag + "字",
 			Translations: map[string][]string{"en": {tag + " word"}},
-			Tags:    []string{tag},
+			Tags:         []string{tag},
 		}); err != nil {
 			t.Fatalf("CreateWord %s: %v", tag, err)
 		}
@@ -3057,9 +3057,9 @@ func TestGetImportableSourceTags_WithDescription(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
-		ZhText:  "你好",
+		ZhText:       "你好",
 		Translations: map[string][]string{"en": {"hello"}},
-		Tags:    []string{"greetings"},
+		Tags:         []string{"greetings"},
 	}); err != nil {
 		t.Fatalf("CreateWord: %v", err)
 	}

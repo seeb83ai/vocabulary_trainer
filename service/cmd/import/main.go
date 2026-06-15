@@ -1,12 +1,14 @@
 // cmd/import/main.go — Import vocabulary from a text file into the trainer DB.
 //
 // File format (3 lines per entry, blank lines ignored):
-//   Line 1: pinyin / 汉字   OR   汉字 / pinyin   OR   just pinyin (no Chinese)
-//   Line 2: translation(s), comma-separated
-//   Line 3: rating string (ignored, e.g. "Schon ziemlich gut")
+//
+//	Line 1: pinyin / 汉字   OR   汉字 / pinyin   OR   just pinyin (no Chinese)
+//	Line 2: translation(s), comma-separated
+//	Line 3: rating string (ignored, e.g. "Schon ziemlich gut")
 //
 // Usage:
-//   go run ./cmd/import -db data/vocab.db -file voc.txt [-dry-run]
+//
+//	go run ./cmd/import -db data/vocab.db -file voc.txt [-dry-run]
 package main
 
 import (

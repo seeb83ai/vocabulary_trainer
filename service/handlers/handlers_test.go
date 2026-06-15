@@ -256,8 +256,8 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	s := openTestDB(t)
 	// Word with no pinyin — zh_pinyin_to_en must never be returned
 	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "", // no pinyin
+		ZhText:       "你好",
+		Pinyin:       "", // no pinyin
 		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if err != nil {
@@ -586,8 +586,8 @@ func TestWordsList_Search(t *testing.T) {
 func TestWordsCreate_Valid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}},
 	})
 	if rec.Code != http.StatusCreated {
@@ -623,7 +623,7 @@ func TestWordsCreate_NoTranslations(t *testing.T) {
 func TestWordsCreate_DeOnlyValid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "你好",
+		ZhText:       "你好",
 		Translations: map[string][]string{"de": {"Hallo"}},
 	})
 	if rec.Code != http.StatusCreated {
@@ -649,7 +649,7 @@ func TestWordsCreate_StartTraining(t *testing.T) {
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:        "学习",
 		Pinyin:        "xuéxí",
-		Translations: map[string][]string{"en": {"to study"}},
+		Translations:  map[string][]string{"en": {"to study"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusCreated {
@@ -675,7 +675,7 @@ func TestWordsUpdate_StartTraining(t *testing.T) {
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
 		ZhText:        "你好",
 		Pinyin:        "nǐ hǎo",
-		Translations: map[string][]string{"en": {"hello"}},
+		Translations:  map[string][]string{"en": {"hello"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusOK {
@@ -730,8 +730,8 @@ func TestWordsUpdate_Valid(t *testing.T) {
 	r := newRouter(s)
 
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好吗",
-		Pinyin:  "nǐ hǎo ma",
+		ZhText:       "你好吗",
+		Pinyin:       "nǐ hǎo ma",
 		Translations: map[string][]string{"en": {"how are you"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -747,7 +747,7 @@ func TestWordsUpdate_Valid(t *testing.T) {
 func TestWordsUpdate_NotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "PUT", "/api/words/9999", models.UpdateWordRequest{
-		ZhText:  "test",
+		ZhText:       "test",
 		Translations: map[string][]string{"en": {"test"}},
 	})
 	if rec.Code != http.StatusNotFound {
@@ -1149,7 +1149,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		p, _ := s.GetSM2Progress(ctx, id)
 		p.TotalCorrect = correct
 		p.TotalAttempts = attempts
-		p.LearningNewWord = false // graduated: use progressive tier logic
+		p.LearningNewWord = false                    // graduated: use progressive tier logic
 		p.DueDate = time.Now().UTC().Add(-time.Hour) // ensure due
 		s.UpdateSM2Progress(ctx, *p)
 	}
@@ -1367,8 +1367,8 @@ func TestMarkReview_ClearedOnUpdate(t *testing.T) {
 	do(t, r, "POST", fmt.Sprintf("/api/words/%d/review", id), nil)
 
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -2079,7 +2079,7 @@ func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:        "学",
-		Translations: map[string][]string{"en": {"study"}},
+		Translations:  map[string][]string{"en": {"study"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusCreated {
@@ -2106,7 +2106,7 @@ func TestWordsCreate_ZhTextTooLong(t *testing.T) {
 		long201 += "好"
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  long201,
+		ZhText:       long201,
 		Translations: map[string][]string{"en": {"ok"}},
 	})
 	if rec.Code != http.StatusBadRequest {
@@ -2136,9 +2136,9 @@ func TestWordsCreate_TooManyTags(t *testing.T) {
 		tags[i] = fmt.Sprintf("tag%d", i)
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "好",
+		ZhText:       "好",
 		Translations: map[string][]string{"en": {"ok"}},
-		Tags:    tags,
+		Tags:         tags,
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for > 20 tags, got %d", rec.Code)
@@ -2479,8 +2479,8 @@ func TestQuizLangs_ENandDE(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2509,8 +2509,8 @@ func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2539,8 +2539,8 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
@@ -2571,8 +2571,8 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2603,8 +2603,8 @@ func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2638,8 +2638,8 @@ func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {
 
 	// Re-save with the exact same zh_text — should not return 500.
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello", "hi"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -2663,8 +2663,8 @@ func TestWordsList_MissingLangDE(t *testing.T) {
 
 	// Word with both EN and DE.
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
@@ -3183,7 +3183,9 @@ func TestImport_DeFlag(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
-	var resp struct{ Imported int `json:"imported"` }
+	var resp struct {
+		Imported int `json:"imported"`
+	}
 	decodeJSON(t, rec, &resp)
 	if resp.Imported != 1 {
 		t.Fatalf("want imported=1, got %d", resp.Imported)
@@ -3250,7 +3252,9 @@ func TestImport_ApplyCustomTags(t *testing.T) {
 
 	// Verify both tags are on the imported word
 	listRec := do(t, r, "GET", "/api/words/?tags=my-review", nil)
-	var listResp struct{ Total int `json:"total"` }
+	var listResp struct {
+		Total int `json:"total"`
+	}
 	decodeJSON(t, listRec, &listResp)
 	if listResp.Total != 1 {
 		t.Errorf("want 1 word tagged my-review, got %d", listResp.Total)
@@ -4111,17 +4115,17 @@ func TestPatchSettings_NewWordRequire(t *testing.T) {
 	r := newRouter(s)
 
 	payload := map[string]interface{}{
-		"primary_lang":          "en",
-		"secondary_lang":        "de",
-		"prog_new":              "transl_to_zh",
-		"prog_tier_struggling":  "transl_to_zh",
-		"prog_tier_learning":    "zh_pinyin_to_transl",
-		"prog_tier_practicing":  "zh_to_transl",
-		"prog_tier_mastered":    "random",
-		"new_word_mode_0":       "transl_to_zh",
-		"new_word_mode_1":       "transl_to_zh",
-		"new_word_mode_2":       "zh_to_transl",
-		"new_word_require_zh":   false,
+		"primary_lang":           "en",
+		"secondary_lang":         "de",
+		"prog_new":               "transl_to_zh",
+		"prog_tier_struggling":   "transl_to_zh",
+		"prog_tier_learning":     "zh_pinyin_to_transl",
+		"prog_tier_practicing":   "zh_to_transl",
+		"prog_tier_mastered":     "random",
+		"new_word_mode_0":        "transl_to_zh",
+		"new_word_mode_1":        "transl_to_zh",
+		"new_word_mode_2":        "zh_to_transl",
+		"new_word_require_zh":    false,
 		"new_word_require_trans": true,
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
@@ -4227,7 +4231,7 @@ func TestQuizNext_UsesUserPrimaryLang(t *testing.T) {
 		"prog_new": "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
 		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
 		"prog_tier_mastered": "random",
-		"new_word_mode_0": "transl_to_zh", "new_word_mode_1": "transl_to_zh",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh",
 		"new_word_mode_2": "zh_to_transl",
 	}
 	do(t, r, http.MethodPatch, "/api/settings", payload)
@@ -4995,10 +4999,10 @@ func TestSettingsCycleSequence_InvalidMode(t *testing.T) {
 	payload := map[string]string{
 		"primary_lang":   "en",
 		"secondary_lang": "",
-		"prog_new": "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_new":       "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
 		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
 		"prog_tier_mastered": "random",
-		"new_word_mode_0": "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
 		"cycle_sequence": "transl_to_zh,invalid_mode",
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
@@ -5576,17 +5580,17 @@ func TestPatchSettings_MaxNewWordsPerDay_Invalid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 
 	type payload struct {
-		PrimaryLang       string `json:"primary_lang"`
-		SecondaryLang     string `json:"secondary_lang"`
-		ProgNew           string `json:"prog_new"`
+		PrimaryLang        string `json:"primary_lang"`
+		SecondaryLang      string `json:"secondary_lang"`
+		ProgNew            string `json:"prog_new"`
 		ProgTierStruggling string `json:"prog_tier_struggling"`
-		ProgTierLearning  string `json:"prog_tier_learning"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
 		ProgTierPracticing string `json:"prog_tier_practicing"`
-		ProgTierMastered  string `json:"prog_tier_mastered"`
-		NewWordMode0      string `json:"new_word_mode_0"`
-		NewWordMode1      string `json:"new_word_mode_1"`
-		NewWordMode2      string `json:"new_word_mode_2"`
-		MaxNewWordsPerDay int    `json:"max_new_words_per_day"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
 		PrimaryLang:        "en",
@@ -5680,18 +5684,18 @@ func TestPatchSettings_Cooldown(t *testing.T) {
 	r := newRouter(openTestDB(t))
 
 	type payload struct {
-		PrimaryLang              string `json:"primary_lang"`
-		SecondaryLang            string `json:"secondary_lang"`
-		ProgNew                  string `json:"prog_new"`
-		ProgTierStruggling       string `json:"prog_tier_struggling"`
-		ProgTierLearning         string `json:"prog_tier_learning"`
-		ProgTierPracticing       string `json:"prog_tier_practicing"`
-		ProgTierMastered         string `json:"prog_tier_mastered"`
-		NewWordMode0             string `json:"new_word_mode_0"`
-		NewWordMode1             string `json:"new_word_mode_1"`
-		NewWordMode2             string `json:"new_word_mode_2"`
-		MaxNewWordsPerDay        int    `json:"max_new_words_per_day"`
-		NewWordCooldownMinutes   int    `json:"new_word_cooldown_minutes"`
+		PrimaryLang            string `json:"primary_lang"`
+		SecondaryLang          string `json:"secondary_lang"`
+		ProgNew                string `json:"prog_new"`
+		ProgTierStruggling     string `json:"prog_tier_struggling"`
+		ProgTierLearning       string `json:"prog_tier_learning"`
+		ProgTierPracticing     string `json:"prog_tier_practicing"`
+		ProgTierMastered       string `json:"prog_tier_mastered"`
+		NewWordMode0           string `json:"new_word_mode_0"`
+		NewWordMode1           string `json:"new_word_mode_1"`
+		NewWordMode2           string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay      int    `json:"max_new_words_per_day"`
+		NewWordCooldownMinutes int    `json:"new_word_cooldown_minutes"`
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
 		PrimaryLang:            "en",
