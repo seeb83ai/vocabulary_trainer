@@ -370,9 +370,9 @@ func (c *localClient) Generate(_ context.Context, req Request) (string, error) {
 		"reasoning": map[string]any{"effort": "minimal"},
 	}
 
-	log.Printf("%v\n", payload)
-
 	body, _ := json.Marshal(payload)
+
+	log.Printf("local: POST %s/v1/responses model=%s (%d bytes payload)", c.baseURL, c.model, len(body))
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/responses", bytes.NewReader(body))
 	if err != nil {

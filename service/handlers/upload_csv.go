@@ -160,7 +160,7 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if h.Audio != nil {
-				go h.Audio.generate(id, zhText)
+				go h.Audio.GenerateAsync(id, zhText)
 			}
 			importedIDs = append(importedIDs, id)
 		} else {
@@ -182,7 +182,7 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if h.Audio != nil {
-				go h.Audio.regenerate(id, zhText)
+				go h.Audio.RegenerateAsync(id, zhText)
 			}
 			updatedIDs = append(updatedIDs, id)
 		}

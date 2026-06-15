@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -461,12 +462,19 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	if correct {
-		_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+		if err := h.Store.ClearSM2PrevState(ctx, req.WordID); err != nil {
+			log.Printf("answer: ClearSM2PrevState word %d: %v", req.WordID, err)
+		}
 	} else {
-		_ = h.Store.SaveSM2PrevState(ctx, req.WordID, *progress)
+		if err := h.Store.SaveSM2PrevState(ctx, req.WordID, *progress); err != nil {
+			log.Printf("answer: SaveSM2PrevState word %d: %v", req.WordID, err)
+		}
 	}
 
-	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
+	sessionStreak, err := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
+	if err != nil {
+		log.Printf("answer: RecordDailyStat user %d: %v", UserIDFromContext(r.Context()), err)
+	}
 
 	resp := models.AnswerResponse{
 		Correct:         correct,
@@ -485,7 +493,11 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		Graduated:       graduated,
 	}
 
-	resp.SceneText, _ = h.Store.GetHMMSceneText(r.Context(), req.WordID)
+	if sceneText, err := h.Store.GetHMMSceneText(r.Context(), req.WordID); err != nil {
+		log.Printf("answer: GetHMMSceneText word %d: %v", req.WordID, err)
+	} else {
+		resp.SceneText = sceneText
+	}
 
 	if correct {
 		if sessionStreak > 1 {

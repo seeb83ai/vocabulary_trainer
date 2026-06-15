@@ -1,13 +1,45 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// TestLocalClient_DoesNotLogPayload ensures the local provider does not log the
+// full request payload (which contains potentially sensitive user/system text).
+func TestLocalClient_DoesNotLogPayload(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"output": []map[string]any{
+				{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "ok"}}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	secretSystem := "SECRET_SYSTEM_PROMPT_TOKEN"
+	secretUser := "SECRET_USER_INPUT_TOKEN"
+	c := &localClient{baseURL: srv.URL, model: "test-model", httpClient: srv.Client()}
+	if _, err := c.Generate(context.Background(), Request{System: secretSystem, User: secretUser}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	logged := buf.String()
+	if strings.Contains(logged, secretSystem) || strings.Contains(logged, secretUser) {
+		t.Errorf("payload contents must not be logged, got log:\n%s", logged)
+	}
+}
 
 // ── OpenAI (Responses API) ────────────────────────────────────────────────────
 
