@@ -612,7 +612,8 @@ type MatchAnswerRequest struct {
 	Correct  bool  `json:"correct"`
 }
 
-type PinyinConfusionDetail struct {	SoundID           int64  `json:"sound_id"`
+type PinyinConfusionDetail struct {
+	SoundID           int64  `json:"sound_id"`
 	SoundLabel        string `json:"sound_label"`
 	ConfusedWithID    int64  `json:"confused_with_id"`
 	ConfusedWithLabel string `json:"confused_with_label"`

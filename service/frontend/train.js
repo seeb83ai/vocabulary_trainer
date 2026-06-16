@@ -1616,7 +1616,7 @@ function showMatchGame(words) {
 
     function renderBox(text, sub) {
       const div = document.createElement('div');
-      div.className = 'border-2 border-gray-300 rounded-xl p-3 cursor-pointer select-none transition text-center';
+      div.className = 'border-2 border-gray-300 rounded-xl p-3 cursor-pointer select-none transition text-center min-h-[72px] flex flex-col items-center justify-center';
       const t = document.createElement('div');
       t.className = 'font-semibold text-gray-800';
       t.textContent = text;
