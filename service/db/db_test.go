@@ -792,6 +792,46 @@ func TestGetNextCard_ExcludeIDs_FallsBackToExcludedWhenNoOthers(t *testing.T) {
 	}
 }
 
+// TestGetNextCard_ExcludeIDs_PrefersFarFutureOverExcluded reproduces a bug where
+// a non-excluded word due beyond today's bound was skipped in favor of repeating
+// an excluded word, because the final fallback tier dropped the exclusion filter
+// but kept the todayBound restriction.
+func TestGetNextCard_ExcludeIDs_PrefersFarFutureOverExcluded(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	idA := seedWord(t, s, "一", "", []string{"one"})
+	idB := seedWord(t, s, "二", "", []string{"two"})
+	idC := seedWord(t, s, "三", "", []string{"three"})
+
+	past := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	farFuture := time.Now().UTC().Add(30 * 24 * time.Hour).Format("2006-01-02 15:04:05")
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now'), total_attempts = 1 WHERE word_id IN (?, ?)`,
+		past, idA, idB); err != nil {
+		t.Fatal(err)
+	}
+	// idC was answered correctly and its interval pushed it weeks into the future.
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now'), total_attempts = 1 WHERE word_id = ?`,
+		farFuture, idC); err != nil {
+		t.Fatal(err)
+	}
+
+	// Excluding idA and idB should still return idC rather than repeating an
+	// excluded word, even though idC's due_date is beyond today's bound.
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, []int64{idA, idB})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a word, got nil")
+	}
+	if w.ID != idC {
+		t.Errorf("expected non-excluded far-future word to win over excluded words: want id=%d, got id=%d", idC, w.ID)
+	}
+}
+
 // ── RecordDailyStat ───────────────────────────────────────────────────────────
 
 // words_seen and bucket counts must reflect only the calling user's words,

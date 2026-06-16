@@ -901,6 +901,17 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 	if err != nil || w != nil {
 		return w, p, err
 	}
+	// No eligible card within today's bound — widen the search to any due date
+	// (still honoring exclusion) before resorting to repeating a recent word.
+	// Otherwise a non-excluded word due further out (e.g. after a long SM2
+	// interval from a correct answer) would be skipped in favor of an
+	// excluded one just because todayBound ruled it out.
+	if excludeFilter != "" {
+		w, p, err = tryQuery(excludeFilter)
+		if err != nil || w != nil {
+			return w, p, err
+		}
+	}
 	// Absolute fallback: ignore excludeIDs when no other cards are available.
 	return tryQuery(todayBound)
 }
