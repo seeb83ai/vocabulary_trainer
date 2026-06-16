@@ -5,11 +5,16 @@ let userPrimaryLang = 'en';
 let userSecondaryLang = '';
 let acceptCorrectMode = 'typo';
 let skipNewWordsVisible = true;
+let _gamificationEnabled = false;
+let _gamificationFrequencyMs = 5 * 60 * 1000;
+let _lastGameShownAt = 0;
 const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
   acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
   skipNewWordsVisible = st?.skip_new_words_visible !== false;
+  _gamificationEnabled = !!st?.gamification_enabled;
+  _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   const btn = document.getElementById('new-word-skip-btn');
   if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
 }).catch(() => {});
@@ -1154,7 +1159,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   $('answer-form').addEventListener('submit', submitAnswer);
-  $('next-btn').addEventListener('click', loadNextCard);
+  $('next-btn').addEventListener('click', async () => {
+    await _maybeShowMatchGame();
+    loadNextCard();
+  });
   $('accept-correct-btn').addEventListener('click', async () => {
     const btn = $('accept-correct-btn');
     btn.disabled = true;
@@ -1564,3 +1572,148 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadTrainSettings().then(() => loadNextCard());
 });
+
+// ── Match Game ───────────────────────────────────────────────────────────────
+
+async function _maybeShowMatchGame() {
+  if (!_gamificationEnabled) return;
+  if (Date.now() - _lastGameShownAt < _gamificationFrequencyMs) return;
+  let data;
+  try {
+    data = await apiFetch('/api/quiz/match-game');
+  } catch {
+    return;
+  }
+  if (!data?.words || data.words.length < 2) return;
+  _lastGameShownAt = Date.now();
+  await showMatchGame(data.words);
+}
+
+// showMatchGame accepts the flat words array returned by GET /api/quiz/match-game.
+// Each word: { zh_word_id, zh_text, pinyin, translations }
+// Left column shows Chinese words; right column shows one translation each, shuffled.
+function showMatchGame(words) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.id = 'match-game-overlay';
+    overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+
+    // Build left items (Chinese) and right items (first EN translation), indexed by position.
+    const leftItems = words.map((w, i) => ({
+      idx: i,
+      zh_word_id: w.zh_word_id,
+      text: w.zh_text,
+      pinyin: w.pinyin,
+    }));
+    const rightItems = words.map((w, i) => ({
+      idx: i,   // idx matches leftItems position — used to identify the correct pair
+      text: Object.values(w.translations || {})[0]?.[0] || w.zh_text,
+    }));
+    const shuffledRight = [...rightItems].sort(() => Math.random() - 0.5);
+
+    let selectedLeft = null;
+    const matched = new Set();
+
+    function renderBox(text, sub) {
+      const div = document.createElement('div');
+      div.className = 'border-2 border-gray-300 rounded-xl p-3 cursor-pointer select-none transition text-center min-h-[72px] flex flex-col items-center justify-center';
+      const t = document.createElement('div');
+      t.className = 'font-semibold text-gray-800';
+      t.textContent = text;
+      div.appendChild(t);
+      if (sub) {
+        const s = document.createElement('div');
+        s.className = 'text-xs text-gray-500 mt-1';
+        s.textContent = sub;
+        div.appendChild(s);
+      }
+      return div;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4';
+    modal.innerHTML = '<h2 class="text-lg font-semibold text-gray-800 mb-4 text-center">Match the pairs</h2>';
+
+    const grid = document.createElement('div');
+    grid.className = 'grid grid-cols-2 gap-3 mb-4';
+
+    const leftBoxes = leftItems.map(item => renderBox(item.text, item.pinyin));
+    const rightBoxes = shuffledRight.map(item => renderBox(item.text));
+
+    leftBoxes.forEach((box, lIdx) => {
+      box.addEventListener('click', () => {
+        if (matched.has(lIdx)) return;
+        leftBoxes.forEach(b => b.classList.remove('border-blue-500', 'bg-blue-50'));
+        selectedLeft = lIdx;
+        box.classList.add('border-blue-500', 'bg-blue-50');
+      });
+    });
+
+    rightBoxes.forEach((box, rIdx) => {
+      box.addEventListener('click', async () => {
+        if (selectedLeft === null) return;
+        const lIdx = selectedLeft;
+        if (matched.has(lIdx)) return;
+        const rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
+
+        if (rightIdx === lIdx) {
+          // Correct match
+          leftBoxes[lIdx].classList.remove('border-blue-500', 'bg-blue-50');
+          leftBoxes[lIdx].classList.add('border-green-500', 'bg-green-50', 'cursor-default');
+          box.classList.add('border-green-500', 'bg-green-50', 'cursor-default');
+          matched.add(lIdx);
+          selectedLeft = null;
+          try {
+            await apiFetch('/api/quiz/match-answer', {
+              method: 'POST',
+              body: JSON.stringify({ zh_word_id: leftItems[lIdx].zh_word_id, correct: true }),
+            });
+          } catch { /* best effort */ }
+          if (matched.size === words.length) {
+            setTimeout(() => { overlay.remove(); resolve(); }, 600);
+          }
+        } else {
+          // Wrong match — flash red both boxes, then reset
+          leftBoxes[lIdx].classList.add('border-red-500', 'bg-red-50');
+          box.classList.add('border-red-500', 'bg-red-50');
+          setTimeout(() => {
+            leftBoxes[lIdx].classList.remove('border-red-500', 'bg-red-50', 'border-blue-500', 'bg-blue-50');
+            box.classList.remove('border-red-500', 'bg-red-50');
+            selectedLeft = null;
+          }, 800);
+          try {
+            await apiFetch('/api/quiz/match-answer', {
+              method: 'POST',
+              body: JSON.stringify({ zh_word_id: leftItems[lIdx].zh_word_id, correct: false }),
+            });
+            await apiFetch('/api/quiz/match-answer', {
+              method: 'POST',
+              body: JSON.stringify({ zh_word_id: leftItems[rightIdx].zh_word_id, correct: false }),
+            });
+          } catch { /* best effort */ }
+        }
+      });
+    });
+
+    const leftCol = document.createElement('div');
+    leftCol.className = 'space-y-3';
+    leftBoxes.forEach(b => leftCol.appendChild(b));
+
+    const rightCol = document.createElement('div');
+    rightCol.className = 'space-y-3';
+    rightBoxes.forEach(b => rightCol.appendChild(b));
+
+    grid.appendChild(leftCol);
+    grid.appendChild(rightCol);
+    modal.appendChild(grid);
+
+    const skipBtn = document.createElement('button');
+    skipBtn.textContent = 'Skip game';
+    skipBtn.className = 'w-full text-sm text-gray-400 hover:text-gray-600 mt-2';
+    skipBtn.addEventListener('click', () => { overlay.remove(); resolve(); });
+    modal.appendChild(skipBtn);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  });
+}

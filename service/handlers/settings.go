@@ -59,6 +59,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineStrugglingValue   int    `json:"baseline_struggling_value"`
 		BaselineLearningEnabled   bool   `json:"baseline_learning_enabled"`
 		BaselineLearningValue     int    `json:"baseline_learning_value"`
+		GamificationEnabled       bool   `json:"gamification_enabled"`
+		GamificationFrequency     *int   `json:"gamification_frequency"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -135,6 +137,22 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resolvedFrequency := 5
+	if req.GamificationFrequency == nil {
+		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
+			resolvedFrequency = existing.GamificationFrequency
+		}
+		if resolvedFrequency < 1 {
+			resolvedFrequency = 5
+		}
+	} else {
+		resolvedFrequency = *req.GamificationFrequency
+	}
+	if resolvedFrequency < 1 || resolvedFrequency > 1440 {
+		writeError(w, http.StatusBadRequest, "gamification_frequency must be between 1 and 1440")
+		return
+	}
+
 	userID := UserIDFromContext(r.Context())
 	st := models.UserSettings{
 		PrimaryLang:               req.PrimaryLang,
@@ -160,6 +178,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineStrugglingValue:   req.BaselineStrugglingValue,
 		BaselineLearningEnabled:   req.BaselineLearningEnabled,
 		BaselineLearningValue:     req.BaselineLearningValue,
+		GamificationEnabled:       req.GamificationEnabled,
+		GamificationFrequency:     resolvedFrequency,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

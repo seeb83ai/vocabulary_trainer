@@ -853,3 +853,126 @@ func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
 		"cap_reset": req.ResetNewCap,
 	})
 }
+
+// MatchGame handles GET /api/quiz/match-game.
+// Loads 2 recent confusion pairs (each with zh_word + confused_with), extracts
+// up to 4 unique words, marks the pairs as shown, and returns the word list.
+// Returns {words:[]} when fewer than 2 eligible pairs exist.
+func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+	since := time.Now().UTC().AddDate(0, 0, -7)
+	pairs, err := h.Store.GetRecentMismatches(r.Context(), userID, since, 2)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if len(pairs) < 2 {
+		writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: []models.MatchGameWord{}})
+		return
+	}
+
+	ptrStr := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+
+	// Collect unique words from both zh_word and confused_with sides of each pair.
+	seen := map[int64]bool{}
+	var words []models.MatchGameWord
+	for _, p := range pairs {
+		for _, candidate := range []struct {
+			id           int64
+			text, pinyin string
+			translations map[string][]string
+		}{
+			{p.ZhWordID, p.ZhText, ptrStr(p.ZhPinyin), p.ZhTranslations},
+			{p.ConfusedWithID, p.ConfusedWithText, ptrStr(p.ConfusedWithPinyin), p.ConfusedWithTranslations},
+		} {
+			if !seen[candidate.id] {
+				seen[candidate.id] = true
+				words = append(words, models.MatchGameWord{
+					ZhWordID:     candidate.id,
+					ZhText:       candidate.text,
+					Pinyin:       candidate.pinyin,
+					Translations: candidate.translations,
+				})
+			}
+		}
+	}
+
+	// Mark the source pairs as shown so they are suppressed until re-confused.
+	pairKeys := make([][2]int64, len(pairs))
+	for i, p := range pairs {
+		pairKeys[i] = [2]int64{p.ZhWordID, p.ConfusedWithID}
+	}
+	_ = h.Store.MarkConfusionsShownInGame(r.Context(), pairKeys)
+
+	writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: words})
+}
+
+// MatchAnswer handles POST /api/quiz/match-answer.
+// Updates SM-2 progress for a word after a match-game interaction.
+func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
+	var req models.MatchAnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.ZhWordID <= 0 {
+		writeError(w, http.StatusBadRequest, "zh_word_id is required")
+		return
+	}
+
+	userID := UserIDFromContext(r.Context())
+	zhWord, err := h.Store.GetWordByID(r.Context(), userID, req.ZhWordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if zhWord == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+
+	progress, err := h.Store.GetSM2Progress(r.Context(), req.ZhWordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if progress == nil {
+		writeError(w, http.StatusNotFound, "progress not found")
+		return
+	}
+
+	quality := sm2.QualityWrong
+	if req.Correct {
+		quality = sm2.QualityCorrect
+	}
+
+	updated := sm2.Update(*progress, quality)
+	updated.TotalAttempts++
+	if req.Correct {
+		updated.TotalCorrect++
+	}
+	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+
+	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
+		internalError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.AnswerResponse{
+		Correct:       req.Correct,
+		ZhText:        zhWord.ZhText,
+		Pinyin:        zhWord.Pinyin,
+		NextDue:       updated.DueDate,
+		IntervalDays:  updated.IntervalDays,
+		TotalCorrect:  updated.TotalCorrect,
+		TotalAttempts: updated.TotalAttempts,
+		StreakBonus:   updated.StreakBonus,
+		Repetitions:   updated.Repetitions,
+		Tier:          sm2.ClassifyTier(updated).String(),
+	})
+}

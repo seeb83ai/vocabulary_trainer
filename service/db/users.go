@@ -199,6 +199,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		return nil, "", "", "", err
 	}
 	var st models.UserSettings
+	var gamificationEnabledInt int
 	err = s.db.QueryRowContext(ctx, `
 		SELECT primary_lang, secondary_lang,
 		       prog_new, prog_tier_struggling, prog_tier_learning,
@@ -216,7 +217,9 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(baseline_struggling_enabled, 0),
 		       COALESCE(baseline_struggling_value, 10),
 		       COALESCE(baseline_learning_enabled, 0),
-		       COALESCE(baseline_learning_value, 20)
+		       COALESCE(baseline_learning_value, 20),
+		       COALESCE(gamification_enabled, 0),
+		       COALESCE(gamification_frequency, 5)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -235,7 +238,10 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.BaselineStrugglingValue,
 		&st.BaselineLearningEnabled,
 		&st.BaselineLearningValue,
+		&gamificationEnabledInt,
+		&st.GamificationFrequency,
 	)
+	st.GamificationEnabled = gamificationEnabledInt == 1
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
 	}
@@ -271,7 +277,9 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			baseline_struggling_enabled = ?,
 			baseline_struggling_value   = ?,
 			baseline_learning_enabled   = ?,
-			baseline_learning_value     = ?
+			baseline_learning_value     = ?,
+			gamification_enabled        = ?,
+			gamification_frequency      = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -289,6 +297,8 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.BaselineStrugglingValue,
 		st.BaselineLearningEnabled,
 		st.BaselineLearningValue,
+		st.GamificationEnabled,
+		st.GamificationFrequency,
 		userID,
 	)
 	if err == nil {

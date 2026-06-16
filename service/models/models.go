@@ -44,6 +44,8 @@ type UserSettings struct {
 	LLMKeySet                 bool   `json:"llm_key_set"`
 	LLMKeyMasked              string `json:"llm_key_masked,omitempty"`
 	AcceptCorrectMode         string `json:"accept_correct_mode"`
+	GamificationEnabled       bool   `json:"gamification_enabled"`
+	GamificationFrequency     int    `json:"gamification_frequency"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
@@ -592,6 +594,22 @@ type PinyinToneVariant struct {
 	Filename string `json:"filename"`
 	Tone     int    `json:"tone"`
 	Current  bool   `json:"current"`
+}
+
+type MatchGameWord struct {
+	ZhWordID     int64               `json:"zh_word_id"`
+	ZhText       string              `json:"zh_text"`
+	Pinyin       string              `json:"pinyin"`
+	Translations map[string][]string `json:"translations"`
+}
+
+type MatchGameResponse struct {
+	Words []MatchGameWord `json:"words"`
+}
+
+type MatchAnswerRequest struct {
+	ZhWordID int64 `json:"zh_word_id"`
+	Correct  bool  `json:"correct"`
 }
 
 type PinyinConfusionDetail struct {

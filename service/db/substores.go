@@ -53,6 +53,8 @@ type QuizStore interface {
 	UpsertConfusion(ctx context.Context, zhWordID, confusedWithID int64, mode string) error
 	GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error)
 	GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error)
+	GetRecentMismatches(ctx context.Context, userID int64, since time.Time, limit int) ([]models.ConfusionDetail, error)
+	MarkConfusionsShownInGame(ctx context.Context, pairs [][2]int64) error
 	SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2Progress) error
 	GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2Progress, error)
 	ClearSM2PrevState(ctx context.Context, wordID int64) error

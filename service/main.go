@@ -232,6 +232,8 @@ func main() {
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)
 		r.Post("/quiz/acknowledge-random", quizH.AcknowledgeRandom)
 		r.Post("/quiz/advance", quizH.Advance)
+		r.Get("/quiz/match-game", quizH.MatchGame)
+		r.Post("/quiz/match-answer", quizH.MatchAnswer)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Get("/quiz/word-stats", quizH.WordStats)
