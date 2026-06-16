@@ -1200,6 +1200,36 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 	}
 }
 
+// ── GET /api/quiz/next?exclude=... ───────────────────────────────────────────
+
+func TestQuizNext_ExcludeParam_SkipsRecentWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	idA := seedWord(t, s, "一", "", []string{"one"})
+	idB := seedWord(t, s, "二", "", []string{"two"})
+
+	// Acknowledge both words so they are immediately due.
+	if err := s.AcknowledgeWord(ctx, int64(2), idA); err != nil {
+		t.Fatalf("AcknowledgeWord idA: %v", err)
+	}
+	if err := s.AcknowledgeWord(ctx, int64(2), idB); err != nil {
+		t.Fatalf("AcknowledgeWord idB: %v", err)
+	}
+
+	// Excluding idA should return idB.
+	rec := do(t, r, "GET", fmt.Sprintf("/api/quiz/next?exclude=%d", idA), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.WordID != idB {
+		t.Errorf("exclude=%d: want word_id=%d, got word_id=%d", idA, idB, card.WordID)
+	}
+}
+
 // ── POST /api/quiz/skip ──────────────────────────────────────────────────────
 
 func TestQuizSkip_Valid(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -93,7 +94,17 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 	h.mu.Unlock()
 	skipNew := r.URL.Query().Get("skip_new") == "true"
-	word, progress, err := h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines)
+
+	var excludeIDs []int64
+	if excl := r.URL.Query().Get("exclude"); excl != "" {
+		for _, part := range strings.Split(excl, ",") {
+			if id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64); err == nil && id > 0 {
+				excludeIDs = append(excludeIDs, id)
+			}
+		}
+	}
+
+	word, progress, err := h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines, excludeIDs)
 	if err != nil {
 		internalError(w, err)
 		return

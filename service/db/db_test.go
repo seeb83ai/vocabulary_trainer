@@ -297,7 +297,7 @@ func TestAddTranslation_NotFound(t *testing.T) {
 
 func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 	s := openTestDB(t)
-	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil)
+	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
-	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil)
+	w, p, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
 	// GetNextCard should return the word but NOT set first_seen_at.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,7 +356,7 @@ func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ? WHERE word_id = ?`, past, id2)
 	_ = id1
 
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +378,7 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_at = date('now') WHERE word_id = ?`, id1)
 
 	// With maxNew=1 the daily cap is reached; only id1 (already introduced) should be returned.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 1, "", false, nil)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 1, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +390,7 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	}
 
 	// With maxNew=5 new words are still allowed; any of the three words may be returned.
-	w2, _, err := s.GetNextCard(ctx, int64(2), nil, 5, "", false, nil)
+	w2, _, err := s.GetNextCard(ctx, int64(2), nil, 5, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +411,7 @@ func TestGetNextCard_SkipNewExcludesUnseenWords(t *testing.T) {
 	seedWord(t, s, "二", "", []string{"two"})
 
 	// With skipNew=true, only the already-seen word should be returned.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", true, nil)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", true, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +438,7 @@ func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
 
 	// Even though the daily cap (100) is not reached, the unseen word must not
 	// be returned while a learning word exists.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,7 +685,7 @@ func TestGetNextCard_DoesNotReturnFutureCards(t *testing.T) {
 	future := time.Now().UTC().Add(48 * time.Hour).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now') WHERE word_id = ?`, future, id)
 
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -704,7 +704,7 @@ func TestGetNextCard_ReturnsTodayNotYetOverdue(t *testing.T) {
 	soon := time.Now().UTC().Add(5 * time.Minute).Format("2006-01-02 15:04:05")
 	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now') WHERE word_id = ?`, soon, id)
 
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -721,7 +721,7 @@ func TestGetNextCard_FilterByTag(t *testing.T) {
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	id2 := seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
 
-	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"food"}, 100, "", false, nil)
+	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"food"}, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -737,12 +737,98 @@ func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 
-	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"nonexistent"}, 100, "", false, nil)
+	w, _, err := s.GetNextCard(context.Background(), int64(2), []string{"nonexistent"}, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w != nil {
 		t.Error("expected nil when no words match tag filter")
+	}
+}
+
+// ── GetNextCard with excludeIDs ───────────────────────────────────────────────
+
+func TestGetNextCard_ExcludeIDs_SkipsWhenOthersAvailable(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	idA := seedWord(t, s, "一", "", []string{"one"})
+	idB := seedWord(t, s, "二", "", []string{"two"})
+	// Both words are seeded with due_date = now (unseen); make them seen and due.
+	past := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now'), total_attempts = 1 WHERE word_id IN (?, ?)`, past, idA, idB)
+
+	// Excluding idA should return idB.
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, []int64{idA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a word, got nil")
+	}
+	if w.ID != idB {
+		t.Errorf("expected excluded word to be skipped: want id=%d, got id=%d", idB, w.ID)
+	}
+}
+
+func TestGetNextCard_ExcludeIDs_FallsBackToExcludedWhenNoOthers(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	idA := seedWord(t, s, "一", "", []string{"one"})
+	past := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now'), total_attempts = 1 WHERE word_id = ?`, past, idA)
+
+	// With only one word, excluding it must still return it (no other option).
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, []int64{idA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected fallback to excluded word, got nil")
+	}
+	if w.ID != idA {
+		t.Errorf("expected fallback to excluded word id=%d, got id=%d", idA, w.ID)
+	}
+}
+
+// TestGetNextCard_ExcludeIDs_PrefersFarFutureOverExcluded reproduces a bug where
+// a non-excluded word due beyond today's bound was skipped in favor of repeating
+// an excluded word, because the final fallback tier dropped the exclusion filter
+// but kept the todayBound restriction.
+func TestGetNextCard_ExcludeIDs_PrefersFarFutureOverExcluded(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	idA := seedWord(t, s, "一", "", []string{"one"})
+	idB := seedWord(t, s, "二", "", []string{"two"})
+	idC := seedWord(t, s, "三", "", []string{"three"})
+
+	past := time.Now().UTC().Add(-1 * time.Hour).Format("2006-01-02 15:04:05")
+	farFuture := time.Now().UTC().Add(30 * 24 * time.Hour).Format("2006-01-02 15:04:05")
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now'), total_attempts = 1 WHERE word_id IN (?, ?)`,
+		past, idA, idB); err != nil {
+		t.Fatal(err)
+	}
+	// idC was answered correctly and its interval pushed it weeks into the future.
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = ?, first_seen_at = date('now'), total_attempts = 1 WHERE word_id = ?`,
+		farFuture, idC); err != nil {
+		t.Fatal(err)
+	}
+
+	// Excluding idA and idB should still return idC rather than repeating an
+	// excluded word, even though idC's due_date is beyond today's bound.
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, []int64{idA, idB})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a word, got nil")
+	}
+	if w.ID != idC {
+		t.Errorf("expected non-excluded far-future word to win over excluded words: want id=%d, got id=%d", idC, w.ID)
 	}
 }
 
@@ -896,7 +982,7 @@ func TestGetNextCard_BaselineStruggling_BlocksNewWords(t *testing.T) {
 
 	// Struggling count is 1; threshold is 1 → block new words.
 	baselines := &NewWordBaselines{StrugglingEnabled: true, StrugglingValue: 1}
-	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -934,7 +1020,7 @@ func TestGetNextCard_BaselineDueToday_BlocksNewWords(t *testing.T) {
 
 	// Threshold is 1 — due_at_day_start (1) >= 1 → block new words.
 	baselines := &NewWordBaselines{DueTodayEnabled: true, DueTodayValue: 1}
-	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -955,7 +1041,7 @@ func TestGetNextCard_Baselines_AllDisabled_StillShowsNewWord(t *testing.T) {
 	}
 
 	baselines := &NewWordBaselines{} // all disabled
-	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -994,7 +1080,7 @@ func TestGetNextCard_Cooldown_BlocksSecondNewWord(t *testing.T) {
 
 	// With a 60-minute cooldown, the second unseen word should be blocked.
 	baselines := &NewWordBaselines{CooldownMinutes: 60}
-	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1028,7 +1114,7 @@ func TestGetNextCard_Cooldown_Zero_DoesNotBlock(t *testing.T) {
 
 	// CooldownMinutes=0 means disabled — second unseen word should appear.
 	baselines := &NewWordBaselines{CooldownMinutes: 0}
-	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines)
+	w, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3744,7 +3830,7 @@ func TestGetNextCard_PrefersUnseenOverAdvancedSeen(t *testing.T) {
 
 	// cap=100, no learning_new_word=1 words due → unseen should be preferred
 	// even though the seen word has an older due_date.
-	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil)
+	w, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

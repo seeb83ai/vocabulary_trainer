@@ -30,7 +30,7 @@ type WordStore interface {
 	MarkWordForReview(ctx context.Context, userID, id int64) error
 	GetTranslationLanguages(ctx context.Context) ([]string, error)
 	GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error)
-	GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool, baselines *NewWordBaselines) (*models.Word, *models.SM2Progress, error)
+	GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool, baselines *NewWordBaselines, excludeIDs []int64) (*models.Word, *models.SM2Progress, error)
 	GetAllTags(ctx context.Context, userID int64) ([]string, error)
 	GetTagDetails(ctx context.Context, userID int64) ([]models.TagDetail, error)
 	UpsertTagMeta(ctx context.Context, userID int64, name, description string, importable bool) error
