@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
 
@@ -19,7 +18,7 @@ import (
 )
 
 type PinyinQuizHandler struct {
-	Store           *db.Store
+	Store           pinyinQuizStore
 	PinyinAudioDirs []string
 }
 

@@ -146,7 +146,7 @@ func seedHanziFull(t *testing.T, s *Store, character, definition, decomp, etymol
 	if definition != "" {
 		_, err = s.db.Exec(
 			`INSERT INTO hanzi_decomposition_translation (character, lang, definition) VALUES (?, 'EN', ?)
-			 ON CONFLICT(character, lang) DO UPDATE SET definition = excluded.definition`,
+			 ON CONFLICT(character, lang) WHERE user_id IS NULL DO UPDATE SET definition = excluded.definition`,
 			character, definition)
 		if err != nil {
 			t.Fatalf("seedHanziFull translation %q: %v", character, err)

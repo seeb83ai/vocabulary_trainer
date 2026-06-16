@@ -169,7 +169,23 @@ func (s *Store) ensureUserSettings(ctx context.Context, userID int64) error {
 
 // GetUserSettings returns the settings for a user (creating defaults on first access).
 func (s *Store) GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error) {
+	now := time.Now()
+	s.settingsMu.Lock()
+	if e, ok := s.settingsCache[userID]; ok && now.Before(e.expires) {
+		s.settingsMu.Unlock()
+		return e.settings, nil
+	}
+	s.settingsMu.Unlock()
+
 	settings, _, _, _, err := s.GetUserSettingsRaw(ctx, userID)
+	if err == nil {
+		s.settingsMu.Lock()
+		if s.settingsCache == nil {
+			s.settingsCache = make(map[int64]settingsCacheEntry)
+		}
+		s.settingsCache[userID] = settingsCacheEntry{settings: settings, expires: now.Add(settingsCacheTTL)}
+		s.settingsMu.Unlock()
+	}
 	return settings, err
 }
 
@@ -183,6 +199,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		return nil, "", "", "", err
 	}
 	var st models.UserSettings
+	var gamificationEnabledInt int
 	err = s.db.QueryRowContext(ctx, `
 		SELECT primary_lang, secondary_lang,
 		       prog_new, prog_tier_struggling, prog_tier_learning,
@@ -200,7 +217,9 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(baseline_struggling_enabled, 0),
 		       COALESCE(baseline_struggling_value, 10),
 		       COALESCE(baseline_learning_enabled, 0),
-		       COALESCE(baseline_learning_value, 20)
+		       COALESCE(baseline_learning_value, 20),
+		       COALESCE(gamification_enabled, 0),
+		       COALESCE(gamification_frequency, 5)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -219,7 +238,10 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.BaselineStrugglingValue,
 		&st.BaselineLearningEnabled,
 		&st.BaselineLearningValue,
+		&gamificationEnabledInt,
+		&st.GamificationFrequency,
 	)
+	st.GamificationEnabled = gamificationEnabledInt == 1
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
 	}
@@ -255,7 +277,9 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			baseline_struggling_enabled = ?,
 			baseline_struggling_value   = ?,
 			baseline_learning_enabled   = ?,
-			baseline_learning_value     = ?
+			baseline_learning_value     = ?,
+			gamification_enabled        = ?,
+			gamification_frequency      = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -273,8 +297,13 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.BaselineStrugglingValue,
 		st.BaselineLearningEnabled,
 		st.BaselineLearningValue,
+		st.GamificationEnabled,
+		st.GamificationFrequency,
 		userID,
 	)
+	if err == nil {
+		s.invalidateSettingsCache(userID)
+	}
 	return err
 }
 
@@ -292,6 +321,9 @@ func (s *Store) UpdateUserAPIKeys(ctx context.Context, userID int64, deeplEnc, l
 		WHERE user_id = ?`,
 		deeplEnc, llmProvider, llmEnc, llmLocalURL, userID,
 	)
+	if err == nil {
+		s.invalidateSettingsCache(userID)
+	}
 	return err
 }
 

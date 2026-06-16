@@ -170,4 +170,3 @@ func TestHMMQuizAnswer_OptionalParensInline(t *testing.T) {
 		t.Error("expected answer without inline bracketed segments to be correct")
 	}
 }
-

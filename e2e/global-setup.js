@@ -66,6 +66,9 @@ export default async function globalSetup() {
       PORT: String(E2E_PORT),
       DB_PATH: dbPath,
       SESSION_SECRET,
+      // e2e runs over plain HTTP on localhost; dev mode omits the cookie
+      // Secure flag so the browser stores the session cookie.
+      APP_ENV: 'dev',
       // Skip interactive first-run setup prompts (migration v20)
       ADMIN_EMAIL: 'admin@e2e.local',
       ADMIN_PASSWORD: 'AdminE2ePassword1!',

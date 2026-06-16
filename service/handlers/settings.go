@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"strings"
 	"vocabulary_trainer/db"
+	"vocabulary_trainer/llm"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
 )
 
 // SettingsHandler serves GET/PATCH /api/settings and PUT /api/settings/api-keys.
 type SettingsHandler struct {
-	store  *db.Store
+	store  settingsStore
 	secret []byte
 }
 
@@ -58,6 +59,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineStrugglingValue   int    `json:"baseline_struggling_value"`
 		BaselineLearningEnabled   bool   `json:"baseline_learning_enabled"`
 		BaselineLearningValue     int    `json:"baseline_learning_value"`
+		GamificationEnabled       bool   `json:"gamification_enabled"`
+		GamificationFrequency     *int   `json:"gamification_frequency"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -134,6 +137,22 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resolvedFrequency := 5
+	if req.GamificationFrequency == nil {
+		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
+			resolvedFrequency = existing.GamificationFrequency
+		}
+		if resolvedFrequency < 1 {
+			resolvedFrequency = 5
+		}
+	} else {
+		resolvedFrequency = *req.GamificationFrequency
+	}
+	if resolvedFrequency < 1 || resolvedFrequency > 1440 {
+		writeError(w, http.StatusBadRequest, "gamification_frequency must be between 1 and 1440")
+		return
+	}
+
 	userID := UserIDFromContext(r.Context())
 	st := models.UserSettings{
 		PrimaryLang:               req.PrimaryLang,
@@ -159,6 +178,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineStrugglingValue:   req.BaselineStrugglingValue,
 		BaselineLearningEnabled:   req.BaselineLearningEnabled,
 		BaselineLearningValue:     req.BaselineLearningValue,
+		GamificationEnabled:       req.GamificationEnabled,
+		GamificationFrequency:     resolvedFrequency,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -178,6 +199,16 @@ func (h *SettingsHandler) PutAPIKeys(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
+	}
+
+	// A user-supplied local LLM URL is an outbound request target: reject
+	// internal/non-public addresses to prevent SSRF before storing it.
+	req.LLMLocalURL = strings.TrimSpace(req.LLMLocalURL)
+	if req.LLMProvider == "local" && req.LLMLocalURL != "" {
+		if err := llm.ValidateExternalURL(req.LLMLocalURL); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid llm_local_url: must be a public http(s) address")
+			return
+		}
 	}
 
 	c, err := r.Cookie(settingsKeyCookie)

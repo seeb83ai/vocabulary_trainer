@@ -10,14 +10,13 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type WordsHandler struct {
-	Store *db.Store
+	Store wordsStore
 	Audio *AudioHandler // optional; nil = TTS disabled
 }
 
@@ -114,20 +113,15 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Translations = cleaned
 
+	// CreateWord handles StartTraining (acknowledge + component init) atomically
+	// inside its transaction; the handler only fires async TTS afterwards.
 	id, err := h.Store.CreateWord(r.Context(), UserIDFromContext(r.Context()), req)
 	if err != nil {
 		internalError(w, err)
 		return
 	}
-	if req.StartTraining {
-		if err := h.Store.AcknowledgeWord(r.Context(), UserIDFromContext(r.Context()), id); err != nil {
-			internalError(w, err)
-			return
-		}
-		initComponents(r.Context(), h.Store, UserIDFromContext(r.Context()), id, req.ZhText)
-	}
 	if h.Audio != nil {
-		go h.Audio.generate(id, req.ZhText)
+		go h.Audio.GenerateAsync(id, req.ZhText)
 	}
 	writeJSON(w, http.StatusCreated, map[string]int64{"id": id})
 }
@@ -229,7 +223,7 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		initComponents(r.Context(), h.Store, UserIDFromContext(r.Context()), id, req.ZhText)
 	}
 	if h.Audio != nil {
-		go h.Audio.regenerate(id, req.ZhText)
+		go h.Audio.RegenerateAsync(id, req.ZhText)
 	}
 	wd, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
 	if err != nil {
@@ -363,7 +357,7 @@ func parseID(r *http.Request) (int64, error) {
 
 // initComponents adds component_progress rows for a zh word after it enters
 // training. Errors are non-fatal: we log them and continue.
-func initComponents(ctx context.Context, s *db.Store, userID, wordID int64, zhText string) {
+func initComponents(ctx context.Context, s componentIniter, userID, wordID int64, zhText string) {
 	p, err := s.GetSM2Progress(ctx, wordID)
 	if err != nil || p == nil {
 		return

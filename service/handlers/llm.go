@@ -7,15 +7,14 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/llm"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type LLMHandler struct {
-	Client          llm.Client      // server-configured client (may be nil)
-	Store           *db.Store
+	Client          llm.Client // server-configured client (may be nil)
+	Store           llmStore
 	SettingsHandler *SettingsHandler // may be nil when auth is disabled
 }
 
@@ -229,7 +228,7 @@ func (h *LLMHandler) GenerateCompScene(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defs, err := h.Store.GetComponentDefinitions(r.Context(), char, []string{"en", "de"})
+	defs, err := h.Store.GetComponentDefinitions(r.Context(), UserIDFromContext(r.Context()), char, []string{"en", "de"})
 	if err != nil || len(defs) == 0 {
 		writeError(w, http.StatusNotFound, "component not found")
 		return

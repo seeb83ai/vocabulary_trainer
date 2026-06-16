@@ -1,13 +1,45 @@
 package llm
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// TestLocalClient_DoesNotLogPayload ensures the local provider does not log the
+// full request payload (which contains potentially sensitive user/system text).
+func TestLocalClient_DoesNotLogPayload(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"output": []map[string]any{
+				{"type": "message", "role": "assistant", "content": []map[string]string{{"type": "output_text", "text": "ok"}}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	secretSystem := "SECRET_SYSTEM_PROMPT_TOKEN"
+	secretUser := "SECRET_USER_INPUT_TOKEN"
+	c := &localClient{baseURL: srv.URL, model: "test-model", httpClient: srv.Client()}
+	if _, err := c.Generate(context.Background(), Request{System: secretSystem, User: secretUser}); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	logged := buf.String()
+	if strings.Contains(logged, secretSystem) || strings.Contains(logged, secretUser) {
+		t.Errorf("payload contents must not be logged, got log:\n%s", logged)
+	}
+}
 
 // ── OpenAI (Responses API) ────────────────────────────────────────────────────
 
@@ -181,8 +213,12 @@ func TestAnthropicClient_Generate_NoTextBlock(t *testing.T) {
 
 func TestGeminiClient_Generate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("key") != "test-key" {
-			t.Errorf("missing or wrong key query param")
+		// The key must be sent in the x-goog-api-key header, never the URL.
+		if r.Header.Get("x-goog-api-key") != "test-key" {
+			t.Errorf("missing or wrong x-goog-api-key header")
+		}
+		if r.URL.Query().Get("key") != "" {
+			t.Errorf("API key must not appear in the query string")
 		}
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
@@ -263,8 +299,8 @@ func localOKResponse(text string) map[string]any {
 	return map[string]any{
 		"output": []map[string]any{
 			{
-				"type": "message",
-				"role": "assistant",
+				"type":    "message",
+				"role":    "assistant",
 				"content": []map[string]string{{"type": "output_text", "text": text}},
 			},
 		},
@@ -517,4 +553,42 @@ func TestOpenAIClient_Generate_NewlineInInput(t *testing.T) {
 		// The llm package passes User verbatim — sanitization happens upstream.
 	}
 	_ = seen
+}
+
+func TestTruncateBody(t *testing.T) {
+	long := make([]byte, 1000)
+	for i := range long {
+		long[i] = 'x'
+	}
+	got := truncateBody(long)
+	if len(got) > 220 {
+		t.Errorf("truncateBody did not cap a long body: len=%d", len(got))
+	}
+	if got[len(got)-1:] != ")" { // ends with "…(truncated)"
+		t.Errorf("expected truncation marker, got tail %q", got[len(got)-12:])
+	}
+	short := []byte("ok")
+	if truncateBody(short) != "ok" {
+		t.Errorf("short body should pass through unchanged")
+	}
+}
+
+// TestGeminiClient_ErrorOmitsFullBody asserts an upstream error body is truncated
+// (not echoed verbatim) so it is never reflected to clients at full length.
+func TestGeminiClient_ErrorOmitsFullBody(t *testing.T) {
+	bigBody := strings.Repeat("SECRET-UPSTREAM-DETAIL ", 200)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(bigBody))
+	}))
+	defer srv.Close()
+
+	c := &geminiClient{apiKey: "k", httpClient: srv.Client(), BaseURL: srv.URL}
+	_, err := c.Generate(context.Background(), Request{User: "hi"})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if len(err.Error()) > 260 {
+		t.Errorf("error should not carry the full upstream body, len=%d", len(err.Error()))
+	}
 }

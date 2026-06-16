@@ -83,7 +83,7 @@ APP_ENV=production            # default; refuses startup if SESSION_SECRET is mi
 SESSION_SECRET=<64 hex chars>  # `openssl rand -hex 32`
 ```
 
-`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart) and lets `/api/register` auto-verify accounts when SMTP is not configured. **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email.
+`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart), lets `/api/register` auto-verify accounts when SMTP is not configured, and omits the `Secure` flag on session cookies so they work over plain HTTP. In production (the default) session cookies are marked `Secure`, so the app must be served over HTTPS (terminate TLS at the reverse proxy). **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email, and session cookies would be sent over unencrypted HTTP.
 
 Other security-relevant tunables:
 
@@ -91,11 +91,27 @@ Other security-relevant tunables:
 RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
 RATE_LIMIT_USER_PER_MIN=300       # per-user budget for all other API traffic
 RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-password, LLM scene generation
+CSV_MAX_UPLOAD_MB=8               # max CSV upload body size; oversized uploads are rejected (413)
+CSV_MAX_ROWS=5000                 # max data rows per CSV upload; over-cap uploads are rejected (400)
 ```
+
+The CSV import endpoint (`POST /api/words/upload-csv`) is also covered by the
+expensive-request rate limiter, and its per-row text-to-speech generation runs
+in a bounded background worker pool so a large import can't exhaust resources.
 
 A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) is built in; the lockout is cleared on the next successful login.
 
+JSON request bodies on `/api` routes are capped (default 1 MiB) so an unbounded upload cannot exhaust memory — oversized bodies are rejected with `400`:
+
+```bash
+MAX_BODY_BYTES=1048576   # max /api request body in bytes (default 1 MiB)
+```
+
+The HTTP server runs with read/write/idle timeouts so a slow or stalled client cannot tie up the single SQLite connection, and it shuts down gracefully on `SIGINT`/`SIGTERM`, draining in-flight requests (up to 30 s) before exiting. This makes systemd auto-restarts (see `deploy/vocab-trainer.service`) drop fewer in-flight requests.
+
 The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on every response. Configure HTTPS at the reverse proxy (see `deploy/nginx.conf`) — the sample config also sets `Strict-Transport-Security`.
+
+Always deploy behind a reverse proxy (e.g. nginx) that sets `X-Real-IP` to the real client address; rate limiting derives the client IP from that header. Do not expose the binary directly to the internet — the spoofable `X-Forwarded-For` header is deliberately never trusted, so a directly-exposed binary would rate-limit on `RemoteAddr` only.
 
 ## Daily new-word cap
 
@@ -207,7 +223,8 @@ Each user has a personal settings page (`/settings`) with:
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
 - **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode.
 - **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
-- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
+- **Gamification** — Enable a word-matching mini-game that appears during training when you have confused at least 3 word pairs in the last 7 days. Configure how often (in minutes) the game may interrupt training. When triggered, three confused pairs are shown in two shuffled columns; click a Chinese word then its English translation to match them; correct pairs turn green, wrong pairs flash red. The game updates SM-2 progress for each matched word.
+- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account. A user-supplied local LLM URL must be a public `http(s)` address — internal/loopback/link-local targets are rejected (and blocked at connect time) to prevent server-side request forgery. Operators who run a trusted local model on loopback should configure it via the server-side `LOCAL_LLM_URL` env var instead.
 
 ## Auto-translate (DeepL)
 
@@ -432,6 +449,36 @@ sudo nginx -t && sudo systemctl reload nginx
 
 just running `make release` is good enough now to build the binary, deploy it and restart the service
 
+### Backups
+
+The database is a single SQLite file, so backups are simple. A scheduled nightly
+backup with retention is provided:
+
+```bash
+sudo cp deploy/backup.sh /opt/vocab-trainer/backup.sh
+sudo cp deploy/vocab-backup.service /etc/systemd/system/
+sudo cp deploy/vocab-backup.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now vocab-backup.timer
+```
+
+`deploy/backup.sh` uses the SQLite online-backup API (`sqlite3 .backup`), which
+takes a consistent snapshot while the server is running (safe with WAL mode). It
+writes timestamped copies to `BACKUP_DIR` (default `data/backups/`) and prunes
+files older than `RETAIN_DAYS` (default 14). The `vocab-backup.timer` runs it
+nightly.
+
+**Restore** — stop the server, copy a backup over the live DB, and restart:
+
+```bash
+sudo systemctl stop vocab-trainer
+make restore FROM=data/backups/vocab-2026-06-15_033000.sq3   # or: cp <backup> data/vocab.db
+sudo systemctl start vocab-trainer
+```
+
+The backup/restore round-trip is covered by a unit test
+(`TestBackupRestore_RoundTrip`) that exercises the same online-backup primitive.
+
 ## Text-to-speech (TTS)
 
 Audio is generated using the Microsoft Edge neural TTS WebSocket API (`zh-CN-XiaoxiaoNeural` voice) — implemented directly in Go with no Python dependency or API key required. MP3 files are cached in `AUDIO_DIR` (default: `data/audio/`) and served by the Go server.
@@ -508,8 +555,14 @@ vocabulary_trainer/
 |---|---|---|
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params) |
 | `POST` | `/api/quiz/answer` | Submit an answer |
+| `GET` | `/api/quiz/match-game` | Get up to 3 recent confusion pairs for the match mini-game (empty if < 3 pairs in last 7 days) |
+| `POST` | `/api/quiz/match-answer` | Submit a match-game result (`zh_word_id`, `correct`) — updates SM-2 progress |
+| `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress |
+| `GET` | `/api/quiz/langs` | List the distinct translation languages available |
 | `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7) |
 | `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |
+| `POST` | `/api/quiz/acknowledge-random` | Acknowledge a random subset of new words (start-training count) |
+| `POST` | `/api/quiz/advance` | Advance due dates / move past the current card |
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
@@ -521,7 +574,9 @@ vocabulary_trainer/
 | `PUT` | `/api/words/{id}` | Update a word |
 | `DELETE` | `/api/words/{id}` | Delete a word |
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
+| `POST` | `/api/words/{id}/review` | Flag a word for review |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
+| `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |

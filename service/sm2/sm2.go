@@ -123,6 +123,43 @@ func CalcStreakBonus(currentBonus, repetitions, totalCorrect, totalAttempts int)
 	return currentBonus
 }
 
+// ProcessAnswer applies a graded answer to an SM-2 progress record and returns
+// the updated record. It encapsulates the full quiz-answer state transition:
+//   - learning-phase words go through UpdateLearning (graduating after enough
+//     correct reps); regular words go through Update;
+//   - TotalAttempts/TotalCorrect are incremented for the attempt, except on
+//     graduation (UpdateLearning already resets those counters);
+//   - CalcStreakBonus is always applied last.
+//
+// Graduation can be detected by the caller as: was LearningNewWord before and
+// is no longer afterwards.
+func ProcessAnswer(p models.SM2Progress, correct bool) models.SM2Progress {
+	quality := QualityWrong
+	if correct {
+		quality = QualityCorrect
+	}
+
+	var updated models.SM2Progress
+	if p.LearningNewWord {
+		var graduated bool
+		updated, graduated = UpdateLearning(p, quality)
+		if !graduated {
+			updated.TotalAttempts++
+			if correct {
+				updated.TotalCorrect++
+			}
+		}
+	} else {
+		updated = Update(p, quality)
+		updated.TotalAttempts++
+		if correct {
+			updated.TotalCorrect++
+		}
+	}
+	updated.StreakBonus = CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+	return updated
+}
+
 // CheckAnswer returns true if the user's answer matches any accepted answer
 // (case-insensitive, whitespace-trimmed).
 //
@@ -265,15 +302,10 @@ func MaskPinyin(pinyin string, totalCorrect int) string {
 	return strings.Join(words, " ")
 }
 
-// ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
-// A zero-value string in any field uses the built-in default for that tier.
-type ProgressiveModeConfig struct {
-	New        string // totalAttempts<3; default: ModeTranslToZh
-	Struggling string // totalAttempts>=3 and accuracy<50%; default: ModeTranslToZh
-	Learning   string // accuracy<70% or totalAttempts<10; default: ModeZhPinyinToTransl
-	Practicing string // accuracy<85%; default: ModeZhToTransl
-	Mastered   string // accuracy>=85%; default: random via SelectMode()
-}
+// ProgressiveModeConfig is defined in the models package so UserSettings can
+// project to it (UserSettings.QuizConfig) without an import cycle; this alias
+// keeps sm2.ProgressiveModeConfig working for existing callers.
+type ProgressiveModeConfig = models.ProgressiveModeConfig
 
 // DefaultProgressiveModeConfig returns the built-in defaults.
 func DefaultProgressiveModeConfig() ProgressiveModeConfig {
@@ -286,12 +318,9 @@ func DefaultProgressiveModeConfig() ProgressiveModeConfig {
 	}
 }
 
-// NewWordModeConfig holds per-step mode choices for LearningNewWord words.
-type NewWordModeConfig struct {
-	Step0 string // TotalCorrect==0; default: ModeTranslToZh
-	Step1 string // TotalCorrect==1; default: ModeTranslToZh
-	Step2 string // TotalCorrect>=2; default: ModeZhToTransl
-}
+// NewWordModeConfig is defined in the models package (see ProgressiveModeConfig);
+// this alias keeps sm2.NewWordModeConfig working for existing callers.
+type NewWordModeConfig = models.NewWordModeConfig
 
 // DefaultNewWordModeConfig returns the built-in defaults.
 func DefaultNewWordModeConfig() NewWordModeConfig {
