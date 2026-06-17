@@ -88,8 +88,11 @@ type componentCard struct {
 
 // GetNextComponentCard returns the most-overdue component due today for the user,
 // considering only characters that have a definition in at least one of langs.
+// excludeChars lists recently-answered characters to skip; when all due cards are
+// excluded the function falls back and returns the most-overdue card anyway so the
+// caller never gets nil when cards exist.
 // Returns nil if nothing is due.
-func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []string) (*componentCard, error) {
+func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []string, excludeChars []string) (*componentCard, error) {
 	// Build a per-lang filter so we only return cards the user can answer.
 	whereFrags := []string{}
 	langArgs := []any{}
@@ -102,32 +105,67 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 	}
 	langFilter := strings.Join(whereFrags, " OR ")
 
-	args := append([]any{userID}, langArgs...)
-
-	var c componentCard
-	var dueDateStr string
-	var firstSeenDate sql.NullString
-	err := s.db.QueryRowContext(ctx, `
-		SELECT cp.character, cp.due_date,
-		       cp.repetitions, cp.easiness, cp.interval_days,
-		       cp.total_correct, cp.total_attempts, cp.first_seen_date
-		FROM component_progress cp
-		WHERE cp.user_id = ?
-		  AND (`+langFilter+`)
-		  AND cp.due_date < datetime('now', '+1 day')
-		ORDER BY cp.due_date ASC
-		LIMIT 1`,
-		args...,
-	).Scan(
-		&c.Character, &dueDateStr,
-		&c.Progress.Repetitions, &c.Progress.Easiness, &c.Progress.IntervalDays,
-		&c.Progress.TotalCorrect, &c.Progress.TotalAttempts, &firstSeenDate,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
+	excludeFilter := ""
+	excludeArgs := []any{}
+	if len(excludeChars) > 0 {
+		placeholders := make([]string, len(excludeChars))
+		for i, ch := range excludeChars {
+			placeholders[i] = "?"
+			excludeArgs = append(excludeArgs, ch)
+		}
+		excludeFilter = " AND cp.character NOT IN (" + strings.Join(placeholders, ",") + ")"
 	}
+
+	tryQuery := func(extra string, extraArgs []any) (*componentCard, error) {
+		args := make([]any, 0, 1+len(langArgs)+len(extraArgs))
+		args = append(args, userID)
+		args = append(args, langArgs...)
+		args = append(args, extraArgs...)
+		var c componentCard
+		var dueDateStr string
+		var firstSeenDate sql.NullString
+		err := s.db.QueryRowContext(ctx, `
+			SELECT cp.character, cp.due_date,
+			       cp.repetitions, cp.easiness, cp.interval_days,
+			       cp.total_correct, cp.total_attempts, cp.first_seen_date
+			FROM component_progress cp
+			WHERE cp.user_id = ?
+			  AND (`+langFilter+`)
+			  AND cp.due_date < datetime('now', '+1 day')`+extra+`
+			ORDER BY cp.due_date ASC
+			LIMIT 1`,
+			args...,
+		).Scan(
+			&c.Character, &dueDateStr,
+			&c.Progress.Repetitions, &c.Progress.Easiness, &c.Progress.IntervalDays,
+			&c.Progress.TotalCorrect, &c.Progress.TotalAttempts, &firstSeenDate,
+		)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("get next component card: %w", err)
+		}
+		c.Progress.DueDate = dueDateStr
+		if firstSeenDate.Valid {
+			c.Progress.FirstSeenDate = &firstSeenDate.String
+		}
+		return &c, nil
+	}
+
+	c, err := tryQuery(excludeFilter, excludeArgs)
 	if err != nil {
-		return nil, fmt.Errorf("get next component card: %w", err)
+		return nil, err
+	}
+	// Fallback: when all due cards are excluded, return the best without exclusion.
+	if c == nil && excludeFilter != "" {
+		c, err = tryQuery("", nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if c == nil {
+		return nil, nil
 	}
 
 	defs, err := s.GetComponentTranslations(ctx, userID, c.Character)
@@ -140,11 +178,7 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 	c.Pinyin = joinPinyinJSON(rawPinyin.String)
 	c.Progress.UserID = userID
 	c.Progress.Character = c.Character
-	c.Progress.DueDate = dueDateStr
-	if firstSeenDate.Valid {
-		c.Progress.FirstSeenDate = &firstSeenDate.String
-	}
-	return &c, nil
+	return c, nil
 }
 
 // GetComponentDefinitions returns definitions for a character keyed by lowercase lang code.

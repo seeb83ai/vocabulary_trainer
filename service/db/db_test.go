@@ -3375,7 +3375,7 @@ func TestInitComponentsForWord_Idempotent(t *testing.T) {
 
 func TestGetNextComponentCard_ReturnsNilWhenEmpty(t *testing.T) {
 	s := openTestDB(t)
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -3395,7 +3395,7 @@ func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -3534,7 +3534,7 @@ func TestGetNextComponentCard_DELangFilter(t *testing.T) {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"de"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"de"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -3553,7 +3553,7 @@ func TestGetNextComponentCard_DEWithTranslation(t *testing.T) {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"de"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"de"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -3578,7 +3578,7 @@ func TestGetNextComponentCard_ENAndDE(t *testing.T) {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en", "de"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en", "de"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}

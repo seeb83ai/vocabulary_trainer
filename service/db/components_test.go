@@ -247,7 +247,7 @@ func TestGetNextComponentCard_IncludesPinyin(t *testing.T) {
 	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
 	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
 
-	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestGetNextComponentCard_MultipleReadingsJoined(t *testing.T) {
 	seedHanziFull(t, s, "行", "row/walk", "", "", "", `["háng","xíng"]`)
 	s.InsertComponentProgressForTest(ctx, int64(2), "行", time.Now().Add(-time.Hour))
 
-	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -274,6 +274,47 @@ func TestGetNextComponentCard_MultipleReadingsJoined(t *testing.T) {
 	}
 	if card.Pinyin != "háng / xíng" {
 		t.Errorf("want pinyin %q, got %q", "háng / xíng", card.Pinyin)
+	}
+}
+
+func TestGetNextComponentCard_ExcludeChars_SkipsExcluded(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", "")
+	seedHanziFull(t, s, "木", "tree", "", "", "", "")
+	seedHanziFull(t, s, "水", "water", "", "", "", "")
+	past := time.Now().Add(-time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.InsertComponentProgressForTest(ctx, int64(2), "木", past)
+	s.InsertComponentProgressForTest(ctx, int64(2), "水", past)
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, []string{"女", "木"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("want a card, got nil")
+	}
+	if card.Character != "水" {
+		t.Errorf("want non-excluded character 水, got %q", card.Character)
+	}
+}
+
+func TestGetNextComponentCard_ExcludeChars_FallsBackWhenAllExcluded(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", "")
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, []string{"女"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("expected fallback to return the only available card")
+	}
+	if card.Character != "女" {
+		t.Errorf("want 女 on fallback, got %q", card.Character)
 	}
 }
 

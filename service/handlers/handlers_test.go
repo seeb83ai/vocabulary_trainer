@@ -3879,6 +3879,34 @@ func TestQuizNext_ComponentCard_HasPinyin(t *testing.T) {
 	}
 }
 
+func TestQuizNext_ExcludeComponents_SkipsExcluded(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed 女: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "木", "tree"); err != nil {
+		t.Fatalf("seed 木: %v", err)
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.InsertComponentProgressForTest(ctx, int64(2), "木", past)
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false&exclude_components=%E5%A5%B3", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if card["card_type"] != "component" {
+		t.Fatalf("want card_type=component, got %v", card["card_type"])
+	}
+	if card["prompt"] != "木" {
+		t.Errorf("want prompt=木 (非excluded), got %v", card["prompt"])
+	}
+}
+
 func TestComponentSeen_MarksFirstSeenDate(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

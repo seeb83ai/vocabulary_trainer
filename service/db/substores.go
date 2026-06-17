@@ -120,7 +120,7 @@ type PinyinStore interface {
 // ComponentStore: hanzi component progress, initialisation, decomposition, and component scenes.
 type ComponentStore interface {
 	InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error
-	GetNextComponentCard(ctx context.Context, userID int64, langs []string) (*componentCard, error)
+	GetNextComponentCard(ctx context.Context, userID int64, langs []string, excludeChars []string) (*componentCard, error)
 	GetComponentDefinitions(ctx context.Context, userID int64, character string, langs []string) (map[string]string, error)
 	StoreComponentTranslation(ctx context.Context, userID int64, character, lang, definition string) error
 	GetComponentTranslations(ctx context.Context, userID int64, character string) (map[string]string, error)

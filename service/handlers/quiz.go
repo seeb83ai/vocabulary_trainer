@@ -104,6 +104,15 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var excludeComponents []string
+	if excl := r.URL.Query().Get("exclude_components"); excl != "" {
+		for _, ch := range strings.Split(excl, ",") {
+			if ch = strings.TrimSpace(ch); ch != "" {
+				excludeComponents = append(excludeComponents, ch)
+			}
+		}
+	}
+
 	word, progress, err := h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines, excludeIDs)
 	if err != nil {
 		internalError(w, err)
@@ -134,7 +143,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	// Fetch component candidate (filtered to langs the user is currently training).
 	var compCard *componentCard
 	if trainComponents {
-		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs)
+		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs, excludeComponents)
 		if ccErr != nil {
 			writeError(w, http.StatusInternalServerError, ccErr.Error())
 			return

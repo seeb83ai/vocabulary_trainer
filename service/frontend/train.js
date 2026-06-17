@@ -65,6 +65,8 @@ let selectedMode = localStorage.getItem('quizMode') || 'random';
 
 // IDs of the last two answered vocabulary words, used to avoid immediate re-show.
 let recentWordIDs = [];
+// Characters of the last two answered component cards, used to avoid immediate re-show.
+let recentComponentChars = [];
 
 // ── Training-time tracking ──────────────────────────────────────────────────
 // Counts seconds while this tab is visible, the window has focus, and a card
@@ -241,10 +243,12 @@ async function loadStats() {
 async function loadNextCard() {
   _noCardsPaused = true;  // pause until we confirm a card is ready
   await _flushTime();
-  // Track the word we're leaving so it isn't immediately re-shown.
-  // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
+  // Track the card we're leaving so it isn't immediately re-shown.
   if (currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
     recentWordIDs = [currentCard.word_id, ...recentWordIDs].slice(0, 2);
+  }
+  if (currentCard?.card_type === 'component' && currentCard.prompt) {
+    recentComponentChars = [currentCard.prompt, ...recentComponentChars].slice(0, 2);
   }
   isSubmitted = false;
   hide('card-area');
@@ -307,6 +311,7 @@ async function loadNextCard() {
     if (!includeMnemonics) params.set('mnemonics', 'false');
     if (includeComponents) params.set('trainComponents', '1');
     if (recentWordIDs.length) params.set('exclude', recentWordIDs.join(','));
+    if (recentComponentChars.length) params.set('exclude_components', recentComponentChars.join(','));
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
