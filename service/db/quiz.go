@@ -347,51 +347,68 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		return 0, false, nil
 	}
 
-	var confusedWithID int64
-	var err error
-
 	switch mode {
 	case "zh_to_transl", "zh_pinyin_to_transl":
-		// Find the zh word linked to a translation word whose text matches the answer,
-		// restricted to the languages the user has selected and owned by the same user.
+		// Fetch all translation words for the user in the selected languages (excluding
+		// translations of the word being quizzed), then match in Go using ExpandVariants.
+		// Go-level matching is necessary because SQLite's LOWER() is ASCII-only and
+		// cannot case-fold non-ASCII characters such as German umlauts (Ä/Ö/Ü).
+		// It also allows detecting slash-separated variants (e.g. "dog / hound").
 		if len(langs) == 0 {
 			langs = []string{"en"}
 		}
 		placeholders := make([]string, len(langs))
-		args := make([]any, 0, len(langs)+3)
-		args = append(args, normalized)
+		args := make([]any, 0, len(langs)+2)
 		for i, l := range langs {
 			placeholders[i] = "?"
 			args = append(args, l)
 		}
 		args = append(args, zhWordID, userID)
-		err = s.db.QueryRowContext(ctx, `
-			SELECT t.zh_word_id FROM words w
+		rows, qErr := s.db.QueryContext(ctx, `
+			SELECT t.zh_word_id, w.text FROM words w
 			JOIN translations t ON t.translation_word_id = w.id
 			JOIN words wz ON wz.id = t.zh_word_id
-			WHERE LOWER(TRIM(w.text)) = ?
-			  AND w.language IN (`+strings.Join(placeholders, ",")+`)
+			WHERE w.language IN (`+strings.Join(placeholders, ",")+`)
 			  AND t.zh_word_id != ?
-			  AND wz.user_id = ?
-			LIMIT 1`, args...).Scan(&confusedWithID)
+			  AND wz.user_id = ?`, args...)
+		if qErr != nil {
+			return 0, false, fmt.Errorf("lookup confusion: %w", qErr)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var zhID int64
+			var text string
+			if sErr := rows.Scan(&zhID, &text); sErr != nil {
+				return 0, false, fmt.Errorf("scan confusion: %w", sErr)
+			}
+			for _, v := range sm2.ExpandVariants(text) {
+				if v == normalized {
+					_ = rows.Close()
+					return zhID, true, nil
+				}
+			}
+		}
+		return 0, false, rows.Err()
+
 	case "transl_to_zh":
 		// Find a ZH word whose text matches the answer, owned by the same user.
-		err = s.db.QueryRowContext(ctx, `
+		var confusedWithID int64
+		err := s.db.QueryRowContext(ctx, `
 			SELECT id FROM words
 			WHERE language = 'zh' AND LOWER(TRIM(text)) = ?
 			  AND id != ? AND user_id = ?
 			LIMIT 1`, normalized, zhWordID, userID).Scan(&confusedWithID)
+		if err == sql.ErrNoRows {
+			return 0, false, nil
+		}
+		if err != nil {
+			return 0, false, fmt.Errorf("lookup confusion: %w", err)
+		}
+		return confusedWithID, true, nil
+
 	default:
 		return 0, false, nil
 	}
-
-	if err == sql.ErrNoRows {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, fmt.Errorf("lookup confusion: %w", err)
-	}
-	return confusedWithID, true, nil
 }
 
 // UpsertConfusion records or increments a confusion pair.

@@ -2857,6 +2857,79 @@ func TestDetectConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 	}
 }
 
+func TestDetectConfusion_UmlautTranslation_Found(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 练习 → DE "Übung" (umlaut in stored text)
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "练习",
+		Pinyin:       "liànxí",
+		Translations: map[string][]string{"de": {"trainieren"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "练",
+		Pinyin:       "liàn",
+		Translations: map[string][]string{"de": {"Übung"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User types "übung" (lowercase) while answering for 练习; should detect 练 as confusion.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "übung", "zh_to_transl", []string{"de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found for umlaut translation")
+	}
+	if confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d, got %d", otherID, confusedWithID)
+	}
+}
+
+func TestDetectConfusion_SlashVariant_Found(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 吃 → EN "eat"
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "吃",
+		Pinyin:       "chī",
+		Translations: map[string][]string{"en": {"eat"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 食物 → EN "food / eat" (slash-separated variant)
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "食物",
+		Pinyin:       "shíwù",
+		Translations: map[string][]string{"en": {"food / nourishment"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User types "nourishment" while answering for 吃; should detect 食物 as confusion.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "nourishment", "zh_to_transl", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found for slash-variant translation")
+	}
+	if confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d, got %d", otherID, confusedWithID)
+	}
+}
+
 // ── CreateUser ────────────────────────────────────────────────────────────────
 
 func TestCreateUser_ReturnsID(t *testing.T) {
