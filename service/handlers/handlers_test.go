@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -6138,5 +6139,93 @@ func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("frequency=%d: expected 400, got %d", freq, rec.Code)
 		}
+	}
+}
+
+// ── GET /api/audio/component/{char} ──────────────────────────────────────────
+
+func TestServeComponentAudio_ServesPreCachedFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{Store: openTestDB(t), AudioDir: tmpDir}
+
+	// Pre-seed the cached file using the expected c_{hex}.mp3 naming pattern.
+	// 木 = U+6728
+	cachedPath := filepath.Join(tmpDir, "c_6728.mp3")
+	if err := os.WriteFile(cachedPath, []byte("fake-mp3-wood"), 0644); err != nil {
+		t.Fatalf("seed mp3: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/component/{char}", audioH.ServeComponentAudio)
+
+	req := httptest.NewRequest("GET", "/api/audio/component/"+url.PathEscape("木"), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "fake-mp3-wood") {
+		t.Errorf("want cached content, got %q", rec.Body.String())
+	}
+}
+
+func TestServeComponentAudio_GeneratesOnDemand(t *testing.T) {
+	tmpDir := t.TempDir()
+	synthCalled := ""
+	audioH := &handlers.AudioHandler{
+		Store:    openTestDB(t),
+		AudioDir: tmpDir,
+		Synth:    func(text string) ([]byte, error) { synthCalled = text; return []byte("synth-mp3"), nil },
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/component/{char}", audioH.ServeComponentAudio)
+
+	req := httptest.NewRequest("GET", "/api/audio/component/"+url.PathEscape("女"), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if synthCalled != "女" {
+		t.Errorf("want synth called with 女, got %q", synthCalled)
+	}
+	// File must be written with c_{hex}.mp3 pattern (女 = U+5973).
+	if _, err := os.Stat(filepath.Join(tmpDir, "c_5973.mp3")); err != nil {
+		t.Errorf("expected c_5973.mp3 to exist after generation: %v", err)
+	}
+}
+
+func TestServeComponentAudio_InvalidChar(t *testing.T) {
+	audioH := &handlers.AudioHandler{Store: openTestDB(t), AudioDir: t.TempDir()}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/component/{char}", audioH.ServeComponentAudio)
+
+	// Multi-character value must be rejected with 400.
+	req := httptest.NewRequest("GET", "/api/audio/component/"+url.PathEscape("木火"), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("multi-char: want 400, got %d", rec.Code)
+	}
+}
+
+func TestServeComponentAudio_FilenameDifferentFromWordIDs(t *testing.T) {
+	// Ensure component files (c_{hex}.mp3) cannot collide with word audio files
+	// ({integer}.mp3). A hex codepoint like "6728" must NOT be a valid word ID
+	// file — verified by checking the naming prefix distinguishes them.
+	wordFile := "42.mp3"
+	componentFile := fmt.Sprintf("c_%04x.mp3", []rune("木")[0]) // c_6728.mp3
+	if wordFile == componentFile {
+		t.Error("component filename pattern must not match word id filename pattern")
+	}
+	if !strings.HasPrefix(componentFile, "c_") {
+		t.Error("component filename must start with c_")
 	}
 }
