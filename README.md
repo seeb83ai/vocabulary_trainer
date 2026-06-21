@@ -202,7 +202,7 @@ The bonus is calculated as the minimum value needed to reach the target accuracy
 
 ## Cycle mode
 
-The **Cycle** quiz mode rotates through a fixed sequence of quiz directions on every attempt, regardless of whether your answer was correct or wrong. The cycle position is derived from `total_attempts`, so it is automatically persisted per word without any extra database column.
+The **Cycle** quiz mode rotates through a fixed sequence of quiz directions. By default the position advances on every attempt (correct or wrong), so the counter is `total_attempts`. Users can switch to **advance on success only** in Settings → Cycle Mode, which uses `total_correct` as the counter instead — the step stays the same until you answer correctly.
 
 Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation → Chinese → Translation**
 
@@ -213,7 +213,7 @@ Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation
 | 3 | 2 | Chinese → Translation |
 | 4 | 0 (wraps) | Chinese + Pinyin → Translation |
 
-You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*.
+You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel has an **Advance only on success** toggle that switches the counter from `total_attempts` to `total_correct`.
 
 ## User settings
 
@@ -221,7 +221,7 @@ Each user has a personal settings page (`/settings`) with:
 
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
-- **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode.
+- **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode, and choose whether the cycle advances on every attempt (default) or only after a correct answer.
 - **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
 - **Gamification** — Enable a word-matching mini-game that appears during training when you have confused at least 3 word pairs in the last 7 days. Configure how often (in minutes) the game may interrupt training. When triggered, three confused pairs are shown in two shuffled columns; click a Chinese word then its English translation to match them; correct pairs turn green, wrong pairs flash red. The game updates SM-2 progress for each matched word.
 - **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account. A user-supplied local LLM URL must be a public `http(s)` address — internal/loopback/link-local targets are rejected (and blocked at connect time) to prevent server-side request forgery. Operators who run a trusted local model on loopback should configure it via the server-side `LOCAL_LLM_URL` env var instead.
