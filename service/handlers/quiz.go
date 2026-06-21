@@ -255,7 +255,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		if userSettings != nil && userSettings.CycleSequence != "" {
 			seqStr = userSettings.CycleSequence
 		}
-		mode = sm2.SelectCycleMode(progress.TotalAttempts, sm2.ParseCycleSequence(seqStr))
+		cycleCounter := progress.TotalAttempts
+		if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
+			cycleCounter = progress.TotalCorrect
+		}
+		mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr))
 	default:
 		mode = sm2.SelectMode()
 	}
