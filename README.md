@@ -513,7 +513,7 @@ vocabulary_trainer/
 │   │   ├── hmm.go           # Hanzi Movie Method — library CRUD, scene builder, pinyin parsing
 │   │   ├── mismatches.go    # GET /api/mismatches
 │   │   ├── translate.go     # POST /api/translate, GET /api/config — DeepL proxy + pinyin
-│   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
+│   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3; GET /api/audio/component/{char} — component TTS
 │   │   └── hanzi.go         # GET /api/hanzi/decompose — character decomposition
 │   ├── models/models.go     # Shared structs and mode constants
 │   ├── sm2/
@@ -576,6 +576,7 @@ vocabulary_trainer/
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 | `POST` | `/api/words/{id}/review` | Flag a word for review |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
+| `GET` | `/api/audio/component/{char}` | Serve cached MP3 for a single component character (generated on demand); files stored as `c_{hex}.mp3` |
 | `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
