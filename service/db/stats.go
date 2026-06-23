@@ -16,7 +16,7 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
-		 WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(&wordsSeen); err != nil {
+		 WHERE w.user_id = ? AND w.language = 'zh' AND p.first_seen_at IS NOT NULL`, userID).Scan(&wordsSeen); err != nil {
 		return 0, fmt.Errorf("count words seen: %w", err)
 	}
 
@@ -43,7 +43,7 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 		    THEN 1 ELSE 0 END), 0)
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh' AND p.first_seen_date IS NOT NULL`).Scan(
+		WHERE w.user_id = ? AND w.language = 'zh' AND p.first_seen_at IS NOT NULL`, userID).Scan(
 		&bNew, &bStruggling, &bLearning, &bPracticing, &bMastered,
 	); err != nil {
 		return 0, fmt.Errorf("count buckets: %w", err)
@@ -90,11 +90,63 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 	return streak, nil
 }
 
+// EnsureDueTodaySnapshot records the number of due seen words at the start of
+// the day the first time it is called for a given user on a given day.
+// Subsequent calls on the same day return the already-stored value.
+// Returns -1 if no daily_stats row exists yet and the snapshot could not be stored.
+func (s *Store) EnsureDueTodaySnapshot(ctx context.Context, userID int64) (int, error) {
+	// Check if snapshot already taken today.
+	var stored int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(due_at_day_start, -1) FROM daily_stats WHERE user_id = ? AND date = date('now')`,
+		userID).Scan(&stored)
+	if err == nil && stored >= 0 {
+		return stored, nil
+	}
+
+	// Count seen words currently due today.
+	var dueCount int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL
+		   AND p.due_date <= date('now', '+1 day')`,
+		userID).Scan(&dueCount); err != nil {
+		return 0, fmt.Errorf("count due today: %w", err)
+	}
+
+	// Upsert the daily_stats row with the snapshot value.
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO daily_stats (user_id, date, due_at_day_start)
+		 VALUES (?, date('now'), ?)
+		 ON CONFLICT(user_id, date) DO UPDATE SET due_at_day_start = ?`,
+		userID, dueCount, dueCount); err != nil {
+		return 0, fmt.Errorf("store due_at_day_start: %w", err)
+	}
+	return dueCount, nil
+}
+
+// RecordTrainingTime accumulates focused training seconds for today's daily_stats row.
+func (s *Store) RecordTrainingTime(ctx context.Context, userID int64, seconds int) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO daily_stats (user_id, date, training_seconds)
+		VALUES (?, date('now'), ?)
+		ON CONFLICT(user_id, date) DO UPDATE SET
+			training_seconds = training_seconds + ?`,
+		userID, seconds, seconds,
+	)
+	if err != nil {
+		return fmt.Errorf("record training time: %w", err)
+	}
+	return nil
+}
+
 // GetDailyStatsHistory returns all daily stats for the given user ordered by date ascending.
 func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]models.DailyStat, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT date, attempts, mistakes, words_seen, correct_streak,
-		       bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered
+		       bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered,
+		       COALESCE(training_seconds, 0)
 		FROM daily_stats WHERE user_id = ? ORDER BY date ASC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get daily stats: %w", err)
@@ -104,7 +156,8 @@ func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]model
 	for rows.Next() {
 		var d models.DailyStat
 		if err := rows.Scan(&d.Date, &d.Attempts, &d.Mistakes, &d.WordsSeen, &d.CorrectStreak,
-			&d.BucketNew, &d.BucketStruggling, &d.BucketLearning, &d.BucketPracticing, &d.BucketMastered); err != nil {
+			&d.BucketNew, &d.BucketStruggling, &d.BucketLearning, &d.BucketPracticing, &d.BucketMastered,
+			&d.TrainingSeconds); err != nil {
 			return nil, fmt.Errorf("scan daily stat: %w", err)
 		}
 		stats = append(stats, d)
@@ -124,7 +177,7 @@ func (s *Store) GetWordStats(ctx context.Context, userID int64) (*models.WordSta
 		       p.learning_new_word
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_date IS NOT NULL
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL
 		ORDER BY p.total_attempts DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get word stats: %w", err)
@@ -304,7 +357,7 @@ func (s *Store) GetTodaySessionInfo(ctx context.Context, userID int64) (attempts
 		SELECT COUNT(*) FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
-		  AND p.first_seen_date IS NOT NULL
+		  AND p.first_seen_at IS NOT NULL
 		  AND p.due_date > CURRENT_TIMESTAMP`, userID).Scan(&availableToAdvance)
 	if err != nil {
 		err = fmt.Errorf("count available to advance: %w", err)
@@ -322,7 +375,7 @@ func (s *Store) AdvanceDueDates(ctx context.Context, userID int64, n int) (int, 
 		SELECT p.due_date FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
-		  AND p.first_seen_date IS NOT NULL
+		  AND p.first_seen_at IS NOT NULL
 		  AND p.due_date > CURRENT_TIMESTAMP
 		ORDER BY p.due_date ASC
 		LIMIT 1 OFFSET ?`, userID, n-1).Scan(&nthDueDateStr)
@@ -342,7 +395,7 @@ func (s *Store) AdvanceDueDates(ctx context.Context, userID int64, n int) (int, 
 
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE sm2_progress SET due_date = datetime(due_date, ?)
-		WHERE first_seen_date IS NOT NULL
+		WHERE first_seen_at IS NOT NULL
 		  AND word_id IN (SELECT id FROM words WHERE language = 'zh' AND user_id = ?)`,
 		modifier, userID); err != nil {
 		return 0, fmt.Errorf("advance due dates: %w", err)
@@ -353,7 +406,7 @@ func (s *Store) AdvanceDueDates(ctx context.Context, userID int64, n int) (int, 
 		SELECT COUNT(*) FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
-		  AND p.first_seen_date IS NOT NULL
+		  AND p.first_seen_at IS NOT NULL
 		  AND p.due_date <= CURRENT_TIMESTAMP`, userID).Scan(&nowDue); err != nil {
 		return 0, fmt.Errorf("count now due: %w", err)
 	}

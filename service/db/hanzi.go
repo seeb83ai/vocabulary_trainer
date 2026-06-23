@@ -307,7 +307,7 @@ func (s *Store) GetHanziDecomposition(ctx context.Context, chars []rune) ([]mode
 // results for the requested langs. All langs (including EN) are read from
 // hanzi_decomposition_translation. Called when the decompose endpoint is requested
 // with a langs parameter.
-func (s *Store) AnnotateComponentDefinitions(ctx context.Context, results []models.HanziDecomposition, langs []string) error {
+func (s *Store) AnnotateComponentDefinitions(ctx context.Context, userID int64, results []models.HanziDecomposition, langs []string) error {
 	if len(langs) == 0 {
 		return nil
 	}
@@ -328,7 +328,7 @@ func (s *Store) AnnotateComponentDefinitions(ctx context.Context, results []mode
 	// Build a map character → lang → definition.
 	defMap := map[string]map[string]string{}
 	for _, ch := range chars {
-		defs, err := s.GetComponentDefinitions(ctx, ch, langs)
+		defs, err := s.GetComponentDefinitions(ctx, userID, ch, langs)
 		if err != nil {
 			return fmt.Errorf("annotate component definitions %q: %w", ch, err)
 		}

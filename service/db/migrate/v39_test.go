@@ -185,7 +185,7 @@ func TestV39_SpreadsDueDates_Max5PerDay(t *testing.T) {
 	// push the overflow (2) to the next day.
 	ety := `{"type":"ideographic"}`
 	for i := 0; i < 7; i++ {
-		parent := string(rune('A' + i))       // placeholder non-Han; skipped below
+		parent := string(rune('A' + i)) // placeholder non-Han; skipped below
 		_ = parent
 	}
 	// Actually we need Han characters so the backfill iterates them. Use CJK

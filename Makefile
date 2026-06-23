@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup release test test-go test-js test-e2e test-all
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup restore release test test-go test-js test-e2e test-all
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -63,6 +63,13 @@ fill-translations:
 
 backup:
 	sqlite3 data/vocab.db ".backup data/vocab_backup$(EXT).sq3"
+
+## restore: restore the live DB from a backup file (FROM=path). Stop the server first.
+restore:
+	@test -n "$(FROM)" || (echo "FROM is not set. Usage: make restore FROM=data/vocab_backup.sq3" && exit 1)
+	@test -f "$(FROM)" || (echo "backup file not found: $(FROM)" && exit 1)
+	cp "$(FROM)" data/vocab.db
+	@echo "restored data/vocab.db from $(FROM)"
 
 ## release: cross-compile for Raspberry Pi (arm64) and rsync to RSYNC_DEST
 release:

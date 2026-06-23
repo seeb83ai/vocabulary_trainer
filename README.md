@@ -6,7 +6,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations
 - N:N word relationships — the same English or Chinese word can be shared across entries
-- **Four quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English, and **Progressive** (auto-selects direction based on learning progress)
+- **Five quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English, **Progressive** (auto-selects direction based on learning progress), and **Cycle** (rotates through a user-configured sequence of directions per word)
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
 - **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
@@ -83,7 +83,7 @@ APP_ENV=production            # default; refuses startup if SESSION_SECRET is mi
 SESSION_SECRET=<64 hex chars>  # `openssl rand -hex 32`
 ```
 
-`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart) and lets `/api/register` auto-verify accounts when SMTP is not configured. **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email.
+`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart), lets `/api/register` auto-verify accounts when SMTP is not configured, and omits the `Secure` flag on session cookies so they work over plain HTTP. In production (the default) session cookies are marked `Secure`, so the app must be served over HTTPS (terminate TLS at the reverse proxy). **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email, and session cookies would be sent over unencrypted HTTP.
 
 Other security-relevant tunables:
 
@@ -91,23 +91,57 @@ Other security-relevant tunables:
 RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
 RATE_LIMIT_USER_PER_MIN=300       # per-user budget for all other API traffic
 RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-password, LLM scene generation
+CSV_MAX_UPLOAD_MB=8               # max CSV upload body size; oversized uploads are rejected (413)
+CSV_MAX_ROWS=5000                 # max data rows per CSV upload; over-cap uploads are rejected (400)
 ```
+
+The CSV import endpoint (`POST /api/words/upload-csv`) is also covered by the
+expensive-request rate limiter, and its per-row text-to-speech generation runs
+in a bounded background worker pool so a large import can't exhaust resources.
 
 A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) is built in; the lockout is cleared on the next successful login.
 
+JSON request bodies on `/api` routes are capped (default 1 MiB) so an unbounded upload cannot exhaust memory — oversized bodies are rejected with `400`:
+
+```bash
+MAX_BODY_BYTES=1048576   # max /api request body in bytes (default 1 MiB)
+```
+
+The HTTP server runs with read/write/idle timeouts so a slow or stalled client cannot tie up the single SQLite connection, and it shuts down gracefully on `SIGINT`/`SIGTERM`, draining in-flight requests (up to 30 s) before exiting. This makes systemd auto-restarts (see `deploy/vocab-trainer.service`) drop fewer in-flight requests.
+
 The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on every response. Configure HTTPS at the reverse proxy (see `deploy/nginx.conf`) — the sample config also sets `Strict-Transport-Security`.
+
+Always deploy behind a reverse proxy (e.g. nginx) that sets `X-Real-IP` to the real client address; rate limiting derives the client IP from that header. Do not expose the binary directly to the internet — the spoofable `X-Forwarded-For` header is deliberately never trusted, so a directly-exposed binary would rate-limit on `RemoteAddr` only.
 
 ## Daily new-word cap
 
-To avoid being overwhelmed when you have a large vocabulary list, the trainer limits how many brand-new words are introduced each day:
+Each user sets their own daily new-word limit in **Settings → Daily Learning** (default: 5). The server-wide `MAX_NEW_WORDS` env var sets the default for new accounts only — users can freely change it higher or lower in their settings.
 
 ```bash
-MAX_NEW_WORDS=5   # default; set to 0 to disable new words entirely
+MAX_NEW_WORDS=5   # default for new accounts
 ```
 
 A *new word* is one that has never appeared as a quiz card before (tracked by a `first_seen_date` column in the database). Once the daily cap is reached, only cards you have already seen at least once will be served — reviews and retry cards are always available regardless of the cap. The counter resets at midnight (server-local date).
 
 The training page stats bar shows **New today: X / Y** so you can see how many new words you have left for the day.
+
+### Baseline gates
+
+In **Settings → Daily Learning**, each user can enable optional gates that pause new-word introductions when the review load is high. Each gate is independently enabled with its own numeric threshold; **all** active gates must pass before a new word is shown.
+
+| Gate | Blocks new words when… |
+|---|---|
+| **Max due words at day start** | The number of review cards due when you first opened the app today is ≥ the threshold |
+| **Max Struggling words** | Your current Struggling bucket count is ≥ the threshold |
+| **Max Learning words** | Your current Learning bucket count is ≥ the threshold |
+
+### Cooldown between new words
+
+In **Settings → Daily Learning**, the **Cooldown between new words** field (default: 1 minute) sets the minimum time that must pass after introducing a new word before another one appears. During the cooldown window the trainer serves only review cards. Set to **0** to disable the cooldown and allow new words back-to-back.
+
+### Skip button for new words
+
+By default a **Skip** button appears during the new-word introduction screen, letting you defer a word for 7 days. In **Settings → Daily Learning** you can hide this button; when hidden, new words cannot be skipped and must be reviewed.
 
 ## Progressive mode
 
@@ -166,13 +200,31 @@ The bonus is calculated as the minimum value needed to reach the target accuracy
 
 **Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day without recording an attempt. Useful when you want to clear a stuck card from today's queue but try again tomorrow.
 
+## Cycle mode
+
+The **Cycle** quiz mode rotates through a fixed sequence of quiz directions on every attempt, regardless of whether your answer was correct or wrong. The cycle position is derived from `total_attempts`, so it is automatically persisted per word without any extra database column.
+
+Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation → Chinese → Translation**
+
+| `total_attempts` | Position | Direction |
+|---|---|---|
+| 1 (after "Got it") | 0 | Chinese + Pinyin → Translation |
+| 2 | 1 | Translation → Chinese |
+| 3 | 2 | Chinese → Translation |
+| 4 | 0 (wraps) | Chinese + Pinyin → Translation |
+
+You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*.
+
 ## User settings
 
 Each user has a personal settings page (`/settings`) with:
 
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
-- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
+- **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode.
+- **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
+- **Gamification** — Enable a word-matching mini-game that appears during training when you have confused at least 3 word pairs in the last 7 days. Configure how often (in minutes) the game may interrupt training. When triggered, three confused pairs are shown in two shuffled columns; click a Chinese word then its English translation to match them; correct pairs turn green, wrong pairs flash red. The game updates SM-2 progress for each matched word.
+- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account. A user-supplied local LLM URL must be a public `http(s)` address — internal/loopback/link-local targets are rejected (and blocked at connect time) to prevent server-side request forgery. Operators who run a trusted local model on loopback should configure it via the server-side `LOCAL_LLM_URL` env var instead.
 
 ## Auto-translate (DeepL)
 
@@ -397,6 +449,36 @@ sudo nginx -t && sudo systemctl reload nginx
 
 just running `make release` is good enough now to build the binary, deploy it and restart the service
 
+### Backups
+
+The database is a single SQLite file, so backups are simple. A scheduled nightly
+backup with retention is provided:
+
+```bash
+sudo cp deploy/backup.sh /opt/vocab-trainer/backup.sh
+sudo cp deploy/vocab-backup.service /etc/systemd/system/
+sudo cp deploy/vocab-backup.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now vocab-backup.timer
+```
+
+`deploy/backup.sh` uses the SQLite online-backup API (`sqlite3 .backup`), which
+takes a consistent snapshot while the server is running (safe with WAL mode). It
+writes timestamped copies to `BACKUP_DIR` (default `data/backups/`) and prunes
+files older than `RETAIN_DAYS` (default 14). The `vocab-backup.timer` runs it
+nightly.
+
+**Restore** — stop the server, copy a backup over the live DB, and restart:
+
+```bash
+sudo systemctl stop vocab-trainer
+make restore FROM=data/backups/vocab-2026-06-15_033000.sq3   # or: cp <backup> data/vocab.db
+sudo systemctl start vocab-trainer
+```
+
+The backup/restore round-trip is covered by a unit test
+(`TestBackupRestore_RoundTrip`) that exercises the same online-backup primitive.
+
 ## Text-to-speech (TTS)
 
 Audio is generated using the Microsoft Edge neural TTS WebSocket API (`zh-CN-XiaoxiaoNeural` voice) — implemented directly in Go with no Python dependency or API key required. MP3 files are cached in `AUDIO_DIR` (default: `data/audio/`) and served by the Go server.
@@ -473,8 +555,14 @@ vocabulary_trainer/
 |---|---|---|
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params) |
 | `POST` | `/api/quiz/answer` | Submit an answer |
+| `GET` | `/api/quiz/match-game` | Get up to 3 recent confusion pairs for the match mini-game (empty if < 3 pairs in last 7 days) |
+| `POST` | `/api/quiz/match-answer` | Submit a match-game result (`zh_word_id`, `correct`) — updates SM-2 progress |
+| `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress |
+| `GET` | `/api/quiz/langs` | List the distinct translation languages available |
 | `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7) |
 | `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |
+| `POST` | `/api/quiz/acknowledge-random` | Acknowledge a random subset of new words (start-training count) |
+| `POST` | `/api/quiz/advance` | Advance due dates / move past the current card |
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
@@ -486,7 +574,9 @@ vocabulary_trainer/
 | `PUT` | `/api/words/{id}` | Update a word |
 | `DELETE` | `/api/words/{id}` | Delete a word |
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
+| `POST` | `/api/words/{id}/review` | Flag a word for review |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
+| `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |

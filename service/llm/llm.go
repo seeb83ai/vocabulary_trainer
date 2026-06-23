@@ -13,6 +13,17 @@ import (
 	"time"
 )
 
+// truncateBody caps an upstream response body so error messages and server logs
+// don't carry kilobytes of provider output (which must never be reflected to
+// clients verbatim).
+func truncateBody(b []byte) string {
+	const max = 200
+	if len(b) > max {
+		return string(b[:max]) + "…(truncated)"
+	}
+	return string(b)
+}
+
 // Request holds the prompt for an LLM call.
 // System is an optional high-trust instruction; User is the (potentially
 // user-influenced) message. Keeping them separate lets each provider place
@@ -60,7 +71,18 @@ func NewClientFromConfig(provider, apiKey, localURL string) Client {
 		if url == "" || model == "" {
 			return nil
 		}
-		return &localClient{baseURL: url, model: model, apiKey: apiKey, httpClient: http.DefaultClient}
+		// A per-user localURL is untrusted input: validate it and dial through
+		// a client that refuses internal addresses (SSRF guard). When url comes
+		// from the operator-set LOCAL_LLM_URL env var it is trusted and may be
+		// loopback (e.g. a local Ollama), so only enforce on user-supplied URLs.
+		client := http.DefaultClient
+		if localURL != "" {
+			if err := ValidateExternalURL(localURL); err != nil {
+				return nil
+			}
+			client = safeOutboundClient()
+		}
+		return &localClient{baseURL: url, model: model, apiKey: apiKey, httpClient: client}
 	}
 	return nil
 }
@@ -173,7 +195,7 @@ func (c *openAIClient) Generate(ctx context.Context, req Request) (string, error
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("openai: status %d: %s", resp.StatusCode, raw)
+		return "", fmt.Errorf("openai: status %d: %s", resp.StatusCode, truncateBody(raw))
 	}
 
 	var result struct {
@@ -244,7 +266,7 @@ func (c *anthropicClient) Generate(ctx context.Context, req Request) (string, er
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("anthropic: status %d: %s", resp.StatusCode, raw)
+		return "", fmt.Errorf("anthropic: status %d: %s", resp.StatusCode, truncateBody(raw))
 	}
 
 	var result struct {
@@ -282,7 +304,9 @@ func (c *geminiClient) Generate(ctx context.Context, req Request) (string, error
 	if base == "" {
 		base = "https://generativelanguage.googleapis.com"
 	}
-	url := fmt.Sprintf("%s/v1beta/models/gemini-1.5-flash:generateContent?key=%s", base, c.apiKey)
+	// Pass the API key in a header rather than the query string so it can't leak
+	// into request logs, proxies, or error messages that include the URL.
+	url := fmt.Sprintf("%s/v1beta/models/gemini-1.5-flash:generateContent", base)
 
 	payload := map[string]any{
 		"contents": []map[string]any{
@@ -301,6 +325,7 @@ func (c *geminiClient) Generate(ctx context.Context, req Request) (string, error
 		return "", err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", c.apiKey)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -309,7 +334,7 @@ func (c *geminiClient) Generate(ctx context.Context, req Request) (string, error
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("gemini: status %d: %s", resp.StatusCode, raw)
+		return "", fmt.Errorf("gemini: status %d: %s", resp.StatusCode, truncateBody(raw))
 	}
 
 	var result struct {
@@ -359,9 +384,9 @@ func (c *localClient) Generate(_ context.Context, req Request) (string, error) {
 		"reasoning": map[string]any{"effort": "minimal"},
 	}
 
-	log.Printf("%v\n", payload)
-
 	body, _ := json.Marshal(payload)
+
+	log.Printf("local: POST %s/v1/responses model=%s (%d bytes payload)", c.baseURL, c.model, len(body))
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/responses", bytes.NewReader(body))
 	if err != nil {
@@ -379,7 +404,7 @@ func (c *localClient) Generate(_ context.Context, req Request) (string, error) {
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("local: status %d: %s", resp.StatusCode, raw)
+		return "", fmt.Errorf("local: status %d: %s", resp.StatusCode, truncateBody(raw))
 	}
 
 	var result struct {

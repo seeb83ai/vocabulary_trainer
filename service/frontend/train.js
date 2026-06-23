@@ -4,10 +4,19 @@
 let userPrimaryLang = 'en';
 let userSecondaryLang = '';
 let acceptCorrectMode = 'typo';
+let skipNewWordsVisible = true;
+let _gamificationEnabled = false;
+let _gamificationFrequencyMs = 5 * 60 * 1000;
+let _lastGameShownAt = 0;
 const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
   acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
+  skipNewWordsVisible = st?.skip_new_words_visible !== false;
+  _gamificationEnabled = !!st?.gamification_enabled;
+  _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
+  const btn = document.getElementById('new-word-skip-btn');
+  if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
 }).catch(() => {});
 
 function levenshtein(a, b) {
@@ -27,6 +36,22 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+function shouldShowAcceptBtn(answer, normCorrects, mode) {
+  if (!answer || answer.trim() === '') return false;
+  if (mode === 'always') return true;
+  if (mode === 'typo') return normCorrects.some(c => levenshtein(answer.toLowerCase().trim(), c.toLowerCase().trim()) === 1);
+  return false;
+}
+
+// Splits a component correct_answers object ({lang: "def1, def2"}) into
+// individual normalised alternatives, mirroring CheckComponentAnswer's `,`/`;` split.
+function splitComponentDefs(correctAnswersObj) {
+  return Object.values(correctAnswersObj || {})
+    .flatMap(def => def.split(/[,;]/))
+    .map(s => s.toLowerCase().trim())
+    .filter(s => s.length > 0);
+}
+
 const HMM_TYPE_COLORS = {
   actor:     'bg-purple-100 text-purple-700',
   location:  'bg-blue-100 text-blue-700',
@@ -37,6 +62,65 @@ const HMM_TYPE_COLORS = {
 let currentCard = null;
 let isSubmitted = false;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
+
+// IDs of the last two answered vocabulary words, used to avoid immediate re-show.
+let recentWordIDs = [];
+
+// ── Training-time tracking ──────────────────────────────────────────────────
+// Counts seconds while this tab is visible, the window has focus, and a card
+// is available to train. Timer pauses on success-state / empty-state.
+let _trainStartMs = null;
+let _pendingSeconds = 0;
+let _noCardsPaused = false; // true while no cards are due (success/empty state)
+
+function _isTrainActive() {
+  return document.visibilityState === 'visible' && document.hasFocus() && !_noCardsPaused;
+}
+
+function _onFocusOrVisibility() {
+  if (_isTrainActive()) {
+    if (_trainStartMs === null) _trainStartMs = Date.now();
+  } else if (_trainStartMs !== null) {
+    _pendingSeconds += Math.floor((Date.now() - _trainStartMs) / 1000);
+    _trainStartMs = null;
+  }
+}
+
+async function _flushTime() {
+  if (_trainStartMs !== null) {
+    _pendingSeconds += Math.floor((Date.now() - _trainStartMs) / 1000);
+    _trainStartMs = null;
+  }
+  // Restart the timer immediately so time keeps accumulating across card loads
+  if (_isTrainActive()) _trainStartMs = Date.now();
+  if (_pendingSeconds <= 0) return;
+  const secs = _pendingSeconds;
+  _pendingSeconds = 0;
+  try {
+    await apiFetch('/api/quiz/record-time', { method: 'POST', body: JSON.stringify({ seconds: secs }) });
+  } catch (_) {}
+}
+
+document.addEventListener('visibilitychange', _onFocusOrVisibility);
+window.addEventListener('focus', _onFocusOrVisibility);
+window.addEventListener('blur', _onFocusOrVisibility);
+window.addEventListener('beforeunload', () => {
+  if (_trainStartMs !== null) {
+    _pendingSeconds += Math.floor((Date.now() - _trainStartMs) / 1000);
+    _trainStartMs = null;
+  }
+  if (_pendingSeconds <= 0) return;
+  const secs = _pendingSeconds;
+  _pendingSeconds = 0;
+  navigator.sendBeacon(
+    '/api/quiz/record-time',
+    new Blob([JSON.stringify({ seconds: secs })], { type: 'application/json' }),
+  );
+});
+document.addEventListener('DOMContentLoaded', () => {
+  if (_isTrainActive()) _trainStartMs = Date.now();
+});
+// ── End training-time tracking ───────────────────────────────────────────────
 let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 let selectedBucket = localStorage.getItem('quizBucket') || '';
 let selectedLangs = JSON.parse(localStorage.getItem('quizLangs') || '["en"]');
@@ -155,6 +239,13 @@ async function loadStats() {
 }
 
 async function loadNextCard() {
+  _noCardsPaused = true;  // pause until we confirm a card is ready
+  await _flushTime();
+  // Track the word we're leaving so it isn't immediately re-shown.
+  // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
+  if (currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
+    recentWordIDs = [currentCard.word_id, ...recentWordIDs].slice(0, 2);
+  }
   isSubmitted = false;
   hide('card-area');
   hide('result-area');
@@ -215,6 +306,7 @@ async function loadNextCard() {
     if (skipNewWords) params.set('skip_new', 'true');
     if (!includeMnemonics) params.set('mnemonics', 'false');
     if (includeComponents) params.set('trainComponents', '1');
+    if (recentWordIDs.length) params.set('exclude', recentWordIDs.join(','));
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
@@ -248,6 +340,7 @@ async function loadNextCard() {
   if (currentCard.mode === 'new_word') {
     hide('card-area');
     hide('new-component-area');
+    _noCardsPaused = false; _onFocusOrVisibility();
     show('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
@@ -282,6 +375,7 @@ async function loadNextCard() {
   if (currentCard.card_type === 'component' && currentCard.is_new) {
     hide('card-area');
     hide('new-word-area');
+    _noCardsPaused = false; _onFocusOrVisibility();
     show('new-component-area');
     setText('new-component-char', currentCard.prompt);
     const compPinyin = currentCard.pinyin || null;
@@ -299,6 +393,7 @@ async function loadNextCard() {
   }
 
   hide('new-component-area');
+  _noCardsPaused = false; _onFocusOrVisibility();
   showCard();
   await loadStats();
 }
@@ -310,7 +405,9 @@ function showCard() {
     const compLabel = currentCard.is_also_word ? t('component.modeLabelAlsoWord') : t('component.modeLabel');
     setText('mode-label', compLabel);
     setText('prompt-word', currentCard.prompt);
-    hide('play-btn');
+    const playBtn = $('play-btn');
+    playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+    show('play-btn');
     if (currentCard.pinyin) {
       setText('pinyin-hint', currentCard.pinyin);
       show('pinyin-hint');
@@ -461,7 +558,10 @@ async function submitAnswer(e) {
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
             <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
-            <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+            <div class="flex items-center gap-2">
+              <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+              <button class="btn-confused-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+            </div>
             <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
           </div>` : '';
       breakdown.innerHTML = `
@@ -471,6 +571,10 @@ async function submitAnswer(e) {
           ${correctBox}
         </div>`;
       breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
+      const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
+      if (confusedPlayBtn) {
+        confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
+      }
       show('word-breakdown');
 
       if (!isEmpty) {
@@ -499,15 +603,8 @@ async function submitAnswer(e) {
       }
 
       // Show "Accept as correct" button based on user's mode setting.
-      const normAnswer = answer.toLowerCase().trim();
       const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
-      let showAcceptBtn = false;
-      if (acceptCorrectMode === 'always') {
-        showAcceptBtn = !isEmpty;
-      } else if (acceptCorrectMode === 'typo' && !isEmpty) {
-        showAcceptBtn = normCorrects.some(c => levenshtein(normAnswer, c) === 1);
-      }
-      if (showAcceptBtn) {
+      if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
         const acceptBtn = $('accept-correct-btn');
         acceptBtn.disabled = false;
         acceptBtn.textContent = 'Accept as correct (typo)';
@@ -717,10 +814,24 @@ function showComponentResult(resp) {
   show('word-breakdown');
 
   hide('add-translation-btn');
-  hide('result-decompose');
-  hide('result-decompose-content');
+  loadDecomposition(currentCard.prompt, 'result-decompose', 'result-decompose-toggle');
   hide('bucket-info');
   hide('streak-info');
+
+  if (!resp.correct) {
+    const answer = $('answer-input').value;
+    const normCorrects = splitComponentDefs(resp.correct_answers);
+    if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
+      const acceptBtn = $('accept-correct-btn');
+      acceptBtn.disabled = false;
+      acceptBtn.textContent = 'Accept as correct (typo)';
+      show('accept-correct-btn');
+    } else {
+      hide('accept-correct-btn');
+    }
+  } else {
+    hide('accept-correct-btn');
+  }
 
   const hmmEl = $('result-hmm');
   if (resp.scene_text) {
@@ -1057,19 +1168,29 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   $('answer-form').addEventListener('submit', submitAnswer);
-  $('next-btn').addEventListener('click', loadNextCard);
+  $('next-btn').addEventListener('click', async () => {
+    await _maybeShowMatchGame();
+    loadNextCard();
+  });
   $('accept-correct-btn').addEventListener('click', async () => {
     const btn = $('accept-correct-btn');
     btn.disabled = true;
     try {
-      await apiFetch('/api/quiz/accept-correct', {
-        method: 'POST',
-        body: JSON.stringify({
-          word_id: currentCard.word_id,
-          mode: currentCard.mode,
-          langs: selectedLangs,
-        }),
-      });
+      if (currentCard.card_type === 'component') {
+        await apiFetch('/api/component/accept-correct', {
+          method: 'POST',
+          body: JSON.stringify({ character: currentCard.prompt }),
+        });
+      } else {
+        await apiFetch('/api/quiz/accept-correct', {
+          method: 'POST',
+          body: JSON.stringify({
+            word_id: currentCard.word_id,
+            mode: currentCard.mode,
+            langs: selectedLangs,
+          }),
+        });
+      }
       loadNextCard();
     } catch (err) {
       btn.disabled = false;
@@ -1460,3 +1581,148 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadTrainSettings().then(() => loadNextCard());
 });
+
+// ── Match Game ───────────────────────────────────────────────────────────────
+
+async function _maybeShowMatchGame() {
+  if (!_gamificationEnabled) return;
+  if (Date.now() - _lastGameShownAt < _gamificationFrequencyMs) return;
+  let data;
+  try {
+    data = await apiFetch('/api/quiz/match-game');
+  } catch {
+    return;
+  }
+  if (!data?.words || data.words.length < 2) return;
+  _lastGameShownAt = Date.now();
+  await showMatchGame(data.words);
+}
+
+// showMatchGame accepts the flat words array returned by GET /api/quiz/match-game.
+// Each word: { zh_word_id, zh_text, pinyin, translations }
+// Left column shows Chinese words; right column shows one translation each, shuffled.
+function showMatchGame(words) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.id = 'match-game-overlay';
+    overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+
+    // Build left items (Chinese) and right items (first EN translation), indexed by position.
+    const leftItems = words.map((w, i) => ({
+      idx: i,
+      zh_word_id: w.zh_word_id,
+      text: w.zh_text,
+      pinyin: w.pinyin,
+    }));
+    const rightItems = words.map((w, i) => ({
+      idx: i,   // idx matches leftItems position — used to identify the correct pair
+      text: Object.values(w.translations || {})[0]?.[0] || w.zh_text,
+    }));
+    const shuffledRight = [...rightItems].sort(() => Math.random() - 0.5);
+
+    let selectedLeft = null;
+    const matched = new Set();
+
+    function renderBox(text, sub) {
+      const div = document.createElement('div');
+      div.className = 'border-2 border-gray-300 rounded-xl p-3 cursor-pointer select-none transition text-center min-h-[72px] flex flex-col items-center justify-center';
+      const t = document.createElement('div');
+      t.className = 'font-semibold text-gray-800';
+      t.textContent = text;
+      div.appendChild(t);
+      if (sub) {
+        const s = document.createElement('div');
+        s.className = 'text-xs text-gray-500 mt-1';
+        s.textContent = sub;
+        div.appendChild(s);
+      }
+      return div;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4';
+    modal.innerHTML = '<h2 class="text-lg font-semibold text-gray-800 mb-4 text-center">Match the pairs</h2>';
+
+    const grid = document.createElement('div');
+    grid.className = 'grid grid-cols-2 gap-3 mb-4';
+
+    const leftBoxes = leftItems.map(item => renderBox(item.text, item.pinyin));
+    const rightBoxes = shuffledRight.map(item => renderBox(item.text));
+
+    leftBoxes.forEach((box, lIdx) => {
+      box.addEventListener('click', () => {
+        if (matched.has(lIdx)) return;
+        leftBoxes.forEach(b => b.classList.remove('border-blue-500', 'bg-blue-50'));
+        selectedLeft = lIdx;
+        box.classList.add('border-blue-500', 'bg-blue-50');
+      });
+    });
+
+    rightBoxes.forEach((box, rIdx) => {
+      box.addEventListener('click', async () => {
+        if (selectedLeft === null) return;
+        const lIdx = selectedLeft;
+        if (matched.has(lIdx)) return;
+        const rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
+
+        if (rightIdx === lIdx) {
+          // Correct match
+          leftBoxes[lIdx].classList.remove('border-blue-500', 'bg-blue-50');
+          leftBoxes[lIdx].classList.add('border-green-500', 'bg-green-50', 'cursor-default');
+          box.classList.add('border-green-500', 'bg-green-50', 'cursor-default');
+          matched.add(lIdx);
+          selectedLeft = null;
+          try {
+            await apiFetch('/api/quiz/match-answer', {
+              method: 'POST',
+              body: JSON.stringify({ zh_word_id: leftItems[lIdx].zh_word_id, correct: true }),
+            });
+          } catch { /* best effort */ }
+          if (matched.size === words.length) {
+            setTimeout(() => { overlay.remove(); resolve(); }, 600);
+          }
+        } else {
+          // Wrong match — flash red both boxes, then reset
+          leftBoxes[lIdx].classList.add('border-red-500', 'bg-red-50');
+          box.classList.add('border-red-500', 'bg-red-50');
+          setTimeout(() => {
+            leftBoxes[lIdx].classList.remove('border-red-500', 'bg-red-50', 'border-blue-500', 'bg-blue-50');
+            box.classList.remove('border-red-500', 'bg-red-50');
+            selectedLeft = null;
+          }, 800);
+          try {
+            await apiFetch('/api/quiz/match-answer', {
+              method: 'POST',
+              body: JSON.stringify({ zh_word_id: leftItems[lIdx].zh_word_id, correct: false }),
+            });
+            await apiFetch('/api/quiz/match-answer', {
+              method: 'POST',
+              body: JSON.stringify({ zh_word_id: leftItems[rightIdx].zh_word_id, correct: false }),
+            });
+          } catch { /* best effort */ }
+        }
+      });
+    });
+
+    const leftCol = document.createElement('div');
+    leftCol.className = 'space-y-3';
+    leftBoxes.forEach(b => leftCol.appendChild(b));
+
+    const rightCol = document.createElement('div');
+    rightCol.className = 'space-y-3';
+    rightBoxes.forEach(b => rightCol.appendChild(b));
+
+    grid.appendChild(leftCol);
+    grid.appendChild(rightCol);
+    modal.appendChild(grid);
+
+    const skipBtn = document.createElement('button');
+    skipBtn.textContent = 'Skip game';
+    skipBtn.className = 'w-full text-sm text-gray-400 hover:text-gray-600 mt-2';
+    skipBtn.addEventListener('click', () => { overlay.remove(); resolve(); });
+    modal.appendChild(skipBtn);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  });
+}

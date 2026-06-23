@@ -26,6 +26,7 @@ const I18N = {
     // Quiz modes
     'mode.progressive': 'Progressive',
     'mode.random': 'Random',
+    'mode.cycle': 'Cycle',
     'mode.transl_to_zh': 'To Chinese',
     'mode.zh_to_transl': 'Chinese',
     'mode.zh_pinyin_to_transl': 'Chinese + Pinyin',
@@ -217,6 +218,7 @@ const I18N = {
     'stats.accuracy': 'Accuracy',
     'stats.wordsSeen': 'Words Seen',
     'stats.bestStreak': 'Best Streak',
+    'stats.trainingTime': 'Time',
     'stats.loading': 'Loading...',
     'stats.failedToLoad': 'Failed to load stats.',
     'stats.noDataLast14': 'No data in the last 14 days.',
@@ -434,6 +436,7 @@ const I18N = {
     // Quiz modes
     'mode.progressive': '渐进',
     'mode.random': '随机',
+    'mode.cycle': '循环',
     'mode.transl_to_zh': '译中文',
     'mode.zh_to_transl': '中文',
     'mode.zh_pinyin_to_transl': '中文＋拼音',
@@ -623,6 +626,7 @@ const I18N = {
     'stats.accuracy': '准确率',
     'stats.wordsSeen': '已见词汇',
     'stats.bestStreak': '最佳连续',
+    'stats.trainingTime': '时长',
     'stats.loading': '加载中...',
     'stats.failedToLoad': '加载统计失败。',
     'stats.noDataLast14': '最近14天无数据。',

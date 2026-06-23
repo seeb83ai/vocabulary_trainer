@@ -142,6 +142,35 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await page.locator('#next-btn').click();
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
+
+  test('wrong answer is not repeated in the next two cards', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Record the first card shown, then answer it wrong
+    const firstPrompt = await page.locator('#prompt-word').textContent();
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    // Go to the second card — must NOT be the same word we just answered wrong
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    const secondPrompt = await page.locator('#prompt-word').textContent();
+    expect(secondPrompt).not.toBe(firstPrompt);
+
+    // Answer the second card (wrong to keep things simple)
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    // Go to the third card — must still NOT be the originally wrong-answered word
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    const thirdPrompt = await page.locator('#prompt-word').textContent();
+    expect(thirdPrompt).not.toBe(firstPrompt);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

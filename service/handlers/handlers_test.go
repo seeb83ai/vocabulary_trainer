@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -110,11 +112,14 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
 	r.Post("/api/quiz/acknowledge-random", quizH.AcknowledgeRandom)
 	r.Post("/api/quiz/advance", quizH.Advance)
+	r.Get("/api/quiz/match-game", quizH.MatchGame)
+	r.Post("/api/quiz/match-answer", quizH.MatchAnswer)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/langs", quizH.Langs)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
+	r.Post("/api/quiz/record-time", quizH.RecordTime)
 	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
@@ -139,6 +144,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/translate", translateH.Translate)
 	r.Get("/api/components", componentH.List)
 	r.Post("/api/component/answer", componentH.Answer)
+	r.Post("/api/component/accept-correct", componentH.AcceptCorrect)
 	r.Post("/api/component/seen", componentH.Seen)
 	r.Post("/api/component/skip", componentH.Skip)
 	r.Get("/api/component/stats", componentH.Stats)
@@ -254,8 +260,8 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	s := openTestDB(t)
 	// Word with no pinyin — zh_pinyin_to_en must never be returned
 	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "", // no pinyin
+		ZhText:       "你好",
+		Pinyin:       "", // no pinyin
 		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if err != nil {
@@ -342,10 +348,35 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 
 	// Build a router with maxNew=1 (cap is now reached).
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 1}
+	authH, _ := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
+	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(2))
 	r.Get("/api/quiz/next", quizH.Next)
 	r.Get("/api/quiz/stats", quizH.Stats)
+	r.Get("/api/settings", settingsH.Get)
+	r.Patch("/api/settings", settingsH.Patch)
+
+	// Align the per-user setting with the server cap so stats reflects 1.
+	type settingsPatch struct {
+		PrimaryLang        string `json:"primary_lang"`
+		ProgNew            string `json:"prog_new"`
+		ProgTierStruggling string `json:"prog_tier_struggling"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
+		ProgTierPracticing string `json:"prog_tier_practicing"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
+	}
+	do(t, r, http.MethodPatch, "/api/settings", settingsPatch{
+		PrimaryLang: "en", ProgNew: "transl_to_zh",
+		ProgTierStruggling: "transl_to_zh", ProgTierLearning: "zh_pinyin_to_transl",
+		ProgTierPracticing: "zh_to_transl", ProgTierMastered: "random",
+		NewWordMode0: "transl_to_zh", NewWordMode1: "transl_to_zh", NewWordMode2: "zh_to_transl",
+		MaxNewWordsPerDay: 1,
+	})
 
 	// Only id1 (already introduced) should be returned — id2 is new and the cap is reached.
 	rec := do(t, r, "GET", "/api/quiz/next", nil)
@@ -559,8 +590,8 @@ func TestWordsList_Search(t *testing.T) {
 func TestWordsCreate_Valid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}},
 	})
 	if rec.Code != http.StatusCreated {
@@ -596,7 +627,7 @@ func TestWordsCreate_NoTranslations(t *testing.T) {
 func TestWordsCreate_DeOnlyValid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "你好",
+		ZhText:       "你好",
 		Translations: map[string][]string{"de": {"Hallo"}},
 	})
 	if rec.Code != http.StatusCreated {
@@ -622,7 +653,7 @@ func TestWordsCreate_StartTraining(t *testing.T) {
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:        "学习",
 		Pinyin:        "xuéxí",
-		Translations: map[string][]string{"en": {"to study"}},
+		Translations:  map[string][]string{"en": {"to study"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusCreated {
@@ -648,7 +679,7 @@ func TestWordsUpdate_StartTraining(t *testing.T) {
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
 		ZhText:        "你好",
 		Pinyin:        "nǐ hǎo",
-		Translations: map[string][]string{"en": {"hello"}},
+		Translations:  map[string][]string{"en": {"hello"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusOK {
@@ -703,8 +734,8 @@ func TestWordsUpdate_Valid(t *testing.T) {
 	r := newRouter(s)
 
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好吗",
-		Pinyin:  "nǐ hǎo ma",
+		ZhText:       "你好吗",
+		Pinyin:       "nǐ hǎo ma",
 		Translations: map[string][]string{"en": {"how are you"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -720,7 +751,7 @@ func TestWordsUpdate_Valid(t *testing.T) {
 func TestWordsUpdate_NotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "PUT", "/api/words/9999", models.UpdateWordRequest{
-		ZhText:  "test",
+		ZhText:       "test",
 		Translations: map[string][]string{"en": {"test"}},
 	})
 	if rec.Code != http.StatusNotFound {
@@ -1122,7 +1153,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		p, _ := s.GetSM2Progress(ctx, id)
 		p.TotalCorrect = correct
 		p.TotalAttempts = attempts
-		p.LearningNewWord = false // graduated: use progressive tier logic
+		p.LearningNewWord = false                    // graduated: use progressive tier logic
 		p.DueDate = time.Now().UTC().Add(-time.Hour) // ensure due
 		s.UpdateSM2Progress(ctx, *p)
 	}
@@ -1166,6 +1197,36 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		if !validModes[card.Mode] {
 			t.Errorf("mastered (90%% 10 attempts): got invalid mode %s", card.Mode)
 		}
+	}
+}
+
+// ── GET /api/quiz/next?exclude=... ───────────────────────────────────────────
+
+func TestQuizNext_ExcludeParam_SkipsRecentWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	idA := seedWord(t, s, "一", "", []string{"one"})
+	idB := seedWord(t, s, "二", "", []string{"two"})
+
+	// Acknowledge both words so they are immediately due.
+	if err := s.AcknowledgeWord(ctx, int64(2), idA); err != nil {
+		t.Fatalf("AcknowledgeWord idA: %v", err)
+	}
+	if err := s.AcknowledgeWord(ctx, int64(2), idB); err != nil {
+		t.Fatalf("AcknowledgeWord idB: %v", err)
+	}
+
+	// Excluding idA should return idB.
+	rec := do(t, r, "GET", fmt.Sprintf("/api/quiz/next?exclude=%d", idA), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.WordID != idB {
+		t.Errorf("exclude=%d: want word_id=%d, got word_id=%d", idA, idB, card.WordID)
 	}
 }
 
@@ -1340,8 +1401,8 @@ func TestMarkReview_ClearedOnUpdate(t *testing.T) {
 	do(t, r, "POST", fmt.Sprintf("/api/words/%d/review", id), nil)
 
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -1528,6 +1589,45 @@ func TestDailyStats_BucketCounts(t *testing.T) {
 	}
 	if day.BucketMastered != 0 {
 		t.Errorf("bucket_mastered: want 0, got %d", day.BucketMastered)
+	}
+}
+
+func TestRecordTime_AccumulatesAndAppearsInDailyStats(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/record-time", map[string]any{"seconds": 60})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, "POST", "/api/quiz/record-time", map[string]any{"seconds": 30})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/daily-stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DailyStatsResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Days) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(resp.Days))
+	}
+	if resp.Days[0].TrainingSeconds != 90 {
+		t.Errorf("training_seconds: want 90, got %d", resp.Days[0].TrainingSeconds)
+	}
+}
+
+func TestRecordTime_RejectsInvalidSeconds(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	for _, secs := range []int{0, -1, 3601} {
+		rec := do(t, r, "POST", "/api/quiz/record-time", map[string]any{"seconds": secs})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("seconds=%d: want 400, got %d", secs, rec.Code)
+		}
 	}
 }
 
@@ -2013,7 +2113,7 @@ func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
 
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:        "学",
-		Translations: map[string][]string{"en": {"study"}},
+		Translations:  map[string][]string{"en": {"study"}},
 		StartTraining: true,
 	})
 	if rec.Code != http.StatusCreated {
@@ -2040,7 +2140,7 @@ func TestWordsCreate_ZhTextTooLong(t *testing.T) {
 		long201 += "好"
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  long201,
+		ZhText:       long201,
 		Translations: map[string][]string{"en": {"ok"}},
 	})
 	if rec.Code != http.StatusBadRequest {
@@ -2070,9 +2170,9 @@ func TestWordsCreate_TooManyTags(t *testing.T) {
 		tags[i] = fmt.Sprintf("tag%d", i)
 	}
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
-		ZhText:  "好",
+		ZhText:       "好",
 		Translations: map[string][]string{"en": {"ok"}},
-		Tags:    tags,
+		Tags:         tags,
 	})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for > 20 tags, got %d", rec.Code)
@@ -2413,8 +2513,8 @@ func TestQuizLangs_ENandDE(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2443,8 +2543,8 @@ func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2473,8 +2573,8 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
@@ -2505,8 +2605,8 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2537,8 +2637,8 @@ func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
 	})
 	if err != nil {
@@ -2572,8 +2672,8 @@ func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {
 
 	// Re-save with the exact same zh_text — should not return 500.
 	rec := do(t, r, "PUT", fmt.Sprintf("/api/words/%d", id), models.UpdateWordRequest{
-		ZhText:  "你好",
-		Pinyin:  "nǐ hǎo",
+		ZhText:       "你好",
+		Pinyin:       "nǐ hǎo",
 		Translations: map[string][]string{"en": {"hello", "hi"}},
 	})
 	if rec.Code != http.StatusOK {
@@ -2597,8 +2697,8 @@ func TestWordsList_MissingLangDE(t *testing.T) {
 
 	// Word with both EN and DE.
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
-		ZhText:  "再见",
-		Pinyin:  "zàijiàn",
+		ZhText:       "再见",
+		Pinyin:       "zàijiàn",
 		Translations: map[string][]string{"en": {"goodbye"}, "de": {"auf Wiedersehen"}},
 	})
 	if err != nil {
@@ -2726,6 +2826,95 @@ func TestAudio_NotImmutable(t *testing.T) {
 	}
 	if !strings.Contains(cc, "must-revalidate") && !strings.Contains(cc, "no-cache") {
 		t.Errorf("Cache-Control should require revalidation (must-revalidate or no-cache): %q", cc)
+	}
+}
+
+// TestServeAudio_OtherUserForbidden verifies that the cached-audio path enforces
+// word ownership: a user must not be able to fetch a cached <id>.mp3 for a word
+// they do not own (IDOR). The ownership check must run BEFORE serving the file.
+func TestServeAudio_OtherUserForbidden(t *testing.T) {
+	s := openTestDB(t)
+	// Word belongs to user 2 (seedWord default owner).
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{Store: s, AudioDir: tmpDir}
+	// Pre-seed a cached MP3 so the lazy-generation branch is skipped.
+	if err := os.WriteFile(tmpDir+"/"+fmt.Sprint(id)+".mp3", []byte("fake-mp3"), 0644); err != nil {
+		t.Fatalf("seed mp3: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(999)) // a different user
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/audio/%d", id), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for non-owner, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "fake-mp3") {
+		t.Errorf("must not serve cached audio to non-owner")
+	}
+}
+
+// TestGenerateAsync_LogsErrorOnFailure asserts the fire-and-forget TTS helper
+// logs a failure with word-ID context instead of swallowing the error.
+func TestGenerateAsync_LogsErrorOnFailure(t *testing.T) {
+	// Force generate() to fail deterministically: point AudioDir at a path whose
+	// parent is a regular file, so os.MkdirAll cannot create the directory.
+	tmp := t.TempDir()
+	blocker := filepath.Join(tmp, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0644); err != nil {
+		t.Fatalf("seed blocker: %v", err)
+	}
+	audioH := &handlers.AudioHandler{AudioDir: filepath.Join(blocker, "audio")}
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	audioH.GenerateAsync(4242, "你好")
+
+	if !strings.Contains(buf.String(), "async tts generate word 4242") {
+		t.Fatalf("expected async tts error log with word id, got: %q", buf.String())
+	}
+}
+
+// TestServeAudio_TTSFailureLogged verifies that a TTS synthesis failure is
+// logged with word-ID context (and surfaced as 503) instead of being swallowed.
+func TestServeAudio_TTSFailureLogged(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(old)
+
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{
+		Store:    s,
+		AudioDir: tmpDir,
+		Synth:    func(string) ([]byte, error) { return nil, fmt.Errorf("tts boom") },
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/{id}", audioH.ServeAudio)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/audio/%d", id), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("want 503, got %d", rec.Code)
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, fmt.Sprint(id)) || !strings.Contains(logged, "tts boom") {
+		t.Errorf("expected TTS failure logged with word-ID context, got: %q", logged)
 	}
 }
 
@@ -3117,7 +3306,9 @@ func TestImport_DeFlag(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
-	var resp struct{ Imported int `json:"imported"` }
+	var resp struct {
+		Imported int `json:"imported"`
+	}
 	decodeJSON(t, rec, &resp)
 	if resp.Imported != 1 {
 		t.Fatalf("want imported=1, got %d", resp.Imported)
@@ -3184,7 +3375,9 @@ func TestImport_ApplyCustomTags(t *testing.T) {
 
 	// Verify both tags are on the imported word
 	listRec := do(t, r, "GET", "/api/words/?tags=my-review", nil)
-	var listResp struct{ Total int `json:"total"` }
+	var listResp struct {
+		Total int `json:"total"`
+	}
 	decodeJSON(t, listRec, &listResp)
 	if listResp.Total != 1 {
 		t.Errorf("want 1 word tagged my-review, got %d", listResp.Total)
@@ -3937,6 +4130,21 @@ func TestHMMBreakdown_Empty(t *testing.T) {
 	}
 }
 
+// baseSettingsPatch returns a minimal valid PATCH /api/settings payload.
+func baseSettingsPatch() map[string]any {
+	return map[string]any{
+		"primary_lang":         "en",
+		"prog_new":             "zh_to_transl",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "zh_pinyin_to_transl",
+		"new_word_mode_2":      "zh_to_transl",
+	}
+}
+
 // ── GET /api/settings ────────────────────────────────────────────────────────
 
 func TestGetSettings_Defaults(t *testing.T) {
@@ -3976,6 +4184,26 @@ func TestGetSettings_Defaults(t *testing.T) {
 	}
 	if !st.NewWordRequireTrans {
 		t.Error("want new_word_require_trans=true by default")
+	}
+}
+
+// PutAPIKeys must reject a local LLM URL that points at an internal address
+// (SSRF guard) before doing anything else.
+func TestPutAPIKeys_RejectsInternalLLMURL(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := map[string]any{
+		"llm_provider":  "local",
+		"llm_local_url": "http://169.254.169.254/latest/meta-data/",
+		"llm_key":       "x",
+	}
+	rec := do(t, r, http.MethodPut, "/api/settings/api-keys", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for internal llm_local_url, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "llm_local_url") {
+		t.Errorf("want llm_local_url error, got %s", rec.Body.String())
 	}
 }
 
@@ -4025,17 +4253,17 @@ func TestPatchSettings_NewWordRequire(t *testing.T) {
 	r := newRouter(s)
 
 	payload := map[string]interface{}{
-		"primary_lang":          "en",
-		"secondary_lang":        "de",
-		"prog_new":              "transl_to_zh",
-		"prog_tier_struggling":  "transl_to_zh",
-		"prog_tier_learning":    "zh_pinyin_to_transl",
-		"prog_tier_practicing":  "zh_to_transl",
-		"prog_tier_mastered":    "random",
-		"new_word_mode_0":       "transl_to_zh",
-		"new_word_mode_1":       "transl_to_zh",
-		"new_word_mode_2":       "zh_to_transl",
-		"new_word_require_zh":   false,
+		"primary_lang":           "en",
+		"secondary_lang":         "de",
+		"prog_new":               "transl_to_zh",
+		"prog_tier_struggling":   "transl_to_zh",
+		"prog_tier_learning":     "zh_pinyin_to_transl",
+		"prog_tier_practicing":   "zh_to_transl",
+		"prog_tier_mastered":     "random",
+		"new_word_mode_0":        "transl_to_zh",
+		"new_word_mode_1":        "transl_to_zh",
+		"new_word_mode_2":        "zh_to_transl",
+		"new_word_require_zh":    false,
 		"new_word_require_trans": true,
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
@@ -4141,7 +4369,7 @@ func TestQuizNext_UsesUserPrimaryLang(t *testing.T) {
 		"prog_new": "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
 		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
 		"prog_tier_mastered": "random",
-		"new_word_mode_0": "transl_to_zh", "new_word_mode_1": "transl_to_zh",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh",
 		"new_word_mode_2": "zh_to_transl",
 	}
 	do(t, r, http.MethodPatch, "/api/settings", payload)
@@ -4325,7 +4553,7 @@ func TestComponentUpdateTranslation_Sets204(t *testing.T) {
 		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	defs, err := s.GetComponentDefinitions(ctx, "水", []string{"de"})
+	defs, err := s.GetComponentDefinitions(ctx, 2, "水", []string{"de"})
 	if err != nil {
 		t.Fatalf("GetComponentDefinitions: %v", err)
 	}
@@ -4397,10 +4625,10 @@ func TestComponentGetTranslations_ReturnsMap(t *testing.T) {
 	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := s.StoreComponentTranslation("水", "en", "water"); err != nil {
+	if err := s.StoreComponentTranslation(context.Background(), 2, "水", "en", "water"); err != nil {
 		t.Fatalf("store en: %v", err)
 	}
-	if err := s.StoreComponentTranslation("水", "de", "Wasser"); err != nil {
+	if err := s.StoreComponentTranslation(context.Background(), 2, "水", "de", "Wasser"); err != nil {
 		t.Fatalf("store de: %v", err)
 	}
 
@@ -4856,6 +5084,244 @@ func TestUploadCSV_StartTraining(t *testing.T) {
 	}
 }
 
+// ── Cycle mode ────────────────────────────────────────────────────────────────
+
+func TestSettingsCycleSequence(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Default cycle_sequence should be the canonical 3-step sequence.
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET settings: want 200, got %d", rec.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	want := "zh_pinyin_to_transl,transl_to_zh,zh_to_transl"
+	if st.CycleSequence != want {
+		t.Errorf("default cycle_sequence: want %q, got %q", want, st.CycleSequence)
+	}
+
+	// PATCH with a custom sequence.
+	payload := map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "",
+		"prog_new":             "transl_to_zh",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "transl_to_zh",
+		"new_word_mode_2":      "zh_to_transl",
+		"cycle_sequence":       "transl_to_zh,zh_to_transl",
+	}
+	rec = do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Read back and verify.
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st2 models.UserSettings
+	decodeJSON(t, rec, &st2)
+	if st2.CycleSequence != "transl_to_zh,zh_to_transl" {
+		t.Errorf("after PATCH cycle_sequence: want %q, got %q", "transl_to_zh,zh_to_transl", st2.CycleSequence)
+	}
+}
+
+func TestSettingsCycleSequence_InvalidMode(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]string{
+		"primary_lang":   "en",
+		"secondary_lang": "",
+		"prog_new":       "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered": "random",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
+		"cycle_sequence": "transl_to_zh,invalid_mode",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for invalid cycle mode, got %d", rec.Code)
+	}
+}
+
+func TestQuizNext_CycleMode(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// total_attempts=1 after acknowledge → (1-1)%3=0 → zh_pinyin_to_transl
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("cycle position 0: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	}
+}
+
+func TestQuizCycleAdvances(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// Set total_attempts=2 directly so position=(2-1)%3=1 → transl_to_zh.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 2
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// total_attempts=2 → (2-1)%3=1 → transl_to_zh
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("cycle position 1: want %s, got %s", models.ModeTranslToZh, card.Mode)
+	}
+}
+
+func TestQuizCycleWraps(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Set total_attempts=4 directly so position=(4-1)%3=0 → back to step 0.
+	// AcknowledgeWord first to set first_seen_date (required for GetNextCard).
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 4
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// total_attempts=4 → (4-1)%3=0 → zh_pinyin_to_transl (wrapped back to step 0)
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("cycle wrapped: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	}
+}
+
+func TestQuizCycleCustomSequence(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	// Set a custom 2-step cycle sequence.
+	patchPayload := map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "",
+		"prog_new":             "transl_to_zh",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "transl_to_zh",
+		"new_word_mode_2":      "zh_to_transl",
+		"cycle_sequence":       "transl_to_zh,zh_to_transl",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// Custom sequence starts with transl_to_zh → position 0 = transl_to_zh
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("custom cycle position 0: want %s, got %s", models.ModeTranslToZh, card.Mode)
+	}
+}
+
+func TestQuizCycleMode_NoLearningPinyinHint(t *testing.T) {
+	// transl_to_zh in cycle mode must NOT expose the learning-phase pinyin hint,
+	// even when the word is still in the intro phase (LearningNewWord=true).
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	// Word is now LearningNewWord=true, TotalCorrect=0.
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// Step 0 of default cycle is zh_pinyin_to_transl — that's fine to have pinyin.
+	// Advance to step 1 (transl_to_zh) by bumping TotalAttempts to 2.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 2
+	p.DueDate = p.DueDate.Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for cycle step 1, got %d: %s", rec.Code, rec.Body.String())
+	}
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeTranslToZh {
+		t.Fatalf("cycle step 1: want %s, got %s", models.ModeTranslToZh, card.Mode)
+	}
+	if card.Pinyin != nil {
+		t.Errorf("cycle transl_to_zh step must not include pinyin hint, got %q", *card.Pinyin)
+	}
+}
+
 // ── Answer prev_state persistence ────────────────────────────────────────────
 
 func TestAnswerWrongStoresPrevState(t *testing.T) {
@@ -5013,6 +5479,78 @@ func TestAcceptCorrectInvalidWordID(t *testing.T) {
 	}
 }
 
+// ── POST /api/component/accept-correct ───────────────────────────────────────
+
+func TestComponentAcceptCorrect_NoState(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": "女"})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404 when no prev_state, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestComponentAcceptCorrect_RestoresProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+	// Mark as seen so it enters quiz rotation
+	s.SetComponentSeenForTest(ctx, int64(2), "女")
+
+	r := newRouter(s)
+	// Submit a wrong answer — this saves prev_state and applies wrong quality.
+	do(t, r, "POST", "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "man",
+	})
+
+	// Now accept as correct.
+	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": "女"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if correct, _ := resp["correct"].(bool); !correct {
+		t.Error("accept-correct should return correct: true")
+	}
+
+	// prev_state should be cleared after accept.
+	prev, err := s.GetComponentPrevState(ctx, int64(2), "女")
+	if err != nil {
+		t.Fatalf("GetComponentPrevState: %v", err)
+	}
+	if prev != nil {
+		t.Errorf("prev_state should be nil after accept-correct, got %+v", prev)
+	}
+
+	// The SM-2 state after accept-correct must have interval >= 1 day (not the wrong-penalty value).
+	p, _, err := s.GetComponentProgressForTest(ctx, int64(2), "女")
+	if err != nil {
+		t.Fatalf("GetComponentProgressForTest: %v", err)
+	}
+	if p.IntervalDays < 1 {
+		t.Errorf("interval_days after accept-correct should be >= 1, got %d", p.IntervalDays)
+	}
+}
+
+func TestComponentAcceptCorrect_MissingCharacter(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": ""})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for empty character, got %d", rec.Code)
+	}
+}
+
 // ── Settings: accept_correct_mode ────────────────────────────────────────────
 
 func validSettingsPayload() map[string]string {
@@ -5058,5 +5596,547 @@ func TestSettingsPatchAcceptCorrectModeInvalid(t *testing.T) {
 	rec := do(t, r, "PATCH", "/api/settings", payload)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400 for invalid accept_correct_mode, got %d", rec.Code)
+	}
+}
+
+// ── Settings: daily learning ──────────────────────────────────────────────────
+
+func TestGetSettings_DailyLearningDefaults(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+
+	if st.MaxNewWordsPerDay < 1 {
+		t.Errorf("want MaxNewWordsPerDay >= 1, got %d", st.MaxNewWordsPerDay)
+	}
+	if !st.SkipNewWordsVisible {
+		t.Error("want SkipNewWordsVisible=true by default")
+	}
+	if st.BaselineDueTodayEnabled {
+		t.Error("want BaselineDueTodayEnabled=false by default")
+	}
+	if st.BaselineDueTodayValue <= 0 {
+		t.Errorf("want BaselineDueTodayValue > 0, got %d", st.BaselineDueTodayValue)
+	}
+	if st.BaselineStrugglingEnabled {
+		t.Error("want BaselineStrugglingEnabled=false by default")
+	}
+	if st.BaselineStrugglingValue <= 0 {
+		t.Errorf("want BaselineStrugglingValue > 0, got %d", st.BaselineStrugglingValue)
+	}
+	if st.BaselineLearningEnabled {
+		t.Error("want BaselineLearningEnabled=false by default")
+	}
+	if st.BaselineLearningValue <= 0 {
+		t.Errorf("want BaselineLearningValue > 0, got %d", st.BaselineLearningValue)
+	}
+}
+
+func TestPatchSettings_DailyLearning(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	payload := validSettingsPayload()
+	// Overlay daily learning fields using a combined map
+	type dailyPayload struct {
+		PrimaryLang               string `json:"primary_lang"`
+		SecondaryLang             string `json:"secondary_lang"`
+		ProgNew                   string `json:"prog_new"`
+		ProgTierStruggling        string `json:"prog_tier_struggling"`
+		ProgTierLearning          string `json:"prog_tier_learning"`
+		ProgTierPracticing        string `json:"prog_tier_practicing"`
+		ProgTierMastered          string `json:"prog_tier_mastered"`
+		NewWordMode0              string `json:"new_word_mode_0"`
+		NewWordMode1              string `json:"new_word_mode_1"`
+		NewWordMode2              string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay         int    `json:"max_new_words_per_day"`
+		SkipNewWordsVisible       bool   `json:"skip_new_words_visible"`
+		BaselineDueTodayEnabled   bool   `json:"baseline_due_today_enabled"`
+		BaselineDueTodayValue     int    `json:"baseline_due_today_value"`
+		BaselineStrugglingEnabled bool   `json:"baseline_struggling_enabled"`
+		BaselineStrugglingValue   int    `json:"baseline_struggling_value"`
+		BaselineLearningEnabled   bool   `json:"baseline_learning_enabled"`
+		BaselineLearningValue     int    `json:"baseline_learning_value"`
+	}
+	req := dailyPayload{
+		PrimaryLang:               payload["primary_lang"],
+		SecondaryLang:             payload["secondary_lang"],
+		ProgNew:                   payload["prog_new"],
+		ProgTierStruggling:        payload["prog_tier_struggling"],
+		ProgTierLearning:          payload["prog_tier_learning"],
+		ProgTierPracticing:        payload["prog_tier_practicing"],
+		ProgTierMastered:          payload["prog_tier_mastered"],
+		NewWordMode0:              payload["new_word_mode_0"],
+		NewWordMode1:              payload["new_word_mode_1"],
+		NewWordMode2:              payload["new_word_mode_2"],
+		MaxNewWordsPerDay:         3,
+		SkipNewWordsVisible:       false,
+		BaselineDueTodayEnabled:   true,
+		BaselineDueTodayValue:     15,
+		BaselineStrugglingEnabled: true,
+		BaselineStrugglingValue:   8,
+		BaselineLearningEnabled:   false,
+		BaselineLearningValue:     20,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+
+	if st.MaxNewWordsPerDay != 3 {
+		t.Errorf("want MaxNewWordsPerDay=3, got %d", st.MaxNewWordsPerDay)
+	}
+	if st.SkipNewWordsVisible {
+		t.Error("want SkipNewWordsVisible=false after patch")
+	}
+	if !st.BaselineDueTodayEnabled {
+		t.Error("want BaselineDueTodayEnabled=true after patch")
+	}
+	if st.BaselineDueTodayValue != 15 {
+		t.Errorf("want BaselineDueTodayValue=15, got %d", st.BaselineDueTodayValue)
+	}
+	if !st.BaselineStrugglingEnabled {
+		t.Error("want BaselineStrugglingEnabled=true after patch")
+	}
+	if st.BaselineStrugglingValue != 8 {
+		t.Errorf("want BaselineStrugglingValue=8, got %d", st.BaselineStrugglingValue)
+	}
+	if st.BaselineLearningEnabled {
+		t.Error("want BaselineLearningEnabled=false after patch")
+	}
+}
+
+func TestPatchSettings_MaxNewWordsPerDay_Invalid(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	type payload struct {
+		PrimaryLang        string `json:"primary_lang"`
+		SecondaryLang      string `json:"secondary_lang"`
+		ProgNew            string `json:"prog_new"`
+		ProgTierStruggling string `json:"prog_tier_struggling"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
+		ProgTierPracticing string `json:"prog_tier_practicing"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
+		PrimaryLang:        "en",
+		SecondaryLang:      "de",
+		ProgNew:            "zh_to_transl",
+		ProgTierStruggling: "transl_to_zh",
+		ProgTierLearning:   "zh_pinyin_to_transl",
+		ProgTierPracticing: "zh_to_transl",
+		ProgTierMastered:   "random",
+		NewWordMode0:       "transl_to_zh",
+		NewWordMode1:       "zh_pinyin_to_transl",
+		NewWordMode2:       "zh_to_transl",
+		MaxNewWordsPerDay:  0,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for max_new_words_per_day=0, got %d", rec.Code)
+	}
+}
+
+func TestSkip_RejectsNewWordWhenHidden(t *testing.T) {
+	s := openTestDB(t)
+	wordID := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	ctx := context.Background()
+
+	// Mark word as new (learning_new_word=1, first_seen_date=today)
+	if err := s.AcknowledgeWord(ctx, 2, wordID); err != nil {
+		t.Fatalf("acknowledge: %v", err)
+	}
+
+	r := newRouter(s)
+
+	// First disable skip via settings
+	type patchPayload struct {
+		PrimaryLang         string `json:"primary_lang"`
+		SecondaryLang       string `json:"secondary_lang"`
+		ProgNew             string `json:"prog_new"`
+		ProgTierStruggling  string `json:"prog_tier_struggling"`
+		ProgTierLearning    string `json:"prog_tier_learning"`
+		ProgTierPracticing  string `json:"prog_tier_practicing"`
+		ProgTierMastered    string `json:"prog_tier_mastered"`
+		NewWordMode0        string `json:"new_word_mode_0"`
+		NewWordMode1        string `json:"new_word_mode_1"`
+		NewWordMode2        string `json:"new_word_mode_2"`
+		SkipNewWordsVisible bool   `json:"skip_new_words_visible"`
+		MaxNewWordsPerDay   int    `json:"max_new_words_per_day"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload{
+		PrimaryLang:         "en",
+		SecondaryLang:       "de",
+		ProgNew:             "zh_to_transl",
+		ProgTierStruggling:  "transl_to_zh",
+		ProgTierLearning:    "zh_pinyin_to_transl",
+		ProgTierPracticing:  "zh_to_transl",
+		ProgTierMastered:    "random",
+		NewWordMode0:        "transl_to_zh",
+		NewWordMode1:        "zh_pinyin_to_transl",
+		NewWordMode2:        "zh_to_transl",
+		SkipNewWordsVisible: false,
+		MaxNewWordsPerDay:   5,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch settings: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	// Attempt to skip the new word — should be rejected
+	rec = do(t, r, http.MethodPost, "/api/quiz/skip", map[string]any{
+		"word_id": wordID,
+		"days":    7,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 when skipping new word with skip hidden, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── Settings: new word cooldown ───────────────────────────────────────────────
+
+func TestGetSettings_CooldownDefault(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.NewWordCooldownMinutes < 0 {
+		t.Errorf("want NewWordCooldownMinutes >= 0, got %d", st.NewWordCooldownMinutes)
+	}
+}
+
+func TestPatchSettings_Cooldown(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	type payload struct {
+		PrimaryLang            string `json:"primary_lang"`
+		SecondaryLang          string `json:"secondary_lang"`
+		ProgNew                string `json:"prog_new"`
+		ProgTierStruggling     string `json:"prog_tier_struggling"`
+		ProgTierLearning       string `json:"prog_tier_learning"`
+		ProgTierPracticing     string `json:"prog_tier_practicing"`
+		ProgTierMastered       string `json:"prog_tier_mastered"`
+		NewWordMode0           string `json:"new_word_mode_0"`
+		NewWordMode1           string `json:"new_word_mode_1"`
+		NewWordMode2           string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay      int    `json:"max_new_words_per_day"`
+		NewWordCooldownMinutes int    `json:"new_word_cooldown_minutes"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload{
+		PrimaryLang:            "en",
+		SecondaryLang:          "de",
+		ProgNew:                "zh_to_transl",
+		ProgTierStruggling:     "transl_to_zh",
+		ProgTierLearning:       "zh_pinyin_to_transl",
+		ProgTierPracticing:     "zh_to_transl",
+		ProgTierMastered:       "random",
+		NewWordMode0:           "transl_to_zh",
+		NewWordMode1:           "zh_pinyin_to_transl",
+		NewWordMode2:           "zh_to_transl",
+		MaxNewWordsPerDay:      5,
+		NewWordCooldownMinutes: 30,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.NewWordCooldownMinutes != 30 {
+		t.Errorf("want NewWordCooldownMinutes=30, got %d", st.NewWordCooldownMinutes)
+	}
+}
+
+// TestQuizStats_MaxNewPerDay_ReflectsUserSetting verifies that the stats
+// endpoint returns the per-user max_new_words_per_day, not the server default.
+func TestQuizStats_MaxNewPerDay_ReflectsUserSetting(t *testing.T) {
+	s := openTestDB(t)
+	// Server default is 100 (set in newRouter via MaxNewPerDay: 100).
+	// Patch the user setting to 3; stats must report 3, not 100.
+	r := newRouter(s)
+
+	type patchPayload struct {
+		PrimaryLang        string `json:"primary_lang"`
+		ProgNew            string `json:"prog_new"`
+		ProgTierStruggling string `json:"prog_tier_struggling"`
+		ProgTierLearning   string `json:"prog_tier_learning"`
+		ProgTierPracticing string `json:"prog_tier_practicing"`
+		ProgTierMastered   string `json:"prog_tier_mastered"`
+		NewWordMode0       string `json:"new_word_mode_0"`
+		NewWordMode1       string `json:"new_word_mode_1"`
+		NewWordMode2       string `json:"new_word_mode_2"`
+		MaxNewWordsPerDay  int    `json:"max_new_words_per_day"`
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload{
+		PrimaryLang:        "en",
+		ProgNew:            "transl_to_zh",
+		ProgTierStruggling: "transl_to_zh",
+		ProgTierLearning:   "zh_pinyin_to_transl",
+		ProgTierPracticing: "zh_to_transl",
+		ProgTierMastered:   "random",
+		NewWordMode0:       "transl_to_zh",
+		NewWordMode1:       "transl_to_zh",
+		NewWordMode2:       "zh_to_transl",
+		MaxNewWordsPerDay:  3,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/quiz/stats: want 200, got %d", rec.Code)
+	}
+	var stats map[string]int
+	decodeJSON(t, rec, &stats)
+	if stats["max_new_per_day"] != 3 {
+		t.Errorf("max_new_per_day: want 3 (user setting), got %d", stats["max_new_per_day"])
+	}
+}
+
+// uploadRouterWithLimits builds a minimal authenticated router whose CSV handler
+// uses the given DoS limits, so the body-size and row caps can be exercised
+// without constructing multi-megabyte payloads.
+func uploadRouterWithLimits(s *db.Store, maxBytes int64, maxRows int) http.Handler {
+	h := &handlers.UploadCSVHandler{Store: s, MaxBytes: maxBytes, MaxRows: maxRows}
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Post("/api/words/upload-csv", h.UploadCSV)
+	return r
+}
+
+func TestUploadCSV_RejectsOversizedBody(t *testing.T) {
+	// Tiny body cap; the multipart payload below exceeds it.
+	r := uploadRouterWithLimits(openTestDB(t), 500, 5000)
+	var b strings.Builder
+	b.WriteString("chinese,pinyin,en\n")
+	for i := 0; i < 50; i++ {
+		fmt.Fprintf(&b, "字%d,zì,meaning number %d here padding padding\n", i, i)
+	}
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "t", "start_training_count": "0"}, b.String())
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("want 413 for oversized body, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
+	// Row cap of 2; the CSV below has 3 data rows.
+	r := uploadRouterWithLimits(openTestDB(t), 0, 2)
+	csv := "chinese,pinyin,en\n一,yī,one\n二,èr,two\n三,sān,three"
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "t", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for too many rows, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "too many rows") {
+		t.Errorf("expected a 'too many rows' message, got %s", rec.Body.String())
+	}
+}
+
+// ── GET /api/quiz/match-game ──────────────────────────────────────────────────
+
+func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	// Only 1 confusion pair — game should not trigger
+	if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	words := resp["words"].([]any)
+	if len(words) != 0 {
+		t.Errorf("expected 0 words, got %d", len(words))
+	}
+}
+
+func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	id4 := seedWord(t, s, "对不起", "duì bu qǐ", []string{"sorry"})
+	// 2 distinct pairs → 4 unique words
+	for _, pair := range [][2]int64{{id1, id2}, {id3, id4}} {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	words := resp["words"].([]any)
+	if len(words) != 4 {
+		t.Errorf("expected 4 words, got %d", len(words))
+	}
+}
+
+func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	// Pair (1→2) and (2→3): word id2 appears in both, so only 3 unique words
+	for _, pair := range [][2]int64{{id1, id2}, {id2, id3}} {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	words := resp["words"].([]any)
+	if len(words) != 3 {
+		t.Errorf("expected 3 unique words, got %d", len(words))
+	}
+}
+
+func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	id4 := seedWord(t, s, "对不起", "duì bu qǐ", []string{"sorry"})
+	for _, pair := range [][2]int64{{id1, id2}, {id3, id4}} {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newRouter(s)
+
+	// First call returns words
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp1 map[string]any
+	decodeJSON(t, rec, &resp1)
+	if len(resp1["words"].([]any)) == 0 {
+		t.Fatal("first call: expected words")
+	}
+
+	// Second call returns empty (pairs marked as shown)
+	rec2 := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp2 map[string]any
+	decodeJSON(t, rec2, &resp2)
+	if len(resp2["words"].([]any)) != 0 {
+		t.Errorf("second call: expected 0 words, got %d", len(resp2["words"].([]any)))
+	}
+}
+
+// ── POST /api/quiz/match-answer ───────────────────────────────────────────────
+
+func TestMatchAnswer_Correct(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	body := map[string]any{"zh_word_id": id, "correct": true}
+	rec := do(t, r, "POST", "/api/quiz/match-answer", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["correct"] != true {
+		t.Errorf("expected correct=true, got %v", resp["correct"])
+	}
+	if resp["zh_text"] != "你好" {
+		t.Errorf("expected zh_text=你好, got %v", resp["zh_text"])
+	}
+}
+
+func TestMatchAnswer_Wrong(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	body := map[string]any{"zh_word_id": id, "correct": false}
+	rec := do(t, r, "POST", "/api/quiz/match-answer", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["correct"] != false {
+		t.Errorf("expected correct=false, got %v", resp["correct"])
+	}
+}
+
+func TestMatchAnswer_MissingWordID(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"correct": true})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMatchAnswer_WordNotFound(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"zh_word_id": 9999, "correct": true})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+// ── PATCH /api/settings — gamification ───────────────────────────────────────
+
+func TestSettingsPatch_GamificationFields(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	body := baseSettingsPatch()
+	body["gamification_enabled"] = true
+	body["gamification_frequency"] = 10
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec2, &st)
+	if st["gamification_enabled"] != true {
+		t.Errorf("gamification_enabled: got %v", st["gamification_enabled"])
+	}
+	if st["gamification_frequency"].(float64) != 10 {
+		t.Errorf("gamification_frequency: got %v", st["gamification_frequency"])
+	}
+}
+
+func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	for _, freq := range []int{0, 1441} {
+		body := baseSettingsPatch()
+		body["gamification_frequency"] = freq
+		rec := do(t, r, "PATCH", "/api/settings", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("frequency=%d: expected 400, got %d", freq, rec.Code)
+		}
 	}
 }

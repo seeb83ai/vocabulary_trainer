@@ -2,10 +2,87 @@ package migrate
 
 import (
 	"database/sql"
+	"fmt"
+	"os"
+	"sort"
 	"testing"
 
 	_ "modernc.org/sqlite"
 )
+
+// TestMain sets env vars so the v20 admin/template-user migration runs non-interactively.
+func TestMain(m *testing.M) {
+	os.Setenv("ADMIN_EMAIL", "admin@example.de")
+	os.Setenv("ADMIN_PASSWORD", "I am the admin")
+	os.Setenv("USER_EMAIL", "me@example.de")
+	os.Setenv("USER_PASSWORD", "I learn zh")
+	os.Setenv("BCRYPT_COST", "min")
+	os.Exit(m.Run())
+}
+
+// openRawDB opens a fresh per-test in-memory SQLite database.
+func openRawDB(t *testing.T) *sql.DB {
+	t.Helper()
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_pragma=foreign_keys(ON)", t.Name())
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+// maxRegisteredVersion returns the highest registered migration version.
+func maxRegisteredVersion() int64 {
+	var max int64
+	for _, m := range registry {
+		if m.version > max {
+			max = m.version
+		}
+	}
+	return max
+}
+
+// appliedVersion returns the highest version recorded in schema_migrations, or 0.
+func appliedVersion(t *testing.T, db *sql.DB) int64 {
+	t.Helper()
+	var v int64
+	if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&v); err != nil {
+		t.Fatalf("read schema_migrations max version: %v", err)
+	}
+	return v
+}
+
+// migrateUpTo applies registered migrations up to and including target,
+// creating schema_migrations directly (simulates a DB frozen at a past version).
+func migrateUpTo(t *testing.T, db *sql.DB, target int64) {
+	t.Helper()
+	sorted := append([]migration(nil), registry...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].version < sorted[j].version })
+
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatalf("create schema_migrations: %v", err)
+	}
+	for _, m := range sorted {
+		if m.version > target {
+			break
+		}
+		if m.sql != "" {
+			if _, err := db.Exec(m.sql); err != nil {
+				t.Fatalf("migrate up to %d: migration %d sql: %v", target, m.version, err)
+			}
+		}
+		if m.fn != nil {
+			if err := m.fn(db); err != nil {
+				t.Fatalf("migrate up to %d: migration %d fn: %v", target, m.version, err)
+			}
+		}
+		if _, err := db.Exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)`, m.version); err != nil {
+			t.Fatalf("record migration %d in migrateUpTo: %v", m.version, err)
+		}
+	}
+}
 
 func TestNoDuplicateMigrationVersions(t *testing.T) {
 	if len(registry) == 0 {
@@ -23,14 +100,12 @@ func TestNoDuplicateMigrationVersions(t *testing.T) {
 }
 
 func TestMigrateBootstrapsFromOldSchemaVersion(t *testing.T) {
-	db, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=foreign_keys(OFF)")
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
-	defer db.Close()
-
-	// Simulate an existing DB using the old high-watermark format at version 51.
+	db := openRawDB(t)
+	// Apply the real schema up to v51 using the new schema_migrations helper,
+	// then swap it for the old schema_version table to simulate an existing DB
+	// that was last written by the pre-bootstrap migration runner.
+	migrateUpTo(t, db, 51)
+	db.Exec(`DROP TABLE schema_migrations`)
 	db.Exec(`CREATE TABLE schema_version (version INTEGER NOT NULL DEFAULT 0)`)
 	db.Exec(`INSERT INTO schema_version (version) VALUES (51)`)
 
@@ -49,5 +124,65 @@ func TestMigrateBootstrapsFromOldSchemaVersion(t *testing.T) {
 	db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 1`).Scan(&n)
 	if n != 1 {
 		t.Error("schema_migrations missing version 1 after bootstrap")
+	}
+}
+
+// TestMigrate_FullChainFromEmpty runs every migration on a fresh DB and verifies
+// the applied set matches the full registry.
+func TestMigrate_FullChainFromEmpty(t *testing.T) {
+	db := openRawDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate from empty: %v", err)
+	}
+	if got, want := appliedVersion(t, db), maxRegisteredVersion(); got != want {
+		t.Fatalf("max applied version after full chain = %d, want %d", got, want)
+	}
+	for _, table := range []string{"words", "sm2_progress", "user_settings", "schema_migrations"} {
+		if _, err := db.Exec("SELECT 1 FROM " + table + " LIMIT 1"); err != nil {
+			t.Errorf("expected table %q to exist after migration: %v", table, err)
+		}
+	}
+}
+
+// TestMigrate_FromMidHistorySnapshot freezes a DB at v17, seeds a row, then
+// runs the full chain — verifying table-recreation migrations (v18, v21) preserve data.
+func TestMigrate_FromMidHistorySnapshot(t *testing.T) {
+	db := openRawDB(t)
+	migrateUpTo(t, db, 17)
+
+	if got := appliedVersion(t, db); got != 17 {
+		t.Fatalf("snapshot max applied version = %d, want 17", got)
+	}
+
+	if _, err := db.Exec(`INSERT INTO words (text, language) VALUES ('__migrate_test_marker__', 'zh')`); err != nil {
+		t.Fatalf("seed word at snapshot: %v", err)
+	}
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate from mid-history snapshot: %v", err)
+	}
+	if got, want := appliedVersion(t, db), maxRegisteredVersion(); got != want {
+		t.Fatalf("max applied version after upgrade = %d, want %d", got, want)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM words WHERE text = '__migrate_test_marker__'`).Scan(&count); err != nil {
+		t.Fatalf("count words after upgrade: %v", err)
+	}
+	if count < 1 {
+		t.Errorf("seeded word did not survive table-recreation migrations: count=%d", count)
+	}
+}
+
+// TestMigrate_Idempotent verifies running Migrate twice is a no-op the second time.
+func TestMigrate_Idempotent(t *testing.T) {
+	db := openRawDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("first Migrate: %v", err)
+	}
+	if err := Migrate(db); err != nil {
+		t.Fatalf("second Migrate should be a no-op: %v", err)
+	}
+	if got, want := appliedVersion(t, db), maxRegisteredVersion(); got != want {
+		t.Fatalf("max applied version after re-run = %d, want %d", got, want)
 	}
 }

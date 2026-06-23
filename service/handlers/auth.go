@@ -32,9 +32,19 @@ const verificationTTL = 24 * time.Hour
 // single account tolerates before it is temporarily locked. LockoutDuration
 // is how long the lock holds. Both are exported for tests.
 const (
-	MaxFailedLogins  = 5
-	LockoutDuration  = 15 * time.Minute
+	MaxFailedLogins = 5
+	LockoutDuration = 15 * time.Minute
 )
+
+// dummyBcryptHash is a fixed, valid bcrypt hash used to run a real password
+// comparison on the "no such user" login path. This keeps that path's timing
+// indistinguishable from the "wrong password" path, defeating user
+// enumeration via timing. The password it hashes is irrelevant.
+const dummyBcryptHash = "$2a$10$AQpVzglAWskWV/xdd18PyuQx5DkMYvdeFDebf0ZOnAxP/hbKeh2aO"
+
+// bcryptCompare is an indirection over bcrypt.CompareHashAndPassword so tests
+// can count how often the password comparison runs.
+var bcryptCompare = bcrypt.CompareHashAndPassword
 
 type contextKey int
 
@@ -58,11 +68,18 @@ func WithUserID(id int64) func(http.Handler) http.Handler {
 
 // AuthHandler handles login/logout/registration and provides middleware.
 type AuthHandler struct {
-	store       *db.Store
-	secret      []byte // HMAC signing key, generated at startup
-	emailSender *email.Sender
-	appURL      string
+	store         authStore
+	secret        []byte // HMAC signing key, generated at startup
+	emailSender   *email.Sender
+	appURL        string
+	secureCookies bool // set Secure flag on cookies (true unless APP_ENV=dev)
+	// sessionCache caches per-user sessions-invalidated-at cutoffs so session
+	// validation avoids a DB lookup on every request. Invalidated on password change.
+	sessionCache *invalidationCache
 }
+
+// sessionCacheTTL bounds how long a stale invalidation cutoff may be served.
+const sessionCacheTTL = 10 * time.Second
 
 // NewAuthHandler creates an AuthHandler backed by the given store.
 // emailSender may be nil. When nil, /api/register auto-verifies and
@@ -93,10 +110,12 @@ func NewAuthHandlerWithEnv(store *db.Store, emailSender *email.Sender, appURL, s
 		}
 	}
 	return &AuthHandler{
-		store:       store,
-		secret:      secret,
-		emailSender: emailSender,
-		appURL:      appURL,
+		store:         store,
+		secret:        secret,
+		emailSender:   emailSender,
+		appURL:        appURL,
+		secureCookies: !strings.EqualFold(appEnv, "dev"),
+		sessionCache:  newInvalidationCache(sessionCacheTTL),
 	}, nil
 }
 
@@ -173,6 +192,10 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user == nil {
+		// Run a comparison against a dummy hash so the timing of this path
+		// matches the wrong-password path and the email's existence cannot
+		// be inferred from response latency.
+		_ = bcryptCompare([]byte(dummyBcryptHash), []byte(req.Password))
 		_ = a.store.RecordAuditLog(r.Context(), 0, db.AuditLoginFailure, ip, req.Email)
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
@@ -186,7 +209,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)) != nil {
+	if bcryptCompare([]byte(user.PasswordHash), []byte(req.Password)) != nil {
 		_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLoginFailure, ip, "")
 		n, _ := a.store.IncrementFailedLogins(r.Context(), user.ID)
 		if n >= MaxFailedLogins {
@@ -212,6 +235,7 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	a.setSettingsKeyCookie(w, r, user.ID, req.Password)
@@ -299,6 +323,7 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			Path:     "/",
 			HttpOnly: true,
 			SameSite: http.SameSiteStrictMode,
+			Secure:   a.secureCookies,
 			MaxAge:   int(sessionTTL.Seconds()),
 		})
 		a.setSettingsKeyCookie(w, r, user.ID, req.Password)
@@ -349,6 +374,7 @@ func (a *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	http.Redirect(w, r, "/train", http.StatusFound)
@@ -403,6 +429,9 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Drop the cached invalidation cutoff so the freshly-bumped value is read
+	// immediately and older tokens are rejected without waiting for the TTL.
+	a.sessionCache.invalidate(userID)
 
 	// Re-encrypt API keys with the new derived key.
 	if err := a.reencryptAPIKeys(w, r, userID, req.NewPassword); err != nil {
@@ -420,6 +449,7 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 
@@ -498,8 +528,13 @@ func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 	if time.Since(mintedAt) >= sessionTTL {
 		return 0, false
 	}
-	// Reject tokens issued before the user's last password change.
-	if cut, err := a.store.GetSessionsInvalidatedAt(r.Context(), userID); err == nil && !cut.IsZero() {
+	// Reject tokens issued before the user's last password change. The cutoff is
+	// served from a short-TTL cache so this isn't a per-request DB lookup; it is
+	// invalidated immediately on password change.
+	cut, err := a.sessionCache.lookup(userID, time.Now(), func() (time.Time, error) {
+		return a.store.GetSessionsInvalidatedAt(r.Context(), userID)
+	})
+	if err == nil && !cut.IsZero() {
 		if mintedAt.UTC().Before(cut) {
 			return 0, false
 		}
@@ -667,6 +702,7 @@ func (a *AuthHandler) setSettingsKeyCookie(w http.ResponseWriter, r *http.Reques
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 }
@@ -732,6 +768,7 @@ func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, u
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
 	return nil

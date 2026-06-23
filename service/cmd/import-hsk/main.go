@@ -495,4 +495,3 @@ func assignTag(db *sql.DB, zhID int64, tagName string) error {
 	}
 	return nil
 }
-

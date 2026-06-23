@@ -31,6 +31,24 @@ const MODE_OPTIONS = [
   { value: 'random',             label: 'Random' },
 ];
 
+const CYCLE_STEP_OPTIONS = [
+  { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
+  { value: 'transl_to_zh',       label: 'Translation → Chinese' },
+  { value: 'zh_to_transl',       label: 'Chinese → Translation' },
+  { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
+];
+
+function populateCycleSelect(el, value) {
+  el.innerHTML = '';
+  for (const opt of CYCLE_STEP_OPTIONS) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (opt.value === value) o.selected = true;
+    el.appendChild(o);
+  }
+}
+
 function populateModeSelect(el, value) {
   el.innerHTML = '';
   for (const opt of MODE_OPTIONS) {
@@ -118,6 +136,13 @@ async function loadSettings() {
     populateModeSelect(document.getElementById('mode-new-1'), st.new_word_mode_1 || 'transl_to_zh');
     populateModeSelect(document.getElementById('mode-new-2'), st.new_word_mode_2 || 'zh_to_transl');
 
+    // Cycle step selects
+    const defaultSeq = 'zh_pinyin_to_transl,transl_to_zh,zh_to_transl';
+    const cycleSteps = (st.cycle_sequence || defaultSeq).split(',');
+    populateCycleSelect(document.getElementById('cycle-step-0'), cycleSteps[0] || 'zh_pinyin_to_transl');
+    populateCycleSelect(document.getElementById('cycle-step-1'), cycleSteps[1] || 'transl_to_zh');
+    populateCycleSelect(document.getElementById('cycle-step-2'), cycleSteps[2] || 'zh_to_transl');
+
     // Accept-as-correct mode
     const acmValue = st.accept_correct_mode || 'typo';
     document.querySelectorAll('input[name="accept-correct-mode"]').forEach(el => {
@@ -129,6 +154,22 @@ async function loadSettings() {
     if (requireZhEl) requireZhEl.checked = st.new_word_require_zh !== false;
     const requireTransEl = document.getElementById('require-trans');
     if (requireTransEl) requireTransEl.checked = st.new_word_require_trans !== false;
+
+    // Daily learning
+    const maxNewEl = document.getElementById('max-new-words');
+    if (maxNewEl) maxNewEl.value = st.max_new_words_per_day ?? 5;
+    const cooldownEl = document.getElementById('new-word-cooldown');
+    if (cooldownEl) cooldownEl.value = st.new_word_cooldown_minutes ?? 1;
+    const skipVisEl = document.getElementById('skip-new-visible');
+    if (skipVisEl) skipVisEl.checked = st.skip_new_words_visible !== false;
+    setBaselineRow('baseline-due-today', st.baseline_due_today_enabled, st.baseline_due_today_value ?? 20);
+    setBaselineRow('baseline-struggling', st.baseline_struggling_enabled, st.baseline_struggling_value ?? 10);
+    setBaselineRow('baseline-learning', st.baseline_learning_enabled, st.baseline_learning_value ?? 20);
+
+    const gamEnabledEl = document.getElementById('gamification-enabled');
+    if (gamEnabledEl) gamEnabledEl.checked = !!st.gamification_enabled;
+    const gamFreqEl = document.getElementById('gamification-frequency');
+    if (gamFreqEl) gamFreqEl.value = st.gamification_frequency ?? 5;
 
     // API key status
     if (st.deepl_key_masked) {
@@ -155,6 +196,10 @@ for (const id of ['mode-prog-new','mode-prog-struggling','mode-prog-learning','m
   const el = document.getElementById(id);
   if (el) populateModeSelect(el, '');
 }
+for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2']) {
+  const el = document.getElementById(id);
+  if (el) populateCycleSelect(el, '');
+}
 
 loadLanguages().then(() => loadSettings());
 
@@ -169,7 +214,7 @@ document.getElementById('lang-save-btn')?.addEventListener('click', async () => 
   }
   // Collect current mode values to avoid overwriting them
   const modePayload = buildModePayload();
-  const payload = { primary_lang: primary, secondary_lang: secondary, ...modePayload };
+  const payload = { primary_lang: primary, secondary_lang: secondary, ...modePayload, ...buildDailyPayload() };
   try {
     const res = await fetch('/api/settings', {
       method: 'PATCH',
@@ -189,20 +234,94 @@ document.getElementById('lang-save-btn')?.addEventListener('click', async () => 
 
 // ── Training mode ──────────────────────────────────────────────────────────────
 
+function buildCycleSequence() {
+  const steps = [
+    document.getElementById('cycle-step-0')?.value || 'zh_pinyin_to_transl',
+    document.getElementById('cycle-step-1')?.value || 'transl_to_zh',
+    document.getElementById('cycle-step-2')?.value || 'zh_to_transl',
+  ];
+  return steps.join(',');
+}
+
 function buildModePayload() {
   return {
-    prog_new:              document.getElementById('mode-prog-new')?.value        || 'transl_to_zh',
-    prog_tier_struggling:  document.getElementById('mode-prog-struggling')?.value || 'transl_to_zh',
-    prog_tier_learning:    document.getElementById('mode-prog-learning')?.value   || 'zh_pinyin_to_transl',
-    prog_tier_practicing:  document.getElementById('mode-prog-practicing')?.value || 'zh_to_transl',
-    prog_tier_mastered:    document.getElementById('mode-prog-mastered')?.value   || 'random',
-    new_word_mode_0:       document.getElementById('mode-new-0')?.value           || 'transl_to_zh',
-    new_word_mode_1:       document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
-    new_word_mode_2:       document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
-    new_word_require_zh:   !!(document.getElementById('require-zh')?.checked),
+    prog_new:               document.getElementById('mode-prog-new')?.value        || 'transl_to_zh',
+    prog_tier_struggling:   document.getElementById('mode-prog-struggling')?.value || 'transl_to_zh',
+    prog_tier_learning:     document.getElementById('mode-prog-learning')?.value   || 'zh_pinyin_to_transl',
+    prog_tier_practicing:   document.getElementById('mode-prog-practicing')?.value || 'zh_to_transl',
+    prog_tier_mastered:     document.getElementById('mode-prog-mastered')?.value   || 'random',
+    new_word_mode_0:        document.getElementById('mode-new-0')?.value           || 'transl_to_zh',
+    new_word_mode_1:        document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
+    new_word_mode_2:        document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
+    cycle_sequence:         buildCycleSequence(),
+    new_word_require_zh:    !!(document.getElementById('require-zh')?.checked),
     new_word_require_trans: !!(document.getElementById('require-trans')?.checked),
   };
 }
+
+function buildDailyPayload() {
+  return {
+    max_new_words_per_day:         parseInt(document.getElementById('max-new-words')?.value || '5', 10),
+    new_word_cooldown_minutes:     parseInt(document.getElementById('new-word-cooldown')?.value || '1', 10),
+    skip_new_words_visible:        !!(document.getElementById('skip-new-visible')?.checked),
+    baseline_due_today_enabled:    !!(document.getElementById('baseline-due-today-enabled')?.checked),
+    baseline_due_today_value:      parseInt(document.getElementById('baseline-due-today-value')?.value || '20', 10),
+    baseline_struggling_enabled:   !!(document.getElementById('baseline-struggling-enabled')?.checked),
+    baseline_struggling_value:     parseInt(document.getElementById('baseline-struggling-value')?.value || '10', 10),
+    baseline_learning_enabled:     !!(document.getElementById('baseline-learning-enabled')?.checked),
+    baseline_learning_value:       parseInt(document.getElementById('baseline-learning-value')?.value || '20', 10),
+  };
+}
+
+function setBaselineRow(prefix, enabled, value) {
+  const cbEl = document.getElementById(prefix + '-enabled');
+  const valEl = document.getElementById(prefix + '-value');
+  if (cbEl) cbEl.checked = !!enabled;
+  if (valEl) {
+    valEl.value = value;
+    valEl.disabled = !enabled;
+  }
+}
+
+// Wire each baseline checkbox to enable/disable its threshold input.
+for (const prefix of ['baseline-due-today', 'baseline-struggling', 'baseline-learning']) {
+  document.getElementById(prefix + '-enabled')?.addEventListener('change', e => {
+    const valEl = document.getElementById(prefix + '-value');
+    if (valEl) valEl.disabled = !e.target.checked;
+  });
+}
+
+// Daily learning save
+document.getElementById('daily-save-btn')?.addEventListener('click', async () => {
+  hideMsg('daily-success'); hideMsg('daily-error');
+  const maxVal = parseInt(document.getElementById('max-new-words')?.value || '0', 10);
+  if (!maxVal || maxVal < 1) {
+    showMsg('daily-error', 'New words per day must be at least 1.', true);
+    return;
+  }
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
+    ...buildModePayload(),
+    ...buildDailyPayload(),
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('daily-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('daily-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('daily-error', 'Network error.', true);
+  }
+});
 
 document.getElementById('mode-save-btn')?.addEventListener('click', async () => {
   hideMsg('mode-success'); hideMsg('mode-error');
@@ -212,6 +331,7 @@ document.getElementById('mode-save-btn')?.addEventListener('click', async () => 
     secondary_lang:      document.getElementById('secondary-lang')?.value || '',
     accept_correct_mode: acmChecked ? acmChecked.value : 'typo',
     ...buildModePayload(),
+    ...buildDailyPayload(),
   };
   try {
     const res = await fetch('/api/settings', {
@@ -230,6 +350,33 @@ document.getElementById('mode-save-btn')?.addEventListener('click', async () => 
   }
 });
 
+// ── Cycle mode ────────────────────────────────────────────────────────────────
+
+document.getElementById('cycle-save-btn')?.addEventListener('click', async () => {
+  hideMsg('cycle-success'); hideMsg('cycle-error');
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    ...buildModePayload(),
+    ...buildDailyPayload(),
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('cycle-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('cycle-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('cycle-error', 'Network error.', true);
+  }
+});
+
 // ── Accept-as-correct mode ─────────────────────────────────────────────────────
 
 document.getElementById('accept-mode-save-btn')?.addEventListener('click', async () => {
@@ -237,9 +384,10 @@ document.getElementById('accept-mode-save-btn')?.addEventListener('click', async
   const checked = document.querySelector('input[name="accept-correct-mode"]:checked');
   const mode = checked ? checked.value : 'typo';
   const payload = {
-    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    primary_lang:        document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang:      document.getElementById('secondary-lang')?.value || '',
     ...buildModePayload(),
+    ...buildDailyPayload(),
     accept_correct_mode: mode,
   };
   try {
@@ -386,4 +534,38 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
 
   btn.disabled = false;
   btn.textContent = 'Update Password';
+});
+
+// Gamification save
+document.getElementById('gamification-save-btn')?.addEventListener('click', async () => {
+  hideMsg('gamification-success'); hideMsg('gamification-error');
+  const freq = parseInt(document.getElementById('gamification-frequency')?.value || '5', 10);
+  if (!freq || freq < 1 || freq > 1440) {
+    showMsg('gamification-error', 'Frequency must be between 1 and 1440 minutes.', true);
+    return;
+  }
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
+    ...buildModePayload(),
+    ...buildDailyPayload(),
+    gamification_enabled:   !!(document.getElementById('gamification-enabled')?.checked),
+    gamification_frequency: freq,
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('gamification-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('gamification-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('gamification-error', 'Network error.', true);
+  }
 });

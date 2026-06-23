@@ -5,13 +5,12 @@ import (
 	"net/http"
 	"strings"
 	"unicode/utf8"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
 // ImportHandler handles cross-user word import from the shared library user (user_id=1).
 type ImportHandler struct {
-	Store *db.Store
+	Store importStore
 }
 
 type importPreviewWord struct {

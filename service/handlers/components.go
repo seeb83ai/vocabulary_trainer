@@ -119,7 +119,7 @@ func (h *ComponentHandler) SaveCompScene(w http.ResponseWriter, r *http.Request)
 }
 
 type ComponentHandler struct {
-	Store *db.Store
+	Store componentStore
 }
 
 // Answer processes a component quiz answer.
@@ -145,7 +145,7 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	defs, err := h.Store.GetComponentDefinitions(r.Context(), req.Character, langs)
+	defs, err := h.Store.GetComponentDefinitions(r.Context(), UserIDFromContext(r.Context()), req.Character, langs)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -185,6 +185,66 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		TotalAttempts:  progress.TotalAttempts,
 		Repetitions:    progress.Repetitions,
 		SceneText:      sceneText,
+	})
+}
+
+// AcceptCorrect handles POST /api/component/accept-correct. It restores the
+// pre-answer SM-2 state saved by Answer() on a wrong submission and applies a
+// correct-quality update — the same result as if the user had answered correctly.
+func (h *ComponentHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
+	var req models.ComponentAcceptCorrectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	req.Character = strings.TrimSpace(req.Character)
+	if req.Character == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+
+	ctx := r.Context()
+	userID := UserIDFromContext(ctx)
+
+	prev, err := h.Store.GetComponentPrevState(ctx, userID, req.Character)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if prev == nil {
+		writeError(w, http.StatusNotFound, "no pending accept-correct for this component")
+		return
+	}
+
+	sm2p := models.SM2Progress{
+		Repetitions:   prev.Repetitions,
+		Easiness:      prev.Easiness,
+		IntervalDays:  prev.IntervalDays,
+		TotalCorrect:  prev.TotalCorrect,
+		TotalAttempts: prev.TotalAttempts,
+	}
+	updated := sm2.Update(sm2p, sm2.QualityCorrect)
+	updated.TotalAttempts = prev.TotalAttempts + 1
+	updated.TotalCorrect = prev.TotalCorrect + 1
+
+	if err := h.Store.UpdateComponentProgress(ctx, userID, req.Character, updated); err != nil {
+		internalError(w, err)
+		return
+	}
+
+	if err := h.Store.RecordComponentStat(ctx, userID, true); err != nil {
+		internalError(w, err)
+		return
+	}
+
+	sceneText, _ := h.Store.GetComponentHMMSceneText(ctx, userID, req.Character)
+	writeJSON(w, http.StatusOK, models.ComponentAnswerResponse{
+		Correct:       true,
+		IntervalDays:  updated.IntervalDays,
+		TotalCorrect:  updated.TotalCorrect,
+		TotalAttempts: updated.TotalAttempts,
+		Repetitions:   updated.Repetitions,
+		SceneText:     sceneText,
 	})
 }
 
@@ -306,7 +366,7 @@ func (h *ComponentHandler) GetTranslations(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "character is required")
 		return
 	}
-	translations, err := h.Store.GetComponentTranslations(char)
+	translations, err := h.Store.GetComponentTranslations(r.Context(), UserIDFromContext(r.Context()), char)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -333,7 +393,7 @@ func (h *ComponentHandler) UpdateTranslation(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "lang is required")
 		return
 	}
-	if err := h.Store.StoreComponentTranslation(char, req.Lang, req.Definition); err != nil {
+	if err := h.Store.StoreComponentTranslation(r.Context(), UserIDFromContext(r.Context()), char, req.Lang, req.Definition); err != nil {
 		internalError(w, err)
 		return
 	}

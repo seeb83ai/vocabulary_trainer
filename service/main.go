@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/email"
@@ -131,11 +135,12 @@ func main() {
 
 	maxNewWords := 5
 	if v := os.Getenv("MAX_NEW_WORDS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
 			maxNewWords = n
 		}
 	}
-	log.Printf("Daily new-word cap: %d (set MAX_NEW_WORDS to change)", maxNewWords)
+	log.Printf("Daily new-word default: %d (set MAX_NEW_WORDS to change; users can override in settings)", maxNewWords)
+	store.DefaultMaxNewWords = maxNewWords
 
 	pinyinAudioDir := os.Getenv("PINYIN_AUDIO_DIR")
 
@@ -154,7 +159,15 @@ func main() {
 	log.Printf("Pinyin audio dirs: %v", pinyinAudioDirs)
 
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
-	uploadCSVH := &handlers.UploadCSVHandler{Store: store, Audio: audioH}
+	csvMaxMB := envInt("CSV_MAX_UPLOAD_MB", 8)
+	csvMaxRows := envInt("CSV_MAX_ROWS", 5000)
+	log.Printf("CSV upload limits: max=%dMB rows=%d (set CSV_MAX_UPLOAD_MB / CSV_MAX_ROWS to change)", csvMaxMB, csvMaxRows)
+	uploadCSVH := &handlers.UploadCSVHandler{
+		Store:    store,
+		Audio:    audioH,
+		MaxBytes: int64(csvMaxMB) << 20,
+		MaxRows:  csvMaxRows,
+	}
 	importH := &handlers.ImportHandler{Store: store}
 	tagsH := &handlers.TagsHandler{Store: store}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
@@ -198,8 +211,12 @@ func main() {
 	ipLimit := handlers.RateLimitMiddleware(ipLimiter, handlers.IPKey())
 	expensiveLimit := handlers.RateLimitMiddleware(expensiveLimiter, handlers.UserOrIPKey())
 
-	// API routes
+	// API routes. Cap JSON request bodies so an unbounded upload cannot
+	// exhaust memory; oversized bodies make the JSON decoders fail with 400.
+	maxBodyBytes := int64(envInt("MAX_BODY_BYTES", 1<<20))
+	log.Printf("Max request body: %d bytes (set MAX_BODY_BYTES to change)", maxBodyBytes)
 	r.Route("/api", func(r chi.Router) {
+		r.Use(handlers.MaxBytes(maxBodyBytes))
 		r.Get("/auth/status", handlers.AuthStatus(authH))
 		r.With(ipLimit).Post("/login", authH.Login)
 		r.Post("/logout", authH.Logout)
@@ -215,15 +232,18 @@ func main() {
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)
 		r.Post("/quiz/acknowledge-random", quizH.AcknowledgeRandom)
 		r.Post("/quiz/advance", quizH.Advance)
+		r.Get("/quiz/match-game", quizH.MatchGame)
+		r.Post("/quiz/match-answer", quizH.MatchAnswer)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Get("/quiz/word-stats", quizH.WordStats)
 		r.Get("/quiz/due-date-distribution", quizH.DueDateDistribution)
+		r.Post("/quiz/record-time", quizH.RecordTime)
 		r.Route("/words", func(r chi.Router) {
 			r.Get("/", wordsH.List)
 			r.Post("/", wordsH.Create)
 			r.Get("/export", wordsH.Export)
-			r.Post("/upload-csv", uploadCSVH.UploadCSV)
+			r.With(expensiveLimit).Post("/upload-csv", uploadCSVH.UploadCSV)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", wordsH.GetByID)
 				r.Put("/", wordsH.Update)
@@ -268,6 +288,7 @@ func main() {
 		r.Post("/hmm-quiz/skip", hmmQuizH.Skip)
 		r.Get("/components", componentH.List)
 		r.Post("/component/answer", componentH.Answer)
+		r.Post("/component/accept-correct", componentH.AcceptCorrect)
 		r.Post("/component/seen", componentH.Seen)
 		r.Post("/component/skip", componentH.Skip)
 		r.Get("/component/stats", componentH.Stats)
@@ -361,8 +382,46 @@ func main() {
 		port = "8080"
 	}
 	addr := ":" + port
-	log.Printf("Vocabulary Trainer listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, r))
+	srv := newServer(addr, r)
+
+	// Start the server in the background so the main goroutine can wait for a
+	// shutdown signal and drain in-flight requests gracefully.
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("Vocabulary Trainer listening on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-serverErr:
+		log.Fatalf("Server error: %v", err)
+	case sig := <-stop:
+		log.Printf("Received %s — shutting down gracefully", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Graceful shutdown failed: %v", err)
+		}
+		log.Printf("Shutdown complete")
+	}
+}
+
+// newServer builds the HTTP server with conservative timeouts so a slow or
+// stalled client cannot tie up the single SQLite connection indefinitely.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 }
 
 // envInt reads an integer env var, returning fallback if unset or invalid.
