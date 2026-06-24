@@ -179,6 +179,7 @@ type AnswerResponse struct {
 	Tier            string              `json:"tier,omitempty"`
 	PrevTier        string              `json:"prev_tier,omitempty"`
 	SceneText       string              `json:"scene_text,omitempty"`
+	Ambiguous       bool                `json:"ambiguous,omitempty"`
 }
 
 type CreateWordRequest struct {

@@ -471,6 +471,11 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			if err == nil {
 				resp.ConfusedWith = confusions
 			}
+			if req.Mode == models.ModeTranslToZh {
+				if shared, shareErr := h.Store.SharesTranslation(r.Context(), req.WordID, confusedWithID, langs); shareErr == nil && shared {
+					resp.Ambiguous = true
+				}
+			}
 		}
 	}
 

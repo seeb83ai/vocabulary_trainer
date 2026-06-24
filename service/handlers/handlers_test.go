@@ -5386,6 +5386,104 @@ func TestAnswerCorrectClearsPrevState(t *testing.T) {
 	}
 }
 
+// ── Ambiguity detection ──────────────────────────────────────────────────────
+
+func TestAnswerAmbiguous_TranslToZh_SetsAmbiguousFlag(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Seed two zh words that share the EN translation "know"
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	seedWord(t, s, "认识", "rènshi", []string{"know", "recognize"})
+
+	// Acknowledge id1 so it is available in the quiz
+	if err := s.AcknowledgeWord(context.Background(), int64(2), id1); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// Submit 认识 as the answer when the quiz word is 知道 (transl_to_zh)
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id1,
+		Mode:   models.ModeTranslToZh,
+		Answer: "认识",
+		Langs:  []string{"en"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Correct {
+		t.Error("expected correct=false")
+	}
+	if !resp.Ambiguous {
+		t.Error("expected ambiguous=true when typed word shares a translation with the quiz word")
+	}
+	if resp.ConfusedWith == nil {
+		t.Error("expected confused_with to be populated")
+	}
+}
+
+func TestAnswerAmbiguous_NonSharedTranslation_NotAmbiguous(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Seed two zh words with distinct translations
+	id1 := seedWord(t, s, "书", "shū", []string{"book"})
+	seedWord(t, s, "鱼", "yú", []string{"fish"})
+	if err := s.AcknowledgeWord(context.Background(), int64(2), id1); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// Typing the other zh word — it does NOT share "book" — should be just a confusion
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id1,
+		Mode:   models.ModeTranslToZh,
+		Answer: "鱼",
+		Langs:  []string{"en"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Ambiguous {
+		t.Error("expected ambiguous=false when typed word does not share a translation")
+	}
+}
+
+func TestAnswerAmbiguous_ZhToTranslMode_NotAmbiguous(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	if err := s.AcknowledgeWord(context.Background(), int64(2), id1); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// In zh_to_transl mode ambiguity detection should NOT fire
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id1,
+		Mode:   models.ModeZhToTransl,
+		Answer: "wrong",
+		Langs:  []string{"en"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Ambiguous {
+		t.Error("expected ambiguous=false for zh_to_transl mode")
+	}
+}
+
 // ── POST /api/quiz/accept-correct ────────────────────────────────────────────
 
 func TestAcceptCorrectNoState(t *testing.T) {

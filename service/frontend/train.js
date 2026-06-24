@@ -564,53 +564,121 @@ async function submitAnswer(e) {
             </div>
             <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
           </div>` : '';
-      breakdown.innerHTML = `
-        <div class="mt-4 space-y-2 text-left">
-          ${yourAnswerHtml}
-          ${confusedHtml}
-          ${correctBox}
-        </div>`;
-      breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
-      const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
-      if (confusedPlayBtn) {
-        confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
-      }
-      show('word-breakdown');
 
-      if (!isEmpty) {
-        const addBtn = $('add-translation-btn');
-        addBtn.textContent = t('result.addTranslation', { answer });
-        addBtn.disabled = false;
-        addBtn.className = 'mt-3 mb-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
-        show('add-translation-btn');
-
-        addBtn.onclick = async () => {
-          addBtn.disabled = true;
-          try {
-            await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
-              method: 'POST',
-              body: JSON.stringify({ text: answer, lang: selectedLangs[0] || userPrimaryLang }),
-            });
-            addBtn.textContent = t('result.added');
-            addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
-          } catch (err) {
-            addBtn.disabled = false;
-            alert('Could not add translation: ' + err.message);
-          }
-        };
-      } else {
+      if (result.ambiguous) {
+        // Both words share a translation — ask the user to confirm which word they meant.
+        icon.textContent = '~ Ambiguous';
+        icon.className = 'text-3xl font-bold text-orange-500 mb-4';
+        const disambigHtml = `
+          <div id="disambig-area" class="mt-4 space-y-2 text-left">
+            ${yourAnswerHtml}
+            ${confusedHtml}
+            ${correctBox}
+            <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl">
+              <div class="text-xs text-orange-600 uppercase tracking-wide mb-2">Both words share this translation — type the one you were aiming for:</div>
+              <form id="disambig-form" class="flex gap-2">
+                <input id="disambig-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
+                  class="flex-1 border border-orange-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  placeholder="Type Chinese word…" />
+                <button type="submit" class="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition">Check</button>
+              </form>
+              <div id="disambig-feedback" class="mt-1 text-sm hidden"></div>
+            </div>
+          </div>`;
+        breakdown.innerHTML = disambigHtml;
+        breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
+        const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
+        if (confusedPlayBtn) {
+          confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
+        }
+        show('word-breakdown');
         hide('add-translation-btn');
-      }
-
-      // Show "Accept as correct" button based on user's mode setting.
-      const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
-      if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
-        const acceptBtn = $('accept-correct-btn');
-        acceptBtn.disabled = false;
-        acceptBtn.textContent = 'Accept as correct (typo)';
-        show('accept-correct-btn');
-      } else {
         hide('accept-correct-btn');
+
+        const disambigInput = document.getElementById('disambig-input');
+        const disambigFeedback = document.getElementById('disambig-feedback');
+        disambigInput.focus();
+
+        document.getElementById('disambig-form').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const typed = disambigInput.value.trim();
+          if (!typed) return;
+          if (typed.toLowerCase() === result.zh_text.toLowerCase()) {
+            // Correct — upgrade to correct via AcceptCorrect
+            try {
+              await apiFetch('/api/quiz/accept-correct', {
+                method: 'POST',
+                body: JSON.stringify({ word_id: currentCard.word_id, mode: currentCard.mode, langs: selectedLangs }),
+              });
+              icon.textContent = t('result.correct');
+              icon.className = 'text-3xl font-bold text-green-600 mb-4';
+              const disambigArea = document.getElementById('disambig-area');
+              if (disambigArea) disambigArea.remove();
+              breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
+              breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
+              show('word-breakdown');
+            } catch (err) {
+              disambigFeedback.textContent = 'Error: ' + err.message;
+              disambigFeedback.className = 'mt-1 text-sm text-red-600';
+              disambigFeedback.classList.remove('hidden');
+            }
+          } else {
+            disambigInput.value = '';
+            disambigFeedback.textContent = 'Not quite — try again.';
+            disambigFeedback.className = 'mt-1 text-sm text-red-500';
+            disambigFeedback.classList.remove('hidden');
+            disambigInput.focus();
+          }
+        });
+      } else {
+        breakdown.innerHTML = `
+          <div class="mt-4 space-y-2 text-left">
+            ${yourAnswerHtml}
+            ${confusedHtml}
+            ${correctBox}
+          </div>`;
+        breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
+        const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
+        if (confusedPlayBtn) {
+          confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
+        }
+        show('word-breakdown');
+
+        if (!isEmpty) {
+          const addBtn = $('add-translation-btn');
+          addBtn.textContent = t('result.addTranslation', { answer });
+          addBtn.disabled = false;
+          addBtn.className = 'mt-3 mb-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
+          show('add-translation-btn');
+
+          addBtn.onclick = async () => {
+            addBtn.disabled = true;
+            try {
+              await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
+                method: 'POST',
+                body: JSON.stringify({ text: answer, lang: selectedLangs[0] || userPrimaryLang }),
+              });
+              addBtn.textContent = t('result.added');
+              addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
+            } catch (err) {
+              addBtn.disabled = false;
+              alert('Could not add translation: ' + err.message);
+            }
+          };
+        } else {
+          hide('add-translation-btn');
+        }
+
+        // Show "Accept as correct" button based on user's mode setting.
+        const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
+        if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
+          const acceptBtn = $('accept-correct-btn');
+          acceptBtn.disabled = false;
+          acceptBtn.textContent = 'Accept as correct (typo)';
+          show('accept-correct-btn');
+        } else {
+          hide('accept-correct-btn');
+        }
       }
     } else {
       breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;

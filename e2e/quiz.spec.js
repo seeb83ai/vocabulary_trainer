@@ -238,3 +238,81 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
     await expect(page.locator('#prompt-word')).toHaveText('水');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 3: Ambiguous answer — two words sharing the same translation
+//
+// A fresh user is registered with only two words: 知道 and 认识, both with EN
+// "know".  When the user types 认识 in transl_to_zh mode for the 知道 card the
+// server returns ambiguous=true and the frontend shows the disambiguation input.
+//
+// Using a fresh user (registered inside the test) guarantees only these two
+// words are in the quiz queue, making the card selection deterministic.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – ambiguous answer (shared translation)', () => {
+  test('ambiguous answer shows disambiguation input and accepts correct re-type', async ({ page }) => {
+    // Register a fresh isolated user so the quiz queue contains only our two words.
+    const email = `e2e-ambig-${Date.now()}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'AmbigTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+    // Registration sets a session cookie on the browser context automatically.
+
+    // Seed exactly the two ambiguous words for this user, capturing their IDs.
+    const seedRes1 = await page.request.post('/api/words', {
+      data: { zh_text: '知道', pinyin: 'zhīdào', translations: { en: ['know'] }, tags: [], start_training: true },
+    });
+    expect(seedRes1.ok()).toBeTruthy();
+    const seed1 = await seedRes1.json(); // { id: N }
+    const seedRes2 = await page.request.post('/api/words', {
+      data: { zh_text: '认识', pinyin: 'rènshi', translations: { en: ['know', 'recognize'] }, tags: [], start_training: true },
+    });
+    expect(seedRes2.ok()).toBeTruthy();
+    const seed2 = await seedRes2.json(); // { id: M }
+
+    // In transl_to_zh mode the card prompt is the EN translation ("know"), not the
+    // zh text. Use word_id to identify which word is being quizzed.
+    const idToZh = { [seed1.id]: '知道', [seed2.id]: '认识' };
+    const zhToOpposite = { '知道': '认识', '认识': '知道' };
+
+    const cardRes = await page.request.get('/api/quiz/next?mode=transl_to_zh&langs=en');
+    expect(cardRes.ok()).toBeTruthy();
+    const card = await cardRes.json();
+    const quizZh = idToZh[card.word_id];
+    expect(quizZh).toBeTruthy(); // word_id must be one of our two seeded words
+    const wrongAnswer = zhToOpposite[quizZh];
+
+    // Force transl_to_zh mode in localStorage before page load.
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Submit the OTHER zh word — it shares "know" so this is an ambiguous answer.
+    await page.locator('#answer-input').fill(wrongAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+
+    // Header must read "~ Ambiguous", not "✗ Wrong".
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('~ Ambiguous');
+
+    // Disambiguation input must be present.
+    await expect(page.locator('#disambig-input')).toBeVisible();
+
+    // Type the wrong word again — should show "Not quite" feedback.
+    await page.locator('#disambig-input').fill(wrongAnswer);
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#disambig-feedback')).toContainText('Not quite');
+
+    // Type the correct zh word — result must flip to Correct.
+    await page.locator('#disambig-input').fill(quizZh);
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
+    // Disambiguation input disappears after a successful answer.
+    await expect(page.locator('#disambig-input')).not.toBeVisible();
+  });
+});

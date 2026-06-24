@@ -4779,3 +4779,76 @@ func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
 		t.Errorf("after re-confusion: expected 1 item, got %d", len(items2))
 	}
 }
+
+// ── SharesTranslation ─────────────────────────────────────────────────────────
+
+func TestSharesTranslation_SharedEnTranslation(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know", "recognize"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true for two words with common EN translation 'know'")
+	}
+}
+
+func TestSharesTranslation_NoOverlap(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "书", "shū", []string{"book"})
+	id2 := seedWord(t, s, "鱼", "yú", []string{"fish"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shared {
+		t.Error("expected shared=false for words with distinct translations")
+	}
+}
+
+func TestSharesTranslation_WrongLang(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
+
+	// Translations are EN, but we query DE — should return false
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shared {
+		t.Error("expected shared=false when querying a language with no translations")
+	}
+}
+
+func TestSharesTranslation_EmptyLangs_FallsBackToEn(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true with empty langs (should fall back to 'en')")
+	}
+}
+
+func TestSharesTranslation_CaseInsensitive(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"Know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true for case-insensitive translation match")
+	}
+}

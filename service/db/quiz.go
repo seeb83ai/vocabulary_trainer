@@ -677,3 +677,41 @@ func (s *Store) ClearSM2PrevState(ctx context.Context, wordID int64) error {
 		`UPDATE sm2_progress SET prev_state = NULL WHERE word_id = ?`, wordID)
 	return err
 }
+
+// SharesTranslation returns true when zhWordID1 and zhWordID2 share at least
+// one translation text (case-insensitive, whitespace-trimmed) in the given
+// languages. If langs is empty it falls back to ["en"].
+func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error) {
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
+	placeholders := make([]string, len(langs))
+	args := make([]any, 0, 2+len(langs)*2)
+	args = append(args, wordID1)
+	for i, l := range langs {
+		placeholders[i] = "?"
+		args = append(args, l)
+	}
+	langList := strings.Join(placeholders, ",")
+	args = append(args, wordID2)
+	for _, l := range langs {
+		args = append(args, l)
+	}
+	var count int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM (
+			SELECT LOWER(TRIM(w1.text))
+			FROM words w1
+			JOIN translations t1 ON t1.translation_word_id = w1.id
+			WHERE t1.zh_word_id = ? AND w1.language IN (`+langList+`)
+			INTERSECT
+			SELECT LOWER(TRIM(w2.text))
+			FROM words w2
+			JOIN translations t2 ON t2.translation_word_id = w2.id
+			WHERE t2.zh_word_id = ? AND w2.language IN (`+langList+`)
+		)`, args...).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("shares translation: %w", err)
+	}
+	return count > 0, nil
+}

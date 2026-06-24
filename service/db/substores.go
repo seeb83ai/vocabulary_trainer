@@ -65,6 +65,7 @@ type QuizStore interface {
 	GetWordStats(ctx context.Context, userID int64) (*models.WordStatsResponse, error)
 	GetTodaySessionInfo(ctx context.Context, userID int64) (attempts, mistakes, availableToAdvance int, err error)
 	AdvanceDueDates(ctx context.Context, userID int64, n int) (int, error)
+	SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error)
 }
 
 // MnemonicStore: HMM actor/location/room/prop library, scene storage, and the HMM quiz.
