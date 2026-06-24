@@ -591,8 +591,15 @@ async function submitAnswer(e) {
               method: 'POST',
               body: JSON.stringify({ text: answer, lang: selectedLangs[0] || userPrimaryLang }),
             });
-            addBtn.textContent = t('result.added');
-            addBtn.className = 'mt-3 w-full border border-green-300 text-green-600 text-sm font-medium py-2 rounded-xl';
+            await apiFetch('/api/quiz/accept-correct', {
+              method: 'POST',
+              body: JSON.stringify({
+                word_id: currentCard.word_id,
+                mode: currentCard.mode,
+                langs: selectedLangs,
+              }),
+            });
+            loadNextCard();
           } catch (err) {
             addBtn.disabled = false;
             alert('Could not add translation: ' + err.message);
