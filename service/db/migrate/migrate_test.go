@@ -173,6 +173,61 @@ func TestMigrate_FromMidHistorySnapshot(t *testing.T) {
 	}
 }
 
+// TestMigrate_OutOfOrder verifies that a migration with a version lower than one
+// already applied is still executed on the next run — the core guarantee of
+// per-migration tracking over a high-watermark approach.
+//
+// Sequence:
+//  1. Register migration 9000; run Migrate → only 9000 executes.
+//  2. Add migrations 8999 (earlier) and 9001 (later); run Migrate again.
+//  3. Both 8999 and 9001 must execute; 9000 must not re-run.
+func TestMigrate_OutOfOrder(t *testing.T) {
+	// Isolate: swap registry for a synthetic set; restore on cleanup.
+	saved := registry
+	t.Cleanup(func() { registry = saved })
+
+	execCount := map[int64]int{}
+	mkFn := func(v int64) func(*sql.DB) error {
+		return func(*sql.DB) error { execCount[v]++; return nil }
+	}
+
+	registry = []migration{{version: 9000, fn: mkFn(9000)}}
+
+	db := openRawDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("first Migrate: %v", err)
+	}
+	if execCount[9000] != 1 {
+		t.Fatalf("migration 9000: want 1 execution, got %d", execCount[9000])
+	}
+
+	// Add one migration before (8999) and one after (9001) the already-applied 9000.
+	registry = []migration{
+		{version: 8999, fn: mkFn(8999)},
+		{version: 9000, fn: mkFn(9000)}, // already applied — must not re-run
+		{version: 9001, fn: mkFn(9001)},
+	}
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("second Migrate: %v", err)
+	}
+
+	// All three versions must be recorded.
+	for _, v := range []int64{8999, 9000, 9001} {
+		var n int
+		db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, v).Scan(&n)
+		if n != 1 {
+			t.Errorf("version %d: want 1 row in schema_migrations, got %d", v, n)
+		}
+	}
+	// 8999 and 9001 each ran once; 9000 must not have re-run.
+	for v, want := range map[int64]int{8999: 1, 9000: 1, 9001: 1} {
+		if got := execCount[v]; got != want {
+			t.Errorf("migration %d: want %d execution(s), got %d", v, want, got)
+		}
+	}
+}
+
 // TestMigrate_Idempotent verifies running Migrate twice is a no-op the second time.
 func TestMigrate_Idempotent(t *testing.T) {
 	db := openRawDB(t)
