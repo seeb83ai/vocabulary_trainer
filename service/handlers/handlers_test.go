@@ -6229,3 +6229,49 @@ func TestServeComponentAudio_FilenameDifferentFromWordIDs(t *testing.T) {
 		t.Error("component filename must start with c_")
 	}
 }
+
+func TestServeComponentAudio_RadicalUsesCanonicalFormForTTS(t *testing.T) {
+	// Radical variant characters (e.g. 扌 U+624C) should have TTS generated
+	// using the canonical/pronounceable character (手 U+624B), while the cached
+	// file is still named after the actual component codepoint (c_624c.mp3).
+	cases := []struct {
+		radical   string // the radical variant shown in the quiz
+		canonical string // what TTS should receive
+		wantFile  string // expected cached filename
+	}{
+		{"扌", "手", "c_624c.mp3"}, // hand radical
+		{"氵", "水", "c_6c35.mp3"}, // water (3-dot)
+		{"亻", "人", "c_4ebb.mp3"}, // person radical
+		{"讠", "言", "c_8ba0.mp3"}, // speech radical
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.radical, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			var synthGot string
+			audioH := &handlers.AudioHandler{
+				Store:    openTestDB(t),
+				AudioDir: tmpDir,
+				Synth:    func(text string) ([]byte, error) { synthGot = text; return []byte("synth-mp3"), nil },
+			}
+
+			r := chi.NewRouter()
+			r.Use(handlers.WithUserID(2))
+			r.Get("/api/audio/component/{char}", audioH.ServeComponentAudio)
+
+			req := httptest.NewRequest("GET", "/api/audio/component/"+url.PathEscape(tc.radical), nil)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if synthGot != tc.canonical {
+				t.Errorf("TTS called with %q, want canonical %q", synthGot, tc.canonical)
+			}
+			if _, err := os.Stat(filepath.Join(tmpDir, tc.wantFile)); err != nil {
+				t.Errorf("expected %s to exist after generation: %v", tc.wantFile, err)
+			}
+		})
+	}
+}

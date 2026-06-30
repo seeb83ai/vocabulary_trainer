@@ -62,10 +62,40 @@ func (h *AudioHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, mp3Path)
 }
 
+// radicalToCanonical maps radical-only Unicode codepoints (which TTS engines
+// often mispronounce or cannot handle) to the standalone character they derive
+// from and whose pronunciation the TTS should use instead.
+var radicalToCanonical = map[rune]rune{
+	'亻': '人', // person radical
+	'刂': '刀', // knife radical
+	'扌': '手', // hand radical
+	'氵': '水', // water radical (3-dot)
+	'灬': '火', // fire radical (bottom form)
+	'犭': '犬', // dog radical
+	'礻': '示', // spirit/altar radical
+	'纟': '糸', // silk radical (simplified)
+	'衤': '衣', // clothing radical
+	'讠': '言', // speech radical (simplified)
+	'钅': '金', // metal/gold radical (simplified)
+	'饣': '食', // food radical (simplified)
+}
+
+// canonicalForTTS returns the pronounceable standalone character for TTS. If r
+// is a known radical-only variant, it returns the canonical form; otherwise r.
+func canonicalForTTS(r rune) rune {
+	if c, ok := radicalToCanonical[r]; ok {
+		return c
+	}
+	return r
+}
+
 // ServeComponentAudio handles GET /api/audio/component/{char}.
 // It serves TTS audio for a single component character, generating on demand.
 // Files are stored as c_{hex_codepoint}.mp3 (e.g. c_6728.mp3 for 木) so they
 // cannot collide with word audio files which use {word_id}.mp3 (e.g. 42.mp3).
+// Radical-variant characters (e.g. 扌) are synthesised using their canonical
+// pronounceable form (e.g. 手) while the cached file stays keyed to the actual
+// component codepoint.
 func (h *AudioHandler) ServeComponentAudio(w http.ResponseWriter, r *http.Request) {
 	char := strings.TrimSpace(chi.URLParam(r, "char"))
 	runes := []rune(char)
@@ -77,7 +107,8 @@ func (h *AudioHandler) ServeComponentAudio(w http.ResponseWriter, r *http.Reques
 	mp3Path := filepath.Join(h.AudioDir, fmt.Sprintf("c_%04x.mp3", runes[0]))
 
 	if _, err := os.Stat(mp3Path); os.IsNotExist(err) {
-		if err := h.generateToPath(mp3Path, char); err != nil {
+		ttsText := string(canonicalForTTS(runes[0]))
+		if err := h.generateToPath(mp3Path, ttsText); err != nil {
 			writeError(w, http.StatusServiceUnavailable, "tts unavailable")
 			return
 		}
