@@ -606,6 +606,35 @@ func (s *Store) GetTranslationLanguages(ctx context.Context) ([]string, error) {
 	return langs, rows.Err()
 }
 
+// GetZhWordsWithTranslation returns the zh texts of all zh words belonging to
+// userID that have a translation in lang matching translText. Used in
+// transl_to_zh answer-checking to accept equivalent synonyms.
+func (s *Store) GetZhWordsWithTranslation(ctx context.Context, userID int64, lang, translText string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT DISTINCT wz.text
+		 FROM words wz
+		 JOIN translations t ON t.zh_word_id = wz.id
+		 JOIN words wt ON wt.id = t.translation_word_id
+		 WHERE wz.user_id = ?
+		   AND wz.language = 'zh'
+		   AND wt.language = ?
+		   AND wt.text = ?`,
+		userID, lang, translText)
+	if err != nil {
+		return nil, fmt.Errorf("get zh words with translation: %w", err)
+	}
+	defer rows.Close()
+	var texts []string
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			return nil, err
+		}
+		texts = append(texts, text)
+	}
+	return texts, rows.Err()
+}
+
 // GetTranslationsForWord returns all words in targetLang linked to wordID.
 func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error) {
 	rows, err := s.db.QueryContext(ctx,

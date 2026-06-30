@@ -372,10 +372,28 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			langs = []string{"en"}
 		}
 	}
+	userID := UserIDFromContext(r.Context())
 	var correctTexts []string
 	switch req.Mode {
 	case models.ModeTranslToZh:
 		correctTexts = []string{zhWord.ZhText}
+		// Also accept any other zh word whose translation text matches one of
+		// this word's translations (e.g. 错 and 不对 both → "falsch").
+		for _, lang := range langs {
+			transWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, lang)
+			if err != nil {
+				internalError(w, err)
+				return
+			}
+			for _, tw := range transWords {
+				equiv, err := h.Store.GetZhWordsWithTranslation(r.Context(), userID, lang, tw.Text)
+				if err != nil {
+					internalError(w, err)
+					return
+				}
+				correctTexts = append(correctTexts, equiv...)
+			}
+		}
 	case models.ModeZhToTransl, models.ModeZhPinyinToTransl:
 		for _, lang := range langs {
 			transWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, lang)
