@@ -252,7 +252,7 @@ async function initIssueReporter() {
     setText('issue-status', t('issue.submitting'));
     const payload = {
       ...form,
-      page_url: location.href,
+      page_url: location.pathname,
       meta: buildIssueMetadata(window),
     };
     const include = $('issue-include-screenshot');
@@ -262,11 +262,9 @@ async function initIssueReporter() {
     try {
       const res = await apiFetch('/api/github/issues', { method: 'POST', body: JSON.stringify(payload) });
       const statusEl = $('issue-status');
-      statusEl.innerHTML = escHtml(t('issue.success')) +
-        ' <a class="text-blue-600 underline" target="_blank" rel="noopener" href="' +
-        escHtml(res.issue_url) + '">#' + escHtml(String(res.number)) + '</a>';
       $('issue-title').value = '';
       $('issue-description').value = '';
+      hide('issue-modal');
     } catch (err) {
       setText('issue-status', t('issue.error') + ' ' + err.message);
     }
