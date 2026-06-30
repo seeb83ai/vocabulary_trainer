@@ -132,6 +132,20 @@ function playAudio(wordId, zhText) {
   });
 }
 
+// playComponentAudio plays TTS audio for a single component character.
+// Uses a dedicated endpoint (/api/audio/component/{char}) whose cached files
+// are named c_{hex}.mp3, distinct from word audio files ({word_id}.mp3).
+function playComponentAudio(char) {
+  const audio = new Audio(`/api/audio/component/${encodeURIComponent(char)}`);
+  audio.play().catch(() => {
+    if ('speechSynthesis' in window) {
+      const u = new SpeechSynthesisUtterance(char);
+      u.lang = 'zh-CN';
+      speechSynthesis.speak(u);
+    }
+  });
+}
+
 function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')

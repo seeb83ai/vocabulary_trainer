@@ -406,7 +406,7 @@ function showCard() {
     setText('mode-label', compLabel);
     setText('prompt-word', currentCard.prompt);
     const playBtn = $('play-btn');
-    playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+    playBtn.onclick = () => playComponentAudio(currentCard.prompt);
     show('play-btn');
     if (currentCard.pinyin) {
       setText('pinyin-hint', currentCard.pinyin);
