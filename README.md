@@ -91,6 +91,7 @@ Other security-relevant tunables:
 RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
 RATE_LIMIT_USER_PER_MIN=300       # per-user budget for all other API traffic
 RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-password, LLM scene generation
+RATE_LIMIT_GITHUB_ISSUE_PER_MIN=5 # budget for issue reports, enforced per user AND per IP
 CSV_MAX_UPLOAD_MB=8               # max CSV upload body size; oversized uploads are rejected (413)
 CSV_MAX_ROWS=5000                 # max data rows per CSV upload; over-cap uploads are rejected (400)
 ```
@@ -242,6 +243,23 @@ When enabled, an **Auto-translate** button appears in the Add/Edit Word form. It
 - **Both filled** → generates pinyin only
 
 Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin is generated server-side using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser — all DeepL calls are proxied through the backend.
+
+## In-app issue reporting (GitHub)
+
+When configured, a floating **report** button appears on every authenticated page. Clicking it captures the current page (URL, a screenshot, and non-sensitive client context: user agent, viewport, locale, timestamp), lets the user pick a type (**bug / idea / question / misc**) and write a title and description, and on submit creates a GitHub issue server-side.
+
+```bash
+GITHUB_TOKEN=github_pat_...      # fine-grained PAT; required to enable the feature
+GITHUB_ISSUE_REPO=owner/repo     # target repository; required to enable the feature
+GITHUB_ISSUE_LABELS=from-app     # comma-separated labels applied to created issues (default: from-app)
+GITHUB_ASSETS_BRANCH=issue-assets # branch screenshots are uploaded to (default: issue-assets)
+GITHUB_API_BASE_URL=             # override the GitHub API base (tests/GitHub Enterprise); default https://api.github.com
+GITHUB_ISSUE_MAX_BODY_MB=6       # max request body for issue submission (screenshots are several MB)
+```
+
+The feature is optional: if `GITHUB_TOKEN` or `GITHUB_ISSUE_REPO` is unset, the report button stays hidden and `POST /api/github/issues` returns `503`. Submission is open to any authenticated user and is rate-limited **per user and per IP** (`RATE_LIMIT_GITHUB_ISSUE_PER_MIN`, default 5/min).
+
+The token must be a fine-grained PAT scoped to the single target repo with **Issues: write** and **Contents: write**. The token never reaches the browser. GitHub's Issues API cannot attach images, so screenshots are uploaded via the Contents API to `GITHUB_ASSETS_BRANCH` (auto-created from the default branch if missing) and embedded in the issue body by URL — they accumulate as blobs on that branch (never on the default branch) and can be pruned periodically. Each report carries a random UUID embedded in the issue body; the UUID→user mapping is recorded only in the private audit log, so no email or internal account id appears in the (potentially public) issue.
 
 ## LLM scene generation
 
@@ -581,6 +599,8 @@ vocabulary_trainer/
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
+| `GET` | `/api/github/config` | Whether in-app issue reporting is enabled (`{"enabled":bool}`) |
+| `POST` | `/api/github/issues` | Create a GitHub issue from an in-app report (only available when `GITHUB_TOKEN` + `GITHUB_ISSUE_REPO` are set; rate-limited per user and per IP) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
 | `GET` | `/api/hanzi/decompose` | Decompose Chinese characters into radicals and components (`chars` query param, max 20) |
 | `GET` | `/api/hmm/actors` | List all HMM actor mappings (pinyin initial → person) |

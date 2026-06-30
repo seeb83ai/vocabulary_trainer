@@ -34,6 +34,58 @@
 
   {{block "content" .}}{{end}}
 
+  <!-- Floating issue-report button + modal. Hidden until app.js confirms the
+       GitHub issue-reporting feature is enabled (GET /api/github/config). -->
+  <button id="issue-report-btn" type="button"
+    class="hidden fixed bottom-5 right-5 z-40 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition"
+    aria-label="Report an issue" title="Report an issue" data-i18n-title="issue.buttonTitle">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 9v4"/><path d="M12 17h.01"/>
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+    </svg>
+  </button>
+
+  <div id="issue-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <h3 class="text-lg font-semibold text-gray-800" data-i18n="issue.title">Report an issue</h3>
+
+      <label class="block text-sm font-medium text-gray-700">
+        <span data-i18n="issue.category">Type</span>
+        <select id="issue-category" class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="bug" data-i18n="issue.cat.bug">Bug</option>
+          <option value="idea" data-i18n="issue.cat.idea">Idea</option>
+          <option value="question" data-i18n="issue.cat.question">Question</option>
+          <option value="misc" data-i18n="issue.cat.misc">Misc</option>
+        </select>
+      </label>
+
+      <label class="block text-sm font-medium text-gray-700">
+        <span data-i18n="issue.titleLabel">Title</span>
+        <input id="issue-title" type="text" maxlength="120"
+          class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </label>
+
+      <label class="block text-sm font-medium text-gray-700">
+        <span data-i18n="issue.descLabel">Description</span>
+        <textarea id="issue-description" rows="4" maxlength="4000"
+          class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+      </label>
+
+      <label class="flex items-center gap-2 text-sm text-gray-700">
+        <input id="issue-include-screenshot" type="checkbox" checked class="rounded border-gray-300">
+        <span data-i18n="issue.includeScreenshot">Include a screenshot of this page</span>
+      </label>
+      <img id="issue-screenshot-preview" alt="screenshot preview" class="hidden w-full rounded-lg border border-gray-200">
+
+      <p id="issue-status" class="text-sm text-gray-600 min-h-[1.25rem]" role="status" aria-live="polite"></p>
+
+      <div class="flex justify-end gap-3 pt-2">
+        <button id="issue-cancel" type="button" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800" data-i18n="issue.cancel">Cancel</button>
+        <button id="issue-submit" type="button" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition" data-i18n="issue.submit">Submit</button>
+      </div>
+    </div>
+  </div>
+
   <script src="i18n.js"></script>
   <script src="app.js"></script>
   {{range .PageScripts}}<script src="{{.}}"></script>

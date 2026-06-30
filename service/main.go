@@ -187,6 +187,30 @@ func main() {
 		llmH = &handlers.LLMHandler{Store: store, SettingsHandler: settingsH}
 	}
 
+	// In-app GitHub issue reporting (optional). Enabled when both GITHUB_TOKEN
+	// and GITHUB_ISSUE_REPO are set; otherwise the route returns 503 and the
+	// frontend hides the report button.
+	githubH := &handlers.GitHubHandler{Store: store, APIBaseURL: os.Getenv("GITHUB_API_BASE_URL")}
+	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
+		if repo := os.Getenv("GITHUB_ISSUE_REPO"); repo != "" {
+			githubH.Token = tok
+			githubH.Repo = repo
+			githubH.AssetsBranch = os.Getenv("GITHUB_ASSETS_BRANCH")
+			labels := "from-app"
+			if v := os.Getenv("GITHUB_ISSUE_LABELS"); v != "" {
+				labels = v
+			}
+			for _, l := range strings.Split(labels, ",") {
+				if l = strings.TrimSpace(l); l != "" {
+					githubH.Labels = append(githubH.Labels, l)
+				}
+			}
+			log.Printf("GitHub issue reporting enabled: repo=%s labels=%v", repo, githubH.Labels)
+		} else {
+			log.Printf("GitHub issue reporting disabled: GITHUB_TOKEN set but GITHUB_ISSUE_REPO missing")
+		}
+	}
+
 	// Rate limiters. Defaults: unauth = 10 req/min per IP (brute-force budget
 	// for login/register/verify-email); auth = 300 req/min per user (≈ 5 rps).
 	authPerMin := envInt("RATE_LIMIT_AUTH_PER_MIN", 10)
@@ -196,6 +220,12 @@ func main() {
 	ipLimiter := handlers.NewRateLimiter(authPerMin, time.Minute)
 	userLimiter := handlers.NewRateLimiter(userPerMin, time.Minute)
 	expensiveLimiter := handlers.NewRateLimiter(expensivePerMin, time.Minute)
+
+	// Issue reporting is tightly limited per user AND per IP to deter spam.
+	githubIssuePerMin := envInt("RATE_LIMIT_GITHUB_ISSUE_PER_MIN", 5)
+	log.Printf("Rate limit per minute: github-issues=%d (per user and per IP)", githubIssuePerMin)
+	githubIssueUserLimiter := handlers.NewRateLimiter(githubIssuePerMin, time.Minute)
+	githubIssueIPLimiter := handlers.NewRateLimiter(githubIssuePerMin, time.Minute)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -210,6 +240,16 @@ func main() {
 	// budget to slow brute-force and enumeration).
 	ipLimit := handlers.RateLimitMiddleware(ipLimiter, handlers.IPKey())
 	expensiveLimit := handlers.RateLimitMiddleware(expensiveLimiter, handlers.UserOrIPKey())
+
+	// Stack a per-user and a per-IP limiter on issue submission so both
+	// dimensions are enforced independently.
+	githubIssueIPLimit := handlers.RateLimitMiddleware(githubIssueIPLimiter, handlers.IPKey())
+	githubIssueUserLimit := handlers.RateLimitMiddleware(githubIssueUserLimiter, func(r *http.Request) string {
+		if uid := handlers.UserIDFromContext(r.Context()); uid > 0 {
+			return "u:" + strconv.FormatInt(uid, 10)
+		}
+		return ""
+	})
 
 	// API routes. Cap JSON request bodies so an unbounded upload cannot
 	// exhaust memory; oversized bodies make the JSON decoders fail with 400.
@@ -307,7 +347,18 @@ func main() {
 		r.Put("/settings/api-keys", settingsH.PutAPIKeys)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
 		r.With(expensiveLimit).Post("/translate", translateH.Translate)
+		r.Get("/github/config", githubH.ConfigFlag)
 	})
+
+	// Issue submission is registered outside the /api group so it can carry a
+	// larger body limit than MAX_BODY_BYTES (screenshots are several MB). It
+	// still inherits the global auth + per-user rate-limit middleware.
+	githubMaxBytes := int64(envInt("GITHUB_ISSUE_MAX_BODY_MB", 6)) << 20
+	log.Printf("Max issue-report body: %d bytes (set GITHUB_ISSUE_MAX_BODY_MB to change)", githubMaxBytes)
+	r.With(handlers.MaxBytes(githubMaxBytes)).
+		With(githubIssueIPLimit).
+		With(githubIssueUserLimit).
+		Post("/api/github/issues", githubH.Create)
 
 	// Static frontend files
 	sub, err := fs.Sub(frontendFS, "frontend")

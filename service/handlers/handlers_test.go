@@ -80,6 +80,14 @@ func clearHMMLibrary(t *testing.T, s *db.Store) {
 	}
 }
 
+// GitHub issue handler config used by newRouter. Tests point
+// testGitHubAPIBaseURL at an httptest mock server before building the router.
+var (
+	testGitHubToken      = "test-token"
+	testGitHubRepo       = "owner/repo"
+	testGitHubAPIBaseURL = ""
+)
+
 func newRouter(s *db.Store) http.Handler {
 	return newRouterWithUserID(s, 2)
 }
@@ -143,6 +151,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Put("/api/tags/{name}", tagsH.Update)
 	r.Get("/api/config", translateH.Config(true, true))
 	r.Post("/api/translate", translateH.Translate)
+	ghH := &handlers.GitHubHandler{Store: s, Token: testGitHubToken, Repo: testGitHubRepo, APIBaseURL: testGitHubAPIBaseURL, Labels: []string{"from-app"}}
+	r.Post("/api/github/issues", ghH.Create)
+	r.Get("/api/github/config", ghH.ConfigFlag)
 	r.Get("/api/components", componentH.List)
 	r.Post("/api/component/answer", componentH.Answer)
 	r.Post("/api/component/accept-correct", componentH.AcceptCorrect)
