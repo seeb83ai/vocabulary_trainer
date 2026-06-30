@@ -107,15 +107,24 @@ Update `README.md` whenever:
 
 ## Schema changes
 
-The schema is managed by a version-based migration system in `service/db/migrate.go`.
-A `schema_version` table tracks the current version. Each migration has a version number,
-optional SQL, and an optional Go function. Migrations run in order on startup.
+The schema is managed by a timestamp-versioned migration system in `service/db/migrate/`.
+A `schema_migrations` table records every applied migration by version (`int64`). Each
+migration has a `version int64`, optional `sql` string, and optional `fn func(*sql.DB) error`.
+Migrations run in ascending version order on startup; already-applied versions are skipped
+individually (not by high-watermark), so out-of-order merges are safe.
 
-To add a schema change, append a new `migration` entry to the `migrations` slice in
-`service/db/migrate.go` with the next version number. Use `CREATE ... IF NOT EXISTS` and
-`ALTER TABLE ... ADD COLUMN` with duplicate-column guards for idempotency.
-Dropping columns is allowed via `ALTER TABLE ... DROP COLUMN` with existence guards.
-Never rename or drop tables.
+To add a schema change:
+1. Create `service/db/migrate/v<YYYYMMDDHHMMSS>_<slug>.go` using the current datetime
+   (e.g. `v20260602143021_add_foo_column.go`).
+2. In an `init()` function call `register(migration{version: <same timestamp as int64>, ...})`.
+3. Use `CREATE ... IF NOT EXISTS` and `ALTER TABLE ... ADD COLUMN` with duplicate-column
+   guards for idempotency. Dropping columns is allowed via `ALTER TABLE ... DROP COLUMN`
+   with existence guards. Never rename or drop tables.
+
+`TestNoDuplicateMigrationVersions` in `migrate_test.go` catches duplicate versions at CI
+time. Existing migrations v01–v51 are unaffected (timestamps >> 51). Existing databases
+are bootstrapped automatically: the old `schema_version` high-watermark is converted to
+individual rows in `schema_migrations` on first run after the upgrade.
 
 ## Off-limits — do not change without explicit instruction
 
