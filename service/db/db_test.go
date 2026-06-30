@@ -2930,6 +2930,80 @@ func TestDetectConfusion_SlashVariant_Found(t *testing.T) {
 	}
 }
 
+func TestDetectConfusion_TranslToZh_TranslationOfOtherWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 天 → DE "Himmel" (the word being quizzed in transl_to_zh mode)
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "天",
+		Pinyin:       "tiān",
+		Translations: map[string][]string{"de": {"Himmel"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 走 → DE "Spaziergang" (a different word whose translation the user typed)
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "走",
+		Pinyin:       "zǒu",
+		Translations: map[string][]string{"de": {"Spaziergang"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User types "spaziergang" while in transl_to_zh mode for 天; should detect 走.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "spaziergang", "transl_to_zh", []string{"de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found when user types a translation of another word in transl_to_zh mode")
+	}
+	if confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d, got %d", otherID, confusedWithID)
+	}
+}
+
+func TestDetectConfusion_TranslToZh_SlashVariant(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 天 → EN "sky"
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "天",
+		Pinyin:       "tiān",
+		Translations: map[string][]string{"en": {"sky"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 食物 → EN "food / nourishment"
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "食物",
+		Pinyin:       "shíwù",
+		Translations: map[string][]string{"en": {"food / nourishment"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User types "nourishment" in transl_to_zh mode for 天; should detect 食物.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "nourishment", "transl_to_zh", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found for slash-variant translation in transl_to_zh mode")
+	}
+	if confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d, got %d", otherID, confusedWithID)
+	}
+}
+
 // ── CreateUser ────────────────────────────────────────────────────────────────
 
 func TestCreateUser_ReturnsID(t *testing.T) {
