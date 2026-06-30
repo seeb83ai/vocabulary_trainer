@@ -4779,3 +4779,88 @@ func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
 		t.Errorf("after re-confusion: expected 1 item, got %d", len(items2))
 	}
 }
+
+// ── GetZhWordsWithTranslation ─────────────────────────────────────────────────
+
+func TestGetZhWordsWithTranslation_TwoWordsShareSameTranslation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	// 错 and 不对 both translate to "falsch" in DE
+	_, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "错", Pinyin: "cuò", Translations: map[string][]string{"de": {"falsch"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "不对", Pinyin: "bù duì", Translations: map[string][]string{"de": {"falsch"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	texts, err := s.GetZhWordsWithTranslation(ctx, userID, "de", "falsch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(texts) != 2 {
+		t.Errorf("expected 2 zh words for translation 'falsch', got %d: %v", len(texts), texts)
+	}
+	found := map[string]bool{}
+	for _, tx := range texts {
+		found[tx] = true
+	}
+	if !found["错"] {
+		t.Error("expected '错' in results")
+	}
+	if !found["不对"] {
+		t.Error("expected '不对' in results")
+	}
+}
+
+func TestGetZhWordsWithTranslation_DoesNotCrossUsers(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Create a third user to test isolation
+	user3ID, err := s.CreateUser(ctx, "user3@test.local", "hash", "tok", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User 2 has 错 → falsch; User 3 also has 好 → falsch
+	_, err = s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText: "错", Pinyin: "cuò", Translations: map[string][]string{"de": {"falsch"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.CreateWord(ctx, user3ID, models.CreateWordRequest{
+		ZhText: "好", Pinyin: "hǎo", Translations: map[string][]string{"de": {"falsch"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User 2 should only see their own word
+	texts, err := s.GetZhWordsWithTranslation(ctx, int64(2), "de", "falsch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(texts) != 1 || texts[0] != "错" {
+		t.Errorf("expected only ['错'] for user 2, got %v", texts)
+	}
+}
+
+func TestGetZhWordsWithTranslation_EmptyWhenNoMatch(t *testing.T) {
+	s := openTestDB(t)
+	texts, err := s.GetZhWordsWithTranslation(context.Background(), int64(2), "en", "nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(texts) != 0 {
+		t.Errorf("expected empty result, got %v", texts)
+	}
+}

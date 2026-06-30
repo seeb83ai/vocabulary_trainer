@@ -6391,3 +6391,42 @@ func TestServeComponentAudio_RadicalUsesCanonicalFormForTTS(t *testing.T) {
 		})
 	}
 }
+
+func TestQuizAnswer_TranslToZh_EquivalentTranslationAccepted(t *testing.T) {
+	s := openTestDB(t)
+	// 错 and 不对 both translate to "falsch" in EN (using "en" since seedWord uses en)
+	id1 := seedWord(t, s, "错", "cuò", []string{"falsch"})
+	_ = seedWord(t, s, "不对", "bù duì", []string{"falsch"})
+	r := newRouter(s)
+
+	// Quizzing 错 but user types the zh text of 不对 — should be accepted
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id1,
+		Mode:   models.ModeTranslToZh,
+		Answer: "不对",
+	})
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("answer '不对' should be accepted when quizzing 错 because both share translation 'falsch'")
+	}
+}
+
+func TestQuizAnswer_TranslToZh_NonEquivalentTranslationRejected(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "错", "cuò", []string{"wrong"})
+	_ = seedWord(t, s, "好", "hǎo", []string{"good"})
+	r := newRouter(s)
+
+	// 好 does NOT share a translation with 错 — should not be accepted
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeTranslToZh,
+		Answer: "好",
+	})
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Error("answer '好' should NOT be accepted when quizzing 错 — they have different translations")
+	}
+}
