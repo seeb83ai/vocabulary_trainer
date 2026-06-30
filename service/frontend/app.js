@@ -140,3 +140,137 @@ function escHtml(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+// ── In-app GitHub issue reporting ───────────────────────────────────────────
+
+// buildIssueMetadata collects non-sensitive client context for an issue report.
+// Pure function (takes the window object) so it is unit-testable.
+function buildIssueMetadata(win) {
+  return {
+    user_agent: (win.navigator && win.navigator.userAgent) || '',
+    viewport: `${win.innerWidth}x${win.innerHeight}`,
+    locale: (win.navigator && win.navigator.language) || '',
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// validateIssueForm returns an i18n error key for the first problem found, or
+// '' when the form is valid. Pure function for unit testing.
+function validateIssueForm(form) {
+  const valid = ['idea', 'bug', 'question', 'misc'];
+  if (!valid.includes(form.category)) return 'issue.errCategory';
+  if (!form.title || !form.title.trim()) return 'issue.errTitle';
+  if (!form.description || !form.description.trim()) return 'issue.errDescription';
+  return '';
+}
+
+// Lazy-load the vendored html2canvas only when a screenshot is needed.
+let _html2canvasPromise = null;
+function loadHtml2Canvas() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  if (_html2canvasPromise) return _html2canvasPromise;
+  _html2canvasPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = '/html2canvas.min.js';
+    s.onload = () => resolve(window.html2canvas);
+    s.onerror = () => reject(new Error('failed to load html2canvas'));
+    document.head.appendChild(s);
+  });
+  return _html2canvasPromise;
+}
+
+// captureScreenshot renders the page to a PNG data URL, hiding the report UI so
+// it does not appear in the capture. Returns '' on failure (best-effort).
+async function captureScreenshot() {
+  const h2c = await loadHtml2Canvas();
+  if (!h2c) return '';
+  const btn = $('issue-report-btn');
+  const modal = $('issue-modal');
+  const btnWasHidden = btn && btn.classList.contains('hidden');
+  const modalWasHidden = modal && modal.classList.contains('hidden');
+  if (btn) btn.classList.add('hidden');
+  if (modal) modal.classList.add('hidden');
+  try {
+    const canvas = await h2c(document.body, { logging: false, useCORS: true, scale: 1 });
+    return canvas.toDataURL('image/png');
+  } finally {
+    if (btn && !btnWasHidden) btn.classList.remove('hidden');
+    if (modal && !modalWasHidden) modal.classList.remove('hidden');
+  }
+}
+
+async function initIssueReporter() {
+  const btn = $('issue-report-btn');
+  const modal = $('issue-modal');
+  if (!btn || !modal) return;
+
+  // Only enable when the server reports the feature is configured.
+  let enabled = false;
+  try {
+    const res = await fetch('/api/github/config');
+    if (res.ok) enabled = (await res.json()).enabled === true;
+  } catch (_) { /* feature unavailable */ }
+  if (!enabled) return;
+  btn.classList.remove('hidden');
+
+  let screenshotDataUrl = '';
+
+  async function refreshScreenshot() {
+    const preview = $('issue-screenshot-preview');
+    const include = $('issue-include-screenshot');
+    screenshotDataUrl = '';
+    preview.classList.add('hidden');
+    if (!include || !include.checked) return;
+    try {
+      screenshotDataUrl = await captureScreenshot();
+      if (screenshotDataUrl) {
+        preview.src = screenshotDataUrl;
+        preview.classList.remove('hidden');
+      }
+    } catch (_) { /* screenshot is best-effort */ }
+  }
+
+  btn.addEventListener('click', async () => {
+    setText('issue-status', '');
+    await refreshScreenshot();
+    show('issue-modal');
+  });
+
+  $('issue-cancel').addEventListener('click', () => hide('issue-modal'));
+  modal.addEventListener('click', e => { if (e.target === modal) hide('issue-modal'); });
+  $('issue-include-screenshot').addEventListener('change', refreshScreenshot);
+
+  $('issue-submit').addEventListener('click', async () => {
+    const form = {
+      category: $('issue-category').value,
+      title: $('issue-title').value,
+      description: $('issue-description').value,
+    };
+    const errKey = validateIssueForm(form);
+    if (errKey) { setText('issue-status', t(errKey)); return; }
+
+    setText('issue-status', t('issue.submitting'));
+    const payload = {
+      ...form,
+      page_url: location.href,
+      meta: buildIssueMetadata(window),
+    };
+    const include = $('issue-include-screenshot');
+    if (include && include.checked && screenshotDataUrl) {
+      payload.screenshot_png_b64 = screenshotDataUrl;
+    }
+    try {
+      const res = await apiFetch('/api/github/issues', { method: 'POST', body: JSON.stringify(payload) });
+      const statusEl = $('issue-status');
+      statusEl.innerHTML = escHtml(t('issue.success')) +
+        ' <a class="text-blue-600 underline" target="_blank" rel="noopener" href="' +
+        escHtml(res.issue_url) + '">#' + escHtml(String(res.number)) + '</a>';
+      $('issue-title').value = '';
+      $('issue-description').value = '';
+    } catch (err) {
+      setText('issue-status', t('issue.error') + ' ' + err.message);
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', initIssueReporter);

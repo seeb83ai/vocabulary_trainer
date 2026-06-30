@@ -409,6 +409,26 @@ const I18N = {
     'hmm.placeholder': 'Type your mnemonic name…',
     'hmm.submit': 'Submit',
     'hmm.next': 'Next →',
+
+    // In-app issue reporting
+    'issue.buttonTitle': 'Report an issue',
+    'issue.title': 'Report an issue',
+    'issue.category': 'Type',
+    'issue.cat.bug': 'Bug',
+    'issue.cat.idea': 'Idea',
+    'issue.cat.question': 'Question',
+    'issue.cat.misc': 'Misc',
+    'issue.titleLabel': 'Title',
+    'issue.descLabel': 'Description',
+    'issue.includeScreenshot': 'Include a screenshot of this page',
+    'issue.cancel': 'Cancel',
+    'issue.submit': 'Submit',
+    'issue.submitting': 'Submitting…',
+    'issue.success': 'Thanks! Created issue',
+    'issue.error': 'Could not submit:',
+    'issue.errCategory': 'Please choose a type.',
+    'issue.errTitle': 'Please enter a title.',
+    'issue.errDescription': 'Please enter a description.',
   },
 
   zh: {
@@ -817,6 +837,26 @@ const I18N = {
     'hmm.placeholder': '输入记忆法名称…',
     'hmm.submit': '提交',
     'hmm.next': '下一个 →',
+
+    // In-app issue reporting
+    'issue.buttonTitle': '报告问题',
+    'issue.title': '报告问题',
+    'issue.category': '类型',
+    'issue.cat.bug': '缺陷',
+    'issue.cat.idea': '想法',
+    'issue.cat.question': '问题',
+    'issue.cat.misc': '其他',
+    'issue.titleLabel': '标题',
+    'issue.descLabel': '描述',
+    'issue.includeScreenshot': '包含本页截图',
+    'issue.cancel': '取消',
+    'issue.submit': '提交',
+    'issue.submitting': '提交中…',
+    'issue.success': '谢谢！已创建议题',
+    'issue.error': '无法提交：',
+    'issue.errCategory': '请选择类型。',
+    'issue.errTitle': '请输入标题。',
+    'issue.errDescription': '请输入描述。',
   },
 };
 

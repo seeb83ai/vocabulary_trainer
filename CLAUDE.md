@@ -175,6 +175,7 @@ Never rename or drop tables.
 | `service/handlers/mismatches.go` | Mismatch detection handler |
 | `service/handlers/import.go` | Word list import handler |
 | `service/handlers/audio.go` | TTS audio serving handler |
+| `service/handlers/github_issues.go` | In-app GitHub issue reporting (`Create`, `ConfigFlag`); optional, gated on `GITHUB_TOKEN`/`GITHUB_ISSUE_REPO` |
 
 ### Frontend (`service/frontend/`)
 | Path | Purpose |

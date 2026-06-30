@@ -11,6 +11,14 @@ import { join } from 'node:path';
 const STATE_FILE = join('e2e', '.state', 'server.json');
 
 export default async function globalTeardown() {
+  // Close the mock GitHub API started in globalSetup, if present.
+  if (globalThis.__mockGitHubServer) {
+    try {
+      globalThis.__mockGitHubServer.close();
+      console.log('[E2E] Mock GitHub API closed.');
+    } catch { /* ignore */ }
+  }
+
   if (!existsSync(STATE_FILE)) {
     console.warn('[E2E] No server state file found — skipping teardown.');
     return;
