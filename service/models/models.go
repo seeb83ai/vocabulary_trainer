@@ -26,6 +26,7 @@ type UserSettings struct {
 	NewWordMode1              string `json:"new_word_mode_1"`      // TotalCorrect==1
 	NewWordMode2              string `json:"new_word_mode_2"`      // TotalCorrect>=2
 	CycleSequence             string `json:"cycle_sequence"`
+	CycleAdvanceOnSuccessOnly bool   `json:"cycle_advance_on_success_only"`
 	NewWordRequireZh          bool   `json:"new_word_require_zh"`
 	NewWordRequireTrans       bool   `json:"new_word_require_trans"`
 	MaxNewWordsPerDay         int    `json:"max_new_words_per_day"`
