@@ -359,6 +359,46 @@ describe('allTransTexts', () => {
   });
 });
 
+// ── "Add as correct answer" language picker ───────────────────────────────────
+// Mirrors the pure logic in train.js that decides which languages can be
+// picked when attributing a wrong answer as a correct translation, and which
+// one is pre-selected (issue #156: let the user choose the language, default
+// to their primary language).
+
+function buildAddTranslationLangOptions(selectedLangs, primaryLang) {
+  const langs = selectedLangs.length > 0 ? selectedLangs : [primaryLang];
+  const defaultLang = langs.includes(primaryLang) ? primaryLang : langs[0];
+  return { langs, defaultLang };
+}
+
+describe('buildAddTranslationLangOptions', () => {
+  it('offers both languages when two are selected', () => {
+    const { langs } = buildAddTranslationLangOptions(['en', 'de'], 'en');
+    expect(langs).toEqual(['en', 'de']);
+  });
+
+  it('defaults to the primary language when it is among the selected langs', () => {
+    const { defaultLang } = buildAddTranslationLangOptions(['en', 'de'], 'en');
+    expect(defaultLang).toBe('en');
+  });
+
+  it('defaults to the primary language regardless of selection order', () => {
+    const { defaultLang } = buildAddTranslationLangOptions(['de', 'en'], 'en');
+    expect(defaultLang).toBe('en');
+  });
+
+  it('falls back to the first selected lang when primary lang is not selected', () => {
+    const { defaultLang } = buildAddTranslationLangOptions(['de'], 'en');
+    expect(defaultLang).toBe('de');
+  });
+
+  it('falls back to the primary lang when no langs are selected', () => {
+    const { langs, defaultLang } = buildAddTranslationLangOptions([], 'en');
+    expect(langs).toEqual(['en']);
+    expect(defaultLang).toBe('en');
+  });
+});
+
 // ── New word input validation ──────────────────────────────────────────────────
 // Mirrors the pure helpers added to train.js for the new-word input fields.
 

@@ -115,6 +115,12 @@ function shouldShowAcceptBtn(answer, normCorrects, mode) {
   return false;
 }
 
+function buildAddTranslationLangOptions(selectedLangs, primaryLang) {
+  const langs = selectedLangs.length > 0 ? selectedLangs : [primaryLang];
+  const defaultLang = langs.includes(primaryLang) ? primaryLang : langs[0];
+  return { langs, defaultLang };
+}
+
 // Splits a component correct_answers object ({lang: "def1, def2"}) into
 // individual normalised alternatives, mirroring CheckComponentAnswer's `,`/`;` split.
 function splitComponentDefs(correctAnswersObj) {
@@ -413,6 +419,7 @@ async function loadNextCard(trackCurrent = false) {
   hide('success-state');
   hide('error-state');
   hide('add-translation-btn');
+  hide('add-translation-lang-select');
   hide('accept-correct-btn');
   hide('result-play-btn');
   hide('new-word-area');
@@ -768,17 +775,28 @@ async function submitAnswer(e) {
 
         if (!isEmpty) {
           const addBtn = $('add-translation-btn');
+          const langSelect = $('add-translation-lang-select');
           addBtn.textContent = t('result.addTranslation', { answer });
           addBtn.disabled = false;
           addBtn.className = 'mt-3 mb-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
           show('add-translation-btn');
 
+          const { langs, defaultLang } = buildAddTranslationLangOptions(selectedLangs, userPrimaryLang);
+          if (langs.length > 1) {
+            langSelect.innerHTML = langs.map(l => `<option value="${l}">${l.toUpperCase()}</option>`).join('');
+            langSelect.value = defaultLang;
+            show('add-translation-lang-select');
+          } else {
+            hide('add-translation-lang-select');
+          }
+
           addBtn.onclick = async () => {
             addBtn.disabled = true;
             try {
+              const lang = langs.length > 1 ? langSelect.value : defaultLang;
               await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
                 method: 'POST',
-                body: JSON.stringify({ text: answer, lang: selectedLangs[0] || userPrimaryLang }),
+                body: JSON.stringify({ text: answer, lang }),
               });
               await apiFetch('/api/quiz/accept-correct', {
                 method: 'POST',
@@ -788,6 +806,7 @@ async function submitAnswer(e) {
                   langs: selectedLangs,
                 }),
               });
+              addBtn.textContent = t('result.added');
               loadNextCard(true);
             } catch (err) {
               addBtn.disabled = false;
@@ -796,6 +815,7 @@ async function submitAnswer(e) {
           };
         } else {
           hide('add-translation-btn');
+          hide('add-translation-lang-select');
         }
 
         // Show "Accept as correct" button based on user's mode setting.
@@ -836,6 +856,7 @@ async function submitAnswer(e) {
         }
         show('word-breakdown');
         hide('add-translation-btn');
+        hide('add-translation-lang-select');
         hide('accept-correct-btn');
         // Continuing without resolving falls back to the normal wrong-answer
         // screen instead of silently advancing (issue #194).
@@ -886,6 +907,7 @@ async function submitAnswer(e) {
       if (inlinePlay) inlinePlay.addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       show('word-breakdown');
       hide('add-translation-btn');
+      hide('add-translation-lang-select');
       hide('accept-correct-btn');
 
       if (result.tier) {
@@ -1025,6 +1047,7 @@ function showHMMResult(resp) {
   show('word-breakdown');
 
   hide('add-translation-btn');
+  hide('add-translation-lang-select');
   hide('result-hmm');
   hide('result-decompose');
   hide('result-decompose-content');
@@ -1092,6 +1115,7 @@ function showComponentResult(resp) {
   show('word-breakdown');
 
   hide('add-translation-btn');
+  hide('add-translation-lang-select');
   loadDecomposition(currentCard.prompt, 'result-decompose', 'result-decompose-toggle');
   hide('bucket-info');
   hide('streak-info');
