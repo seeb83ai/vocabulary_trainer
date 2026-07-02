@@ -143,6 +143,25 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
+  test('result-play-btn is visible in result area after answering (issue #158)', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Submit a wrong answer so the word stays due and doesn't disrupt later tests
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    await expect(page.locator('#result-play-btn')).toBeVisible();
+  });
+
+  test('issue-report button z-index is above gamification overlay (issue #152)', async ({ page }) => {
+    await page.goto('/train');
+    const cls = await page.locator('#issue-report-btn').getAttribute('class');
+    expect(cls).toContain('z-60');
+  });
+
   test('wrong answer is not repeated in the next two cards', async ({ page }) => {
     await useZhToTranslMode(page);
     await page.goto('/train');
