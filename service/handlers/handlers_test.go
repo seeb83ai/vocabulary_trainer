@@ -335,6 +335,37 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	}
 }
 
+func TestQuizNext_TranslToZh_IncludesZhText(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=transl_to_zh", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeTranslToZh {
+		t.Fatalf("want mode=transl_to_zh, got %s", card.Mode)
+	}
+	if card.ZhText != "你好" {
+		t.Errorf("want zh_text=你好, got %q", card.ZhText)
+	}
+}
+
 func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
