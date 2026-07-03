@@ -191,13 +191,13 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 }
 
 var validTrainModes = map[string]bool{
-	"progressive":      true,
-	"random":           true,
-	"cycle":            true,
-	"transl_to_zh":     true,
-	"zh_to_transl":     true,
+	"progressive":         true,
+	"random":              true,
+	"cycle":               true,
+	"transl_to_zh":        true,
+	"zh_to_transl":        true,
 	"zh_pinyin_to_transl": true,
-	"":                 true,
+	"":                    true,
 }
 
 // PatchTrainingFilters handles PATCH /api/training-filters — persists the
