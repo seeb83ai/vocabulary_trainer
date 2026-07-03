@@ -175,6 +175,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/settings", settingsH.Get)
 	r.Patch("/api/settings", settingsH.Patch)
 	r.Put("/api/settings/api-keys", settingsH.PutAPIKeys)
+	r.Patch("/api/training-filters", settingsH.PatchTrainingFilters)
 	return r
 }
 
@@ -4257,6 +4258,63 @@ func TestPatchSettings_Valid(t *testing.T) {
 	}
 	if st.NewWordMode1 != "zh_pinyin_to_transl" {
 		t.Errorf("want new_word_mode_1=zh_pinyin_to_transl, got %q", st.NewWordMode1)
+	}
+}
+
+// ── PATCH /api/training-filters ──────────────────────────────────────────────
+
+func TestPatchTrainingFilters_Valid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]any{
+		"mode":       "cycle",
+		"bucket":     "50-69",
+		"langs":      []string{"de", "en"},
+		"mnemonics":  false,
+		"components": true,
+		"tags":       []string{"HSK1"},
+	}
+	rec := do(t, r, http.MethodPatch, "/api/training-filters", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify via GET /api/settings
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.TrainMode != "cycle" {
+		t.Errorf("want train_mode=cycle, got %q", st.TrainMode)
+	}
+	if st.TrainBucket != "50-69" {
+		t.Errorf("want train_bucket=50-69, got %q", st.TrainBucket)
+	}
+	if len(st.TrainLangs) != 2 || st.TrainLangs[0] != "de" {
+		t.Errorf("want train_langs=[de en], got %v", st.TrainLangs)
+	}
+	if st.TrainMnemonics {
+		t.Error("want train_mnemonics=false")
+	}
+	if !st.TrainComponents {
+		t.Error("want train_components=true")
+	}
+	if len(st.TrainTags) != 1 || st.TrainTags[0] != "HSK1" {
+		t.Errorf("want train_tags=[HSK1], got %v", st.TrainTags)
+	}
+}
+
+func TestPatchTrainingFilters_InvalidMode(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]any{
+		"mode":  "invalid_mode",
+		"langs": []string{"en"},
+	}
+	rec := do(t, r, http.MethodPatch, "/api/training-filters", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for invalid mode, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

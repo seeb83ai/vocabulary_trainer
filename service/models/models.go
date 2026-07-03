@@ -47,6 +47,12 @@ type UserSettings struct {
 	AcceptCorrectMode         string `json:"accept_correct_mode"`
 	GamificationEnabled       bool   `json:"gamification_enabled"`
 	GamificationFrequency     int    `json:"gamification_frequency"`
+	TrainMode                 string   `json:"train_mode"`
+	TrainBucket               string   `json:"train_bucket"`
+	TrainLangs                []string `json:"train_langs"`
+	TrainMnemonics            bool     `json:"train_mnemonics"`
+	TrainComponents           bool     `json:"train_components"`
+	TrainTags                 []string `json:"train_tags"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
