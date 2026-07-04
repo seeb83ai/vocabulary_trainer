@@ -629,6 +629,7 @@ vocabulary_trainer/
 | `GET` | `/api/settings` | Get user settings (language prefs, quiz modes, masked API key status) |
 | `PATCH` | `/api/settings` | Update language preferences and per-tier quiz mode configuration |
 | `PUT` | `/api/settings/api-keys` | Encrypt and store personal DeepL / LLM API keys |
+| `PATCH` | `/api/settings/filter` | Save training filter preferences (quiz mode, tier bucket, languages, tags, mnemonics, components) |
 
 ## License
 
