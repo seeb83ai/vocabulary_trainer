@@ -20,16 +20,8 @@ func init() {
 				{"quiz_mnemonics", "INTEGER NOT NULL DEFAULT 1"},
 				{"quiz_components", "INTEGER NOT NULL DEFAULT 1"},
 			} {
-				var count int
-				if err := db.QueryRow(
-					`SELECT COUNT(*) FROM pragma_table_info('user_settings') WHERE name = ?`, col.name,
-				).Scan(&count); err != nil {
-					return fmt.Errorf("check %s column: %w", col.name, err)
-				}
-				if count == 0 {
-					if _, err := db.Exec(
-						`ALTER TABLE user_settings ADD COLUMN ` + col.name + ` ` + col.def,
-					); err != nil {
+				if _, err := db.Exec(`ALTER TABLE user_settings ADD COLUMN ` + col.name + ` ` + col.def); err != nil {
+					if !columnExistsErr(err) {
 						return fmt.Errorf("add %s column: %w", col.name, err)
 					}
 				}
