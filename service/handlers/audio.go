@@ -48,7 +48,7 @@ func (h *AudioHandler) ServeAudio(w http.ResponseWriter, r *http.Request) {
 	// Generate lazily if the file doesn't exist yet
 	if _, err := os.Stat(mp3Path); os.IsNotExist(err) {
 		if err := h.generateToPath(mp3Path, wd.ZhText); err != nil {
-			// TTS unavailable — tell the client so it can fall back
+			log.Printf("tts generate word %d: %v", id, err)
 			writeError(w, http.StatusServiceUnavailable, "tts unavailable")
 			return
 		}
@@ -149,7 +149,6 @@ func (h *AudioHandler) generateToPath(mp3Path, text string) error {
 	}
 	data, err := synth(text)
 	if err != nil {
-		log.Printf("tts generate %q: %v", text, err)
 		return err
 	}
 	if err := os.WriteFile(mp3Path, data, 0644); err != nil {
