@@ -541,8 +541,8 @@ async function submitAnswer(e) {
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('result.correctLabel'))}</div>
         <div class="flex items-center gap-2">
-          <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
-          <button class="btn-breakdown-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+          <div class="text-3xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
+          <button class="btn-breakdown-play text-2xl text-gray-500 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
         </div>
         <div class="text-gray-600 text-sm mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
       </div>`;
