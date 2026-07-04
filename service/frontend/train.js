@@ -418,7 +418,7 @@ async function loadNextCard(trackCurrent = false) {
   hide('empty-state');
   hide('success-state');
   hide('error-state');
-  hide('add-translation-btn');
+  hide('add-translation-row');
   hide('add-translation-lang-select');
   hide('accept-correct-btn');
   hide('result-play-btn');
@@ -778,8 +778,8 @@ async function submitAnswer(e) {
           const langSelect = $('add-translation-lang-select');
           addBtn.textContent = t('result.addTranslation', { answer });
           addBtn.disabled = false;
-          addBtn.className = 'mt-3 mb-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
-          show('add-translation-btn');
+          addBtn.className = 'border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
+          show('add-translation-row');
 
           const { langs, defaultLang } = buildAddTranslationLangOptions(selectedLangs, userPrimaryLang);
           if (langs.length > 1) {
@@ -814,7 +814,7 @@ async function submitAnswer(e) {
             }
           };
         } else {
-          hide('add-translation-btn');
+          hide('add-translation-row');
           hide('add-translation-lang-select');
         }
 
@@ -855,7 +855,7 @@ async function submitAnswer(e) {
           confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
         }
         show('word-breakdown');
-        hide('add-translation-btn');
+        hide('add-translation-row');
         hide('add-translation-lang-select');
         hide('accept-correct-btn');
         // Continuing without resolving falls back to the normal wrong-answer
@@ -906,7 +906,7 @@ async function submitAnswer(e) {
       const inlinePlay = breakdown.querySelector('.result-inline-play');
       if (inlinePlay) inlinePlay.addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       show('word-breakdown');
-      hide('add-translation-btn');
+      hide('add-translation-row');
       hide('add-translation-lang-select');
       hide('accept-correct-btn');
 
@@ -1046,7 +1046,7 @@ function showHMMResult(resp) {
     </div>`;
   show('word-breakdown');
 
-  hide('add-translation-btn');
+  hide('add-translation-row');
   hide('add-translation-lang-select');
   hide('result-hmm');
   hide('result-decompose');
@@ -1114,7 +1114,7 @@ function showComponentResult(resp) {
     </div>`;
   show('word-breakdown');
 
-  hide('add-translation-btn');
+  hide('add-translation-row');
   hide('add-translation-lang-select');
   loadDecomposition(currentCard.prompt, 'result-decompose', 'result-decompose-toggle');
   hide('bucket-info');
