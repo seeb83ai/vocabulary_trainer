@@ -13,7 +13,7 @@ func init() {
 				name string
 				def  string
 			}{
-				{"quiz_mode", "TEXT NOT NULL DEFAULT 'random'"},
+				{"quiz_mode", "TEXT NOT NULL DEFAULT 'zh_to_transl'"},
 				{"quiz_bucket", "TEXT NOT NULL DEFAULT ''"},
 				{"quiz_langs", `TEXT NOT NULL DEFAULT '["en"]'`},
 				{"quiz_tags", "TEXT NOT NULL DEFAULT '[]'"},

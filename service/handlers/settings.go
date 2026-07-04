@@ -205,7 +205,7 @@ func (h *SettingsHandler) PatchFilter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.QuizMode == "" {
-		req.QuizMode = "random"
+		req.QuizMode = "zh_to_transl"
 	}
 	if req.QuizLangs == "" {
 		req.QuizLangs = `["en"]`

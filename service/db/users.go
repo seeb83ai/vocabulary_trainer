@@ -221,7 +221,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(gamification_enabled, 0),
 		       COALESCE(gamification_frequency, 5),
 		       COALESCE(cycle_advance_on_success_only, 0),
-		       COALESCE(quiz_mode, 'random'),
+		       COALESCE(quiz_mode, 'zh_to_transl'),
 		       COALESCE(quiz_bucket, ''),
 		       COALESCE(quiz_langs, '["en"]'),
 		       COALESCE(quiz_tags, '[]'),
