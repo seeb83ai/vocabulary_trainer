@@ -349,28 +349,18 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 
 	switch mode {
 	case "zh_to_transl", "zh_pinyin_to_transl":
-		// Fetch all translation words for the user in the selected languages (excluding
+		// Fetch all translation words for the user across ALL languages (excluding
 		// translations of the word being quizzed), then match in Go using ExpandVariants.
-		// Go-level matching is necessary because SQLite's LOWER() is ASCII-only and
-		// cannot case-fold non-ASCII characters such as German umlauts (Ä/Ö/Ü).
-		// It also allows detecting slash-separated variants (e.g. "dog / hound").
-		if len(langs) == 0 {
-			langs = []string{"en"}
-		}
-		placeholders := make([]string, len(langs))
-		args := make([]any, 0, len(langs)+2)
-		for i, l := range langs {
-			placeholders[i] = "?"
-			args = append(args, l)
-		}
-		args = append(args, zhWordID, userID)
+		// Language-agnostic: when transl_to_zh has no translations in the selected lang
+		// it falls back to zh_to_transl, so the typed answer may be in any language.
+		// Go-level matching also handles SQLite LOWER() not folding non-ASCII (umlauts)
+		// and slash-separated alternatives (e.g. "dog / hound").
 		rows, qErr := s.db.QueryContext(ctx, `
 			SELECT t.zh_word_id, w.text FROM words w
 			JOIN translations t ON t.translation_word_id = w.id
 			JOIN words wz ON wz.id = t.zh_word_id
-			WHERE w.language IN (`+strings.Join(placeholders, ",")+`)
-			  AND t.zh_word_id != ?
-			  AND wz.user_id = ?`, args...)
+			WHERE t.zh_word_id != ?
+			  AND wz.user_id = ?`, zhWordID, userID)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion: %w", qErr)
 		}
