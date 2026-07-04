@@ -143,6 +143,26 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
+  test('"add as correct" button auto-advances to next card after adding translation', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Submit a clearly wrong answer (far from any correct answer) so only the
+    // add-translation-btn appears, not the accept-correct-btn (typo threshold).
+    await page.locator('#answer-input').fill('notananswer');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+
+    // The "add as correct" button must be visible
+    await expect(page.locator('#add-translation-btn')).toBeVisible();
+
+    // Clicking it should auto-advance (load next card), not stay on result-area
+    await page.locator('#add-translation-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+
   test('wrong answer is not repeated in the next two cards', async ({ page }) => {
     await useZhToTranslMode(page);
     await page.goto('/train');
