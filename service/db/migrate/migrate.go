@@ -8,7 +8,7 @@ import (
 
 // migration describes a single schema migration step.
 type migration struct {
-	version int
+	version int64
 	sql     string              // executed first (may be empty)
 	fn      func(*sql.DB) error // executed after sql (may be nil)
 }
@@ -26,20 +26,39 @@ func Migrate(database *sql.DB) error {
 		return registry[i].version < registry[j].version
 	})
 
-	if _, err := database.Exec(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL DEFAULT 0)`); err != nil {
-		return fmt.Errorf("create schema_version table: %w", err)
-	}
-	if _, err := database.Exec(`INSERT INTO schema_version (version) SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM schema_version)`); err != nil {
-		return fmt.Errorf("seed schema_version: %w", err)
+	if _, err := database.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	var current int
-	if err := database.QueryRow(`SELECT version FROM schema_version`).Scan(&current); err != nil {
-		return fmt.Errorf("read schema version: %w", err)
+	// Bootstrap: convert old single-row schema_version table to per-migration tracking.
+	var oldExists int
+	database.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_version'`).Scan(&oldExists)
+	if oldExists > 0 {
+		var hwm int64
+		database.QueryRow(`SELECT version FROM schema_version`).Scan(&hwm)
+		for _, m := range registry {
+			if m.version <= hwm {
+				database.Exec(`INSERT OR IGNORE INTO schema_migrations (version) VALUES (?)`, m.version)
+			}
+		}
+		database.Exec(`DROP TABLE schema_version`)
 	}
+
+	// Load the set of already-applied versions. rows.Close() before any follow-up query.
+	rows, err := database.Query(`SELECT version FROM schema_migrations`)
+	if err != nil {
+		return fmt.Errorf("read schema_migrations: %w", err)
+	}
+	applied := make(map[int64]bool)
+	for rows.Next() {
+		var v int64
+		rows.Scan(&v)
+		applied[v] = true
+	}
+	rows.Close()
 
 	for _, m := range registry {
-		if m.version <= current {
+		if applied[m.version] {
 			continue
 		}
 		if m.sql != "" {
@@ -52,8 +71,8 @@ func Migrate(database *sql.DB) error {
 				return fmt.Errorf("migration %d fn: %w", m.version, err)
 			}
 		}
-		if _, err := database.Exec(`UPDATE schema_version SET version = ?`, m.version); err != nil {
-			return fmt.Errorf("update schema version to %d: %w", m.version, err)
+		if _, err := database.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, m.version); err != nil {
+			return fmt.Errorf("record migration %d: %w", m.version, err)
 		}
 	}
 	return nil

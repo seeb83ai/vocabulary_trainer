@@ -91,6 +91,7 @@ Other security-relevant tunables:
 RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
 RATE_LIMIT_USER_PER_MIN=300       # per-user budget for all other API traffic
 RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-password, LLM scene generation
+RATE_LIMIT_GITHUB_ISSUE_PER_MIN=5 # budget for issue reports, enforced per user AND per IP
 CSV_MAX_UPLOAD_MB=8               # max CSV upload body size; oversized uploads are rejected (413)
 CSV_MAX_ROWS=5000                 # max data rows per CSV upload; over-cap uploads are rejected (400)
 ```
@@ -202,7 +203,7 @@ The bonus is calculated as the minimum value needed to reach the target accuracy
 
 ## Cycle mode
 
-The **Cycle** quiz mode rotates through a fixed sequence of quiz directions on every attempt, regardless of whether your answer was correct or wrong. The cycle position is derived from `total_attempts`, so it is automatically persisted per word without any extra database column.
+The **Cycle** quiz mode rotates through a fixed sequence of quiz directions. By default the position advances on every attempt (correct or wrong), so the counter is `total_attempts`. Users can switch to **advance on success only** in Settings → Cycle Mode, which uses `total_correct` as the counter instead — the step stays the same until you answer correctly.
 
 Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation → Chinese → Translation**
 
@@ -213,7 +214,7 @@ Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation
 | 3 | 2 | Chinese → Translation |
 | 4 | 0 (wraps) | Chinese + Pinyin → Translation |
 
-You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*.
+You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel has an **Advance only on success** toggle that switches the counter from `total_attempts` to `total_correct`.
 
 ## User settings
 
@@ -221,7 +222,7 @@ Each user has a personal settings page (`/settings`) with:
 
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
-- **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode.
+- **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode, and choose whether the cycle advances on every attempt (default) or only after a correct answer.
 - **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
 - **Gamification** — Enable a word-matching mini-game that appears during training when you have confused at least 3 word pairs in the last 7 days. Configure how often (in minutes) the game may interrupt training. When triggered, three confused pairs are shown in two shuffled columns; click a Chinese word then its English translation to match them; correct pairs turn green, wrong pairs flash red. The game updates SM-2 progress for each matched word.
 - **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account. A user-supplied local LLM URL must be a public `http(s)` address — internal/loopback/link-local targets are rejected (and blocked at connect time) to prevent server-side request forgery. Operators who run a trusted local model on loopback should configure it via the server-side `LOCAL_LLM_URL` env var instead.
@@ -242,6 +243,23 @@ When enabled, an **Auto-translate** button appears in the Add/Edit Word form. It
 - **Both filled** → generates pinyin only
 
 Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin is generated server-side using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser — all DeepL calls are proxied through the backend.
+
+## In-app issue reporting (GitHub)
+
+When configured, a floating **report** button appears on every authenticated page. Clicking it captures the current page (URL, a screenshot, and non-sensitive client context: user agent, viewport, locale, timestamp), lets the user pick a type (**bug / idea / question / misc**) and write a title and description, and on submit creates a GitHub issue server-side.
+
+```bash
+GITHUB_TOKEN=github_pat_...      # fine-grained PAT; required to enable the feature
+GITHUB_ISSUE_REPO=owner/repo     # target repository; required to enable the feature
+GITHUB_ISSUE_LABELS=from-app     # comma-separated labels applied to created issues (default: from-app)
+GITHUB_ASSETS_BRANCH=issue-assets # branch screenshots are uploaded to (default: issue-assets)
+GITHUB_API_BASE_URL=             # override the GitHub API base (tests/GitHub Enterprise); default https://api.github.com
+GITHUB_ISSUE_MAX_BODY_MB=6       # max request body for issue submission (screenshots are several MB)
+```
+
+The feature is optional: if `GITHUB_TOKEN` or `GITHUB_ISSUE_REPO` is unset, the report button stays hidden and `POST /api/github/issues` returns `503`. Submission is open to any authenticated user and is rate-limited **per user and per IP** (`RATE_LIMIT_GITHUB_ISSUE_PER_MIN`, default 5/min).
+
+The token must be a fine-grained PAT scoped to the single target repo with **Issues: write** and **Contents: write**. The token never reaches the browser. GitHub's Issues API cannot attach images, so screenshots are uploaded via the Contents API to `GITHUB_ASSETS_BRANCH` (auto-created from the default branch if missing) and embedded in the issue body by URL — they accumulate as blobs on that branch (never on the default branch) and can be pruned periodically. Each report carries a random UUID embedded in the issue body; the UUID→user mapping is recorded only in the private audit log, so no email or internal account id appears in the (potentially public) issue.
 
 ## LLM scene generation
 
@@ -513,7 +531,7 @@ vocabulary_trainer/
 │   │   ├── hmm.go           # Hanzi Movie Method — library CRUD, scene builder, pinyin parsing
 │   │   ├── mismatches.go    # GET /api/mismatches
 │   │   ├── translate.go     # POST /api/translate, GET /api/config — DeepL proxy + pinyin
-│   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
+│   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3; GET /api/audio/component/{char} — component TTS
 │   │   └── hanzi.go         # GET /api/hanzi/decompose — character decomposition
 │   ├── models/models.go     # Shared structs and mode constants
 │   ├── sm2/
@@ -576,10 +594,13 @@ vocabulary_trainer/
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 | `POST` | `/api/words/{id}/review` | Flag a word for review |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
+| `GET` | `/api/audio/component/{char}` | Serve cached MP3 for a single component character (generated on demand); files stored as `c_{hex}.mp3` |
 | `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
+| `GET` | `/api/github/config` | Whether in-app issue reporting is enabled (`{"enabled":bool}`) |
+| `POST` | `/api/github/issues` | Create a GitHub issue from an in-app report (only available when `GITHUB_TOKEN` + `GITHUB_ISSUE_REPO` are set; rate-limited per user and per IP) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
 | `GET` | `/api/hanzi/decompose` | Decompose Chinese characters into radicals and components (`chars` query param, max 20) |
 | `GET` | `/api/hmm/actors` | List all HMM actor mappings (pinyin initial → person) |

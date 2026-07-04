@@ -47,6 +47,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordMode1              string `json:"new_word_mode_1"`
 		NewWordMode2              string `json:"new_word_mode_2"`
 		CycleSequence             string `json:"cycle_sequence"`
+		CycleAdvanceOnSuccessOnly bool   `json:"cycle_advance_on_success_only"`
 		NewWordRequireZh          bool   `json:"new_word_require_zh"`
 		NewWordRequireTrans       bool   `json:"new_word_require_trans"`
 		AcceptCorrectMode         string `json:"accept_correct_mode"`
@@ -166,6 +167,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NewWordMode1:              req.NewWordMode1,
 		NewWordMode2:              req.NewWordMode2,
 		CycleSequence:             cycleSeq,
+		CycleAdvanceOnSuccessOnly: req.CycleAdvanceOnSuccessOnly,
 		NewWordRequireZh:          req.NewWordRequireZh,
 		NewWordRequireTrans:       req.NewWordRequireTrans,
 		AcceptCorrectMode:         req.AcceptCorrectMode,

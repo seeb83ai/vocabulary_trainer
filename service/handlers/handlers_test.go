@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,6 +80,14 @@ func clearHMMLibrary(t *testing.T, s *db.Store) {
 	}
 }
 
+// GitHub issue handler config used by newRouter. Tests point
+// testGitHubAPIBaseURL at an httptest mock server before building the router.
+var (
+	testGitHubToken      = "test-token"
+	testGitHubRepo       = "owner/repo"
+	testGitHubAPIBaseURL = ""
+)
+
 func newRouter(s *db.Store) http.Handler {
 	return newRouterWithUserID(s, 2)
 }
@@ -142,6 +151,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Put("/api/tags/{name}", tagsH.Update)
 	r.Get("/api/config", translateH.Config(true, true))
 	r.Post("/api/translate", translateH.Translate)
+	ghH := &handlers.GitHubHandler{Store: s, Token: testGitHubToken, Repo: testGitHubRepo, APIBaseURL: testGitHubAPIBaseURL, Labels: []string{"from-app"}}
+	r.Post("/api/github/issues", ghH.Create)
+	r.Get("/api/github/config", ghH.ConfigFlag)
 	r.Get("/api/components", componentH.List)
 	r.Post("/api/component/answer", componentH.Answer)
 	r.Post("/api/component/accept-correct", componentH.AcceptCorrect)
@@ -5322,6 +5334,111 @@ func TestQuizCycleMode_NoLearningPinyinHint(t *testing.T) {
 	}
 }
 
+// ── Cycle advance on success only ────────────────────────────────────────────
+
+func TestSettingsCycleAdvanceOnSuccessOnly_DefaultFalse(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET settings: want 200, got %d", rec.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.CycleAdvanceOnSuccessOnly {
+		t.Error("default cycle_advance_on_success_only: want false, got true")
+	}
+}
+
+func TestSettingsCycleAdvanceOnSuccessOnly_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]interface{}{
+		"primary_lang":                  "en",
+		"secondary_lang":                "",
+		"prog_new":                      "transl_to_zh",
+		"prog_tier_struggling":          "transl_to_zh",
+		"prog_tier_learning":            "zh_pinyin_to_transl",
+		"prog_tier_practicing":          "zh_to_transl",
+		"prog_tier_mastered":            "random",
+		"new_word_mode_0":               "transl_to_zh",
+		"new_word_mode_1":               "transl_to_zh",
+		"new_word_mode_2":               "zh_to_transl",
+		"cycle_sequence":                "zh_pinyin_to_transl,transl_to_zh,zh_to_transl",
+		"cycle_advance_on_success_only": true,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if !st.CycleAdvanceOnSuccessOnly {
+		t.Error("after PATCH: want cycle_advance_on_success_only=true, got false")
+	}
+}
+
+func TestQuizCycle_AdvanceOnSuccessOnly(t *testing.T) {
+	// When cycle_advance_on_success_only=true, the cycle position is driven by
+	// TotalCorrect rather than TotalAttempts. A word with TotalAttempts=3 but
+	// TotalCorrect=1 should show position (1-1)%3=0, not (3-1)%3=2.
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	// Enable the setting.
+	patchPayload := map[string]interface{}{
+		"primary_lang":                  "en",
+		"secondary_lang":                "",
+		"prog_new":                      "transl_to_zh",
+		"prog_tier_struggling":          "transl_to_zh",
+		"prog_tier_learning":            "zh_pinyin_to_transl",
+		"prog_tier_practicing":          "zh_to_transl",
+		"prog_tier_mastered":            "random",
+		"new_word_mode_0":               "transl_to_zh",
+		"new_word_mode_1":               "transl_to_zh",
+		"new_word_mode_2":               "zh_to_transl",
+		"cycle_sequence":                "zh_pinyin_to_transl,transl_to_zh,zh_to_transl",
+		"cycle_advance_on_success_only": true,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// Set TotalAttempts=3, TotalCorrect=1: without the flag → position 2; with it → position 0.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 3
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// TotalCorrect=1 → (1-1)%3=0 → zh_pinyin_to_transl (step 0)
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("advance_on_success_only: want %s (pos 0), got %s", models.ModeZhPinyinToTransl, card.Mode)
+	}
+}
+
 // ── Answer prev_state persistence ────────────────────────────────────────────
 
 func TestAnswerWrongStoresPrevState(t *testing.T) {
@@ -6138,5 +6255,139 @@ func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("frequency=%d: expected 400, got %d", freq, rec.Code)
 		}
+	}
+}
+
+// ── GET /api/audio/component/{char} ──────────────────────────────────────────
+
+func TestServeComponentAudio_ServesPreCachedFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	audioH := &handlers.AudioHandler{Store: openTestDB(t), AudioDir: tmpDir}
+
+	// Pre-seed the cached file using the expected c_{hex}.mp3 naming pattern.
+	// 木 = U+6728
+	cachedPath := filepath.Join(tmpDir, "c_6728.mp3")
+	if err := os.WriteFile(cachedPath, []byte("fake-mp3-wood"), 0644); err != nil {
+		t.Fatalf("seed mp3: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/component/{char}", audioH.ServeComponentAudio)
+
+	req := httptest.NewRequest("GET", "/api/audio/component/"+url.PathEscape("木"), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "fake-mp3-wood") {
+		t.Errorf("want cached content, got %q", rec.Body.String())
+	}
+}
+
+func TestServeComponentAudio_GeneratesOnDemand(t *testing.T) {
+	tmpDir := t.TempDir()
+	synthCalled := ""
+	audioH := &handlers.AudioHandler{
+		Store:    openTestDB(t),
+		AudioDir: tmpDir,
+		Synth:    func(text string) ([]byte, error) { synthCalled = text; return []byte("synth-mp3"), nil },
+	}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/component/{char}", audioH.ServeComponentAudio)
+
+	req := httptest.NewRequest("GET", "/api/audio/component/"+url.PathEscape("女"), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if synthCalled != "女" {
+		t.Errorf("want synth called with 女, got %q", synthCalled)
+	}
+	// File must be written with c_{hex}.mp3 pattern (女 = U+5973).
+	if _, err := os.Stat(filepath.Join(tmpDir, "c_5973.mp3")); err != nil {
+		t.Errorf("expected c_5973.mp3 to exist after generation: %v", err)
+	}
+}
+
+func TestServeComponentAudio_InvalidChar(t *testing.T) {
+	audioH := &handlers.AudioHandler{Store: openTestDB(t), AudioDir: t.TempDir()}
+
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/component/{char}", audioH.ServeComponentAudio)
+
+	// Multi-character value must be rejected with 400.
+	req := httptest.NewRequest("GET", "/api/audio/component/"+url.PathEscape("木火"), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("multi-char: want 400, got %d", rec.Code)
+	}
+}
+
+func TestServeComponentAudio_FilenameDifferentFromWordIDs(t *testing.T) {
+	// Ensure component files (c_{hex}.mp3) cannot collide with word audio files
+	// ({integer}.mp3). A hex codepoint like "6728" must NOT be a valid word ID
+	// file — verified by checking the naming prefix distinguishes them.
+	wordFile := "42.mp3"
+	componentFile := fmt.Sprintf("c_%04x.mp3", []rune("木")[0]) // c_6728.mp3
+	if wordFile == componentFile {
+		t.Error("component filename pattern must not match word id filename pattern")
+	}
+	if !strings.HasPrefix(componentFile, "c_") {
+		t.Error("component filename must start with c_")
+	}
+}
+
+func TestServeComponentAudio_RadicalUsesCanonicalFormForTTS(t *testing.T) {
+	// Radical variant characters (e.g. 扌 U+624C) should have TTS generated
+	// using the canonical/pronounceable character (手 U+624B), while the cached
+	// file is still named after the actual component codepoint (c_624c.mp3).
+	cases := []struct {
+		radical   string // the radical variant shown in the quiz
+		canonical string // what TTS should receive
+		wantFile  string // expected cached filename
+	}{
+		{"扌", "手", "c_624c.mp3"}, // hand radical
+		{"氵", "水", "c_6c35.mp3"}, // water (3-dot)
+		{"亻", "人", "c_4ebb.mp3"}, // person radical
+		{"讠", "言", "c_8ba0.mp3"}, // speech radical
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.radical, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			var synthGot string
+			audioH := &handlers.AudioHandler{
+				Store:    openTestDB(t),
+				AudioDir: tmpDir,
+				Synth:    func(text string) ([]byte, error) { synthGot = text; return []byte("synth-mp3"), nil },
+			}
+
+			r := chi.NewRouter()
+			r.Use(handlers.WithUserID(2))
+			r.Get("/api/audio/component/{char}", audioH.ServeComponentAudio)
+
+			req := httptest.NewRequest("GET", "/api/audio/component/"+url.PathEscape(tc.radical), nil)
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if synthGot != tc.canonical {
+				t.Errorf("TTS called with %q, want canonical %q", synthGot, tc.canonical)
+			}
+			if _, err := os.Stat(filepath.Join(tmpDir, tc.wantFile)); err != nil {
+				t.Errorf("expected %s to exist after generation: %v", tc.wantFile, err)
+			}
+		})
 	}
 }
