@@ -9,6 +9,7 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 - **Five quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English, **Progressive** (auto-selects direction based on learning progress), and **Cycle** (rotates through a user-configured sequence of directions per word)
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
 - **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
+- **Difficult-words drill** — once everything due is reviewed, the "All done for today!" screen offers a "Drill my hardest words" option: tick it and pick an amount to flag that many of your hardest words (about half by lowest accuracy, half by lowest ease factor). Those flagged words are served on demand — regardless of their due date — until each is answered correctly, which clears its flag. A temporary "Difficult words" pill in the filter bar shows the drill is active and how many remain; click it to exit early
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
 - **Accept as correct** — if a wrong answer was a typo, click "Accept as correct" to restore your pre-answer SM-2 progress and count the attempt as correct without penalty. Configurable in Settings: never / on 1-character typos (default) / always
@@ -571,8 +572,8 @@ vocabulary_trainer/
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params) |
-| `POST` | `/api/quiz/answer` | Submit an answer |
+| `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
+| `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag) |
 | `GET` | `/api/quiz/match-game` | Get up to 3 recent confusion pairs for the match mini-game (empty if < 3 pairs in last 7 days) |
 | `POST` | `/api/quiz/match-answer` | Submit a match-game result (`zh_word_id`, `correct`) — updates SM-2 progress |
 | `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress |
@@ -581,7 +582,9 @@ vocabulary_trainer/
 | `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |
 | `POST` | `/api/quiz/acknowledge-random` | Acknowledge a random subset of new words (start-training count) |
 | `POST` | `/api/quiz/advance` | Advance due dates / move past the current card |
-| `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
+| `POST` | `/api/quiz/difficult` | Flag the user's hardest words for a focused drill (`count` body field — about half by lowest accuracy, half by lowest ease factor); returns `{flagged}` |
+| `POST` | `/api/quiz/difficult/clear` | End the difficult-words drill by clearing all drill flags |
+| `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param); includes `difficult_remaining` (flagged drill words still to answer) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
 | `GET` | `/api/quiz/due-date-distribution` | Get word counts grouped by due date for the next 30 days (`tags` query param) |

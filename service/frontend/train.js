@@ -130,6 +130,50 @@ let latestStats = null;
 let skipNewWords = false;
 let requireNewWordZh = true;
 let requireNewWordTrans = true;
+// Difficult-words drill: when active, /api/quiz/next is queried with difficult=true
+// and only flagged (hardest) words are served until each is answered correctly.
+let difficultDrill = localStorage.getItem('quizDifficultDrill') === 'true';
+
+// renderDifficultDrill shows/hides the temporary filter-bar pill and updates its
+// remaining-count label from the latest stats.
+function renderDifficultDrill() {
+  const bar = document.getElementById('difficult-drill-bar');
+  if (!bar) return;
+  if (difficultDrill) {
+    bar.classList.remove('hidden');
+    const n = latestStats && typeof latestStats.difficult_remaining === 'number'
+      ? latestStats.difficult_remaining : null;
+    setText('difficult-drill-count', n != null ? `(${n})` : '');
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+// exitDifficultDrill ends the drill; clearServer also drops any remaining flags.
+async function exitDifficultDrill(clearServer) {
+  difficultDrill = false;
+  localStorage.removeItem('quizDifficultDrill');
+  renderDifficultDrill();
+  if (clearServer) {
+    try { await apiFetch('/api/quiz/difficult/clear', { method: 'POST' }); } catch (_) {}
+  }
+}
+
+// updateAdvanceButtonsForDifficult re-enables the amount buttons when the
+// "drill my hardest words" checkbox is ticked (they then flag that many difficult
+// words rather than advancing due dates) and swaps the amount label.
+function updateAdvanceButtonsForDifficult() {
+  const checked = !!(document.getElementById('difficult-words-checkbox') || {}).checked;
+  document.querySelectorAll('.advance-btn').forEach(btn => {
+    if (checked) {
+      btn.disabled = false;
+    } else if (latestStats) {
+      btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);
+    }
+  });
+  const label = document.getElementById('success-amount-label');
+  if (label) label.textContent = checked ? t('success.difficultAmount') : t('success.learnMore');
+}
 
 function applyModeButtons() {
   document.querySelectorAll('.mode-btn').forEach(btn => {
@@ -235,6 +279,7 @@ async function loadStats() {
     setText('stats-due', stats.due_today + (stats.hmm_due_today || 0) + (stats.components_due_today || 0));
     setText('stats-total', stats.total);
     setText('stats-new', `${stats.new_today} / ${stats.max_new_per_day}`);
+    renderDifficultDrill();
   } catch (_) {}
 }
 
@@ -276,16 +321,20 @@ async function loadNextCard() {
 
   if (latestStats) {
     if (latestStats.total === 0) {
+      await exitDifficultDrill(false);
       showEmptyState();
       return;
     }
-    if (latestStats.due_today === 0 && (latestStats.hmm_due_today || 0) === 0 && (latestStats.components_due_today || 0) === 0 && (!latestStats.new_available || skipNewWords)) {
+    // While drilling difficult words we bypass the "all done" screen and serve
+    // flagged words regardless of their due date.
+    if (!difficultDrill && latestStats.due_today === 0 && (latestStats.hmm_due_today || 0) === 0 && (latestStats.components_due_today || 0) === 0 && (!latestStats.new_available || skipNewWords)) {
       skipNewWords = false;
       setText('success-stats', t('stats.attemptsAndMistakes', { attempts: latestStats.today_attempts, mistakes: latestStats.today_mistakes }));
       const allAdvanceDisabled = latestStats.available_to_advance < 10;
       document.querySelectorAll('.advance-btn').forEach(btn => {
         btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);
       });
+      updateAdvanceButtonsForDifficult();
       const hasUnseen = (latestStats.new_available || 0) > 0;
       if (allAdvanceDisabled && hasUnseen) {
         show('introduce-new-btn');
@@ -307,11 +356,18 @@ async function loadNextCard() {
     if (!includeMnemonics) params.set('mnemonics', 'false');
     if (includeComponents) params.set('trainComponents', '1');
     if (recentWordIDs.length) params.set('exclude', recentWordIDs.join(','));
+    if (difficultDrill) params.set('difficult', 'true');
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
   } catch (e) {
     hide('card-area');
+    if (e.message === 'no words available' && difficultDrill) {
+      // The drill pool is exhausted — leave the drill and fall back to the
+      // normal "all done" / next-card flow.
+      await exitDifficultDrill(false);
+      return loadNextCard();
+    }
     if (e.message === 'no words available') {
       // latestStats was fetched above; if stale or fetch failed, re-fetch now.
       const fbParams = new URLSearchParams();
@@ -327,6 +383,7 @@ async function loadNextCard() {
         document.querySelectorAll('.advance-btn').forEach(btn => {
           btn.disabled = stats.available_to_advance < parseInt(btn.dataset.advance);
         });
+        updateAdvanceButtonsForDifficult();
         show('success-state');
       }
     } else {
@@ -1324,6 +1381,30 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.advance-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const count = parseInt(btn.dataset.advance);
+      // When "drill my hardest words" is ticked, the amount buttons flag that
+      // many difficult words and start a focused drill instead of advancing.
+      if ($('difficult-words-checkbox') && $('difficult-words-checkbox').checked) {
+        let resp;
+        try {
+          resp = await apiFetch('/api/quiz/difficult', {
+            method: 'POST',
+            body: JSON.stringify({ count }),
+          });
+        } catch (err) {
+          alert('Error: ' + err.message);
+          return;
+        }
+        if (!resp || !resp.flagged) {
+          alert(t('success.noDifficult'));
+          return;
+        }
+        difficultDrill = true;
+        localStorage.setItem('quizDifficultDrill', 'true');
+        renderDifficultDrill();
+        hide('success-state');
+        loadNextCard();
+        return;
+      }
       const resetNewCap = $('reset-cap-checkbox').checked;
       try {
         await apiFetch('/api/quiz/advance', {
@@ -1338,6 +1419,19 @@ document.addEventListener('DOMContentLoaded', () => {
       loadNextCard();
     });
   });
+
+  const difficultCheckbox = $('difficult-words-checkbox');
+  if (difficultCheckbox) {
+    difficultCheckbox.addEventListener('change', updateAdvanceButtonsForDifficult);
+  }
+
+  const drillPill = $('difficult-drill-pill');
+  if (drillPill) {
+    drillPill.addEventListener('click', async () => {
+      await exitDifficultDrill(true);
+      loadNextCard();
+    });
+  }
 
   $('introduce-new-btn').addEventListener('click', async () => {
     try {
@@ -1357,6 +1451,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('langchange', () => {
     applyModeButtons();
     applyTierPills();
+    updateAdvanceButtonsForDifficult();
   });
 
   // Onboarding import (shown when user has zero words)
