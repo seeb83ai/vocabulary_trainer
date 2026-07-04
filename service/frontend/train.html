@@ -10,6 +10,18 @@
     </div>
   </div>
 
+  <!-- Difficult-words drill indicator (shown only while a drill is active) -->
+  <div id="difficult-drill-bar" class="hidden bg-amber-50 border-b border-amber-200">
+    <div class="max-w-2xl mx-auto px-4 py-2 flex items-center gap-2">
+      <button id="difficult-drill-pill" type="button" title="Exit difficult-words drill"
+        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition">
+        <span data-i18n="filter.difficultDrill">Difficult words</span>
+        <span id="difficult-drill-count" class="font-semibold"></span>
+        <span class="ml-0.5 font-bold" aria-hidden="true">✕</span>
+      </button>
+    </div>
+  </div>
+
   <!-- Mode selector -->
   <div class="bg-white border-b border-gray-200">
     <!-- Desktop: all chips -->
@@ -186,12 +198,16 @@
         <h2 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="success.title">All done for today!</h2>
         <p id="success-stats" class="text-gray-500 mb-6"></p>
         <div class="mb-5">
-          <p class="text-sm font-medium text-gray-600 mb-3" data-i18n="success.learnMore">Learn more words?</p>
+          <p id="success-amount-label" class="text-sm font-medium text-gray-600 mb-3" data-i18n="success.learnMore">Learn more words?</p>
           <div class="flex gap-3 justify-center">
             <button data-advance="10" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">10</button>
             <button data-advance="20" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">20</button>
             <button data-advance="30" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">30</button>
           </div>
+          <label class="flex items-center justify-center gap-2 text-sm text-gray-600 cursor-pointer select-none mt-3">
+            <input type="checkbox" id="difficult-words-checkbox" class="rounded">
+            <span data-i18n="success.difficultWords">Drill my hardest words instead</span>
+          </label>
         </div>
         <label class="flex items-center justify-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
           <input type="checkbox" id="reset-cap-checkbox" class="rounded">
@@ -212,8 +228,8 @@
           <div id="mode-label" class="text-sm font-medium text-blue-600 uppercase tracking-wider mb-6"></div>
 
           <div class="flex items-center gap-3 mb-3">
-            <div id="prompt-word" class="text-4xl font-bold text-gray-800 break-words flex-1"></div>
-            <button id="play-btn" type="button" class="hidden text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
+            <div id="prompt-word" class="text-5xl font-bold text-gray-800 break-words flex-1"></div>
+            <button id="play-btn" type="button" class="hidden text-3xl text-blue-400 hover:text-blue-600 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
           </div>
           <div id="pinyin-hint" class="hidden text-xl text-gray-500 mb-6"></div>
           <div id="translations-hint" class="hidden text-2x1 text-gray-400 mb-4"></div>
@@ -255,8 +271,8 @@
         <div class="bg-white rounded-2xl shadow p-8 text-center">
           <div class="text-sm font-medium text-emerald-600 uppercase tracking-wider mb-6" data-i18n="newWord.label">New Word</div>
           <div class="flex items-center justify-center gap-3 mb-3">
-            <div id="new-word-zh" class="text-4xl font-bold text-gray-800"></div>
-            <button id="new-word-play-btn" type="button" class="text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
+            <div id="new-word-zh" class="text-5xl font-bold text-gray-800"></div>
+            <button id="new-word-play-btn" type="button" class="text-3xl text-blue-400 hover:text-blue-600 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
           </div>
           <div id="new-word-pinyin" class="text-xl text-gray-500 mb-4"></div>
           <div id="new-word-en" class="text-lg text-gray-700 mb-4"></div>
