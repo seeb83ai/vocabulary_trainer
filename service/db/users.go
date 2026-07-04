@@ -199,7 +199,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		return nil, "", "", "", err
 	}
 	var st models.UserSettings
-	var gamificationEnabledInt, cycleAdvanceOnSuccessOnlyInt int
+	var gamificationEnabledInt, cycleAdvanceOnSuccessOnlyInt, quizMnemonicsInt, quizComponentsInt int
 	err = s.db.QueryRowContext(ctx, `
 		SELECT primary_lang, secondary_lang,
 		       prog_new, prog_tier_struggling, prog_tier_learning,
@@ -220,7 +220,13 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(baseline_learning_value, 20),
 		       COALESCE(gamification_enabled, 0),
 		       COALESCE(gamification_frequency, 5),
-		       COALESCE(cycle_advance_on_success_only, 0)
+		       COALESCE(cycle_advance_on_success_only, 0),
+		       COALESCE(quiz_mode, 'random'),
+		       COALESCE(quiz_bucket, ''),
+		       COALESCE(quiz_langs, '["en"]'),
+		       COALESCE(quiz_tags, '[]'),
+		       COALESCE(quiz_mnemonics, 1),
+		       COALESCE(quiz_components, 1)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -242,9 +248,17 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&gamificationEnabledInt,
 		&st.GamificationFrequency,
 		&cycleAdvanceOnSuccessOnlyInt,
+		&st.QuizMode,
+		&st.QuizBucket,
+		&st.QuizLangs,
+		&st.QuizTags,
+		&quizMnemonicsInt,
+		&quizComponentsInt,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
+	st.QuizMnemonics = quizMnemonicsInt == 1
+	st.QuizComponents = quizComponentsInt == 1
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
 	}
@@ -325,6 +339,36 @@ func (s *Store) UpdateUserAPIKeys(ctx context.Context, userID int64, deeplEnc, l
 			llm_local_url = ?
 		WHERE user_id = ?`,
 		deeplEnc, llmProvider, llmEnc, llmLocalURL, userID,
+	)
+	if err == nil {
+		s.invalidateSettingsCache(userID)
+	}
+	return err
+}
+
+// UpdateFilterSettings saves the training filter preferences (mode, bucket, langs, tags, mnemonics, components).
+func (s *Store) UpdateFilterSettings(ctx context.Context, userID int64, mode, bucket, langs, tags string, mnemonics, components bool) error {
+	if err := s.ensureUserSettings(ctx, userID); err != nil {
+		return err
+	}
+	mInt := 0
+	if mnemonics {
+		mInt = 1
+	}
+	cInt := 0
+	if components {
+		cInt = 1
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE user_settings SET
+			quiz_mode       = ?,
+			quiz_bucket     = ?,
+			quiz_langs      = ?,
+			quiz_tags       = ?,
+			quiz_mnemonics  = ?,
+			quiz_components = ?
+		WHERE user_id = ?`,
+		mode, bucket, langs, tags, mInt, cInt, userID,
 	)
 	if err == nil {
 		s.invalidateSettingsCache(userID)

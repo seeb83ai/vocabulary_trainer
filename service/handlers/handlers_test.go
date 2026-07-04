@@ -176,6 +176,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
 	r.Get("/api/settings", settingsH.Get)
 	r.Patch("/api/settings", settingsH.Patch)
+	r.Patch("/api/settings/filter", settingsH.PatchFilter)
 	r.Put("/api/settings/api-keys", settingsH.PutAPIKeys)
 	return r
 }
@@ -6257,6 +6258,48 @@ func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("frequency=%d: expected 400, got %d", freq, rec.Code)
 		}
+	}
+}
+
+// ── PATCH /api/settings/filter ───────────────────────────────────────────────
+
+func TestPatchFilterSettings(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := map[string]any{
+		"quiz_mode":       "progressive",
+		"quiz_bucket":     "0-49",
+		"quiz_langs":      `["en","de"]`,
+		"quiz_tags":       `["HSK1"]`,
+		"quiz_mnemonics":  false,
+		"quiz_components": true,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings/filter", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings/filter: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify settings are persisted via GET
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/settings: want 200, got %d", rec.Code)
+	}
+	var st map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&st); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if st["quiz_mode"] != "progressive" {
+		t.Errorf("quiz_mode: got %v", st["quiz_mode"])
+	}
+	if st["quiz_bucket"] != "0-49" {
+		t.Errorf("quiz_bucket: got %v", st["quiz_bucket"])
+	}
+	if st["quiz_mnemonics"] != false {
+		t.Errorf("quiz_mnemonics: got %v", st["quiz_mnemonics"])
+	}
+	if st["quiz_components"] != true {
+		t.Errorf("quiz_components: got %v", st["quiz_components"])
 	}
 }
 

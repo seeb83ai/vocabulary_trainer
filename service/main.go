@@ -346,6 +346,7 @@ func main() {
 		r.With(expensiveLimit).Post("/components/{char}/hmm/generate-scene", llmH.GenerateCompScene)
 		r.Get("/settings", settingsH.Get)
 		r.Patch("/settings", settingsH.Patch)
+		r.Patch("/settings/filter", settingsH.PatchFilter)
 		r.Put("/settings/api-keys", settingsH.PutAPIKeys)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
 		r.With(expensiveLimit).Post("/translate", translateH.Translate)

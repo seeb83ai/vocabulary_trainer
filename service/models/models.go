@@ -47,6 +47,12 @@ type UserSettings struct {
 	AcceptCorrectMode         string `json:"accept_correct_mode"`
 	GamificationEnabled       bool   `json:"gamification_enabled"`
 	GamificationFrequency     int    `json:"gamification_frequency"`
+	QuizMode                  string `json:"quiz_mode"`
+	QuizBucket                string `json:"quiz_bucket"`
+	QuizLangs                 string `json:"quiz_langs"`
+	QuizTags                  string `json:"quiz_tags"`
+	QuizMnemonics             bool   `json:"quiz_mnemonics"`
+	QuizComponents            bool   `json:"quiz_components"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.

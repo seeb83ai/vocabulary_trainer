@@ -17,7 +17,57 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   const btn = document.getElementById('new-word-skip-btn');
   if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
+  // Apply persisted filter settings from server (override localStorage)
+  if (st?.quiz_mode) {
+    selectedMode = st.quiz_mode;
+    localStorage.setItem('quizMode', selectedMode);
+  }
+  if (st?.quiz_bucket !== undefined) {
+    selectedBucket = st.quiz_bucket;
+    localStorage.setItem('quizBucket', selectedBucket);
+  }
+  if (st?.quiz_langs) {
+    try {
+      const parsed = JSON.parse(st.quiz_langs);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        selectedLangs = parsed;
+        localStorage.setItem('quizLangs', st.quiz_langs);
+      }
+    } catch (_) {}
+  }
+  if (st?.quiz_tags) {
+    try {
+      const parsed = JSON.parse(st.quiz_tags);
+      if (Array.isArray(parsed)) {
+        selectedTags = parsed;
+        localStorage.setItem('quizTags', st.quiz_tags);
+      }
+    } catch (_) {}
+  }
+  if (st?.quiz_mnemonics !== undefined) {
+    includeMnemonics = !!st.quiz_mnemonics;
+    localStorage.setItem('quizMnemonics', includeMnemonics ? 'true' : 'false');
+  }
+  if (st?.quiz_components !== undefined) {
+    includeComponents = !!st.quiz_components;
+    localStorage.setItem('quizComponents', includeComponents ? 'true' : 'false');
+  }
 }).catch(() => {});
+
+function saveFilterToServer() {
+  fetch('/api/settings/filter', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      quiz_mode: selectedMode,
+      quiz_bucket: selectedBucket,
+      quiz_langs: JSON.stringify(selectedLangs),
+      quiz_tags: JSON.stringify(selectedTags),
+      quiz_mnemonics: includeMnemonics,
+      quiz_components: includeComponents,
+    }),
+  }).catch(() => {}); // fire-and-forget
+}
 
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
@@ -1096,6 +1146,7 @@ function toggleLang(lang, allLangs) {
     selectedLangs.push(lang);
   }
   localStorage.setItem('quizLangs', JSON.stringify(selectedLangs));
+  saveFilterToServer();
   applyLangChips(allLangs);
   loadNextCard();
 }
@@ -1150,6 +1201,7 @@ async function loadTrainTags() {
         selectedTags.push(tag);
       }
       localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+      saveFilterToServer();
       loadTrainTags();
       loadNextCard();
     });
@@ -1171,6 +1223,7 @@ async function loadTrainTags() {
         selectedTags.push(tag);
       }
       localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+      saveFilterToServer();
       loadTrainTags();
     });
     overlayTagChips.appendChild(pill);
@@ -1189,6 +1242,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function toggleMnemonics() {
     includeMnemonics = !includeMnemonics;
     localStorage.setItem('quizMnemonics', includeMnemonics ? 'true' : 'false');
+    saveFilterToServer();
     applyMnemonicPill();
     loadNextCard();
   }
@@ -1200,6 +1254,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function toggleComponents() {
     includeComponents = !includeComponents;
     localStorage.setItem('quizComponents', includeComponents ? 'true' : 'false');
+    saveFilterToServer();
     applyComponentPill();
     loadNextCard();
   }
@@ -1212,6 +1267,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       selectedBucket = btn.dataset.bucket;
       localStorage.setItem('quizBucket', selectedBucket);
+      saveFilterToServer();
       applyTierPills();
       loadNextCard();
     });
@@ -1220,6 +1276,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       selectedBucket = btn.dataset.bucket;
       localStorage.setItem('quizBucket', selectedBucket);
+      saveFilterToServer();
       applyTierPills();
     });
   });
@@ -1227,6 +1284,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       selectedMode = btn.dataset.mode;
       localStorage.setItem('quizMode', selectedMode);
+      saveFilterToServer();
       applyModeButtons();
       loadNextCard();
     });
@@ -1279,6 +1337,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       selectedMode = btn.dataset.mode;
       localStorage.setItem('quizMode', selectedMode);
+      saveFilterToServer();
       applyModeButtons();
     });
   });

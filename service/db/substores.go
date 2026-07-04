@@ -169,6 +169,7 @@ type UserStore interface {
 	GetUserSettingsRaw(ctx context.Context, userID int64) (settings *models.UserSettings, salt, deeplEnc, llmEnc string, err error)
 	UpdateUserSettings(ctx context.Context, userID int64, st models.UserSettings) error
 	UpdateUserAPIKeys(ctx context.Context, userID int64, deeplEnc, llmProvider, llmEnc, llmLocalURL string) error
+	UpdateFilterSettings(ctx context.Context, userID int64, mode, bucket, langs, tags string, mnemonics, components bool) error
 	CreateUserWithSettings(ctx context.Context, email, passwordHash, verificationToken string, expiresAt time.Time) (int64, error)
 	// Login lockout + audit (auth domain).
 	RecordAuditLog(ctx context.Context, userID int64, action, ipAddress, detail string) error

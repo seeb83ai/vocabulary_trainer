@@ -3753,6 +3753,40 @@ func TestUpdateUserAPIKeys_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestUpdateFilterSettings_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	err := s.UpdateFilterSettings(ctx, userID, "progressive", "0-49", `["en","de"]`, `["HSK1"]`, false, true)
+	if err != nil {
+		t.Fatalf("UpdateFilterSettings: %v", err)
+	}
+
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.QuizMode != "progressive" {
+		t.Errorf("QuizMode: got %q, want %q", st.QuizMode, "progressive")
+	}
+	if st.QuizBucket != "0-49" {
+		t.Errorf("QuizBucket: got %q, want %q", st.QuizBucket, "0-49")
+	}
+	if st.QuizLangs != `["en","de"]` {
+		t.Errorf("QuizLangs: got %q, want %q", st.QuizLangs, `["en","de"]`)
+	}
+	if st.QuizTags != `["HSK1"]` {
+		t.Errorf("QuizTags: got %q, want %q", st.QuizTags, `["HSK1"]`)
+	}
+	if st.QuizMnemonics != false {
+		t.Errorf("QuizMnemonics: got %v, want false", st.QuizMnemonics)
+	}
+	if st.QuizComponents != true {
+		t.Errorf("QuizComponents: got %v, want true", st.QuizComponents)
+	}
+}
+
 func TestAnnotateComponentDefinitions_PopulatesENAndDE(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

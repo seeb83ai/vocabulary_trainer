@@ -190,6 +190,37 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// PatchFilter handles PATCH /api/settings/filter — saves training filter preferences.
+func (h *SettingsHandler) PatchFilter(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		QuizMode       string `json:"quiz_mode"`
+		QuizBucket     string `json:"quiz_bucket"`
+		QuizLangs      string `json:"quiz_langs"`
+		QuizTags       string `json:"quiz_tags"`
+		QuizMnemonics  bool   `json:"quiz_mnemonics"`
+		QuizComponents bool   `json:"quiz_components"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.QuizMode == "" {
+		req.QuizMode = "random"
+	}
+	if req.QuizLangs == "" {
+		req.QuizLangs = `["en"]`
+	}
+	if req.QuizTags == "" {
+		req.QuizTags = "[]"
+	}
+	userID := UserIDFromContext(r.Context())
+	if err := h.store.UpdateFilterSettings(r.Context(), userID, req.QuizMode, req.QuizBucket, req.QuizLangs, req.QuizTags, req.QuizMnemonics, req.QuizComponents); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // PutAPIKeys handles PUT /api/settings/api-keys — encrypts and stores API keys.
 func (h *SettingsHandler) PutAPIKeys(w http.ResponseWriter, r *http.Request) {
 	var req struct {
