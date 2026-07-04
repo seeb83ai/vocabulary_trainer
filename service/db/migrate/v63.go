@@ -7,7 +7,7 @@ import (
 
 func init() {
 	register(migration{
-		version: 62,
+		version: 63,
 		fn: func(db *sql.DB) error {
 			// Add drill_flag to sm2_progress. A flagged word is part of the
 			// active "difficult words" drill; the flag is cleared once the word
