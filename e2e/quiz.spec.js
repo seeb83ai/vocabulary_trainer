@@ -163,7 +163,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
-  test('result-play-btn is visible in result area after answering (issue #158)', async ({ page }) => {
+  test('play button is inside result green box after answering (issue #169)', async ({ page }) => {
     await useZhToTranslMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
@@ -173,7 +173,10 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
 
-    await expect(page.locator('#result-play-btn')).toBeVisible();
+    // The play button must be inside the word-breakdown (green box), not standalone
+    await expect(page.locator('#word-breakdown .btn-result-play')).toBeVisible();
+    // The standalone result-play-btn must remain hidden
+    await expect(page.locator('#result-play-btn')).not.toBeVisible();
   });
 
   test('issue-report button z-index is above gamification overlay (issue #152)', async ({ page }) => {
