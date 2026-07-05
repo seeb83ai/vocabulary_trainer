@@ -503,13 +503,12 @@ function showCard() {
     setText('mode-label', getModeLabel(currentCard.mode));
     setText('prompt-word', currentCard.prompt);
 
-    // Show play button when Chinese is the prompt or when zh_text is available
-    // (transl_to_zh: prompt is the translation, but zh_text lets the user hear the word)
+    // Show play button only when Chinese is the prompt (zh_to_transl / zh_pinyin_to_transl).
+    // Hide it in transl_to_zh mode: hearing the zh word would give away the answer (#168).
     const isZhPrompt = currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
-    const zhAudioText = isZhPrompt ? currentCard.prompt : (currentCard.zh_text || '');
     const playBtn = $('play-btn');
-    if (zhAudioText) {
-      playBtn.onclick = () => playAudio(currentCard.word_id, zhAudioText);
+    if (isZhPrompt) {
+      playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
       show('play-btn');
     } else {
       hide('play-btn');

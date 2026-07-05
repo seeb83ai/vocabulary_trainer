@@ -263,11 +263,11 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
     await expect(page.locator('#play-btn')).toBeVisible();
   });
 
-  test('play button is visible in transl_to_zh mode (hear the word while recalling)', async ({ page }) => {
+  test('play button is hidden in transl_to_zh mode (issue #168)', async ({ page }) => {
     await useTranslToZhMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-    await expect(page.locator('#play-btn')).toBeVisible();
+    await expect(page.locator('#play-btn')).not.toBeVisible();
   });
 
   test('transl_to_zh card response includes zh_text field for audio', async ({ page }) => {
