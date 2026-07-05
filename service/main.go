@@ -169,6 +169,7 @@ func main() {
 		MaxRows:  csvMaxRows,
 	}
 	importH := &handlers.ImportHandler{Store: store}
+	csvImportH := &handlers.CSVImportHandler{Store: store}
 	tagsH := &handlers.TagsHandler{Store: store}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
@@ -302,6 +303,7 @@ func main() {
 		r.Get("/import/source-tags", importH.SourceTags)
 		r.Get("/import/preview", importH.Preview)
 		r.Post("/import", importH.Import)
+		r.Post("/import/csv", csvImportH.Import)
 		r.Get("/tags/details", tagsH.Details)
 		r.Put("/tags/{name}", tagsH.Update)
 		r.Get("/audio/{id}", audioH.ServeAudio)

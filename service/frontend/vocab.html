@@ -103,6 +103,30 @@
       <!-- Import panel -->
       <div id="panel-import" class="hidden">
 
+        <!-- Import mode toggle -->
+        <div class="flex gap-2 mb-4">
+          <button id="import-mode-library"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white transition"
+            data-i18n="vocab.importLibrary">Library</button>
+          <button id="import-mode-csv"
+            class="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
+            data-i18n="vocab.importCSV">CSV Upload</button>
+        </div>
+
+        <!-- CSV upload panel -->
+        <div id="import-csv-panel" class="hidden">
+          <p class="text-sm text-gray-500 mb-3">Upload a CSV file with columns: <code class="bg-gray-100 px-1 rounded">zh</code>, <code class="bg-gray-100 px-1 rounded">pinyin</code> (optional), <code class="bg-gray-100 px-1 rounded">en</code>, <code class="bg-gray-100 px-1 rounded">de</code>. At least one translation column is required.</p>
+          <input id="csv-file-input" type="file" accept=".csv,text/csv"
+            class="block w-full text-sm text-gray-600 mb-3 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+          <button id="csv-import-btn" disabled
+            class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+            data-i18n="vocab.import">Import</button>
+          <div id="csv-import-status" class="hidden mt-3 text-sm"></div>
+        </div>
+
+        <!-- Library import steps -->
+        <div id="import-library-panel">
+
         <!-- Step 1: pick a tag -->
         <div id="import-step1">
           <p class="text-sm text-gray-600 mb-2" data-i18n="vocab.importPickTag">Select a tag to import from the shared library:</p>
@@ -196,7 +220,9 @@
           <div id="import-status" class="hidden mt-3 text-sm"></div>
         </div>
 
-      </div>
+        </div><!-- end import-library-panel -->
+
+      </div><!-- end panel-import -->
 
       <!-- Tags panel -->
       <div id="panel-tags" class="hidden">

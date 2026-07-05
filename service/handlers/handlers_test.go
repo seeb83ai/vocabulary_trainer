@@ -149,6 +149,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/import/source-tags", importH.SourceTags)
 	r.Get("/api/import/preview", importH.Preview)
 	r.Post("/api/import", importH.Import)
+	csvImportH := &handlers.CSVImportHandler{Store: s}
+	r.Post("/api/import/csv", csvImportH.Import)
 	r.Get("/api/tags/details", tagsH.Details)
 	r.Put("/api/tags/{name}", tagsH.Update)
 	r.Get("/api/config", translateH.Config(true, true))
@@ -3435,6 +3437,150 @@ func TestImport_MissingTag(t *testing.T) {
 		"import_langs": []string{"en"},
 		"apply_tags":   []string{},
 	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// ── POST /api/import/csv ──────────────────────────────────────────────────────
+
+func doMultipartCSV(t *testing.T, r http.Handler, csvContent string) *httptest.ResponseRecorder {
+	t.Helper()
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	fw, err := w.CreateFormFile("file", "test.csv")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := fw.Write([]byte(csvContent)); err != nil {
+		t.Fatalf("write csv: %v", err)
+	}
+	w.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/import/csv", body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestCSVImport_Basic(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	csv := "zh,en\n早上好,\"good morning,morning\""
+	rec := doMultipartCSV(t, r, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var result struct {
+		Imported int `json:"imported"`
+		Skipped  int `json:"skipped"`
+	}
+	decodeJSON(t, rec, &result)
+	if result.Imported != 1 {
+		t.Errorf("want imported=1, got %d", result.Imported)
+	}
+	if result.Skipped != 0 {
+		t.Errorf("want skipped=0, got %d", result.Skipped)
+	}
+
+	// The word must now exist for user 2
+	exists, err := s.IsZhWordForUser(context.Background(), 2, "早上好")
+	if err != nil {
+		t.Fatalf("IsZhWordForUser: %v", err)
+	}
+	if !exists {
+		t.Error("word 早上好 should exist after CSV import")
+	}
+}
+
+func TestCSVImport_AutoPinyin(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// No pinyin column — pinyin should be auto-generated
+	csv := "zh,en\n你好,hello"
+	rec := doMultipartCSV(t, r, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var result struct {
+		Imported int `json:"imported"`
+	}
+	decodeJSON(t, rec, &result)
+	if result.Imported != 1 {
+		t.Errorf("want imported=1, got %d", result.Imported)
+	}
+}
+
+func TestCSVImport_EmptyPinyinAutoFills(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Pinyin column present but cell is empty
+	csv := "zh,pinyin,en\n谢谢,,thank you"
+	rec := doMultipartCSV(t, r, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var result struct {
+		Imported int `json:"imported"`
+	}
+	decodeJSON(t, rec, &result)
+	if result.Imported != 1 {
+		t.Errorf("want imported=1, got %d", result.Imported)
+	}
+}
+
+func TestCSVImport_SkipsDuplicates(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	r := newRouter(s)
+
+	csv := "zh,en\n再见,goodbye"
+	rec := doMultipartCSV(t, r, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var result struct {
+		Imported int `json:"imported"`
+		Skipped  int `json:"skipped"`
+	}
+	decodeJSON(t, rec, &result)
+	if result.Imported != 0 {
+		t.Errorf("want imported=0, got %d", result.Imported)
+	}
+	if result.Skipped != 1 {
+		t.Errorf("want skipped=1, got %d", result.Skipped)
+	}
+}
+
+func TestCSVImport_MissingZhColumn(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := doMultipartCSV(t, r, "en\nhello")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestCSVImport_MissingTranslationColumn(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := doMultipartCSV(t, r, "zh\n你好")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestCSVImport_NoFile(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	// Send an empty multipart body with no file field
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+	mw.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/import/csv", body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
 	}

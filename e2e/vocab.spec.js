@@ -37,6 +37,35 @@ test.describe('Vocabulary Management', () => {
     await expect(page.locator('#words-tbody')).toContainText('水', { timeout: 8_000 });
   });
 
+  test('CSV import with optional pinyin creates words', async ({ page }) => {
+    await page.goto('/vocab');
+
+    // Click the Import tab
+    await page.locator('#tab-import').click();
+
+    // The CSV Upload sub-tab should be present; click it
+    await page.locator('#import-mode-csv').click();
+
+    // Upload a CSV file without a pinyin column — pinyin will be auto-generated
+    const csvContent = 'zh,en\n早上好,"good morning,morning"';
+    await page.locator('#csv-file-input').setInputFiles({
+      name: 'test.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(csvContent),
+    });
+
+    // The import button should now be enabled
+    await expect(page.locator('#csv-import-btn')).toBeEnabled({ timeout: 3_000 });
+
+    // Click import
+    await page.locator('#csv-import-btn').click();
+
+    // Verify the status message says 1 word was imported
+    const statusEl = page.locator('#csv-import-status');
+    await expect(statusEl).toBeVisible({ timeout: 8_000 });
+    await expect(statusEl).toContainText('Imported 1 word', { timeout: 8_000 });
+  });
+
   test('delete a word removes it from the list', async ({ page }) => {
     await page.goto('/vocab');
 

@@ -1751,6 +1751,59 @@ document.addEventListener('DOMContentLoaded', () => {
   $('tab-tags').addEventListener('click', () => switchTab('tags'));
   $('tab-comp').addEventListener('click', () => { if (editingCompChar) switchTab('comp'); });
 
+  // Import mode: Library vs CSV upload
+  $('import-mode-library').addEventListener('click', () => {
+    $('import-mode-library').className = 'px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white transition';
+    $('import-mode-csv').className = 'px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition';
+    $('import-library-panel').classList.remove('hidden');
+    $('import-csv-panel').classList.add('hidden');
+  });
+  $('import-mode-csv').addEventListener('click', () => {
+    $('import-mode-csv').className = 'px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white transition';
+    $('import-mode-library').className = 'px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition';
+    $('import-csv-panel').classList.remove('hidden');
+    $('import-library-panel').classList.add('hidden');
+  });
+
+  // CSV file input → enable import button
+  $('csv-file-input').addEventListener('change', () => {
+    $('csv-import-btn').disabled = !$('csv-file-input').files?.length;
+  });
+  $('csv-import-btn').addEventListener('click', async () => {
+    const file = $('csv-file-input').files?.[0];
+    if (!file) return;
+    const statusEl = $('csv-import-status');
+    $('csv-import-btn').disabled = true;
+    statusEl.className = 'mt-3 text-sm text-gray-500';
+    statusEl.textContent = 'Importing…';
+    show('csv-import-status');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await fetch('/api/import/csv', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+      });
+      if (resp.status === 401) { window.location.href = '/'; return; }
+      const result = await resp.json();
+      if (!resp.ok) {
+        throw new Error(result.error || resp.statusText);
+      }
+      const skippedNote = result.skipped > 0 ? `, skipped ${result.skipped}` : '';
+      const errNote = result.errors?.length ? `, ${result.errors.length} error(s)` : '';
+      statusEl.className = 'mt-3 text-sm text-green-600';
+      statusEl.textContent = `Imported ${result.imported} word${result.imported !== 1 ? 's' : ''}${skippedNote}${errNote}.`;
+      $('csv-file-input').value = '';
+      $('csv-import-btn').disabled = true;
+      loadWords();
+    } catch (err) {
+      statusEl.className = 'mt-3 text-sm text-red-500';
+      statusEl.textContent = err.message;
+      $('csv-import-btn').disabled = false;
+    }
+  });
+
   $('comp-edit-save-btn').addEventListener('click', async () => {
     if (!editingCompChar) return;
     const btn = $('comp-edit-save-btn');
