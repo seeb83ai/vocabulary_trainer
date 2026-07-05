@@ -5099,6 +5099,36 @@ func TestUploadCSV_MultipleLanguages(t *testing.T) {
 	}
 }
 
+func TestUploadCSV_NoPinyinColumn(t *testing.T) {
+	csv := "chinese,en\n我要回家了,I go home\n你好,hello"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for CSV without pinyin column, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 2 {
+		t.Errorf("want imported=2, got %d", resp["imported"])
+	}
+}
+
+func TestUploadCSV_NoPinyinMultipleLangs(t *testing.T) {
+	csv := "chinese,en,de\n你好,hello,Hallo"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for CSV without pinyin column with multiple langs, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 1 {
+		t.Errorf("want imported=1, got %d", resp["imported"])
+	}
+}
+
 func TestUploadCSV_MultipleSemicolonTranslations(t *testing.T) {
 	csv := "chinese,pinyin,de\n我要回家了,wǒ yào huí jiā le,Ich gehe nach Hause; Ich gehe heim"
 	r := newRouter(openTestDB(t))
