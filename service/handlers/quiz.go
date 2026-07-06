@@ -321,6 +321,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		card.Translations = translations
+		card.ZhText = word.Text
 		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
 		// Cycle mode skips the learning-phase hint: the user chose the step explicitly.
 		if word.Pinyin != nil {

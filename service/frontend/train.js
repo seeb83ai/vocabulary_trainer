@@ -553,11 +553,13 @@ function showCard() {
     setText('mode-label', getModeLabel(currentCard.mode));
     setText('prompt-word', currentCard.prompt);
 
-    // Show play button only when the prompt is Chinese
+    // Show play button when Chinese is the prompt or when zh_text is available
+    // (transl_to_zh: prompt is the translation, but zh_text lets the user hear the word)
     const isZhPrompt = currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
+    const zhAudioText = isZhPrompt ? currentCard.prompt : (currentCard.zh_text || '');
     const playBtn = $('play-btn');
-    if (isZhPrompt) {
-      playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+    if (zhAudioText) {
+      playBtn.onclick = () => playAudio(currentCard.word_id, zhAudioText);
       show('play-btn');
     } else {
       hide('play-btn');
@@ -631,6 +633,10 @@ async function submitAnswer(e) {
     hide('card-area');
     show('result-area');
 
+    const resultPlayBtn = $('result-play-btn');
+    resultPlayBtn.onclick = () => playAudio(currentCard.word_id, result.zh_text);
+    show('result-play-btn');
+
     const icon = $('result-icon');
     if (result.correct) {
       icon.textContent = t('result.correct');
@@ -648,8 +654,7 @@ async function submitAnswer(e) {
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('result.correctLabel'))}</div>
         <div class="flex items-center gap-2">
-          <div class="text-xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
-          <button class="btn-breakdown-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+          <div class="text-3xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
         </div>
         <div class="text-gray-600 text-sm mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
       </div>`;
@@ -677,7 +682,6 @@ async function submitAnswer(e) {
           ${confusedHtml}
           ${correctBox}
         </div>`;
-      breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
       if (confusedPlayBtn) {
         confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
@@ -728,7 +732,6 @@ async function submitAnswer(e) {
       }
     } else {
       breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
-      breakdown.querySelector('.btn-breakdown-play').addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
       show('word-breakdown');
       hide('add-translation-btn');
       hide('accept-correct-btn');
