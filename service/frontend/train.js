@@ -1381,10 +1381,12 @@ document.addEventListener('DOMContentLoaded', () => {
     loadNextCard();
   });
   function normalizeNewWordInput(s) {
-    return s.trim().toLowerCase();
+    return s.trim().toLowerCase()
+      .replace(/[？！，。：；]/g, m => ({ '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';' }[m]))
+      .replace(/[\p{P}\p{S}\s]+$/u, '');
   }
   function isZhCorrect(inputVal, prompt) {
-    return inputVal.trim() === prompt.trim();
+    return normalizeNewWordInput(inputVal) === normalizeNewWordInput(prompt);
   }
   function isTransCorrect(inputVal, translations) {
     const normalized = normalizeNewWordInput(inputVal);
