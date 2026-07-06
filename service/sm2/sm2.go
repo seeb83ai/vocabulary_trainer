@@ -205,8 +205,10 @@ func stripParens(s string) string {
 	return s
 }
 
-// expandVariants returns all valid answer strings derived from a single
+// ExpandVariants returns all valid answer strings derived from a single
 // accepted answer by applying the optional-parens and slash-split rules.
+func ExpandVariants(a string) []string { return expandVariants(a) }
+
 func expandVariants(a string) []string {
 	seen := map[string]struct{}{}
 	add := func(s string) {
