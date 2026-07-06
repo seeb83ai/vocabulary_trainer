@@ -137,6 +137,9 @@ type QuizCard struct {
 	DueDate         time.Time           `json:"due_date"`
 	IntervalDays    int                 `json:"interval_days"`
 	LearningNewWord bool                `json:"learning_new_word"`
+	// ZhText is the Chinese word text, populated for transl_to_zh mode so the
+	// frontend can offer an audio play button even when the prompt is a translation.
+	ZhText string `json:"zh_text,omitempty"`
 	// HMM mnemonic card fields (card_type="hmm"); zero-value for word cards.
 	CardType   string `json:"card_type,omitempty"`
 	EntityType string `json:"entity_type,omitempty"`

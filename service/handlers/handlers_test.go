@@ -123,6 +123,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/quiz/advance", quizH.Advance)
 	r.Get("/api/quiz/match-game", quizH.MatchGame)
 	r.Post("/api/quiz/match-answer", quizH.MatchAnswer)
+	r.Post("/api/quiz/difficult", quizH.FlagDifficult)
+	r.Post("/api/quiz/difficult/clear", quizH.ClearDifficult)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/langs", quizH.Langs)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
@@ -333,6 +335,37 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true}
 	if !validModes[card.Mode] {
 		t.Errorf("invalid mode param: got unexpected mode %s", card.Mode)
+	}
+}
+
+func TestQuizNext_TranslToZh_IncludesZhText(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=transl_to_zh", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeTranslToZh {
+		t.Fatalf("want mode=transl_to_zh, got %s", card.Mode)
+	}
+	if card.ZhText != "你好" {
+		t.Errorf("want zh_text=你好, got %q", card.ZhText)
 	}
 }
 
@@ -6447,5 +6480,115 @@ func TestServeComponentAudio_RadicalUsesCanonicalFormForTTS(t *testing.T) {
 				t.Errorf("expected %s to exist after generation: %v", tc.wantFile, err)
 			}
 		})
+	}
+}
+
+// ── Difficult-words drill ───────────────────────────────────────────────────
+
+// makeDifficultWord acknowledges a word (so first_seen_date is set) then writes a
+// graduated, low-accuracy progress row so it qualifies for the difficult drill.
+func makeDifficultWord(t *testing.T, s *db.Store, r http.Handler, id int64, tc, ta int, ef float64) {
+	t.Helper()
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": id})
+	err := s.UpdateSM2Progress(context.Background(), models.SM2Progress{
+		WordID:          id,
+		Repetitions:     0,
+		Easiness:        ef,
+		IntervalDays:    1,
+		DueDate:         time.Now().UTC().Add(24 * time.Hour),
+		TotalCorrect:    tc,
+		TotalAttempts:   ta,
+		StreakBonus:     0,
+		LearningNewWord: false,
+	})
+	if err != nil {
+		t.Fatalf("makeDifficultWord(%d): %v", id, err)
+	}
+}
+
+func TestFlagDifficult_FlagsServesAndClearsOnCorrect(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id1 := seedWord(t, s, "山", "shān", []string{"mountain"})
+	id2 := seedWord(t, s, "河", "hé", []string{"river"})
+	makeDifficultWord(t, s, r, id1, 1, 10, 1.3) // ~10% accuracy
+	makeDifficultWord(t, s, r, id2, 2, 10, 1.4) // ~20% accuracy
+
+	// Flag the difficult words.
+	rec := do(t, r, "POST", "/api/quiz/difficult", map[string]any{"count": 10})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("flag difficult: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var flagResp struct {
+		Flagged int `json:"flagged"`
+	}
+	decodeJSON(t, rec, &flagResp)
+	if flagResp.Flagged != 2 {
+		t.Fatalf("expected 2 flagged, got %d", flagResp.Flagged)
+	}
+
+	// The drill serves a flagged word despite it being due tomorrow.
+	rec = do(t, r, "GET", "/api/quiz/next?difficult=true&mode=zh_to_transl&langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("difficult next: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.WordID != id1 && card.WordID != id2 {
+		t.Fatalf("expected a flagged word, got word_id=%d", card.WordID)
+	}
+
+	// stats reports the remaining drill pool.
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	var stats map[string]int
+	decodeJSON(t, rec, &stats)
+	if stats["difficult_remaining"] != 2 {
+		t.Fatalf("expected difficult_remaining=2, got %d", stats["difficult_remaining"])
+	}
+
+	// Answering the served word correctly clears its flag.
+	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": card.WordID, "mode": "zh_to_transl", "answer": map[int64]string{id1: "mountain", id2: "river"}[card.WordID],
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	decodeJSON(t, rec, &stats)
+	if stats["difficult_remaining"] != 1 {
+		t.Fatalf("expected difficult_remaining=1 after a correct answer, got %d", stats["difficult_remaining"])
+	}
+}
+
+func TestFlagDifficult_InvalidCount(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/difficult", map[string]any{"count": 0})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for count=0, got %d", rec.Code)
+	}
+}
+
+func TestClearDifficult_EmptiesPoolAndDrillReturns404(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id := seedWord(t, s, "山", "shān", []string{"mountain"})
+	makeDifficultWord(t, s, r, id, 1, 10, 1.3)
+
+	do(t, r, "POST", "/api/quiz/difficult", map[string]any{"count": 5})
+	rec := do(t, r, "POST", "/api/quiz/difficult/clear", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("clear difficult: want 200, got %d", rec.Code)
+	}
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	var stats map[string]int
+	decodeJSON(t, rec, &stats)
+	if stats["difficult_remaining"] != 0 {
+		t.Fatalf("expected difficult_remaining=0 after clear, got %d", stats["difficult_remaining"])
+	}
+	// No flagged words → the drill reports no words available.
+	rec = do(t, r, "GET", "/api/quiz/next?difficult=true", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for empty drill, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
