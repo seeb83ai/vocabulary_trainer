@@ -230,14 +230,20 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 test.describe('Quiz – Chinese character size and play button (issue #158)', () => {
   test.use({ storageState: 'e2e/.auth/user.json' });
 
-  function useZhToTranslMode(page) {
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
     });
   }
 
-  function useTranslToZhMode(page) {
+  async function useTranslToZhMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -308,6 +314,11 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
   test('"Got it!" acknowledges the word and transitions to card-area', async ({ page }) => {
     // Use zh_to_transl mode so that after acknowledgement the card shows a
     // deterministic prompt (the zh word '水') rather than a randomly selected mode.
+    // Patch server-side first because _settingsPromise restores server-persisted filters
+    // on load, overriding localStorage values.
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
