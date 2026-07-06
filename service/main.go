@@ -1,15 +1,19 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/email"
@@ -155,7 +159,15 @@ func main() {
 	log.Printf("Pinyin audio dirs: %v", pinyinAudioDirs)
 
 	wordsH := &handlers.WordsHandler{Store: store, Audio: audioH}
-	uploadCSVH := &handlers.UploadCSVHandler{Store: store, Audio: audioH}
+	csvMaxMB := envInt("CSV_MAX_UPLOAD_MB", 8)
+	csvMaxRows := envInt("CSV_MAX_ROWS", 5000)
+	log.Printf("CSV upload limits: max=%dMB rows=%d (set CSV_MAX_UPLOAD_MB / CSV_MAX_ROWS to change)", csvMaxMB, csvMaxRows)
+	uploadCSVH := &handlers.UploadCSVHandler{
+		Store:    store,
+		Audio:    audioH,
+		MaxBytes: int64(csvMaxMB) << 20,
+		MaxRows:  csvMaxRows,
+	}
 	importH := &handlers.ImportHandler{Store: store}
 	tagsH := &handlers.TagsHandler{Store: store}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
@@ -175,6 +187,30 @@ func main() {
 		llmH = &handlers.LLMHandler{Store: store, SettingsHandler: settingsH}
 	}
 
+	// In-app GitHub issue reporting (optional). Enabled when both GITHUB_TOKEN
+	// and GITHUB_ISSUE_REPO are set; otherwise the route returns 503 and the
+	// frontend hides the report button.
+	githubH := &handlers.GitHubHandler{Store: store, APIBaseURL: os.Getenv("GITHUB_API_BASE_URL")}
+	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
+		if repo := os.Getenv("GITHUB_ISSUE_REPO"); repo != "" {
+			githubH.Token = tok
+			githubH.Repo = repo
+			githubH.AssetsBranch = os.Getenv("GITHUB_ASSETS_BRANCH")
+			labels := "from-app"
+			if v := os.Getenv("GITHUB_ISSUE_LABELS"); v != "" {
+				labels = v
+			}
+			for _, l := range strings.Split(labels, ",") {
+				if l = strings.TrimSpace(l); l != "" {
+					githubH.Labels = append(githubH.Labels, l)
+				}
+			}
+			log.Printf("GitHub issue reporting enabled: repo=%s labels=%v", repo, githubH.Labels)
+		} else {
+			log.Printf("GitHub issue reporting disabled: GITHUB_TOKEN set but GITHUB_ISSUE_REPO missing")
+		}
+	}
+
 	// Rate limiters. Defaults: unauth = 10 req/min per IP (brute-force budget
 	// for login/register/verify-email); auth = 300 req/min per user (≈ 5 rps).
 	authPerMin := envInt("RATE_LIMIT_AUTH_PER_MIN", 10)
@@ -184,6 +220,12 @@ func main() {
 	ipLimiter := handlers.NewRateLimiter(authPerMin, time.Minute)
 	userLimiter := handlers.NewRateLimiter(userPerMin, time.Minute)
 	expensiveLimiter := handlers.NewRateLimiter(expensivePerMin, time.Minute)
+
+	// Issue reporting is tightly limited per user AND per IP to deter spam.
+	githubIssuePerMin := envInt("RATE_LIMIT_GITHUB_ISSUE_PER_MIN", 5)
+	log.Printf("Rate limit per minute: github-issues=%d (per user and per IP)", githubIssuePerMin)
+	githubIssueUserLimiter := handlers.NewRateLimiter(githubIssuePerMin, time.Minute)
+	githubIssueIPLimiter := handlers.NewRateLimiter(githubIssuePerMin, time.Minute)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -199,8 +241,22 @@ func main() {
 	ipLimit := handlers.RateLimitMiddleware(ipLimiter, handlers.IPKey())
 	expensiveLimit := handlers.RateLimitMiddleware(expensiveLimiter, handlers.UserOrIPKey())
 
-	// API routes
+	// Stack a per-user and a per-IP limiter on issue submission so both
+	// dimensions are enforced independently.
+	githubIssueIPLimit := handlers.RateLimitMiddleware(githubIssueIPLimiter, handlers.IPKey())
+	githubIssueUserLimit := handlers.RateLimitMiddleware(githubIssueUserLimiter, func(r *http.Request) string {
+		if uid := handlers.UserIDFromContext(r.Context()); uid > 0 {
+			return "u:" + strconv.FormatInt(uid, 10)
+		}
+		return ""
+	})
+
+	// API routes. Cap JSON request bodies so an unbounded upload cannot
+	// exhaust memory; oversized bodies make the JSON decoders fail with 400.
+	maxBodyBytes := int64(envInt("MAX_BODY_BYTES", 1<<20))
+	log.Printf("Max request body: %d bytes (set MAX_BODY_BYTES to change)", maxBodyBytes)
 	r.Route("/api", func(r chi.Router) {
+		r.Use(handlers.MaxBytes(maxBodyBytes))
 		r.Get("/auth/status", handlers.AuthStatus(authH))
 		r.With(ipLimit).Post("/login", authH.Login)
 		r.Post("/logout", authH.Logout)
@@ -216,15 +272,20 @@ func main() {
 		r.Post("/quiz/acknowledge", quizH.Acknowledge)
 		r.Post("/quiz/acknowledge-random", quizH.AcknowledgeRandom)
 		r.Post("/quiz/advance", quizH.Advance)
+		r.Get("/quiz/match-game", quizH.MatchGame)
+		r.Post("/quiz/match-answer", quizH.MatchAnswer)
+		r.Post("/quiz/difficult", quizH.FlagDifficult)
+		r.Post("/quiz/difficult/clear", quizH.ClearDifficult)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Get("/quiz/word-stats", quizH.WordStats)
 		r.Get("/quiz/due-date-distribution", quizH.DueDateDistribution)
+		r.Post("/quiz/record-time", quizH.RecordTime)
 		r.Route("/words", func(r chi.Router) {
 			r.Get("/", wordsH.List)
 			r.Post("/", wordsH.Create)
 			r.Get("/export", wordsH.Export)
-			r.Post("/upload-csv", uploadCSVH.UploadCSV)
+			r.With(expensiveLimit).Post("/upload-csv", uploadCSVH.UploadCSV)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", wordsH.GetByID)
 				r.Put("/", wordsH.Update)
@@ -244,6 +305,7 @@ func main() {
 		r.Get("/tags/details", tagsH.Details)
 		r.Put("/tags/{name}", tagsH.Update)
 		r.Get("/audio/{id}", audioH.ServeAudio)
+		r.Get("/audio/component/{char}", audioH.ServeComponentAudio)
 		r.Get("/mismatches", mismatchH.List)
 		r.Get("/hanzi/decompose", hanziH.Decompose)
 		r.Post("/pinyin", handlers.Pinyin)
@@ -269,6 +331,7 @@ func main() {
 		r.Post("/hmm-quiz/skip", hmmQuizH.Skip)
 		r.Get("/components", componentH.List)
 		r.Post("/component/answer", componentH.Answer)
+		r.Post("/component/accept-correct", componentH.AcceptCorrect)
 		r.Post("/component/seen", componentH.Seen)
 		r.Post("/component/skip", componentH.Skip)
 		r.Get("/component/stats", componentH.Stats)
@@ -286,7 +349,18 @@ func main() {
 		r.Put("/settings/api-keys", settingsH.PutAPIKeys)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
 		r.With(expensiveLimit).Post("/translate", translateH.Translate)
+		r.Get("/github/config", githubH.ConfigFlag)
 	})
+
+	// Issue submission is registered outside the /api group so it can carry a
+	// larger body limit than MAX_BODY_BYTES (screenshots are several MB). It
+	// still inherits the global auth + per-user rate-limit middleware.
+	githubMaxBytes := int64(envInt("GITHUB_ISSUE_MAX_BODY_MB", 6)) << 20
+	log.Printf("Max issue-report body: %d bytes (set GITHUB_ISSUE_MAX_BODY_MB to change)", githubMaxBytes)
+	r.With(handlers.MaxBytes(githubMaxBytes)).
+		With(githubIssueIPLimit).
+		With(githubIssueUserLimit).
+		Post("/api/github/issues", githubH.Create)
 
 	// Static frontend files
 	sub, err := fs.Sub(frontendFS, "frontend")
@@ -362,8 +436,46 @@ func main() {
 		port = "8080"
 	}
 	addr := ":" + port
-	log.Printf("Vocabulary Trainer listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, r))
+	srv := newServer(addr, r)
+
+	// Start the server in the background so the main goroutine can wait for a
+	// shutdown signal and drain in-flight requests gracefully.
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Printf("Vocabulary Trainer listening on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-serverErr:
+		log.Fatalf("Server error: %v", err)
+	case sig := <-stop:
+		log.Printf("Received %s — shutting down gracefully", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Fatalf("Graceful shutdown failed: %v", err)
+		}
+		log.Printf("Shutdown complete")
+	}
+}
+
+// newServer builds the HTTP server with conservative timeouts so a slow or
+// stalled client cannot tie up the single SQLite connection indefinitely.
+func newServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 }
 
 // envInt reads an integer env var, returning fallback if unset or invalid.

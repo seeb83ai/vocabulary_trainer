@@ -31,6 +31,24 @@ const MODE_OPTIONS = [
   { value: 'random',             label: 'Random' },
 ];
 
+const CYCLE_STEP_OPTIONS = [
+  { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
+  { value: 'transl_to_zh',       label: 'Translation → Chinese' },
+  { value: 'zh_to_transl',       label: 'Chinese → Translation' },
+  { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
+];
+
+function populateCycleSelect(el, value) {
+  el.innerHTML = '';
+  for (const opt of CYCLE_STEP_OPTIONS) {
+    const o = document.createElement('option');
+    o.value = opt.value;
+    o.textContent = opt.label;
+    if (opt.value === value) o.selected = true;
+    el.appendChild(o);
+  }
+}
+
 function populateModeSelect(el, value) {
   el.innerHTML = '';
   for (const opt of MODE_OPTIONS) {
@@ -118,6 +136,15 @@ async function loadSettings() {
     populateModeSelect(document.getElementById('mode-new-1'), st.new_word_mode_1 || 'transl_to_zh');
     populateModeSelect(document.getElementById('mode-new-2'), st.new_word_mode_2 || 'zh_to_transl');
 
+    // Cycle step selects
+    const defaultSeq = 'zh_pinyin_to_transl,transl_to_zh,zh_to_transl';
+    const cycleSteps = (st.cycle_sequence || defaultSeq).split(',');
+    populateCycleSelect(document.getElementById('cycle-step-0'), cycleSteps[0] || 'zh_pinyin_to_transl');
+    populateCycleSelect(document.getElementById('cycle-step-1'), cycleSteps[1] || 'transl_to_zh');
+    populateCycleSelect(document.getElementById('cycle-step-2'), cycleSteps[2] || 'zh_to_transl');
+    const advanceEl = document.getElementById('cycle-advance-on-success-only');
+    if (advanceEl) advanceEl.checked = !!st.cycle_advance_on_success_only;
+
     // Accept-as-correct mode
     const acmValue = st.accept_correct_mode || 'typo';
     document.querySelectorAll('input[name="accept-correct-mode"]').forEach(el => {
@@ -140,6 +167,11 @@ async function loadSettings() {
     setBaselineRow('baseline-due-today', st.baseline_due_today_enabled, st.baseline_due_today_value ?? 20);
     setBaselineRow('baseline-struggling', st.baseline_struggling_enabled, st.baseline_struggling_value ?? 10);
     setBaselineRow('baseline-learning', st.baseline_learning_enabled, st.baseline_learning_value ?? 20);
+
+    const gamEnabledEl = document.getElementById('gamification-enabled');
+    if (gamEnabledEl) gamEnabledEl.checked = !!st.gamification_enabled;
+    const gamFreqEl = document.getElementById('gamification-frequency');
+    if (gamFreqEl) gamFreqEl.value = st.gamification_frequency ?? 5;
 
     // API key status
     if (st.deepl_key_masked) {
@@ -165,6 +197,10 @@ for (const id of ['mode-prog-new','mode-prog-struggling','mode-prog-learning','m
                    'mode-new-0','mode-new-1','mode-new-2']) {
   const el = document.getElementById(id);
   if (el) populateModeSelect(el, '');
+}
+for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2']) {
+  const el = document.getElementById(id);
+  if (el) populateCycleSelect(el, '');
 }
 
 loadLanguages().then(() => loadSettings());
@@ -200,17 +236,28 @@ document.getElementById('lang-save-btn')?.addEventListener('click', async () => 
 
 // ── Training mode ──────────────────────────────────────────────────────────────
 
+function buildCycleSequence() {
+  const steps = [
+    document.getElementById('cycle-step-0')?.value || 'zh_pinyin_to_transl',
+    document.getElementById('cycle-step-1')?.value || 'transl_to_zh',
+    document.getElementById('cycle-step-2')?.value || 'zh_to_transl',
+  ];
+  return steps.join(',');
+}
+
 function buildModePayload() {
   return {
-    prog_new:              document.getElementById('mode-prog-new')?.value        || 'transl_to_zh',
-    prog_tier_struggling:  document.getElementById('mode-prog-struggling')?.value || 'transl_to_zh',
-    prog_tier_learning:    document.getElementById('mode-prog-learning')?.value   || 'zh_pinyin_to_transl',
-    prog_tier_practicing:  document.getElementById('mode-prog-practicing')?.value || 'zh_to_transl',
-    prog_tier_mastered:    document.getElementById('mode-prog-mastered')?.value   || 'random',
-    new_word_mode_0:       document.getElementById('mode-new-0')?.value           || 'transl_to_zh',
-    new_word_mode_1:       document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
-    new_word_mode_2:       document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
-    new_word_require_zh:   !!(document.getElementById('require-zh')?.checked),
+    prog_new:               document.getElementById('mode-prog-new')?.value        || 'transl_to_zh',
+    prog_tier_struggling:   document.getElementById('mode-prog-struggling')?.value || 'transl_to_zh',
+    prog_tier_learning:     document.getElementById('mode-prog-learning')?.value   || 'zh_pinyin_to_transl',
+    prog_tier_practicing:   document.getElementById('mode-prog-practicing')?.value || 'zh_to_transl',
+    prog_tier_mastered:     document.getElementById('mode-prog-mastered')?.value   || 'random',
+    new_word_mode_0:        document.getElementById('mode-new-0')?.value           || 'transl_to_zh',
+    new_word_mode_1:        document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
+    new_word_mode_2:        document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
+    cycle_sequence:                 buildCycleSequence(),
+    cycle_advance_on_success_only:  !!(document.getElementById('cycle-advance-on-success-only')?.checked),
+    new_word_require_zh:            !!(document.getElementById('require-zh')?.checked),
     new_word_require_trans: !!(document.getElementById('require-trans')?.checked),
   };
 }
@@ -306,6 +353,33 @@ document.getElementById('mode-save-btn')?.addEventListener('click', async () => 
   }
 });
 
+// ── Cycle mode ────────────────────────────────────────────────────────────────
+
+document.getElementById('cycle-save-btn')?.addEventListener('click', async () => {
+  hideMsg('cycle-success'); hideMsg('cycle-error');
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    ...buildModePayload(),
+    ...buildDailyPayload(),
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('cycle-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('cycle-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('cycle-error', 'Network error.', true);
+  }
+});
+
 // ── Accept-as-correct mode ─────────────────────────────────────────────────────
 
 document.getElementById('accept-mode-save-btn')?.addEventListener('click', async () => {
@@ -313,8 +387,8 @@ document.getElementById('accept-mode-save-btn')?.addEventListener('click', async
   const checked = document.querySelector('input[name="accept-correct-mode"]:checked');
   const mode = checked ? checked.value : 'typo';
   const payload = {
-    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    primary_lang:        document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang:      document.getElementById('secondary-lang')?.value || '',
     ...buildModePayload(),
     ...buildDailyPayload(),
     accept_correct_mode: mode,
@@ -463,4 +537,38 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
 
   btn.disabled = false;
   btn.textContent = 'Update Password';
+});
+
+// Gamification save
+document.getElementById('gamification-save-btn')?.addEventListener('click', async () => {
+  hideMsg('gamification-success'); hideMsg('gamification-error');
+  const freq = parseInt(document.getElementById('gamification-frequency')?.value || '5', 10);
+  if (!freq || freq < 1 || freq > 1440) {
+    showMsg('gamification-error', 'Frequency must be between 1 and 1440 minutes.', true);
+    return;
+  }
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
+    ...buildModePayload(),
+    ...buildDailyPayload(),
+    gamification_enabled:   !!(document.getElementById('gamification-enabled')?.checked),
+    gamification_frequency: freq,
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('gamification-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('gamification-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('gamification-error', 'Network error.', true);
+  }
 });

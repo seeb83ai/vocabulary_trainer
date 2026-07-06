@@ -6,9 +6,10 @@ A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2)
 
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations
 - N:N word relationships — the same English or Chinese word can be shared across entries
-- **Four quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English, and **Progressive** (auto-selects direction based on learning progress)
+- **Five quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, Chinese + Pinyin → English, **Progressive** (auto-selects direction based on learning progress), and **Cycle** (rotates through a user-configured sequence of directions per word)
 - [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
 - **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
+- **Difficult-words drill** — once everything due is reviewed, the "All done for today!" screen offers a "Drill my hardest words" option: tick it and pick an amount to flag that many of your hardest words (about half by lowest accuracy, half by lowest ease factor). Those flagged words are served on demand — regardless of their due date — until each is answered correctly, which clears its flag. A temporary "Difficult words" pill in the filter bar shows the drill is active and how many remain; click it to exit early
 - Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`)
 - On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click
 - **Accept as correct** — if a wrong answer was a typo, click "Accept as correct" to restore your pre-answer SM-2 progress and count the attempt as correct without penalty. Configurable in Settings: never / on 1-character typos (default) / always
@@ -83,7 +84,7 @@ APP_ENV=production            # default; refuses startup if SESSION_SECRET is mi
 SESSION_SECRET=<64 hex chars>  # `openssl rand -hex 32`
 ```
 
-`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart) and lets `/api/register` auto-verify accounts when SMTP is not configured. **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email.
+`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart), lets `/api/register` auto-verify accounts when SMTP is not configured, and omits the `Secure` flag on session cookies so they work over plain HTTP. In production (the default) session cookies are marked `Secure`, so the app must be served over HTTPS (terminate TLS at the reverse proxy). **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email, and session cookies would be sent over unencrypted HTTP.
 
 Other security-relevant tunables:
 
@@ -91,11 +92,28 @@ Other security-relevant tunables:
 RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
 RATE_LIMIT_USER_PER_MIN=300       # per-user budget for all other API traffic
 RATE_LIMIT_EXPENSIVE_PER_MIN=20   # budget for /api/translate, /api/change-password, LLM scene generation
+RATE_LIMIT_GITHUB_ISSUE_PER_MIN=5 # budget for issue reports, enforced per user AND per IP
+CSV_MAX_UPLOAD_MB=8               # max CSV upload body size; oversized uploads are rejected (413)
+CSV_MAX_ROWS=5000                 # max data rows per CSV upload; over-cap uploads are rejected (400)
 ```
+
+The CSV import endpoint (`POST /api/words/upload-csv`) is also covered by the
+expensive-request rate limiter, and its per-row text-to-speech generation runs
+in a bounded background worker pool so a large import can't exhaust resources.
 
 A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) is built in; the lockout is cleared on the next successful login.
 
+JSON request bodies on `/api` routes are capped (default 1 MiB) so an unbounded upload cannot exhaust memory — oversized bodies are rejected with `400`:
+
+```bash
+MAX_BODY_BYTES=1048576   # max /api request body in bytes (default 1 MiB)
+```
+
+The HTTP server runs with read/write/idle timeouts so a slow or stalled client cannot tie up the single SQLite connection, and it shuts down gracefully on `SIGINT`/`SIGTERM`, draining in-flight requests (up to 30 s) before exiting. This makes systemd auto-restarts (see `deploy/vocab-trainer.service`) drop fewer in-flight requests.
+
 The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on every response. Configure HTTPS at the reverse proxy (see `deploy/nginx.conf`) — the sample config also sets `Strict-Transport-Security`.
+
+Always deploy behind a reverse proxy (e.g. nginx) that sets `X-Real-IP` to the real client address; rate limiting derives the client IP from that header. Do not expose the binary directly to the internet — the spoofable `X-Forwarded-For` header is deliberately never trusted, so a directly-exposed binary would rate-limit on `RemoteAddr` only.
 
 ## Daily new-word cap
 
@@ -184,14 +202,31 @@ The bonus is calculated as the minimum value needed to reach the target accuracy
 
 **Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day without recording an attempt. Useful when you want to clear a stuck card from today's queue but try again tomorrow.
 
+## Cycle mode
+
+The **Cycle** quiz mode rotates through a fixed sequence of quiz directions. By default the position advances on every attempt (correct or wrong), so the counter is `total_attempts`. Users can switch to **advance on success only** in Settings → Cycle Mode, which uses `total_correct` as the counter instead — the step stays the same until you answer correctly.
+
+Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation → Chinese → Translation**
+
+| `total_attempts` | Position | Direction |
+|---|---|---|
+| 1 (after "Got it") | 0 | Chinese + Pinyin → Translation |
+| 2 | 1 | Translation → Chinese |
+| 3 | 2 | Chinese → Translation |
+| 4 | 0 (wraps) | Chinese + Pinyin → Translation |
+
+You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel has an **Advance only on success** toggle that switches the counter from `total_attempts` to `total_correct`.
+
 ## User settings
 
 Each user has a personal settings page (`/settings`) with:
 
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
+- **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode, and choose whether the cycle advances on every attempt (default) or only after a correct answer.
 - **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
-- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account.
+- **Gamification** — Enable a word-matching mini-game that appears during training when you have confused at least 3 word pairs in the last 7 days. Configure how often (in minutes) the game may interrupt training. When triggered, three confused pairs are shown in two shuffled columns; click a Chinese word then its English translation to match them; correct pairs turn green, wrong pairs flash red. The game updates SM-2 progress for each matched word.
+- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account. A user-supplied local LLM URL must be a public `http(s)` address — internal/loopback/link-local targets are rejected (and blocked at connect time) to prevent server-side request forgery. Operators who run a trusted local model on loopback should configure it via the server-side `LOCAL_LLM_URL` env var instead.
 
 ## Auto-translate (DeepL)
 
@@ -209,6 +244,23 @@ When enabled, an **Auto-translate** button appears in the Add/Edit Word form. It
 - **Both filled** → generates pinyin only
 
 Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin is generated server-side using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser — all DeepL calls are proxied through the backend.
+
+## In-app issue reporting (GitHub)
+
+When configured, a floating **report** button appears on every authenticated page. Clicking it captures the current page (URL, a screenshot, and non-sensitive client context: user agent, viewport, locale, timestamp), lets the user pick a type (**bug / idea / question / misc**) and write a title and description, and on submit creates a GitHub issue server-side.
+
+```bash
+GITHUB_TOKEN=github_pat_...      # fine-grained PAT; required to enable the feature
+GITHUB_ISSUE_REPO=owner/repo     # target repository; required to enable the feature
+GITHUB_ISSUE_LABELS=from-app     # comma-separated labels applied to created issues (default: from-app)
+GITHUB_ASSETS_BRANCH=issue-assets # branch screenshots are uploaded to (default: issue-assets)
+GITHUB_API_BASE_URL=             # override the GitHub API base (tests/GitHub Enterprise); default https://api.github.com
+GITHUB_ISSUE_MAX_BODY_MB=6       # max request body for issue submission (screenshots are several MB)
+```
+
+The feature is optional: if `GITHUB_TOKEN` or `GITHUB_ISSUE_REPO` is unset, the report button stays hidden and `POST /api/github/issues` returns `503`. Submission is open to any authenticated user and is rate-limited **per user and per IP** (`RATE_LIMIT_GITHUB_ISSUE_PER_MIN`, default 5/min).
+
+The token must be a fine-grained PAT scoped to the single target repo with **Issues: write** and **Contents: write**. The token never reaches the browser. GitHub's Issues API cannot attach images, so screenshots are uploaded via the Contents API to `GITHUB_ASSETS_BRANCH` (auto-created from the default branch if missing) and embedded in the issue body by URL — they accumulate as blobs on that branch (never on the default branch) and can be pruned periodically. Each report carries a random UUID embedded in the issue body; the UUID→user mapping is recorded only in the private audit log, so no email or internal account id appears in the (potentially public) issue.
 
 ## LLM scene generation
 
@@ -416,6 +468,36 @@ sudo nginx -t && sudo systemctl reload nginx
 
 just running `make release` is good enough now to build the binary, deploy it and restart the service
 
+### Backups
+
+The database is a single SQLite file, so backups are simple. A scheduled nightly
+backup with retention is provided:
+
+```bash
+sudo cp deploy/backup.sh /opt/vocab-trainer/backup.sh
+sudo cp deploy/vocab-backup.service /etc/systemd/system/
+sudo cp deploy/vocab-backup.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now vocab-backup.timer
+```
+
+`deploy/backup.sh` uses the SQLite online-backup API (`sqlite3 .backup`), which
+takes a consistent snapshot while the server is running (safe with WAL mode). It
+writes timestamped copies to `BACKUP_DIR` (default `data/backups/`) and prunes
+files older than `RETAIN_DAYS` (default 14). The `vocab-backup.timer` runs it
+nightly.
+
+**Restore** — stop the server, copy a backup over the live DB, and restart:
+
+```bash
+sudo systemctl stop vocab-trainer
+make restore FROM=data/backups/vocab-2026-06-15_033000.sq3   # or: cp <backup> data/vocab.db
+sudo systemctl start vocab-trainer
+```
+
+The backup/restore round-trip is covered by a unit test
+(`TestBackupRestore_RoundTrip`) that exercises the same online-backup primitive.
+
 ## Text-to-speech (TTS)
 
 Audio is generated using the Microsoft Edge neural TTS WebSocket API (`zh-CN-XiaoxiaoNeural` voice) — implemented directly in Go with no Python dependency or API key required. MP3 files are cached in `AUDIO_DIR` (default: `data/audio/`) and served by the Go server.
@@ -450,7 +532,7 @@ vocabulary_trainer/
 │   │   ├── hmm.go           # Hanzi Movie Method — library CRUD, scene builder, pinyin parsing
 │   │   ├── mismatches.go    # GET /api/mismatches
 │   │   ├── translate.go     # POST /api/translate, GET /api/config — DeepL proxy + pinyin
-│   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3
+│   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3; GET /api/audio/component/{char} — component TTS
 │   │   └── hanzi.go         # GET /api/hanzi/decompose — character decomposition
 │   ├── models/models.go     # Shared structs and mode constants
 │   ├── sm2/
@@ -490,11 +572,19 @@ vocabulary_trainer/
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params) |
-| `POST` | `/api/quiz/answer` | Submit an answer |
+| `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
+| `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag) |
+| `GET` | `/api/quiz/match-game` | Get up to 3 recent confusion pairs for the match mini-game (empty if < 3 pairs in last 7 days) |
+| `POST` | `/api/quiz/match-answer` | Submit a match-game result (`zh_word_id`, `correct`) — updates SM-2 progress |
+| `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress |
+| `GET` | `/api/quiz/langs` | List the distinct translation languages available |
 | `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7) |
 | `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |
-| `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param) |
+| `POST` | `/api/quiz/acknowledge-random` | Acknowledge a random subset of new words (start-training count) |
+| `POST` | `/api/quiz/advance` | Advance due dates / move past the current card |
+| `POST` | `/api/quiz/difficult` | Flag the user's hardest words for a focused drill (`count` body field — about half by lowest accuracy, half by lowest ease factor); returns `{flagged}` |
+| `POST` | `/api/quiz/difficult/clear` | End the difficult-words drill by clearing all drill flags |
+| `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param); includes `difficult_remaining` (flagged drill words still to answer) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
 | `GET` | `/api/quiz/due-date-distribution` | Get word counts grouped by due date for the next 30 days (`tags` query param) |
@@ -505,10 +595,15 @@ vocabulary_trainer/
 | `PUT` | `/api/words/{id}` | Update a word |
 | `DELETE` | `/api/words/{id}` | Delete a word |
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
+| `POST` | `/api/words/{id}/review` | Flag a word for review |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
+| `GET` | `/api/audio/component/{char}` | Serve cached MP3 for a single component character (generated on demand); files stored as `c_{hex}.mp3` |
+| `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
+| `GET` | `/api/github/config` | Whether in-app issue reporting is enabled (`{"enabled":bool}`) |
+| `POST` | `/api/github/issues` | Create a GitHub issue from an in-app report (only available when `GITHUB_TOKEN` + `GITHUB_ISSUE_REPO` are set; rate-limited per user and per IP) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
 | `GET` | `/api/hanzi/decompose` | Decompose Chinese characters into radicals and components (`chars` query param, max 20) |
 | `GET` | `/api/hmm/actors` | List all HMM actor mappings (pinyin initial → person) |

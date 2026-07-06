@@ -10,38 +10,84 @@ const (
 	ModeProgressive      = "progressive"
 	ModeNewWord          = "new_word"
 	ModeMaskPinyin       = "mask_pinyin" // transl_to_zh with pinyin hint forced on
+	ModeCycle            = "cycle"
 )
 
 // UserSettings holds per-user configuration stored in user_settings.
 type UserSettings struct {
-	PrimaryLang        string `json:"primary_lang"`
-	SecondaryLang      string `json:"secondary_lang"`
-	ProgNew            string `json:"prog_new"`             // totalAttempts<3
-	ProgTierStruggling string `json:"prog_tier_struggling"` // totalAttempts>=3, accuracy<50%
-	ProgTierLearning   string `json:"prog_tier_learning"`   // accuracy<70% or totalAttempts<10
-	ProgTierPracticing string `json:"prog_tier_practicing"` // accuracy<85%
-	ProgTierMastered   string `json:"prog_tier_mastered"`   // accuracy>=85%
-	NewWordMode0       string `json:"new_word_mode_0"`      // TotalCorrect==0
-	NewWordMode1       string `json:"new_word_mode_1"`      // TotalCorrect==1
-	NewWordMode2            string `json:"new_word_mode_2"`           // TotalCorrect>=2
-	NewWordRequireZh        bool   `json:"new_word_require_zh"`
-	NewWordRequireTrans     bool   `json:"new_word_require_trans"`
-	MaxNewWordsPerDay         int  `json:"max_new_words_per_day"`
-	NewWordCooldownMinutes    int  `json:"new_word_cooldown_minutes"`
-	SkipNewWordsVisible       bool `json:"skip_new_words_visible"`
-	BaselineDueTodayEnabled   bool `json:"baseline_due_today_enabled"`
-	BaselineDueTodayValue     int  `json:"baseline_due_today_value"`
-	BaselineStrugglingEnabled bool `json:"baseline_struggling_enabled"`
-	BaselineStrugglingValue   int  `json:"baseline_struggling_value"`
-	BaselineLearningEnabled   bool `json:"baseline_learning_enabled"`
-	BaselineLearningValue     int  `json:"baseline_learning_value"`
-	DeeplKeySet               bool `json:"deepl_key_set"`
-	DeeplKeyMasked     string `json:"deepl_key_masked,omitempty"`
-	LLMProvider        string `json:"llm_provider"`
-	LLMLocalURL        string `json:"llm_local_url"`
-	LLMKeySet          bool   `json:"llm_key_set"`
-	LLMKeyMasked       string `json:"llm_key_masked,omitempty"`
-	AcceptCorrectMode  string `json:"accept_correct_mode"`
+	PrimaryLang               string `json:"primary_lang"`
+	SecondaryLang             string `json:"secondary_lang"`
+	ProgNew                   string `json:"prog_new"`             // totalAttempts<3
+	ProgTierStruggling        string `json:"prog_tier_struggling"` // totalAttempts>=3, accuracy<50%
+	ProgTierLearning          string `json:"prog_tier_learning"`   // accuracy<70% or totalAttempts<10
+	ProgTierPracticing        string `json:"prog_tier_practicing"` // accuracy<85%
+	ProgTierMastered          string `json:"prog_tier_mastered"`   // accuracy>=85%
+	NewWordMode0              string `json:"new_word_mode_0"`      // TotalCorrect==0
+	NewWordMode1              string `json:"new_word_mode_1"`      // TotalCorrect==1
+	NewWordMode2              string `json:"new_word_mode_2"`      // TotalCorrect>=2
+	CycleSequence             string `json:"cycle_sequence"`
+	CycleAdvanceOnSuccessOnly bool   `json:"cycle_advance_on_success_only"`
+	NewWordRequireZh          bool   `json:"new_word_require_zh"`
+	NewWordRequireTrans       bool   `json:"new_word_require_trans"`
+	MaxNewWordsPerDay         int    `json:"max_new_words_per_day"`
+	NewWordCooldownMinutes    int    `json:"new_word_cooldown_minutes"`
+	SkipNewWordsVisible       bool   `json:"skip_new_words_visible"`
+	BaselineDueTodayEnabled   bool   `json:"baseline_due_today_enabled"`
+	BaselineDueTodayValue     int    `json:"baseline_due_today_value"`
+	BaselineStrugglingEnabled bool   `json:"baseline_struggling_enabled"`
+	BaselineStrugglingValue   int    `json:"baseline_struggling_value"`
+	BaselineLearningEnabled   bool   `json:"baseline_learning_enabled"`
+	BaselineLearningValue     int    `json:"baseline_learning_value"`
+	DeeplKeySet               bool   `json:"deepl_key_set"`
+	DeeplKeyMasked            string `json:"deepl_key_masked,omitempty"`
+	LLMProvider               string `json:"llm_provider"`
+	LLMLocalURL               string `json:"llm_local_url"`
+	LLMKeySet                 bool   `json:"llm_key_set"`
+	LLMKeyMasked              string `json:"llm_key_masked,omitempty"`
+	AcceptCorrectMode         string `json:"accept_correct_mode"`
+	GamificationEnabled       bool   `json:"gamification_enabled"`
+	GamificationFrequency     int    `json:"gamification_frequency"`
+}
+
+// ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
+// A zero-value string in any field uses the built-in default for that tier.
+// Defined here (not in sm2) so UserSettings can project to it without an import
+// cycle; sm2 aliases this type.
+type ProgressiveModeConfig struct {
+	New        string // totalAttempts<3; default: ModeTranslToZh
+	Struggling string // totalAttempts>=3 and accuracy<50%; default: ModeTranslToZh
+	Learning   string // accuracy<70% or totalAttempts<10; default: ModeZhPinyinToTransl
+	Practicing string // accuracy<85%; default: ModeZhToTransl
+	Mastered   string // accuracy>=85%; default: random via SelectMode()
+}
+
+// NewWordModeConfig holds per-step mode choices for LearningNewWord words.
+type NewWordModeConfig struct {
+	Step0 string // TotalCorrect==0; default: ModeTranslToZh
+	Step1 string // TotalCorrect==1; default: ModeTranslToZh
+	Step2 string // TotalCorrect>=2; default: ModeZhToTransl
+}
+
+// QuizConfig projects the user's progressive-mode settings into a
+// ProgressiveModeConfig. Empty fields fall back to per-tier defaults downstream.
+func (s UserSettings) QuizConfig() ProgressiveModeConfig {
+	return ProgressiveModeConfig{
+		New:        s.ProgNew,
+		Struggling: s.ProgTierStruggling,
+		Learning:   s.ProgTierLearning,
+		Practicing: s.ProgTierPracticing,
+		Mastered:   s.ProgTierMastered,
+	}
+}
+
+// NewWordConfig projects the user's new-word step settings into a
+// NewWordModeConfig.
+func (s UserSettings) NewWordConfig() NewWordModeConfig {
+	return NewWordModeConfig{
+		Step0: s.NewWordMode0,
+		Step1: s.NewWordMode1,
+		Step2: s.NewWordMode2,
+	}
 }
 
 // DB-layer structs
@@ -85,6 +131,9 @@ type QuizCard struct {
 	DueDate         time.Time           `json:"due_date"`
 	IntervalDays    int                 `json:"interval_days"`
 	LearningNewWord bool                `json:"learning_new_word"`
+	// ZhText is the Chinese word text, populated for transl_to_zh mode so the
+	// frontend can offer an audio play button even when the prompt is a translation.
+	ZhText string `json:"zh_text,omitempty"`
 	// HMM mnemonic card fields (card_type="hmm"); zero-value for word cards.
 	CardType   string `json:"card_type,omitempty"`
 	EntityType string `json:"entity_type,omitempty"`
@@ -110,21 +159,25 @@ type AcceptCorrectRequest struct {
 	Langs  []string `json:"langs,omitempty"`
 }
 
+type ComponentAcceptCorrectRequest struct {
+	Character string `json:"character"`
+}
+
 type AnswerResponse struct {
-	Correct         bool                `json:"correct"`
-	CorrectAnswers  []string            `json:"correct_answers"`
-	ZhText          string              `json:"zh_text"`
-	Pinyin          *string             `json:"pinyin"`
-	Translations    map[string][]string `json:"translations"`
-	NextDue         time.Time           `json:"next_due"`
-	IntervalDays    int                 `json:"interval_days"`
-	TotalCorrect    int                 `json:"total_correct"`
-	TotalAttempts   int                 `json:"total_attempts"`
-	StreakBonus      int                `json:"streak_bonus"`
-	Repetitions     int                 `json:"repetitions"`
-	GraduateReps    int                 `json:"graduate_reps,omitempty"`
-	LearningNewWord bool                `json:"learning_new_word"`
-	Graduated       bool                `json:"graduated,omitempty"`
+	Correct          bool                `json:"correct"`
+	CorrectAnswers   []string            `json:"correct_answers"`
+	ZhText           string              `json:"zh_text"`
+	Pinyin           *string             `json:"pinyin"`
+	Translations     map[string][]string `json:"translations"`
+	NextDue          time.Time           `json:"next_due"`
+	IntervalDays     int                 `json:"interval_days"`
+	TotalCorrect     int                 `json:"total_correct"`
+	TotalAttempts    int                 `json:"total_attempts"`
+	StreakBonus      int                 `json:"streak_bonus"`
+	Repetitions      int                 `json:"repetitions"`
+	GraduateReps     int                 `json:"graduate_reps,omitempty"`
+	LearningNewWord  bool                `json:"learning_new_word"`
+	Graduated        bool                `json:"graduated,omitempty"`
 	ConfusedWith     *ConfusionDetail    `json:"confused_with,omitempty"`
 	SessionStreak    int                 `json:"session_streak,omitempty"`
 	Tier             string              `json:"tier,omitempty"`
@@ -142,11 +195,11 @@ type CreateWordRequest struct {
 }
 
 type UpdateWordRequest struct {
-	ZhText       string              `json:"zh_text"`
-	Pinyin       string              `json:"pinyin"`
-	Translations map[string][]string `json:"translations"`
-	Tags         []string            `json:"tags"`
-	StartTraining bool               `json:"start_training"`
+	ZhText        string              `json:"zh_text"`
+	Pinyin        string              `json:"pinyin"`
+	Translations  map[string][]string `json:"translations"`
+	Tags          []string            `json:"tags"`
+	StartTraining bool                `json:"start_training"`
 }
 
 type WordDetail struct {
@@ -169,17 +222,17 @@ type WordDetail struct {
 }
 
 type ConfusionDetail struct {
-	ZhWordID               int64               `json:"zh_word_id"`
-	ZhText                 string              `json:"zh_text"`
-	ZhPinyin               *string             `json:"zh_pinyin"`
-	ZhTranslations         map[string][]string `json:"zh_translations"`
-	ConfusedWithID         int64               `json:"confused_with_id"`
-	ConfusedWithText       string              `json:"confused_with_text"`
-	ConfusedWithPinyin     *string             `json:"confused_with_pinyin"`
+	ZhWordID                 int64               `json:"zh_word_id"`
+	ZhText                   string              `json:"zh_text"`
+	ZhPinyin                 *string             `json:"zh_pinyin"`
+	ZhTranslations           map[string][]string `json:"zh_translations"`
+	ConfusedWithID           int64               `json:"confused_with_id"`
+	ConfusedWithText         string              `json:"confused_with_text"`
+	ConfusedWithPinyin       *string             `json:"confused_with_pinyin"`
 	ConfusedWithTranslations map[string][]string `json:"confused_with_translations"`
-	Mode                   string              `json:"mode"`
-	Count                  int                 `json:"count"`
-	LastSeen               time.Time           `json:"last_seen"`
+	Mode                     string              `json:"mode"`
+	Count                    int                 `json:"count"`
+	LastSeen                 time.Time           `json:"last_seen"`
 }
 
 type WordListResponse struct {
@@ -200,6 +253,7 @@ type DailyStat struct {
 	BucketLearning   int
 	BucketPracticing int
 	BucketMastered   int
+	TrainingSeconds  int
 }
 
 type DailyStatsResponse struct {
@@ -295,6 +349,7 @@ type DailyStatEntry struct {
 	BucketLearning   int    `json:"bucket_learning"`
 	BucketPracticing int    `json:"bucket_practicing"`
 	BucketMastered   int    `json:"bucket_mastered"`
+	TrainingSeconds  int    `json:"training_seconds"`
 }
 
 // ComponentProgress tracks SM-2 state for a single hanzi component per user.
@@ -393,20 +448,20 @@ type HMMScene struct {
 }
 
 type HMMSceneContext struct {
-	Initial        string            `json:"initial"`
-	Final          string            `json:"final"`
-	Tone           int               `json:"tone"`
-	Pinyin         string            `json:"pinyin,omitempty"`
-	Decomposition  string            `json:"decomposition,omitempty"`
-	Radicals       []string          `json:"radicals"`
-	RadicalDefs    map[string]string `json:"radical_defs"`
-	RadicalDeDefs  map[string]string `json:"radical_de_defs,omitempty"`
-	Actor          *HMMActor         `json:"actor"`
-	Location       *HMMLocation      `json:"location"`
-	ToneRoom       *HMMToneRoom      `json:"tone_room"`
-	Props          []HMMProp         `json:"props"`
-	Scene          *HMMScene         `json:"scene,omitempty"`
-	MultiChar      bool              `json:"multi_char,omitempty"`
+	Initial       string            `json:"initial"`
+	Final         string            `json:"final"`
+	Tone          int               `json:"tone"`
+	Pinyin        string            `json:"pinyin,omitempty"`
+	Decomposition string            `json:"decomposition,omitempty"`
+	Radicals      []string          `json:"radicals"`
+	RadicalDefs   map[string]string `json:"radical_defs"`
+	RadicalDeDefs map[string]string `json:"radical_de_defs,omitempty"`
+	Actor         *HMMActor         `json:"actor"`
+	Location      *HMMLocation      `json:"location"`
+	ToneRoom      *HMMToneRoom      `json:"tone_room"`
+	Props         []HMMProp         `json:"props"`
+	Scene         *HMMScene         `json:"scene,omitempty"`
+	MultiChar     bool              `json:"multi_char,omitempty"`
 }
 
 type HMMSaveSceneRequest struct {
@@ -544,6 +599,22 @@ type PinyinToneVariant struct {
 	Filename string `json:"filename"`
 	Tone     int    `json:"tone"`
 	Current  bool   `json:"current"`
+}
+
+type MatchGameWord struct {
+	ZhWordID     int64               `json:"zh_word_id"`
+	ZhText       string              `json:"zh_text"`
+	Pinyin       string              `json:"pinyin"`
+	Translations map[string][]string `json:"translations"`
+}
+
+type MatchGameResponse struct {
+	Words []MatchGameWord `json:"words"`
+}
+
+type MatchAnswerRequest struct {
+	ZhWordID int64 `json:"zh_word_id"`
+	Correct  bool  `json:"correct"`
 }
 
 type PinyinConfusionDetail struct {

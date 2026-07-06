@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,33 +16,11 @@ import (
 )
 
 type QuizHandler struct {
-	Store        *db.Store
+	Store        quizStore
 	MaxNewPerDay int
 	mu           sync.Mutex
 	capResetDate string // date string (YYYY-MM-DD) on which the new-word cap was reset
 	newCapBase   int    // newToday count at cap-reset time; cap = newCapBase + MaxNewPerDay
-}
-
-// wordTier returns the accuracy bucket label for a progress record.
-// Must stay in sync with wordTier() in app.js and tierFilter() in db.go.
-func wordTier(p models.SM2Progress) string {
-	if p.TotalAttempts == 0 {
-		return ""
-	}
-	if p.LearningNewWord {
-		return "New"
-	}
-	acc := float64(p.TotalCorrect+p.StreakBonus) / float64(p.TotalAttempts)
-	switch {
-	case p.TotalAttempts >= 10 && acc >= 0.85:
-		return "Mastered"
-	case p.TotalAttempts >= 10 && acc >= 0.70:
-		return "Practicing"
-	case p.TotalAttempts >= 3 && acc >= 0.50:
-		return "Learning"
-	default:
-		return "Struggling"
-	}
 }
 
 // Langs returns the distinct translation languages available in the database.
@@ -86,18 +66,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	maxNew := h.MaxNewPerDay
 	var baselines *db.NewWordBaselines
 	if userSettings != nil {
-		progCfg = sm2.ProgressiveModeConfig{
-			New:        userSettings.ProgNew,
-			Struggling: userSettings.ProgTierStruggling,
-			Learning:   userSettings.ProgTierLearning,
-			Practicing: userSettings.ProgTierPracticing,
-			Mastered:   userSettings.ProgTierMastered,
-		}
-		nwCfg = sm2.NewWordModeConfig{
-			Step0: userSettings.NewWordMode0,
-			Step1: userSettings.NewWordMode1,
-			Step2: userSettings.NewWordMode2,
-		}
+		progCfg = userSettings.QuizConfig()
+		nwCfg = userSettings.NewWordConfig()
 		primaryLang = userSettings.PrimaryLang
 		if h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
 			maxNew = userSettings.MaxNewWordsPerDay
@@ -124,15 +94,36 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 	h.mu.Unlock()
 	skipNew := r.URL.Query().Get("skip_new") == "true"
-	word, progress, err := h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines)
+
+	var excludeIDs []int64
+	if excl := r.URL.Query().Get("exclude"); excl != "" {
+		for _, part := range strings.Split(excl, ",") {
+			if id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64); err == nil && id > 0 {
+				excludeIDs = append(excludeIDs, id)
+			}
+		}
+	}
+
+	// Difficult-words drill: serve only flagged words (ordered by due date,
+	// ignoring the normal due-date horizon). Mnemonic/component candidates are
+	// not part of the drill.
+	difficult := r.URL.Query().Get("difficult") == "true"
+	var word *models.Word
+	var progress *models.SM2Progress
+	var err error
+	if difficult {
+		word, progress, err = h.Store.GetNextDrillCard(r.Context(), userID)
+	} else {
+		word, progress, err = h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines, excludeIDs)
+	}
 	if err != nil {
 		internalError(w, err)
 		return
 	}
 
 	langs := parseLangs(r, primaryLang)
-	mnemonics := r.URL.Query().Get("mnemonics") != "false"
-	trainComponents := r.URL.Query().Get("trainComponents") == "1"
+	mnemonics := r.URL.Query().Get("mnemonics") != "false" && !difficult
+	trainComponents := r.URL.Query().Get("trainComponents") == "1" && !difficult
 
 	// Ensure progress rows exist for any newly-named library entries.
 	if err := h.Store.EnsureHMMProgress(r.Context(), UserIDFromContext(r.Context())); err != nil {
@@ -152,13 +143,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch component candidate (filtered to langs the user is currently training).
-	var compCard *struct {
-		Character   string
-		Pinyin      string
-		DueDate     time.Time
-		IsNew       bool
-		Definitions map[string]string
-	}
+	var compCard *componentCard
 	if trainComponents {
 		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs)
 		if ccErr != nil {
@@ -166,13 +151,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if cc != nil {
-			compCard = &struct {
-				Character   string
-				Pinyin      string
-				DueDate     time.Time
-				IsNew       bool
-				Definitions map[string]string
-			}{
+			compCard = &componentCard{
 				Character:   cc.Character,
 				Pinyin:      cc.Pinyin,
 				DueDate:     db.ParseDateTime(cc.Progress.DueDate),
@@ -183,52 +162,59 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Pick the card with the lowest due_date across word, HMM, and component.
-	// HMM check.
+	// Candidates are ordered [word, hmm, component] so SelectNextCard reproduces
+	// the historical tie-break (word > hmm > component on an exact due-date tie).
+	wordCand := CardCandidate{Kind: cardWord, Present: word != nil, Word: word, WordProgress: progress}
+	if word != nil {
+		wordCand.DueDate = progress.DueDate
+	}
+	candidates := []CardCandidate{wordCand}
 	if hmmCard != nil {
-		serveHMM := word == nil || hmmCard.DueDate.Before(progress.DueDate)
-		if compCard != nil && serveHMM {
-			serveHMM = hmmCard.DueDate.Before(compCard.DueDate) || hmmCard.DueDate.Equal(compCard.DueDate)
-		}
-		if serveHMM {
-			writeJSON(w, http.StatusOK, models.QuizCard{
-				CardType:     "hmm",
-				EntityType:   hmmCard.EntityType,
-				EntityKey:    hmmCard.EntityKey,
-				Prompt:       hmmCard.Prompt,
-				Category:     hmmCard.Category,
-				Hint:         hmmCard.Hint,
-				DueDate:      hmmCard.DueDate,
-				IntervalDays: hmmCard.IntervalDays,
-			})
-			return
-		}
+		candidates = append(candidates, CardCandidate{Kind: cardHMM, Present: true, DueDate: hmmCard.DueDate, HMM: hmmCard})
 	}
-
-	// Component check.
 	if compCard != nil {
-		serveComp := word == nil || compCard.DueDate.Before(progress.DueDate)
-		if serveComp {
-			isAlsoWord, err := h.Store.IsZhWordForUser(r.Context(), UserIDFromContext(r.Context()), compCard.Character)
-			if err != nil {
-				internalError(w, err)
-				return
-			}
-			compQuizCard := models.QuizCard{
-				CardType:    "component",
-				Prompt:      compCard.Character,
-				DueDate:     compCard.DueDate,
-				IsNew:       compCard.IsNew,
-				Definitions: compCard.Definitions,
-				IsAlsoWord:  isAlsoWord,
-			}
-			if compCard.Pinyin != "" {
-				compQuizCard.Pinyin = &compCard.Pinyin
-			}
-			writeJSON(w, http.StatusOK, compQuizCard)
-			return
-		}
+		candidates = append(candidates, CardCandidate{Kind: cardComponent, Present: true, DueDate: compCard.DueDate, Component: compCard})
 	}
 
+	best, ok := SelectNextCard(candidates)
+	switch {
+	case ok && best.Kind == cardHMM:
+		hc := best.HMM
+		writeJSON(w, http.StatusOK, models.QuizCard{
+			CardType:     "hmm",
+			EntityType:   hc.EntityType,
+			EntityKey:    hc.EntityKey,
+			Prompt:       hc.Prompt,
+			Category:     hc.Category,
+			Hint:         hc.Hint,
+			DueDate:      hc.DueDate,
+			IntervalDays: hc.IntervalDays,
+		})
+		return
+	case ok && best.Kind == cardComponent:
+		cc := best.Component
+		isAlsoWord, err := h.Store.IsZhWordForUser(r.Context(), UserIDFromContext(r.Context()), cc.Character)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		compQuizCard := models.QuizCard{
+			CardType:    "component",
+			Prompt:      cc.Character,
+			DueDate:     cc.DueDate,
+			IsNew:       cc.IsNew,
+			Definitions: cc.Definitions,
+			IsAlsoWord:  isAlsoWord,
+		}
+		if cc.Pinyin != "" {
+			compQuizCard.Pinyin = &cc.Pinyin
+		}
+		writeJSON(w, http.StatusOK, compQuizCard)
+		return
+	}
+
+	// The word candidate won (or nothing is present) — fall through to the word
+	// serialisation below.
 	if word == nil {
 		writeError(w, http.StatusNotFound, "no words available")
 		return
@@ -275,6 +261,16 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		} else {
 			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
 		}
+	case models.ModeCycle:
+		seqStr := sm2.DefaultCycleSequence
+		if userSettings != nil && userSettings.CycleSequence != "" {
+			seqStr = userSettings.CycleSequence
+		}
+		cycleCounter := progress.TotalAttempts
+		if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
+			cycleCounter = progress.TotalCorrect
+		}
+		mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr))
 	default:
 		mode = sm2.SelectMode()
 	}
@@ -325,14 +321,16 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		card.Translations = translations
+		card.ZhText = word.Text
 		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
+		// Cycle mode skips the learning-phase hint: the user chose the step explicitly.
 		if word.Pinyin != nil {
 			if forceMaskPinyin && !progress.LearningNewWord {
 				// Tier-based mask_pinyin: always show a level-0 masked hint (first char of each syllable).
 				if masked := sm2.MaskPinyin(*word.Pinyin, 0); masked != "" {
 					card.Pinyin = &masked
 				}
-			} else if progress.LearningNewWord {
+			} else if progress.LearningNewWord && requestedMode != models.ModeCycle {
 				// Intro-phase: fade out hint as correct answers accumulate.
 				if masked := sm2.MaskPinyin(*word.Pinyin, progress.TotalCorrect); masked != "" {
 					card.Pinyin = &masked
@@ -408,10 +406,6 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	correct := sm2.CheckAnswer(req.Answer, correctTexts)
-	quality := sm2.QualityWrong
-	if correct {
-		quality = sm2.QualityCorrect
-	}
 
 	progress, err := h.Store.GetSM2Progress(r.Context(), req.WordID)
 	if err != nil {
@@ -422,26 +416,10 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "progress not found")
 		return
 	}
-	prevTier := wordTier(*progress)
+	prevTier := sm2.ClassifyTier(*progress).String()
 
-	var updated models.SM2Progress
-	var graduated bool
-	if progress.LearningNewWord {
-		updated, graduated = sm2.UpdateLearning(*progress, quality)
-		if !graduated {
-			updated.TotalAttempts++
-			if correct {
-				updated.TotalCorrect++
-			}
-		}
-	} else {
-		updated = sm2.Update(*progress, quality)
-		updated.TotalAttempts++
-		if correct {
-			updated.TotalCorrect++
-		}
-	}
-	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+	updated := sm2.ProcessAnswer(*progress, correct)
+	graduated := progress.LearningNewWord && !updated.LearningNewWord
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -454,12 +432,23 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	if correct {
-		_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+		if err := h.Store.ClearSM2PrevState(ctx, req.WordID); err != nil {
+			log.Printf("answer: ClearSM2PrevState word %d: %v", req.WordID, err)
+		}
+		// A correctly-answered word leaves the difficult-words drill.
+		if err := h.Store.ClearDrillFlag(ctx, req.WordID); err != nil {
+			log.Printf("answer: ClearDrillFlag word %d: %v", req.WordID, err)
+		}
 	} else {
-		_ = h.Store.SaveSM2PrevState(ctx, req.WordID, *progress)
+		if err := h.Store.SaveSM2PrevState(ctx, req.WordID, *progress); err != nil {
+			log.Printf("answer: SaveSM2PrevState word %d: %v", req.WordID, err)
+		}
 	}
 
-	sessionStreak, _ := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
+	sessionStreak, err := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
+	if err != nil {
+		log.Printf("answer: RecordDailyStat user %d: %v", UserIDFromContext(r.Context()), err)
+	}
 
 	resp := models.AnswerResponse{
 		Correct:         correct,
@@ -478,20 +467,24 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		Graduated:       graduated,
 	}
 
-	resp.SceneText, _ = h.Store.GetHMMSceneText(r.Context(), req.WordID)
+	if sceneText, err := h.Store.GetHMMSceneText(r.Context(), req.WordID); err != nil {
+		log.Printf("answer: GetHMMSceneText word %d: %v", req.WordID, err)
+	} else {
+		resp.SceneText = sceneText
+	}
 
 	if correct {
 		if sessionStreak > 1 {
 			resp.SessionStreak = sessionStreak
 		}
-		resp.Tier = wordTier(updated)
+		resp.Tier = sm2.ClassifyTier(updated).String()
 		if prevTier != "" && prevTier != resp.Tier {
 			resp.PrevTier = prevTier
 		}
 	}
 
 	if !correct {
-		confusedWithID, found, err := h.Store.LookupConfusion(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Answer, req.Mode, langs)
+		confusedWithID, found, err := h.Store.DetectConfusion(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Answer, req.Mode, langs)
 		if err == nil && found {
 			_ = h.Store.UpsertConfusion(r.Context(), req.WordID, confusedWithID, req.Mode)
 			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode, langs)
@@ -556,26 +549,16 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var updated models.SM2Progress
-	var graduated bool
-	if prev.LearningNewWord {
-		updated, graduated = sm2.UpdateLearning(*prev, sm2.QualityCorrect)
-		if !graduated {
-			updated.TotalAttempts = prev.TotalAttempts + 1
-			updated.TotalCorrect = prev.TotalCorrect + 1
-		}
-	} else {
-		updated = sm2.Update(*prev, sm2.QualityCorrect)
-		updated.TotalAttempts = prev.TotalAttempts + 1
-		updated.TotalCorrect = prev.TotalCorrect + 1
-	}
-	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+	updated := sm2.ProcessAnswer(*prev, true)
+	graduated := prev.LearningNewWord && !updated.LearningNewWord
 
 	if err := h.Store.UpdateSM2Progress(ctx, updated); err != nil {
 		internalError(w, err)
 		return
 	}
 	_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+	// Accepting a typo as correct also retires the word from the difficult drill.
+	_ = h.Store.ClearDrillFlag(ctx, req.WordID)
 
 	sessionStreak, _ := h.Store.RecordDailyStat(ctx, userID, true)
 
@@ -643,9 +626,30 @@ func (h *QuizHandler) DailyStats(w http.ResponseWriter, r *http.Request) {
 			BucketLearning:   s.BucketLearning,
 			BucketPracticing: s.BucketPracticing,
 			BucketMastered:   s.BucketMastered,
+			TrainingSeconds:  s.TrainingSeconds,
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// RecordTime accumulates focused training seconds for today's daily stats.
+func (h *QuizHandler) RecordTime(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Seconds int `json:"seconds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Seconds <= 0 || req.Seconds > 3600 {
+		writeError(w, http.StatusBadRequest, "seconds must be between 1 and 3600")
+		return
+	}
+	if err := h.Store.RecordTrainingTime(r.Context(), UserIDFromContext(r.Context()), req.Seconds); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Skip moves a word's due date forward by the requested number of days
@@ -798,6 +802,11 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	difficultRemaining, err := h.Store.CountDrillFlags(r.Context(), userID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]int{
 		"due_today":            due,
 		"total":                total,
@@ -811,6 +820,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"hmm_total":            hmmTotal,
 		"components_due_today": compDueToday,
 		"components_total":     compTotal,
+		"difficult_remaining":  difficultRemaining,
 	})
 }
 
@@ -886,4 +896,160 @@ func (h *QuizHandler) Advance(w http.ResponseWriter, r *http.Request) {
 		"advanced":  advanced,
 		"cap_reset": req.ResetNewCap,
 	})
+}
+
+// MatchGame handles GET /api/quiz/match-game.
+// Loads 2 recent confusion pairs (each with zh_word + confused_with), extracts
+// up to 4 unique words, marks the pairs as shown, and returns the word list.
+// Returns {words:[]} when fewer than 2 eligible pairs exist.
+func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+	since := time.Now().UTC().AddDate(0, 0, -7)
+	pairs, err := h.Store.GetRecentMismatches(r.Context(), userID, since, 2)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if len(pairs) < 2 {
+		writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: []models.MatchGameWord{}})
+		return
+	}
+
+	ptrStr := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+
+	// Collect unique words from both zh_word and confused_with sides of each pair.
+	seen := map[int64]bool{}
+	var words []models.MatchGameWord
+	for _, p := range pairs {
+		for _, candidate := range []struct {
+			id           int64
+			text, pinyin string
+			translations map[string][]string
+		}{
+			{p.ZhWordID, p.ZhText, ptrStr(p.ZhPinyin), p.ZhTranslations},
+			{p.ConfusedWithID, p.ConfusedWithText, ptrStr(p.ConfusedWithPinyin), p.ConfusedWithTranslations},
+		} {
+			if !seen[candidate.id] {
+				seen[candidate.id] = true
+				words = append(words, models.MatchGameWord{
+					ZhWordID:     candidate.id,
+					ZhText:       candidate.text,
+					Pinyin:       candidate.pinyin,
+					Translations: candidate.translations,
+				})
+			}
+		}
+	}
+
+	// Mark the source pairs as shown so they are suppressed until re-confused.
+	pairKeys := make([][2]int64, len(pairs))
+	for i, p := range pairs {
+		pairKeys[i] = [2]int64{p.ZhWordID, p.ConfusedWithID}
+	}
+	_ = h.Store.MarkConfusionsShownInGame(r.Context(), pairKeys)
+
+	writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: words})
+}
+
+// MatchAnswer handles POST /api/quiz/match-answer.
+// Updates SM-2 progress for a word after a match-game interaction.
+func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
+	var req models.MatchAnswerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.ZhWordID <= 0 {
+		writeError(w, http.StatusBadRequest, "zh_word_id is required")
+		return
+	}
+
+	userID := UserIDFromContext(r.Context())
+	zhWord, err := h.Store.GetWordByID(r.Context(), userID, req.ZhWordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if zhWord == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+
+	progress, err := h.Store.GetSM2Progress(r.Context(), req.ZhWordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if progress == nil {
+		writeError(w, http.StatusNotFound, "progress not found")
+		return
+	}
+
+	quality := sm2.QualityWrong
+	if req.Correct {
+		quality = sm2.QualityCorrect
+	}
+
+	updated := sm2.Update(*progress, quality)
+	updated.TotalAttempts++
+	if req.Correct {
+		updated.TotalCorrect++
+	}
+	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+
+	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
+		internalError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, models.AnswerResponse{
+		Correct:       req.Correct,
+		ZhText:        zhWord.ZhText,
+		Pinyin:        zhWord.Pinyin,
+		NextDue:       updated.DueDate,
+		IntervalDays:  updated.IntervalDays,
+		TotalCorrect:  updated.TotalCorrect,
+		TotalAttempts: updated.TotalAttempts,
+		StreakBonus:   updated.StreakBonus,
+		Repetitions:   updated.Repetitions,
+		Tier:          sm2.ClassifyTier(updated).String(),
+	})
+}
+
+// FlagDifficult handles POST /api/quiz/difficult. It flags the user's hardest
+// words (lowest accuracy / lowest ease factor) for a focused drill and returns
+// how many were actually flagged.
+func (h *QuizHandler) FlagDifficult(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Count int `json:"count"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Count <= 0 {
+		writeError(w, http.StatusBadRequest, "count must be positive")
+		return
+	}
+	flagged, err := h.Store.FlagDifficultWords(r.Context(), UserIDFromContext(r.Context()), req.Count)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"flagged": flagged})
+}
+
+// ClearDifficult handles POST /api/quiz/difficult/clear. It ends the
+// difficult-words drill by clearing all of the user's drill flags.
+func (h *QuizHandler) ClearDifficult(w http.ResponseWriter, r *http.Request) {
+	if err := h.Store.ClearAllDrillFlags(r.Context(), UserIDFromContext(r.Context())); err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"flagged": 0})
 }

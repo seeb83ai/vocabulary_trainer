@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+	"vocabulary_trainer/models"
 
 	_ "modernc.org/sqlite"
 )
@@ -13,6 +15,26 @@ import (
 type Store struct {
 	db                 *sql.DB
 	DefaultMaxNewWords int // used as initial value when creating user_settings rows
+
+	// settingsCache is a short-TTL per-user cache of GetUserSettings results so
+	// the hot quiz path (Next + Answer in one round) reads settings from the DB
+	// once rather than on every request. Invalidated on any settings write.
+	settingsMu    sync.Mutex
+	settingsCache map[int64]settingsCacheEntry
+}
+
+type settingsCacheEntry struct {
+	settings *models.UserSettings
+	expires  time.Time
+}
+
+// settingsCacheTTL bounds how long a stale settings snapshot may be served.
+const settingsCacheTTL = 5 * time.Second
+
+func (s *Store) invalidateSettingsCache(userID int64) {
+	s.settingsMu.Lock()
+	delete(s.settingsCache, userID)
+	s.settingsMu.Unlock()
 }
 
 // Open opens (or creates) the SQLite database at the given path and runs schema migrations.
@@ -34,6 +56,11 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// ExecForTest executes a raw SQL statement. Only for use in tests.
+func (s *Store) ExecForTest(query string, args ...any) (sql.Result, error) {
+	return s.db.Exec(query, args...)
 }
 
 // ParseDateTime parses SQLite datetime strings into time.Time.

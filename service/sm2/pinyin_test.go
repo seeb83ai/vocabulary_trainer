@@ -61,22 +61,22 @@ func TestFormatPinyinDisplay(t *testing.T) {
 
 func TestParsePinyinAnswer(t *testing.T) {
 	tests := []struct {
-		input       string
-		wantSyl     string
-		wantTone    int
-		wantErr     bool
+		input    string
+		wantSyl  string
+		wantTone int
+		wantErr  bool
 	}{
 		{"ba1", "ba", 1, false},
 		{"BA1", "ba", 1, false},
 		{"  ba 1  ", "ba", 1, false},
 		{"zhuang4", "zhuang", 4, false},
 		{"a2", "a", 2, false},
-		{"ma5", "ma", 5, false},  // neutral tone
+		{"ma5", "ma", 5, false}, // neutral tone
 		{"de5", "de", 5, false},
 		// Errors
-		{"ba", "", 0, true},   // no tone
-		{"b", "", 0, true},    // too short
-		{"", "", 0, true},     // empty
+		{"ba", "", 0, true}, // no tone
+		{"b", "", 0, true},  // too short
+		{"", "", 0, true},   // empty
 	}
 	for _, tt := range tests {
 		syl, tone, err := ParsePinyinAnswer(tt.input)
@@ -98,21 +98,21 @@ func TestParsePinyinAnswer(t *testing.T) {
 
 func TestCheckPinyinAnswer(t *testing.T) {
 	tests := []struct {
-		answer  string
-		target  string
-		tone    int
-		want    bool
+		answer string
+		target string
+		tone   int
+		want   bool
 	}{
 		{"ba1", "ba", 1, true},
 		{"BA1", "ba", 1, true},
 		{"ba 1", "ba", 1, true},
 		{"ba2", "ba", 1, false},
 		{"pa1", "ba", 1, false},
-		{"lv3", "lv", 3, true},   // v/ü equivalence
+		{"lv3", "lv", 3, true}, // v/ü equivalence
 		{"lü3", "lv", 3, true},
 		{"lv3", "lü", 3, true},
-		{"ma5", "ma", 5, true},   // neutral tone
-		{"ma1", "ma", 5, false},  // wrong tone
+		{"ma5", "ma", 5, true},  // neutral tone
+		{"ma1", "ma", 5, false}, // wrong tone
 	}
 	for _, tt := range tests {
 		got := CheckPinyinAnswer(tt.answer, tt.target, tt.tone)

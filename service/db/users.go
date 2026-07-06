@@ -169,7 +169,23 @@ func (s *Store) ensureUserSettings(ctx context.Context, userID int64) error {
 
 // GetUserSettings returns the settings for a user (creating defaults on first access).
 func (s *Store) GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error) {
+	now := time.Now()
+	s.settingsMu.Lock()
+	if e, ok := s.settingsCache[userID]; ok && now.Before(e.expires) {
+		s.settingsMu.Unlock()
+		return e.settings, nil
+	}
+	s.settingsMu.Unlock()
+
 	settings, _, _, _, err := s.GetUserSettingsRaw(ctx, userID)
+	if err == nil {
+		s.settingsMu.Lock()
+		if s.settingsCache == nil {
+			s.settingsCache = make(map[int64]settingsCacheEntry)
+		}
+		s.settingsCache[userID] = settingsCacheEntry{settings: settings, expires: now.Add(settingsCacheTTL)}
+		s.settingsMu.Unlock()
+	}
 	return settings, err
 }
 
@@ -183,6 +199,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		return nil, "", "", "", err
 	}
 	var st models.UserSettings
+	var gamificationEnabledInt, cycleAdvanceOnSuccessOnlyInt int
 	err = s.db.QueryRowContext(ctx, `
 		SELECT primary_lang, secondary_lang,
 		       prog_new, prog_tier_struggling, prog_tier_learning,
@@ -190,6 +207,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       new_word_mode_0, new_word_mode_1, new_word_mode_2,
 		       new_word_require_zh, new_word_require_trans,
 		       api_key_salt, deepl_key_enc, llm_provider, llm_key_enc, llm_local_url,
+		       COALESCE(cycle_sequence, 'zh_pinyin_to_transl,transl_to_zh,zh_to_transl'),
 		       COALESCE(accept_correct_mode, 'typo'),
 		       COALESCE(max_new_words_per_day, 5),
 		       COALESCE(new_word_cooldown_minutes, 1),
@@ -199,7 +217,10 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(baseline_struggling_enabled, 0),
 		       COALESCE(baseline_struggling_value, 10),
 		       COALESCE(baseline_learning_enabled, 0),
-		       COALESCE(baseline_learning_value, 20)
+		       COALESCE(baseline_learning_value, 20),
+		       COALESCE(gamification_enabled, 0),
+		       COALESCE(gamification_frequency, 5),
+		       COALESCE(cycle_advance_on_success_only, 0)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -207,6 +228,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.NewWordMode0, &st.NewWordMode1, &st.NewWordMode2,
 		&st.NewWordRequireZh, &st.NewWordRequireTrans,
 		&salt, &deeplEnc, &st.LLMProvider, &llmEnc, &st.LLMLocalURL,
+		&st.CycleSequence,
 		&st.AcceptCorrectMode,
 		&st.MaxNewWordsPerDay,
 		&st.NewWordCooldownMinutes,
@@ -217,7 +239,12 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.BaselineStrugglingValue,
 		&st.BaselineLearningEnabled,
 		&st.BaselineLearningValue,
+		&gamificationEnabledInt,
+		&st.GamificationFrequency,
+		&cycleAdvanceOnSuccessOnlyInt,
 	)
+	st.GamificationEnabled = gamificationEnabledInt == 1
+	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
 	}
@@ -231,33 +258,39 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
-			primary_lang               = ?,
-			secondary_lang             = ?,
-			prog_new                   = ?,
-			prog_tier_struggling       = ?,
-			prog_tier_learning         = ?,
-			prog_tier_practicing       = ?,
-			prog_tier_mastered         = ?,
-			new_word_mode_0            = ?,
-			new_word_mode_1            = ?,
-			new_word_mode_2            = ?,
-			new_word_require_zh        = ?,
-			new_word_require_trans     = ?,
-			accept_correct_mode        = ?,
-			max_new_words_per_day      = ?,
-			new_word_cooldown_minutes  = ?,
-			skip_new_words_visible     = ?,
-			baseline_due_today_enabled = ?,
-			baseline_due_today_value   = ?,
-			baseline_struggling_enabled = ?,
-			baseline_struggling_value  = ?,
-			baseline_learning_enabled  = ?,
-			baseline_learning_value    = ?
+			primary_lang                    = ?,
+			secondary_lang                  = ?,
+			prog_new                        = ?,
+			prog_tier_struggling            = ?,
+			prog_tier_learning              = ?,
+			prog_tier_practicing            = ?,
+			prog_tier_mastered              = ?,
+			new_word_mode_0                 = ?,
+			new_word_mode_1                 = ?,
+			new_word_mode_2                 = ?,
+			cycle_sequence                  = ?,
+			cycle_advance_on_success_only   = ?,
+			new_word_require_zh             = ?,
+			new_word_require_trans          = ?,
+			accept_correct_mode             = ?,
+			max_new_words_per_day           = ?,
+			new_word_cooldown_minutes       = ?,
+			skip_new_words_visible          = ?,
+			baseline_due_today_enabled      = ?,
+			baseline_due_today_value        = ?,
+			baseline_struggling_enabled     = ?,
+			baseline_struggling_value       = ?,
+			baseline_learning_enabled       = ?,
+			baseline_learning_value         = ?,
+			gamification_enabled            = ?,
+			gamification_frequency          = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
 		st.ProgTierPracticing, st.ProgTierMastered,
 		st.NewWordMode0, st.NewWordMode1, st.NewWordMode2,
+		st.CycleSequence,
+		st.CycleAdvanceOnSuccessOnly,
 		st.NewWordRequireZh, st.NewWordRequireTrans,
 		st.AcceptCorrectMode,
 		st.MaxNewWordsPerDay,
@@ -269,8 +302,13 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.BaselineStrugglingValue,
 		st.BaselineLearningEnabled,
 		st.BaselineLearningValue,
+		st.GamificationEnabled,
+		st.GamificationFrequency,
 		userID,
 	)
+	if err == nil {
+		s.invalidateSettingsCache(userID)
+	}
 	return err
 }
 
@@ -288,6 +326,9 @@ func (s *Store) UpdateUserAPIKeys(ctx context.Context, userID int64, deeplEnc, l
 		WHERE user_id = ?`,
 		deeplEnc, llmProvider, llmEnc, llmLocalURL, userID,
 	)
+	if err == nil {
+		s.invalidateSettingsCache(userID)
+	}
 	return err
 }
 

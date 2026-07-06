@@ -2,23 +2,56 @@ package handlers
 
 import (
 	"encoding/csv"
+	"errors"
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
-	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
+// Default DoS bounds for the CSV upload path; overridable via main.go env config.
+const (
+	defaultCSVMaxBytes = 8 << 20 // 8 MB request-body cap
+	defaultCSVMaxRows  = 5000    // max data rows per upload
+	ttsWorkers         = 4       // bound on concurrent background TTS jobs
+)
+
 type UploadCSVHandler struct {
-	Store *db.Store
+	Store uploadCSVStore
 	Audio *AudioHandler
+	// MaxBytes / MaxRows bound the upload; zero means use the package defaults.
+	MaxBytes int64
+	MaxRows  int
+}
+
+func (h *UploadCSVHandler) maxBytes() int64 {
+	if h.MaxBytes > 0 {
+		return h.MaxBytes
+	}
+	return defaultCSVMaxBytes
+}
+
+func (h *UploadCSVHandler) maxRows() int {
+	if h.MaxRows > 0 {
+		return h.MaxRows
+	}
+	return defaultCSVMaxRows
 }
 
 func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
+	// Cap the request body so an oversized upload can't exhaust memory/disk.
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxBytes())
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		var mbe *http.MaxBytesError
+		if errors.As(err, &mbe) {
+			writeError(w, http.StatusRequestEntityTooLarge, "upload too large")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid multipart form")
 		return
 	}
@@ -95,15 +128,33 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromContext(r.Context())
 	ctx := r.Context()
 
-	var importedIDs []int64
-	var updatedIDs []int64
-	skipped := 0
-
+	// Read all data rows up front, enforcing the row cap before importing
+	// anything so an over-cap upload is rejected atomically (no partial import).
+	var rows [][]string
 	for {
 		row, err := reader.Read()
 		if err != nil {
-			break // io.EOF or parse error — stop processing
+			break // io.EOF or parse error — stop reading
 		}
+		rows = append(rows, row)
+		if len(rows) > h.maxRows() {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("too many rows (max %d)", h.maxRows()))
+			return
+		}
+	}
+
+	var importedIDs []int64
+	var updatedIDs []int64
+	// ttsTask records a deferred TTS (re)generation to run in a bounded pool.
+	type ttsTask struct {
+		id    int64
+		text  string
+		regen bool
+	}
+	var ttsTasks []ttsTask
+	skipped := 0
+
+	for _, row := range rows {
 		if len(row) < 3 {
 			skipped++
 			continue
@@ -160,7 +211,7 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if h.Audio != nil {
-				go h.Audio.generate(id, zhText)
+				ttsTasks = append(ttsTasks, ttsTask{id: id, text: zhText})
 			}
 			importedIDs = append(importedIDs, id)
 		} else {
@@ -182,10 +233,33 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if h.Audio != nil {
-				go h.Audio.regenerate(id, zhText)
+				ttsTasks = append(ttsTasks, ttsTask{id: id, text: zhText, regen: true})
 			}
 			updatedIDs = append(updatedIDs, id)
 		}
+	}
+
+	// Run the deferred TTS jobs in a background worker pool with bounded
+	// concurrency so a large import can't spawn thousands of TTS goroutines.
+	if h.Audio != nil && len(ttsTasks) > 0 {
+		go func(tasks []ttsTask) {
+			sem := make(chan struct{}, ttsWorkers)
+			var wg sync.WaitGroup
+			for _, t := range tasks {
+				sem <- struct{}{}
+				wg.Add(1)
+				go func(t ttsTask) {
+					defer wg.Done()
+					defer func() { <-sem }()
+					if t.regen {
+						h.Audio.RegenerateAsync(t.id, t.text)
+					} else {
+						h.Audio.GenerateAsync(t.id, t.text)
+					}
+				}(t)
+			}
+			wg.Wait()
+		}(ttsTasks)
 	}
 
 	// Apply start_training to a random subset of all processed words.

@@ -87,15 +87,13 @@ func RateLimitMiddleware(l *RateLimiter, keyFn func(*http.Request) string) func(
 	}
 }
 
-// ClientIP returns the originating client IP for the request. It prefers the
-// first entry of X-Forwarded-For (set by trusted reverse proxies) and falls
-// back to the connection's RemoteAddr.
+// ClientIP returns the originating client IP for the request. It prefers
+// X-Real-IP (set by a trusted reverse proxy such as nginx) and falls back to
+// the connection's RemoteAddr. It never reads X-Forwarded-For, which a client
+// can spoof when the binary is exposed directly.
 func ClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
+	if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" {
+		return xrip
 	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host

@@ -7,7 +7,30 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestNewServer_HasTimeouts(t *testing.T) {
+	srv := newServer(":8080", http.NewServeMux())
+	if srv.Addr != ":8080" {
+		t.Errorf("Addr = %q, want :8080", srv.Addr)
+	}
+	if srv.ReadHeaderTimeout <= 0 {
+		t.Error("ReadHeaderTimeout must be set")
+	}
+	if srv.ReadTimeout <= 0 {
+		t.Error("ReadTimeout must be set")
+	}
+	if srv.WriteTimeout <= 0 {
+		t.Error("WriteTimeout must be set")
+	}
+	if srv.IdleTimeout < time.Second {
+		t.Errorf("IdleTimeout = %v, want >= 1s", srv.IdleTimeout)
+	}
+	if srv.ReadHeaderTimeout > srv.ReadTimeout {
+		t.Errorf("ReadHeaderTimeout (%v) must not exceed ReadTimeout (%v)", srv.ReadHeaderTimeout, srv.ReadTimeout)
+	}
+}
 
 func setupTemplates(t *testing.T) {
 	t.Helper()
@@ -133,4 +156,3 @@ func TestRenderTemplate_UnknownName(t *testing.T) {
 		t.Errorf("status = %d, want 500", rr.Code)
 	}
 }
-
