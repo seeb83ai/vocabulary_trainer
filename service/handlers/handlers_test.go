@@ -5187,6 +5187,20 @@ func TestUploadCSV_StartTraining(t *testing.T) {
 	}
 }
 
+func TestUploadCSV_NoPinyinColumn(t *testing.T) {
+	csv := "chinese,en\n你好,hello"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv", map[string]string{"tags": "test"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 1 {
+		t.Errorf("want imported=1, got %d", resp["imported"])
+	}
+}
+
 // ── Cycle mode ────────────────────────────────────────────────────────────────
 
 func TestSettingsCycleSequence(t *testing.T) {
