@@ -628,6 +628,7 @@ vocabulary_trainer/
 | `GET` | `/api/pinyin-quiz/tags` | List pinyin consonant group tags |
 | `GET` | `/api/settings` | Get user settings (language prefs, quiz modes, masked API key status) |
 | `PATCH` | `/api/settings` | Update language preferences and per-tier quiz mode configuration |
+| `PATCH` | `/api/training-filters` | Persist training page filter state (mode, tier, langs, tags, mnemonics, components) server-side for cross-device sync |
 | `PUT` | `/api/settings/api-keys` | Encrypt and store personal DeepL / LLM API keys |
 
 ## License

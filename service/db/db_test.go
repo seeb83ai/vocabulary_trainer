@@ -4974,6 +4974,66 @@ func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
 	}
 }
 
+// ── UpdateTrainingFilters ─────────────────────────────────────────────────────
+
+func TestUpdateTrainingFilters_PersistsAndReloads(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	if err := s.UpdateTrainingFilters(ctx, userID, "cycle", "0-49",
+		[]string{"de", "en"}, false, true, []string{"HSK1", "HSK2"}); err != nil {
+		t.Fatalf("UpdateTrainingFilters: %v", err)
+	}
+
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.TrainMode != "cycle" {
+		t.Errorf("want train_mode=cycle, got %q", st.TrainMode)
+	}
+	if st.TrainBucket != "0-49" {
+		t.Errorf("want train_bucket=0-49, got %q", st.TrainBucket)
+	}
+	if len(st.TrainLangs) != 2 || st.TrainLangs[0] != "de" || st.TrainLangs[1] != "en" {
+		t.Errorf("want train_langs=[de en], got %v", st.TrainLangs)
+	}
+	if st.TrainMnemonics {
+		t.Error("want train_mnemonics=false")
+	}
+	if !st.TrainComponents {
+		t.Error("want train_components=true")
+	}
+	if len(st.TrainTags) != 2 || st.TrainTags[0] != "HSK1" || st.TrainTags[1] != "HSK2" {
+		t.Errorf("want train_tags=[HSK1 HSK2], got %v", st.TrainTags)
+	}
+}
+
+func TestUpdateTrainingFilters_Defaults(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Without calling UpdateTrainingFilters, defaults should apply
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.TrainMode != "random" {
+		t.Errorf("want default train_mode=random, got %q", st.TrainMode)
+	}
+	if len(st.TrainLangs) == 0 {
+		t.Error("want default train_langs non-empty")
+	}
+	if !st.TrainMnemonics {
+		t.Error("want default train_mnemonics=true")
+	}
+	if !st.TrainComponents {
+		t.Error("want default train_components=true")
+	}
+}
+
 // ── Difficult-words drill ───────────────────────────────────────────────────
 
 // makeDifficult marks a seeded word as graduated (learning_new_word=0) with the

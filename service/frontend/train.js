@@ -17,6 +17,24 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   const btn = document.getElementById('new-word-skip-btn');
   if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
+  // Restore server-persisted training filter settings (overrides localStorage).
+  // train_mode is always set (default 'random') so this reliably detects server support.
+  if (st?.train_mode !== undefined) {
+    selectedMode = st.train_mode || 'random';
+    selectedBucket = st.train_bucket || '';
+    if (Array.isArray(st.train_langs) && st.train_langs.length > 0) {
+      selectedLangs = st.train_langs;
+    }
+    includeMnemonics = st.train_mnemonics !== false;
+    includeComponents = st.train_components !== false;
+    if (Array.isArray(st.train_tags)) selectedTags = st.train_tags;
+    localStorage.setItem('quizMode', selectedMode);
+    localStorage.setItem('quizBucket', selectedBucket);
+    localStorage.setItem('quizLangs', JSON.stringify(selectedLangs));
+    localStorage.setItem('quizMnemonics', includeMnemonics ? 'true' : 'false');
+    localStorage.setItem('quizComponents', includeComponents ? 'true' : 'false');
+    localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+  }
 }).catch(() => {});
 
 function levenshtein(a, b) {
@@ -127,6 +145,27 @@ let selectedLangs = JSON.parse(localStorage.getItem('quizLangs') || '["en"]');
 let includeMnemonics = localStorage.getItem('quizMnemonics') !== 'false';
 let includeComponents = localStorage.getItem('quizComponents') !== 'false';
 let latestStats = null;
+
+let _saveFiltersTimer = null;
+function scheduleFilterSave() {
+  clearTimeout(_saveFiltersTimer);
+  _saveFiltersTimer = setTimeout(saveTrainFilters, 500);
+}
+async function saveTrainFilters() {
+  try {
+    await apiFetch('/api/training-filters', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        mode: selectedMode,
+        bucket: selectedBucket,
+        langs: selectedLangs,
+        mnemonics: includeMnemonics,
+        components: includeComponents,
+        tags: selectedTags,
+      }),
+    });
+  } catch (_) {}
+}
 let skipNewWords = false;
 let requireNewWordZh = true;
 let requireNewWordTrans = true;
@@ -258,11 +297,17 @@ function applyComponentPill() {
 }
 
 async function loadTrainSettings() {
+  await _settingsPromise;
   try {
     const st = await apiFetch('/api/settings');
     requireNewWordZh    = st.new_word_require_zh    !== false;
     requireNewWordTrans = st.new_word_require_trans !== false;
   } catch (_) { /* keep defaults */ }
+  // Re-apply filter UI in case _settingsPromise updated state after DOMContentLoaded.
+  applyModeButtons();
+  applyTierPills();
+  applyMnemonicPill();
+  applyComponentPill();
 }
 
 async function loadStats() {
@@ -1099,6 +1144,7 @@ function toggleLang(lang, allLangs) {
     selectedLangs.push(lang);
   }
   localStorage.setItem('quizLangs', JSON.stringify(selectedLangs));
+  scheduleFilterSave();
   applyLangChips(allLangs);
   loadNextCard();
 }
@@ -1118,6 +1164,7 @@ async function loadLangs() {
     selectedLangs = allLangs.length > 0 ? [allLangs[0]] : [userPrimaryLang];
   }
   localStorage.setItem('quizLangs', JSON.stringify(selectedLangs));
+  scheduleFilterSave();
   applyLangChips(allLangs);
 }
 
@@ -1153,6 +1200,7 @@ async function loadTrainTags() {
         selectedTags.push(tag);
       }
       localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+      scheduleFilterSave();
       loadTrainTags();
       loadNextCard();
     });
@@ -1174,6 +1222,7 @@ async function loadTrainTags() {
         selectedTags.push(tag);
       }
       localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+      scheduleFilterSave();
       loadTrainTags();
     });
     overlayTagChips.appendChild(pill);
@@ -1192,6 +1241,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function toggleMnemonics() {
     includeMnemonics = !includeMnemonics;
     localStorage.setItem('quizMnemonics', includeMnemonics ? 'true' : 'false');
+    scheduleFilterSave();
     applyMnemonicPill();
     loadNextCard();
   }
@@ -1203,6 +1253,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function toggleComponents() {
     includeComponents = !includeComponents;
     localStorage.setItem('quizComponents', includeComponents ? 'true' : 'false');
+    scheduleFilterSave();
     applyComponentPill();
     loadNextCard();
   }
@@ -1215,6 +1266,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       selectedBucket = btn.dataset.bucket;
       localStorage.setItem('quizBucket', selectedBucket);
+      scheduleFilterSave();
       applyTierPills();
       loadNextCard();
     });
@@ -1223,6 +1275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       selectedBucket = btn.dataset.bucket;
       localStorage.setItem('quizBucket', selectedBucket);
+      scheduleFilterSave();
       applyTierPills();
     });
   });
@@ -1230,6 +1283,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       selectedMode = btn.dataset.mode;
       localStorage.setItem('quizMode', selectedMode);
+      scheduleFilterSave();
       applyModeButtons();
       loadNextCard();
     });
@@ -1282,6 +1336,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       selectedMode = btn.dataset.mode;
       localStorage.setItem('quizMode', selectedMode);
+      scheduleFilterSave();
       applyModeButtons();
     });
   });
