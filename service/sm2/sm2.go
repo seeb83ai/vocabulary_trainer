@@ -16,6 +16,17 @@ var reParens = regexp.MustCompile(`\s*\([^()]*\)\s*`)
 // reTrailingPunct matches any trailing punctuation (Unicode \p{P} and \p{S}) and whitespace.
 var reTrailingPunct = regexp.MustCompile(`[\p{P}\p{S}\s]+$`)
 
+// fullwidthToASCII maps CJK fullwidth punctuation to ASCII equivalents so that
+// users typing ASCII characters are matched against stored fullwidth variants.
+var fullwidthToASCII = strings.NewReplacer(
+	"？", "?",
+	"！", "!",
+	"，", ",",
+	"。", ".",
+	"：", ":",
+	"；", ";",
+)
+
 const (
 	QualityCorrect       = 4
 	QualityWrong         = 0
@@ -182,9 +193,11 @@ func CheckAnswer(userAnswer string, accepted []string) bool {
 	return false
 }
 
-// NormalizeAnswer lowercases, trims whitespace, and strips all trailing punctuation and whitespace.
+// NormalizeAnswer lowercases, trims whitespace, normalizes fullwidth CJK
+// punctuation to ASCII equivalents, and strips all trailing punctuation.
 func NormalizeAnswer(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
+	s = fullwidthToASCII.Replace(s)
 	s = reTrailingPunct.ReplaceAllString(s, "")
 	return s
 }

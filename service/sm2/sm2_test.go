@@ -396,6 +396,35 @@ func TestCheckAnswer_TrailingWhitespace(t *testing.T) {
 	}
 }
 
+// ── Fullwidth / CJK punctuation normalisation ─────────────────────────────────
+
+func TestCheckAnswer_FullwidthQuestionMark_UserTypesASCII(t *testing.T) {
+	// Stored answer contains ？; user types ? — should match.
+	if !CheckAnswer("你好?", []string{"你好？"}) {
+		t.Error("ASCII ? should match fullwidth ？ in stored answer")
+	}
+}
+
+func TestCheckAnswer_FullwidthQuestionMark_StoredASCII(t *testing.T) {
+	// Stored answer contains ?; user types ？ — should match.
+	if !CheckAnswer("你好？", []string{"你好?"}) {
+		t.Error("fullwidth ？ in user answer should match ASCII ? in stored answer")
+	}
+}
+
+func TestCheckAnswer_FullwidthQuestionMark_MidSentence(t *testing.T) {
+	// ？ in mid-sentence (not trailing) must also normalise.
+	if !CheckAnswer("是吗?还是", []string{"是吗？还是"}) {
+		t.Error("mid-sentence ASCII ? should match fullwidth ？")
+	}
+}
+
+func TestCheckAnswer_FullwidthExclamation_UserTypesASCII(t *testing.T) {
+	if !CheckAnswer("你好!", []string{"你好！"}) {
+		t.Error("ASCII ! should match fullwidth ！")
+	}
+}
+
 // ── CheckComponentAnswer ──────────────────────────────────────────────────────
 
 func TestCheckComponentAnswer_ExactMatch(t *testing.T) {
