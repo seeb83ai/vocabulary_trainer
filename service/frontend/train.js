@@ -124,9 +124,14 @@ function shouldShowAcceptTypo(answer, result, mode, cardMode) {
   if (mode === 'always') return true;
   if (mode !== 'typo') return false;
   if (cardMode === 'transl_to_zh') {
-    if (!result.user_answer_pinyin || !result.pinyin) return false;
-    return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
-                       result.pinyin.toLowerCase().trim()) <= 1;
+    if (result.user_answer_pinyin && result.pinyin) {
+      return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
+                         result.pinyin.toLowerCase().trim()) <= 1;
+    }
+    // Pinyin unavailable (typed word not in vocab): fall back to character comparison.
+    const norm = normalizeAnswer(answer);
+    const variants = (result.correct_answers || []).flatMap(expandVariants);
+    return variants.some(c => levenshtein(norm, c) === 1);
   }
   const norm = normalizeAnswer(answer);
   const variants = (result.correct_answers || []).flatMap(expandVariants);

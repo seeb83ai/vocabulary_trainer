@@ -579,9 +579,14 @@ function shouldShowAcceptTypo(answer, result, mode, cardMode) {
   if (mode === 'always') return true;
   if (mode !== 'typo') return false;
   if (cardMode === 'transl_to_zh') {
-    if (!result.user_answer_pinyin || !result.pinyin) return false;
-    return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
-                       result.pinyin.toLowerCase().trim()) <= 1;
+    if (result.user_answer_pinyin && result.pinyin) {
+      return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
+                         result.pinyin.toLowerCase().trim()) <= 1;
+    }
+    // Pinyin unavailable (typed word not in vocab): fall back to character comparison.
+    const norm = normalizeAnswer(answer);
+    const variants = (result.correct_answers || []).flatMap(expandVariants);
+    return variants.some(c => levenshtein(norm, c) === 1);
   }
   const norm = normalizeAnswer(answer);
   const variants = (result.correct_answers || []).flatMap(expandVariants);
@@ -689,8 +694,17 @@ describe('shouldShowAcceptTypo', () => {
       user_answer_pinyin: 'dà',
     }, 'typo', 'transl_to_zh')).toBe(false);
   });
-  it('transl_to_zh: false when user_answer_pinyin is absent (word not in vocab)', () => {
+  it('transl_to_zh: true via character fallback when pinyin absent — 看数 vs 看书 (1 char diff)', () => {
+    // 看数 is not in vocab so user_answer_pinyin is null; fall back to raw character levenshtein
     expect(shouldShowAcceptTypo('看数', {
+      correct_answers: ['看书'],
+      pinyin: 'kàn shū',
+      user_answer_pinyin: null,
+    }, 'typo', 'transl_to_zh')).toBe(true);
+  });
+  it('transl_to_zh: false via character fallback when characters are far apart and pinyin absent', () => {
+    expect(shouldShowAcceptTypo('完全不同', {
+      correct_answers: ['看书'],
       pinyin: 'kàn shū',
       user_answer_pinyin: null,
     }, 'typo', 'transl_to_zh')).toBe(false);
