@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -200,6 +201,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 	}
 	var st models.UserSettings
 	var gamificationEnabledInt, cycleAdvanceOnSuccessOnlyInt int
+	var trainMnemonicsInt, trainComponentsInt int
+	var trainLangsJSON, trainTagsJSON string
 	err = s.db.QueryRowContext(ctx, `
 		SELECT primary_lang, secondary_lang,
 		       prog_new, prog_tier_struggling, prog_tier_learning,
@@ -220,7 +223,13 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(baseline_learning_value, 20),
 		       COALESCE(gamification_enabled, 0),
 		       COALESCE(gamification_frequency, 5),
-		       COALESCE(cycle_advance_on_success_only, 0)
+		       COALESCE(cycle_advance_on_success_only, 0),
+		       COALESCE(train_mode, 'random'),
+		       COALESCE(train_bucket, ''),
+		       COALESCE(train_langs, '["en"]'),
+		       COALESCE(train_mnemonics, 1),
+		       COALESCE(train_components, 1),
+		       COALESCE(train_tags, '[]')
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -242,13 +251,73 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&gamificationEnabledInt,
 		&st.GamificationFrequency,
 		&cycleAdvanceOnSuccessOnlyInt,
+		&st.TrainMode,
+		&st.TrainBucket,
+		&trainLangsJSON,
+		&trainMnemonicsInt,
+		&trainComponentsInt,
+		&trainTagsJSON,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
+	st.TrainMnemonics = trainMnemonicsInt != 0
+	st.TrainComponents = trainComponentsInt != 0
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
 	}
+	if err2 := json.Unmarshal([]byte(trainLangsJSON), &st.TrainLangs); err2 != nil {
+		st.TrainLangs = []string{"en"}
+	}
+	if err2 := json.Unmarshal([]byte(trainTagsJSON), &st.TrainTags); err2 != nil {
+		st.TrainTags = []string{}
+	}
 	return &st, salt, deeplEnc, llmEnc, nil
+}
+
+// UpdateTrainingFilters saves the training page filter settings for a user.
+func (s *Store) UpdateTrainingFilters(ctx context.Context, userID int64, mode, bucket string, langs []string, mnemonics, components bool, tags []string) error {
+	if err := s.ensureUserSettings(ctx, userID); err != nil {
+		return err
+	}
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	langsJSON, err := json.Marshal(langs)
+	if err != nil {
+		return fmt.Errorf("marshal langs: %w", err)
+	}
+	tagsJSON, err := json.Marshal(tags)
+	if err != nil {
+		return fmt.Errorf("marshal tags: %w", err)
+	}
+	mnemonicsInt := 0
+	if mnemonics {
+		mnemonicsInt = 1
+	}
+	componentsInt := 0
+	if components {
+		componentsInt = 1
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE user_settings SET
+			train_mode       = ?,
+			train_bucket     = ?,
+			train_langs      = ?,
+			train_mnemonics  = ?,
+			train_components = ?,
+			train_tags       = ?
+		WHERE user_id = ?`,
+		mode, bucket, string(langsJSON),
+		mnemonicsInt, componentsInt, string(tagsJSON),
+		userID,
+	)
+	if err == nil {
+		s.invalidateSettingsCache(userID)
+	}
+	return err
 }
 
 // UpdateUserSettings saves language and quiz-mode preferences.

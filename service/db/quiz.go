@@ -347,51 +347,97 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		return 0, false, nil
 	}
 
-	var confusedWithID int64
-	var err error
-
 	switch mode {
 	case "zh_to_transl", "zh_pinyin_to_transl":
-		// Find the zh word linked to a translation word whose text matches the answer,
-		// restricted to the languages the user has selected and owned by the same user.
+		// Fetch all translation words for the user across ALL languages (excluding
+		// translations of the word being quizzed), then match in Go using ExpandVariants.
+		// Language-agnostic: when transl_to_zh has no translations in the selected lang
+		// it falls back to zh_to_transl, so the typed answer may be in any language.
+		// Go-level matching also handles SQLite LOWER() not folding non-ASCII (umlauts)
+		// and slash-separated alternatives (e.g. "dog / hound").
+		rows, qErr := s.db.QueryContext(ctx, `
+			SELECT t.zh_word_id, w.text FROM words w
+			JOIN translations t ON t.translation_word_id = w.id
+			JOIN words wz ON wz.id = t.zh_word_id
+			WHERE t.zh_word_id != ?
+			  AND wz.user_id = ?`, zhWordID, userID)
+		if qErr != nil {
+			return 0, false, fmt.Errorf("lookup confusion: %w", qErr)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var zhID int64
+			var text string
+			if sErr := rows.Scan(&zhID, &text); sErr != nil {
+				return 0, false, fmt.Errorf("scan confusion: %w", sErr)
+			}
+			for _, v := range sm2.ExpandVariants(text) {
+				if v == normalized {
+					_ = rows.Close()
+					return zhID, true, nil
+				}
+			}
+		}
+		return 0, false, rows.Err()
+
+	case "transl_to_zh":
+		// First: find a ZH word whose text matches the answer (user typed Chinese).
+		var confusedWithID int64
+		err := s.db.QueryRowContext(ctx, `
+			SELECT id FROM words
+			WHERE language = 'zh' AND LOWER(TRIM(text)) = ?
+			  AND id != ? AND user_id = ?
+			LIMIT 1`, normalized, zhWordID, userID).Scan(&confusedWithID)
+		if err != nil && err != sql.ErrNoRows {
+			return 0, false, fmt.Errorf("lookup confusion: %w", err)
+		}
+		if err == nil {
+			return confusedWithID, true, nil
+		}
+
+		// Second: user may have typed a translation of a different zh word.
+		// Fetch all translation words for the user (excluding current word's
+		// translations) and match in Go using ExpandVariants so that umlauts
+		// and slash-separated alternatives are handled correctly.
 		if len(langs) == 0 {
 			langs = []string{"en"}
 		}
 		placeholders := make([]string, len(langs))
-		args := make([]any, 0, len(langs)+3)
-		args = append(args, normalized)
+		args := make([]any, 0, len(langs)+2)
 		for i, l := range langs {
 			placeholders[i] = "?"
 			args = append(args, l)
 		}
 		args = append(args, zhWordID, userID)
-		err = s.db.QueryRowContext(ctx, `
-			SELECT t.zh_word_id FROM words w
+		rows, qErr := s.db.QueryContext(ctx, `
+			SELECT t.zh_word_id, w.text FROM words w
 			JOIN translations t ON t.translation_word_id = w.id
 			JOIN words wz ON wz.id = t.zh_word_id
-			WHERE LOWER(TRIM(w.text)) = ?
-			  AND w.language IN (`+strings.Join(placeholders, ",")+`)
+			WHERE w.language IN (`+strings.Join(placeholders, ",")+`)
 			  AND t.zh_word_id != ?
-			  AND wz.user_id = ?
-			LIMIT 1`, args...).Scan(&confusedWithID)
-	case "transl_to_zh":
-		// Find a ZH word whose text matches the answer, owned by the same user.
-		err = s.db.QueryRowContext(ctx, `
-			SELECT id FROM words
-			WHERE language = 'zh' AND LOWER(TRIM(text)) = ?
-			  AND id != ? AND user_id = ?
-			LIMIT 1`, normalized, zhWordID, userID).Scan(&confusedWithID)
+			  AND wz.user_id = ?`, args...)
+		if qErr != nil {
+			return 0, false, fmt.Errorf("lookup confusion translations: %w", qErr)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var zhID int64
+			var text string
+			if sErr := rows.Scan(&zhID, &text); sErr != nil {
+				return 0, false, fmt.Errorf("scan confusion: %w", sErr)
+			}
+			for _, v := range sm2.ExpandVariants(text) {
+				if v == normalized {
+					_ = rows.Close()
+					return zhID, true, nil
+				}
+			}
+		}
+		return 0, false, rows.Err()
+
 	default:
 		return 0, false, nil
 	}
-
-	if err == sql.ErrNoRows {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, fmt.Errorf("lookup confusion: %w", err)
-	}
-	return confusedWithID, true, nil
 }
 
 // UpsertConfusion records or increments a confusion pair.

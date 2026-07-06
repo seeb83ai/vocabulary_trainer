@@ -2825,7 +2825,7 @@ func TestDetectConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 	}
 }
 
-func TestDetectConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
+func TestDetectConfusion_ZhToEn_DeMatchedEvenWhenLangIsEnOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2838,7 +2838,7 @@ func TestDetectConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
 		ZhText:       "点",
 		Pinyin:       "diǎn",
 		Translations: map[string][]string{"en": {"dot"}, "de": {"Uhr"}},
@@ -2847,13 +2847,207 @@ func TestDetectConfusion_ZhToEn_DeNotMatchedWhenLangIsEnOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// With langs=["en"] only, typing "Uhr" (DE) should not produce a confusion.
-	_, found, err := s.DetectConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_transl", []string{"en"})
+	// Mismatch detection is language-agnostic: typing "Uhr" (DE translation of 点)
+	// should detect a confusion even when langs=["en"] only.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if found {
-		t.Error("DE answer should not match when only EN is selected")
+	if !found {
+		t.Error("expected DE answer to detect confusion even when quiz lang is EN-only")
+	}
+	if found && confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d (点), got %d", otherID, confusedWithID)
+	}
+}
+
+func TestDetectConfusion_UmlautTranslation_Found(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 练习 → DE "Übung" (umlaut in stored text)
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "练习",
+		Pinyin:       "liànxí",
+		Translations: map[string][]string{"de": {"trainieren"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "练",
+		Pinyin:       "liàn",
+		Translations: map[string][]string{"de": {"Übung"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User types "übung" (lowercase) while answering for 练习; should detect 练 as confusion.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "übung", "zh_to_transl", []string{"de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found for umlaut translation")
+	}
+	if confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d, got %d", otherID, confusedWithID)
+	}
+}
+
+func TestDetectConfusion_SlashVariant_Found(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 吃 → EN "eat"
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "吃",
+		Pinyin:       "chī",
+		Translations: map[string][]string{"en": {"eat"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 食物 → EN "food / eat" (slash-separated variant)
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "食物",
+		Pinyin:       "shíwù",
+		Translations: map[string][]string{"en": {"food / nourishment"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User types "nourishment" while answering for 吃; should detect 食物 as confusion.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "nourishment", "zh_to_transl", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found for slash-variant translation")
+	}
+	if confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d, got %d", otherID, confusedWithID)
+	}
+}
+
+// TestDetectConfusion_ZhToTransl_DeOnlyWord mirrors the user scenario:
+// prompt = 天 (zh_to_transl, DE only), user types "Spaziergang" which is the
+// DE translation of 走. The quiz lang is "en" (default), because transl_to_zh
+// found no EN translations and fell back to zh_to_transl — but mismatch
+// detection must still find the DE translation of the other word.
+func TestDetectConfusion_ZhToTransl_DeOnlyWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 天 → DE "Himmel" only (no EN translation)
+	tianID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "天",
+		Pinyin:       "tiān",
+		Translations: map[string][]string{"de": {"Himmel"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 走 → DE "Spaziergang" only (no EN translation)
+	zouID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "走",
+		Pinyin:       "zǒu",
+		Translations: map[string][]string{"de": {"Spaziergang"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User typed "Spaziergang" but langs=["en"] (default — mode fell back to zh_to_transl).
+	// Mismatch detection must search across ALL languages, not just ["en"].
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), tianID, "Spaziergang", "zh_to_transl", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found: Spaziergang is a DE translation of 走, mismatch detection must be language-agnostic")
+	}
+	if confusedWithID != zouID {
+		t.Errorf("expected confusedWithID=%d (走), got %d", zouID, confusedWithID)
+	}
+}
+
+func TestDetectConfusion_TranslToZh_TranslationOfOtherWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 天 → DE "Himmel" (the word being quizzed in transl_to_zh mode)
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "天",
+		Pinyin:       "tiān",
+		Translations: map[string][]string{"de": {"Himmel"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 走 → DE "Spaziergang" (a different word whose translation the user typed)
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "走",
+		Pinyin:       "zǒu",
+		Translations: map[string][]string{"de": {"Spaziergang"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User types "spaziergang" while in transl_to_zh mode for 天; should detect 走.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "spaziergang", "transl_to_zh", []string{"de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found when user types a translation of another word in transl_to_zh mode")
+	}
+	if confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d, got %d", otherID, confusedWithID)
+	}
+}
+
+func TestDetectConfusion_TranslToZh_SlashVariant(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// 天 → EN "sky"
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "天",
+		Pinyin:       "tiān",
+		Translations: map[string][]string{"en": {"sky"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 食物 → EN "food / nourishment"
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "食物",
+		Pinyin:       "shíwù",
+		Translations: map[string][]string{"en": {"food / nourishment"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// User types "nourishment" in transl_to_zh mode for 天; should detect 食物.
+	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "nourishment", "transl_to_zh", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected confusion to be found for slash-variant translation in transl_to_zh mode")
+	}
+	if confusedWithID != otherID {
+		t.Errorf("expected confusedWithID=%d, got %d", otherID, confusedWithID)
 	}
 }
 
@@ -4777,6 +4971,66 @@ func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
 	}
 	if len(items2) != 1 {
 		t.Errorf("after re-confusion: expected 1 item, got %d", len(items2))
+	}
+}
+
+// ── UpdateTrainingFilters ─────────────────────────────────────────────────────
+
+func TestUpdateTrainingFilters_PersistsAndReloads(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	if err := s.UpdateTrainingFilters(ctx, userID, "cycle", "0-49",
+		[]string{"de", "en"}, false, true, []string{"HSK1", "HSK2"}); err != nil {
+		t.Fatalf("UpdateTrainingFilters: %v", err)
+	}
+
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.TrainMode != "cycle" {
+		t.Errorf("want train_mode=cycle, got %q", st.TrainMode)
+	}
+	if st.TrainBucket != "0-49" {
+		t.Errorf("want train_bucket=0-49, got %q", st.TrainBucket)
+	}
+	if len(st.TrainLangs) != 2 || st.TrainLangs[0] != "de" || st.TrainLangs[1] != "en" {
+		t.Errorf("want train_langs=[de en], got %v", st.TrainLangs)
+	}
+	if st.TrainMnemonics {
+		t.Error("want train_mnemonics=false")
+	}
+	if !st.TrainComponents {
+		t.Error("want train_components=true")
+	}
+	if len(st.TrainTags) != 2 || st.TrainTags[0] != "HSK1" || st.TrainTags[1] != "HSK2" {
+		t.Errorf("want train_tags=[HSK1 HSK2], got %v", st.TrainTags)
+	}
+}
+
+func TestUpdateTrainingFilters_Defaults(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Without calling UpdateTrainingFilters, defaults should apply
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.TrainMode != "random" {
+		t.Errorf("want default train_mode=random, got %q", st.TrainMode)
+	}
+	if len(st.TrainLangs) == 0 {
+		t.Error("want default train_langs non-empty")
+	}
+	if !st.TrainMnemonics {
+		t.Error("want default train_mnemonics=true")
+	}
+	if !st.TrainComponents {
+		t.Error("want default train_components=true")
 	}
 }
 
