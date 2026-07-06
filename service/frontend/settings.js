@@ -142,6 +142,8 @@ async function loadSettings() {
     populateCycleSelect(document.getElementById('cycle-step-0'), cycleSteps[0] || 'zh_pinyin_to_transl');
     populateCycleSelect(document.getElementById('cycle-step-1'), cycleSteps[1] || 'transl_to_zh');
     populateCycleSelect(document.getElementById('cycle-step-2'), cycleSteps[2] || 'zh_to_transl');
+    const advanceEl = document.getElementById('cycle-advance-on-success-only');
+    if (advanceEl) advanceEl.checked = !!st.cycle_advance_on_success_only;
 
     // Accept-as-correct mode
     const acmValue = st.accept_correct_mode || 'typo';
@@ -253,8 +255,9 @@ function buildModePayload() {
     new_word_mode_0:        document.getElementById('mode-new-0')?.value           || 'transl_to_zh',
     new_word_mode_1:        document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
     new_word_mode_2:        document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
-    cycle_sequence:         buildCycleSequence(),
-    new_word_require_zh:    !!(document.getElementById('require-zh')?.checked),
+    cycle_sequence:                 buildCycleSequence(),
+    cycle_advance_on_success_only:  !!(document.getElementById('cycle-advance-on-success-only')?.checked),
+    new_word_require_zh:            !!(document.getElementById('require-zh')?.checked),
     new_word_require_trans: !!(document.getElementById('require-trans')?.checked),
   };
 }

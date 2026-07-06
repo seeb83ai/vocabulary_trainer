@@ -251,14 +251,10 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 				go func(t ttsTask) {
 					defer wg.Done()
 					defer func() { <-sem }()
-					var err error
 					if t.regen {
-						err = h.Audio.regenerate(t.id, t.text)
+						h.Audio.RegenerateAsync(t.id, t.text)
 					} else {
-						err = h.Audio.generate(t.id, t.text)
-					}
-					if err != nil {
-						log.Printf("upload-csv tts word %d: %v", t.id, err)
+						h.Audio.GenerateAsync(t.id, t.text)
 					}
 				}(t)
 			}
