@@ -627,16 +627,14 @@ async function submitAnswer(e) {
             <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
           </div>` : '';
       if (result.ambiguous) {
-        // Both words share a translation — ask the user to confirm which word they meant.
-        icon.textContent = '~ Ambiguous';
+        // Several words share a translation — ask the user to type another word with the same meaning.
+        icon.textContent = t('result.disambigAmbiguous');
         icon.className = 'text-3xl font-bold text-orange-500 mb-4';
         const disambigHtml = `
           <div id="disambig-area" class="mt-4 space-y-2 text-left">
-            ${yourAnswerHtml}
             ${confusedHtml}
-            ${correctBox}
             <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl">
-              <div class="text-xs text-orange-600 uppercase tracking-wide mb-2">Both words share this translation — type the one you were aiming for:</div>
+              <div class="text-xs text-orange-600 uppercase tracking-wide mb-2">${escHtml(t('result.disambigPrompt'))}</div>
               <form id="disambig-form" class="flex gap-2">
                 <input id="disambig-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
                   class="flex-1 border border-orange-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-300"
@@ -683,7 +681,7 @@ async function submitAnswer(e) {
             }
           } else {
             disambigInput.value = '';
-            disambigFeedback.textContent = 'Not quite — try again.';
+            disambigFeedback.textContent = t('result.disambigNotQuite');
             disambigFeedback.className = 'mt-1 text-sm text-red-500';
             disambigFeedback.classList.remove('hidden');
             disambigInput.focus();
