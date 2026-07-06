@@ -19,6 +19,54 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
 }).catch(() => {});
 
+function normalizeAnswer(s) {
+  s = s.toLowerCase().trim();
+  s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
+  return s;
+}
+
+function stripParens(s) {
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+  } while (s !== prev);
+  return s;
+}
+
+function expandVariants(a) {
+  const seen = new Set();
+  const add = s => { const n = normalizeAnswer(s); if (n) seen.add(n); };
+  add(a);
+  const noParens = stripParens(a);
+  add(noParens);
+  for (const base of [a, noParens]) {
+    for (const part of base.split('/')) {
+      add(part);
+      add(stripParens(part));
+    }
+  }
+  return [...seen];
+}
+
+// Returns true if a wrong answer should be offered as an "accept as typo".
+// For transl_to_zh mode, compares pinyin strings (levenshtein ≤ 1) so that
+// sound-alike characters count as a typo rather than raw character differences.
+// For all other modes, expands correct-answer variants (stripping parens and
+// splitting on /) before comparing — mirrors the backend expandVariants logic.
+function shouldShowAcceptTypo(mode, answer, result) {
+  if (!answer || !answer.trim()) return false;
+  if (mode === 'transl_to_zh') {
+    if (!result.user_answer_pinyin || !result.pinyin) return false;
+    const ua = result.user_answer_pinyin.toLowerCase().trim();
+    const ca = result.pinyin.toLowerCase().trim();
+    return levenshtein(ua, ca) <= 1;
+  }
+  const norm = normalizeAnswer(answer);
+  const variants = (result.correct_answers || []).flatMap(expandVariants);
+  return variants.some(c => levenshtein(norm, c) === 1);
+}
+
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
   const dp = Array.from({ length: m + 1 }, (_, i) =>
