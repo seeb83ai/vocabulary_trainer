@@ -143,6 +143,45 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
+  test('"add as correct" button auto-advances to next card after adding translation', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Submit a clearly wrong answer (far from any correct answer) so only the
+    // add-translation-btn appears, not the accept-correct-btn (typo threshold).
+    await page.locator('#answer-input').fill('notananswer');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+
+    // The "add as correct" button must be visible
+    await expect(page.locator('#add-translation-btn')).toBeVisible();
+
+    // Clicking it should auto-advance (load next card), not stay on result-area
+    await page.locator('#add-translation-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+
+  test('result-play-btn is visible in result area after answering (issue #158)', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Submit a wrong answer so the word stays due and doesn't disrupt later tests
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    await expect(page.locator('#result-play-btn')).toBeVisible();
+  });
+
+  test('issue-report button z-index is above gamification overlay (issue #152)', async ({ page }) => {
+    await page.goto('/train');
+    const cls = await page.locator('#issue-report-btn').getAttribute('style');
+    expect(cls).toContain('z-index:60');
+  });
+
   test('wrong answer is not repeated in the next two cards', async ({ page }) => {
     await useZhToTranslMode(page);
     await page.goto('/train');
@@ -181,6 +220,63 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 //
 // Expected quiz state: #new-word-area shown (NOT #card-area).
 // After "Got it!" → AcknowledgeWord() → total_attempts=1 → #card-area shown.
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: UI – Chinese character size and play button (issue #158)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – Chinese character size and play button (issue #158)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  function useZhToTranslMode(page) {
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  function useTranslToZhMode(page) {
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('prompt-word has large font size (text-5xl or bigger) when Chinese is shown', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    const fontSize = await page.locator('#prompt-word').evaluate(el =>
+      parseInt(window.getComputedStyle(el).fontSize)
+    );
+    // text-5xl = 3rem = 48px at 16px base font size
+    expect(fontSize).toBeGreaterThanOrEqual(48);
+  });
+
+  test('play button is visible when Chinese is the prompt (zh_to_transl mode)', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#play-btn')).toBeVisible();
+  });
+
+  test('play button is visible in transl_to_zh mode (hear the word while recalling)', async ({ page }) => {
+    await useTranslToZhMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#play-btn')).toBeVisible();
+  });
+
+  test('transl_to_zh card response includes zh_text field for audio', async ({ page }) => {
+    const cardRes = await page.request.get('/api/quiz/next?mode=transl_to_zh&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+    expect(card.mode).toBe('transl_to_zh');
+    expect(card.zh_text).toBeTruthy();
+    expect(['你好', '谢谢', '再见']).toContain(card.zh_text);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Quiz – new word introduction (new-word user)', () => {
   test.use({ storageState: 'e2e/.auth/new-word-user.json' });

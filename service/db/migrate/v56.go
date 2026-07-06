@@ -7,7 +7,7 @@ import (
 
 func init() {
 	register(migration{
-		version: 54,
+		version: 56,
 		fn: func(db *sql.DB) error {
 			var count int
 			if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sm2_progress') WHERE name = 'prev_state'`).Scan(&count); err != nil {
