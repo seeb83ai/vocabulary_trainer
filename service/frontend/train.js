@@ -808,7 +808,8 @@ function showHMMResult(resp) {
     <div class="mt-4 space-y-2 text-left">
       ${yourAnswerHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
-        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${badgeHtml} ${escHtml(currentCard.prompt)}</div>
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${badgeHtml}</div>
+        <div class="text-3xl font-bold text-gray-800 mb-1">${escHtml(currentCard.prompt)}</div>
         <div class="text-xl font-bold text-gray-800">${escHtml(resp.correct_answer)}</div>
       </div>
     </div>`;
@@ -874,7 +875,8 @@ function showComponentResult(resp) {
     <div class="mt-4 space-y-2 text-left">
       ${yourAnswerHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
-        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}: ${escHtml(currentCard.prompt)}</div>
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}</div>
+        <div class="text-3xl font-bold text-gray-800 mb-1">${escHtml(currentCard.prompt)}</div>
         ${defsHtml}
       </div>
     </div>`;
