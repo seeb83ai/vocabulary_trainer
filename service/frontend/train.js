@@ -36,6 +36,55 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+function normalizeAnswer(s) {
+  s = s.toLowerCase().trim();
+  s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
+  return s;
+}
+
+function stripParens(s) {
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+  } while (s !== prev);
+  return s;
+}
+
+function expandVariants(a) {
+  const seen = new Set();
+  const add = s => { const n = normalizeAnswer(s); if (n) seen.add(n); };
+  add(a);
+  const noParens = stripParens(a);
+  add(noParens);
+  for (const base of [a, noParens]) {
+    for (const part of base.split('/')) {
+      add(part);
+      add(stripParens(part));
+    }
+  }
+  return [...seen];
+}
+
+// Returns true if a wrong answer should be offered as "accept as typo".
+// For transl_to_zh mode compares pinyin strings (levenshtein ≤ 1) so that
+// tone-slip / same-sound characters are caught instead of raw character diffs.
+// For other modes expands correct-answer variants (strip parens, split on /)
+// before comparing — mirrors the backend expandVariants / CheckAnswer logic.
+function shouldShowAcceptTypo(answer, result, mode, cardMode) {
+  if (!answer || answer.trim() === '') return false;
+  if (mode === 'always') return true;
+  if (mode !== 'typo') return false;
+  if (cardMode === 'transl_to_zh') {
+    if (!result.user_answer_pinyin || !result.pinyin) return false;
+    return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
+                       result.pinyin.toLowerCase().trim()) <= 1;
+  }
+  const norm = normalizeAnswer(answer);
+  const variants = (result.correct_answers || []).flatMap(expandVariants);
+  return variants.some(c => levenshtein(norm, c) === 1);
+}
+
 function shouldShowAcceptBtn(answer, normCorrects, mode) {
   if (!answer || answer.trim() === '') return false;
   if (mode === 'always') return true;
@@ -671,8 +720,7 @@ async function submitAnswer(e) {
       }
 
       // Show "Accept as correct" button based on user's mode setting.
-      const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
-      if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
+      if (shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
         const acceptBtn = $('accept-correct-btn');
         acceptBtn.disabled = false;
         acceptBtn.textContent = 'Accept as correct (typo)';

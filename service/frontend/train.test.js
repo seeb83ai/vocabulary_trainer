@@ -541,6 +541,168 @@ describe('shouldShowAcceptBtn', () => {
   });
 });
 
+// ── normalizeAnswer / stripParens / expandVariants / shouldShowAcceptTypo ──────
+// New helpers and the quiz-mode-aware typo gate; inlined per project convention.
+
+function normalizeAnswer(s) {
+  s = s.toLowerCase().trim();
+  s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
+  return s;
+}
+
+function stripParens(s) {
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+  } while (s !== prev);
+  return s;
+}
+
+function expandVariants(a) {
+  const seen = new Set();
+  const add = s => { const n = normalizeAnswer(s); if (n) seen.add(n); };
+  add(a);
+  const noParens = stripParens(a);
+  add(noParens);
+  for (const base of [a, noParens]) {
+    for (const part of base.split('/')) {
+      add(part);
+      add(stripParens(part));
+    }
+  }
+  return [...seen];
+}
+
+function shouldShowAcceptTypo(answer, result, mode, cardMode) {
+  if (!answer || answer.trim() === '') return false;
+  if (mode === 'always') return true;
+  if (mode !== 'typo') return false;
+  if (cardMode === 'transl_to_zh') {
+    if (!result.user_answer_pinyin || !result.pinyin) return false;
+    return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
+                       result.pinyin.toLowerCase().trim()) <= 1;
+  }
+  const norm = normalizeAnswer(answer);
+  const variants = (result.correct_answers || []).flatMap(expandVariants);
+  return variants.some(c => levenshtein(norm, c) === 1);
+}
+
+describe('normalizeAnswer', () => {
+  it('lowercases and trims whitespace', () => {
+    expect(normalizeAnswer('  Hello  ')).toBe('hello');
+  });
+  it('strips trailing period', () => {
+    expect(normalizeAnswer('hello.')).toBe('hello');
+  });
+  it('strips trailing closing paren', () => {
+    // Only the trailing ) is stripped; inner content stays
+    expect(normalizeAnswer('morning (5am to 9 am)')).toBe('morning (5am to 9 am');
+  });
+  it('leaves internal content intact', () => {
+    expect(normalizeAnswer('good morning')).toBe('good morning');
+  });
+});
+
+describe('stripParens', () => {
+  it('removes a parenthesised segment', () => {
+    expect(stripParens('Morgen (5 Uhr bis 9 Uhr)')).toBe('Morgen');
+  });
+  it('removes multiple parenthesised segments', () => {
+    expect(stripParens('a (b) and (c)')).toBe('a and');
+  });
+  it('is a no-op when no parens present', () => {
+    expect(stripParens('hello')).toBe('hello');
+  });
+  it('handles nested parens iteratively', () => {
+    expect(stripParens('a (b (c))')).toBe('a');
+  });
+});
+
+describe('expandVariants', () => {
+  it('returns the normalized plain form', () => {
+    expect(expandVariants('Hello')).toContain('hello');
+  });
+  it('includes the paren-stripped form', () => {
+    expect(expandVariants('Morgen (5 Uhr bis 9 Uhr)')).toContain('morgen');
+  });
+  it('splits on slash', () => {
+    const vs = expandVariants('hi/hello');
+    expect(vs).toContain('hi');
+    expect(vs).toContain('hello');
+  });
+  it('combines paren stripping and slash splitting', () => {
+    const vs = expandVariants('good morning (greeting)/morning');
+    expect(vs).toContain('good morning');
+    expect(vs).toContain('morning');
+  });
+});
+
+describe('shouldShowAcceptTypo', () => {
+  // ── mode gate ──────────────────────────────────────────────────────────────
+  it('returns false for empty answer regardless of mode', () => {
+    expect(shouldShowAcceptTypo('', { correct_answers: ['hello'] }, 'typo', 'zh_to_transl')).toBe(false);
+    expect(shouldShowAcceptTypo('  ', { pinyin: 'nǐ hǎo', user_answer_pinyin: 'nǐ hǎo' }, 'typo', 'transl_to_zh')).toBe(false);
+  });
+  it('returns true for any non-empty answer when mode is always', () => {
+    expect(shouldShowAcceptTypo('anything', { correct_answers: ['hello'] }, 'always', 'zh_to_transl')).toBe(true);
+  });
+  it('returns false when mode is never', () => {
+    expect(shouldShowAcceptTypo('helo', { correct_answers: ['hello'] }, 'never', 'zh_to_transl')).toBe(false);
+  });
+
+  // ── zh_to_transl: string comparison with variant expansion ─────────────────
+  it('zh_to_transl: true when answer is 1 char off from a correct variant', () => {
+    expect(shouldShowAcceptTypo('helo', { correct_answers: ['hello'] }, 'typo', 'zh_to_transl')).toBe(true);
+  });
+  it('zh_to_transl: true when correct answer has parenthetical suffix — Mirgen / Morgen case', () => {
+    expect(shouldShowAcceptTypo('Mirgen', {
+      correct_answers: ['morning', 'Morgen (5 Uhr bis 9 Uhr)', 'morning (5am to 9 am)'],
+    }, 'typo', 'zh_to_transl')).toBe(true);
+  });
+  it('zh_to_transl: true when correct answer has slash alternatives', () => {
+    expect(shouldShowAcceptTypo('helo', { correct_answers: ['hi/hello'] }, 'typo', 'zh_to_transl')).toBe(true);
+  });
+  it('zh_to_transl: false when stripped variants are all more than 1 away', () => {
+    expect(shouldShowAcceptTypo('xyz', {
+      correct_answers: ['morning (5am to 9 am)', 'Morgen (5 Uhr bis 9 Uhr)'],
+    }, 'typo', 'zh_to_transl')).toBe(false);
+  });
+
+  // ── transl_to_zh: pinyin comparison ────────────────────────────────────────
+  it('transl_to_zh: true when pinyin differs by 1 char — tone slip (书 shū vs 数 shù)', () => {
+    // 看书 kàn shū vs 看数 kàn shù — only the tone mark on the last vowel differs
+    expect(shouldShowAcceptTypo('看数', {
+      pinyin: 'kàn shū',
+      user_answer_pinyin: 'kàn shù',
+    }, 'typo', 'transl_to_zh')).toBe(true);
+  });
+  it('transl_to_zh: true when pinyins are identical (homophones)', () => {
+    expect(shouldShowAcceptTypo('你好', {
+      pinyin: 'nǐ hǎo',
+      user_answer_pinyin: 'nǐ hǎo',
+    }, 'typo', 'transl_to_zh')).toBe(true);
+  });
+  it('transl_to_zh: false when pinyins differ by more than 1 char', () => {
+    expect(shouldShowAcceptTypo('大', {
+      pinyin: 'rén',
+      user_answer_pinyin: 'dà',
+    }, 'typo', 'transl_to_zh')).toBe(false);
+  });
+  it('transl_to_zh: false when user_answer_pinyin is absent (word not in vocab)', () => {
+    expect(shouldShowAcceptTypo('看数', {
+      pinyin: 'kàn shū',
+      user_answer_pinyin: null,
+    }, 'typo', 'transl_to_zh')).toBe(false);
+  });
+  it('transl_to_zh: false when correct pinyin is absent', () => {
+    expect(shouldShowAcceptTypo('看数', {
+      pinyin: null,
+      user_answer_pinyin: 'kàn shù',
+    }, 'typo', 'transl_to_zh')).toBe(false);
+  });
+});
+
 // ── splitComponentDefs ─────────────────────────────────────────────────────────
 // Mirrors the `,`/`;` splitting that CheckComponentAnswer does on the backend.
 

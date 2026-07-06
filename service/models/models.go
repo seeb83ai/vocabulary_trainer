@@ -182,7 +182,8 @@ type AnswerResponse struct {
 	SessionStreak   int                 `json:"session_streak,omitempty"`
 	Tier            string              `json:"tier,omitempty"`
 	PrevTier        string              `json:"prev_tier,omitempty"`
-	SceneText       string              `json:"scene_text,omitempty"`
+	SceneText        string              `json:"scene_text,omitempty"`
+	UserAnswerPinyin *string             `json:"user_answer_pinyin,omitempty"`
 }
 
 type CreateWordRequest struct {

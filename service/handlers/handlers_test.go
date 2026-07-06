@@ -514,6 +514,75 @@ func TestQuizAnswer_EnToZh(t *testing.T) {
 	}
 }
 
+// ── TranslToZh wrong answer: user_answer_pinyin ───────────────────────────────
+
+func TestQuizAnswer_TranslToZh_WrongKnownWordIncludesPinyin(t *testing.T) {
+	s := openTestDB(t)
+	correctID := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
+	_ = seedWord(t, s, "看数", "kàn shù", []string{"to count"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: correctID,
+		Mode:   models.ModeTranslToZh,
+		Answer: "看数",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Fatal("'看数' should be wrong for 看书")
+	}
+	if resp.UserAnswerPinyin == nil {
+		t.Fatal("expected user_answer_pinyin to be set when wrong answer is in vocab")
+	}
+	if *resp.UserAnswerPinyin != "kàn shù" {
+		t.Errorf("want user_answer_pinyin=%q, got %q", "kàn shù", *resp.UserAnswerPinyin)
+	}
+}
+
+func TestQuizAnswer_TranslToZh_WrongUnknownWordNoPinyin(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeTranslToZh,
+		Answer: "不存在",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.UserAnswerPinyin != nil {
+		t.Errorf("expected user_answer_pinyin nil for unknown word, got %q", *resp.UserAnswerPinyin)
+	}
+}
+
+func TestQuizAnswer_ZhToTransl_NoUserAnswerPinyin(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+		Answer: "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.UserAnswerPinyin != nil {
+		t.Errorf("user_answer_pinyin should be absent for zh_to_transl, got %q", *resp.UserAnswerPinyin)
+	}
+}
+
 func TestQuizAnswer_WordNotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
