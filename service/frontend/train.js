@@ -1769,8 +1769,12 @@ function showMatchGame(words) {
         const lIdx = selectedLeft;
         if (matched.has(lIdx)) return;
         const rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
+        // Also accept when two words share the same translation text.
+        const rightText = shuffledRight[rIdx].text;
+        const leftTransls = Object.values(words[lIdx].translations || {}).flat();
+        const isCorrect = rightIdx === lIdx || leftTransls.includes(rightText);
 
-        if (rightIdx === lIdx) {
+        if (isCorrect) {
           // Correct match
           leftBoxes[lIdx].classList.remove('border-blue-500', 'bg-blue-50');
           leftBoxes[lIdx].classList.add('border-green-500', 'bg-green-50', 'cursor-default');
