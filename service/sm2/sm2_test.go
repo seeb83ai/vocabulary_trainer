@@ -396,6 +396,33 @@ func TestCheckAnswer_TrailingWhitespace(t *testing.T) {
 	}
 }
 
+func TestCheckAnswer_FullWidthQuestionMark_UserTypesASCII(t *testing.T) {
+	// Stored answer has Chinese full-width ？, user types ASCII ?
+	if !CheckAnswer("你好?", []string{"你好？"}) {
+		t.Error("ASCII ? should be accepted when stored answer uses full-width ？")
+	}
+}
+
+func TestCheckAnswer_FullWidthQuestionMark_StoredASCII(t *testing.T) {
+	// Stored answer has ASCII ?, user types Chinese full-width ？
+	if !CheckAnswer("你好？", []string{"你好?"}) {
+		t.Error("full-width ？ should be accepted when stored answer uses ASCII ?")
+	}
+}
+
+func TestCheckAnswer_FullWidthQuestionMark_MidString(t *testing.T) {
+	// ？ in a non-trailing position — neither is stripped by trailing punct removal
+	if !CheckAnswer("真的?不可能", []string{"真的？不可能"}) {
+		t.Error("ASCII ? mid-string should match full-width ？ mid-string")
+	}
+}
+
+func TestCheckAnswer_FullWidthExclamation_UserTypesASCII(t *testing.T) {
+	if !CheckAnswer("好!", []string{"好！"}) {
+		t.Error("ASCII ! should be accepted when stored answer uses full-width ！")
+	}
+}
+
 // ── CheckComponentAnswer ──────────────────────────────────────────────────────
 
 func TestCheckComponentAnswer_ExactMatch(t *testing.T) {
