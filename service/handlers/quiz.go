@@ -104,15 +104,26 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	word, progress, err := h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines, excludeIDs)
+	// Difficult-words drill: serve only flagged words (ordered by due date,
+	// ignoring the normal due-date horizon). Mnemonic/component candidates are
+	// not part of the drill.
+	difficult := r.URL.Query().Get("difficult") == "true"
+	var word *models.Word
+	var progress *models.SM2Progress
+	var err error
+	if difficult {
+		word, progress, err = h.Store.GetNextDrillCard(r.Context(), userID)
+	} else {
+		word, progress, err = h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines, excludeIDs)
+	}
 	if err != nil {
 		internalError(w, err)
 		return
 	}
 
 	langs := parseLangs(r, primaryLang)
-	mnemonics := r.URL.Query().Get("mnemonics") != "false"
-	trainComponents := r.URL.Query().Get("trainComponents") == "1"
+	mnemonics := r.URL.Query().Get("mnemonics") != "false" && !difficult
+	trainComponents := r.URL.Query().Get("trainComponents") == "1" && !difficult
 
 	// Ensure progress rows exist for any newly-named library entries.
 	if err := h.Store.EnsureHMMProgress(r.Context(), UserIDFromContext(r.Context())); err != nil {
@@ -255,7 +266,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		if userSettings != nil && userSettings.CycleSequence != "" {
 			seqStr = userSettings.CycleSequence
 		}
-		mode = sm2.SelectCycleMode(progress.TotalAttempts, sm2.ParseCycleSequence(seqStr))
+		cycleCounter := progress.TotalAttempts
+		if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
+			cycleCounter = progress.TotalCorrect
+		}
+		mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr))
 	default:
 		mode = sm2.SelectMode()
 	}
@@ -306,6 +321,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		card.Translations = translations
+		card.ZhText = word.Text
 		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
 		// Cycle mode skips the learning-phase hint: the user chose the step explicitly.
 		if word.Pinyin != nil {
@@ -418,6 +434,10 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	if correct {
 		if err := h.Store.ClearSM2PrevState(ctx, req.WordID); err != nil {
 			log.Printf("answer: ClearSM2PrevState word %d: %v", req.WordID, err)
+		}
+		// A correctly-answered word leaves the difficult-words drill.
+		if err := h.Store.ClearDrillFlag(ctx, req.WordID); err != nil {
+			log.Printf("answer: ClearDrillFlag word %d: %v", req.WordID, err)
 		}
 	} else {
 		if err := h.Store.SaveSM2PrevState(ctx, req.WordID, *progress); err != nil {
@@ -537,6 +557,8 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+	// Accepting a typo as correct also retires the word from the difficult drill.
+	_ = h.Store.ClearDrillFlag(ctx, req.WordID)
 
 	sessionStreak, _ := h.Store.RecordDailyStat(ctx, userID, true)
 
@@ -780,6 +802,11 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	difficultRemaining, err := h.Store.CountDrillFlags(r.Context(), userID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]int{
 		"due_today":            due,
 		"total":                total,
@@ -793,6 +820,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"hmm_total":            hmmTotal,
 		"components_due_today": compDueToday,
 		"components_total":     compTotal,
+		"difficult_remaining":  difficultRemaining,
 	})
 }
 
@@ -991,4 +1019,37 @@ func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
 		Repetitions:   updated.Repetitions,
 		Tier:          sm2.ClassifyTier(updated).String(),
 	})
+}
+
+// FlagDifficult handles POST /api/quiz/difficult. It flags the user's hardest
+// words (lowest accuracy / lowest ease factor) for a focused drill and returns
+// how many were actually flagged.
+func (h *QuizHandler) FlagDifficult(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Count int `json:"count"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Count <= 0 {
+		writeError(w, http.StatusBadRequest, "count must be positive")
+		return
+	}
+	flagged, err := h.Store.FlagDifficultWords(r.Context(), UserIDFromContext(r.Context()), req.Count)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"flagged": flagged})
+}
+
+// ClearDifficult handles POST /api/quiz/difficult/clear. It ends the
+// difficult-words drill by clearing all of the user's drill flags.
+func (h *QuizHandler) ClearDifficult(w http.ResponseWriter, r *http.Request) {
+	if err := h.Store.ClearAllDrillFlags(r.Context(), UserIDFromContext(r.Context())); err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"flagged": 0})
 }

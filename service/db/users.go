@@ -199,7 +199,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		return nil, "", "", "", err
 	}
 	var st models.UserSettings
-	var gamificationEnabledInt int
+	var gamificationEnabledInt, cycleAdvanceOnSuccessOnlyInt int
 	err = s.db.QueryRowContext(ctx, `
 		SELECT primary_lang, secondary_lang,
 		       prog_new, prog_tier_struggling, prog_tier_learning,
@@ -219,7 +219,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(baseline_learning_enabled, 0),
 		       COALESCE(baseline_learning_value, 20),
 		       COALESCE(gamification_enabled, 0),
-		       COALESCE(gamification_frequency, 5)
+		       COALESCE(gamification_frequency, 5),
+		       COALESCE(cycle_advance_on_success_only, 0)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -240,8 +241,10 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.BaselineLearningValue,
 		&gamificationEnabledInt,
 		&st.GamificationFrequency,
+		&cycleAdvanceOnSuccessOnlyInt,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
+	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
 	}
@@ -255,37 +258,39 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE user_settings SET
-			primary_lang                = ?,
-			secondary_lang              = ?,
-			prog_new                    = ?,
-			prog_tier_struggling        = ?,
-			prog_tier_learning          = ?,
-			prog_tier_practicing        = ?,
-			prog_tier_mastered          = ?,
-			new_word_mode_0             = ?,
-			new_word_mode_1             = ?,
-			new_word_mode_2             = ?,
-			cycle_sequence              = ?,
-			new_word_require_zh         = ?,
-			new_word_require_trans      = ?,
-			accept_correct_mode         = ?,
-			max_new_words_per_day       = ?,
-			new_word_cooldown_minutes   = ?,
-			skip_new_words_visible      = ?,
-			baseline_due_today_enabled  = ?,
-			baseline_due_today_value    = ?,
-			baseline_struggling_enabled = ?,
-			baseline_struggling_value   = ?,
-			baseline_learning_enabled   = ?,
-			baseline_learning_value     = ?,
-			gamification_enabled        = ?,
-			gamification_frequency      = ?
+			primary_lang                    = ?,
+			secondary_lang                  = ?,
+			prog_new                        = ?,
+			prog_tier_struggling            = ?,
+			prog_tier_learning              = ?,
+			prog_tier_practicing            = ?,
+			prog_tier_mastered              = ?,
+			new_word_mode_0                 = ?,
+			new_word_mode_1                 = ?,
+			new_word_mode_2                 = ?,
+			cycle_sequence                  = ?,
+			cycle_advance_on_success_only   = ?,
+			new_word_require_zh             = ?,
+			new_word_require_trans          = ?,
+			accept_correct_mode             = ?,
+			max_new_words_per_day           = ?,
+			new_word_cooldown_minutes       = ?,
+			skip_new_words_visible          = ?,
+			baseline_due_today_enabled      = ?,
+			baseline_due_today_value        = ?,
+			baseline_struggling_enabled     = ?,
+			baseline_struggling_value       = ?,
+			baseline_learning_enabled       = ?,
+			baseline_learning_value         = ?,
+			gamification_enabled            = ?,
+			gamification_frequency          = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
 		st.ProgTierPracticing, st.ProgTierMastered,
 		st.NewWordMode0, st.NewWordMode1, st.NewWordMode2,
 		st.CycleSequence,
+		st.CycleAdvanceOnSuccessOnly,
 		st.NewWordRequireZh, st.NewWordRequireTrans,
 		st.AcceptCorrectMode,
 		st.MaxNewWordsPerDay,

@@ -26,6 +26,7 @@ type UserSettings struct {
 	NewWordMode1              string `json:"new_word_mode_1"`      // TotalCorrect==1
 	NewWordMode2              string `json:"new_word_mode_2"`      // TotalCorrect>=2
 	CycleSequence             string `json:"cycle_sequence"`
+	CycleAdvanceOnSuccessOnly bool   `json:"cycle_advance_on_success_only"`
 	NewWordRequireZh          bool   `json:"new_word_require_zh"`
 	NewWordRequireTrans       bool   `json:"new_word_require_trans"`
 	MaxNewWordsPerDay         int    `json:"max_new_words_per_day"`
@@ -130,6 +131,9 @@ type QuizCard struct {
 	DueDate         time.Time           `json:"due_date"`
 	IntervalDays    int                 `json:"interval_days"`
 	LearningNewWord bool                `json:"learning_new_word"`
+	// ZhText is the Chinese word text, populated for transl_to_zh mode so the
+	// frontend can offer an audio play button even when the prompt is a translation.
+	ZhText string `json:"zh_text,omitempty"`
 	// HMM mnemonic card fields (card_type="hmm"); zero-value for word cards.
 	CardType   string `json:"card_type,omitempty"`
 	EntityType string `json:"entity_type,omitempty"`

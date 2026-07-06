@@ -11,6 +11,7 @@
  */
 
 import { execSync, spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -18,6 +19,50 @@ import { parseSetCookieHeaders, seedWord } from './helpers/api.js';
 
 export const E2E_PORT = 18080;
 export const BASE_URL = `http://localhost:${E2E_PORT}`;
+// Mock GitHub API for the in-app issue-reporting feature. The Go server calls
+// it (server→server) instead of api.github.com, so a real HTTP listener is
+// required — Playwright page.route only intercepts browser requests.
+export const MOCK_GITHUB_PORT = 18081;
+export const MOCK_GITHUB_URL = `http://localhost:${MOCK_GITHUB_PORT}`;
+
+/**
+ * Start a minimal mock of the GitHub REST endpoints the issue handler uses:
+ * repo lookup, branch ref read/create, contents upload, and issue creation.
+ * Stored on globalThis so globalTeardown can close it.
+ */
+function startMockGitHub() {
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', c => (body += c));
+    req.on('end', () => {
+      const { method, url } = req;
+      const send = (status, obj) => {
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(obj));
+      };
+      if (method === 'POST' && url.endsWith('/issues')) {
+        return send(201, { number: 101, html_url: 'https://github.com/owner/repo/issues/101' });
+      }
+      if (method === 'PUT' && url.includes('/contents/')) {
+        return send(201, { content: { download_url: `${MOCK_GITHUB_URL}/raw/screenshot.png` } });
+      }
+      if (method === 'POST' && url.endsWith('/git/refs')) {
+        return send(201, { ref: 'refs/heads/issue-assets' });
+      }
+      if (method === 'GET' && url.includes('/git/ref/')) {
+        return send(200, { object: { sha: 'deadbeef' } });
+      }
+      if (method === 'GET' && /\/repos\/[^/]+\/[^/]+$/.test(url)) {
+        return send(200, { default_branch: 'main' });
+      }
+      return send(404, { message: 'not found' });
+    });
+  });
+  server.listen(MOCK_GITHUB_PORT);
+  server.unref();
+  globalThis.__mockGitHubServer = server;
+  console.log(`[E2E] Mock GitHub API listening on ${MOCK_GITHUB_URL}`);
+}
 export const TEST_EMAIL = 'e2e@test.local';
 export const TEST_PASSWORD = 'E2eTestPassword123!';
 // Second test user — has a single unseen word (start_training: false).
@@ -48,6 +93,9 @@ async function waitForServer(url, timeoutMs = 20_000) {
 }
 
 export default async function globalSetup() {
+  // ── 0. Start the mock GitHub API ────────────────────────────────────────────
+  startMockGitHub();
+
   // ── 1. Build Go binary ──────────────────────────────────────────────────────
   console.log('[E2E] Building Go server binary…');
   execSync('cd service && go build -o ../bin/e2e-server .', {
@@ -81,6 +129,10 @@ export default async function globalSetup() {
       SMTP_PORT: '',
       SMTP_USER: '',
       SMTP_PASS: '',
+      // Enable in-app GitHub issue reporting against the mock GitHub API.
+      GITHUB_TOKEN: 'e2e-test-token',
+      GITHUB_ISSUE_REPO: 'owner/repo',
+      GITHUB_API_BASE_URL: MOCK_GITHUB_URL,
     },
     stdio: 'pipe',
     detached: false,
