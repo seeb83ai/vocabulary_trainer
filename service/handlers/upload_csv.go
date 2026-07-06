@@ -108,20 +108,25 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "could not read CSV header")
 		return
 	}
-	if len(header) < 3 {
-		writeError(w, http.StatusBadRequest, "CSV must have at least 3 columns: chinese, pinyin, <lang>")
-		return
-	}
 	if !strings.EqualFold(strings.TrimSpace(header[0]), "chinese") {
 		writeError(w, http.StatusBadRequest, "first CSV column must be 'chinese'")
 		return
 	}
-	if !strings.EqualFold(strings.TrimSpace(header[1]), "pinyin") {
-		writeError(w, http.StatusBadRequest, "second CSV column must be 'pinyin'")
+	// Detect optional pinyin column by name; all other non-chinese columns are langs.
+	pinyinIdx := -1
+	if len(header) > 1 && strings.EqualFold(strings.TrimSpace(header[1]), "pinyin") {
+		pinyinIdx = 1
+	}
+	langStart := 1
+	if pinyinIdx >= 0 {
+		langStart = 2
+	}
+	if len(header) <= langStart {
+		writeError(w, http.StatusBadRequest, "CSV must have at least one language column (e.g. 'en' or 'de')")
 		return
 	}
-	langCols := make([]string, len(header)-2)
-	for i, col := range header[2:] {
+	langCols := make([]string, len(header)-langStart)
+	for i, col := range header[langStart:] {
 		langCols[i] = strings.ToLower(strings.TrimSpace(col))
 	}
 
@@ -155,20 +160,23 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 	skipped := 0
 
 	for _, row := range rows {
-		if len(row) < 3 {
+		if len(row) < 2 {
 			skipped++
 			continue
 		}
 		zhText := strings.TrimSpace(row[0])
-		pinyin := strings.TrimSpace(row[1])
 		if zhText == "" {
 			skipped++
 			continue
 		}
+		var pinyin string
+		if pinyinIdx >= 0 && pinyinIdx < len(row) {
+			pinyin = strings.TrimSpace(row[pinyinIdx])
+		}
 
 		translations := map[string][]string{}
 		for i, lang := range langCols {
-			colIdx := i + 2
+			colIdx := i + langStart
 			if colIdx >= len(row) {
 				continue
 			}
