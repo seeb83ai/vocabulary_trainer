@@ -31,10 +31,13 @@ const SEED_TRANSLATIONS = {
 test.describe('Quiz – acknowledged words (main user)', () => {
   test.use({ storageState: 'e2e/.auth/user.json' });
 
-  // Set zh_to_transl mode in localStorage before the page scripts run.
-  // This ensures loadNextCard() calls GET /api/quiz/next?mode=zh_to_transl
-  // on every test navigation, giving us a deterministic, predictable card.
-  function useZhToTranslMode(page) {
+  // Set zh_to_transl mode both server-side and in localStorage before the page
+  // scripts run. Server-side is required because _settingsPromise now restores
+  // server-persisted training filters on load (issue #161), overriding localStorage.
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -163,7 +166,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
-  test('result-play-btn is visible in result area after answering (issue #158)', async ({ page }) => {
+  test('play button is visible in result area after answering (issue #158)', async ({ page }) => {
     await useZhToTranslMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
@@ -173,7 +176,8 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
 
-    await expect(page.locator('#result-play-btn')).toBeVisible();
+    // Play button is now inline inside the correct-answer box in #word-breakdown
+    await expect(page.locator('#word-breakdown .result-inline-play')).toBeVisible();
   });
 
   test('issue-report button z-index is above gamification overlay (issue #152)', async ({ page }) => {

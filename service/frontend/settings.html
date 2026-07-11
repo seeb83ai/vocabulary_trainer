@@ -46,7 +46,7 @@
       <p class="text-sm text-gray-500 mb-4">The primary language is shown first in the vocabulary list and training. Both languages are accepted as answers.</p>
       <div id="lang-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
       <div id="lang-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
-      <div class="grid grid-cols-2 gap-4 mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Primary Language</label>
           <select id="primary-lang" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
@@ -71,42 +71,42 @@
       <!-- Progressive tiers -->
       <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">Words past introduction</p>
       <div class="space-y-2 mb-5">
-        <div class="flex items-center gap-3">
-          <span class="w-32 text-sm text-gray-600">New (&lt;3 tries)</span>
-          <select id="mode-prog-new" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-32 text-sm text-gray-600">New (&lt;3 tries)</span>
+          <select id="mode-prog-new" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="w-32 text-sm text-gray-600">Struggling (&lt;50%)</span>
-          <select id="mode-prog-struggling" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-32 text-sm text-gray-600">Struggling (&lt;50%)</span>
+          <select id="mode-prog-struggling" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="w-32 text-sm text-gray-600">Learning (&lt;70%)</span>
-          <select id="mode-prog-learning" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-32 text-sm text-gray-600">Learning (&lt;70%)</span>
+          <select id="mode-prog-learning" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="w-32 text-sm text-gray-600">Practicing (&lt;85%)</span>
-          <select id="mode-prog-practicing" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-32 text-sm text-gray-600">Practicing (&lt;85%)</span>
+          <select id="mode-prog-practicing" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="w-32 text-sm text-gray-600">Mastered (≥85%)</span>
-          <select id="mode-prog-mastered" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-32 text-sm text-gray-600">Mastered (≥85%)</span>
+          <select id="mode-prog-mastered" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
       </div>
 
       <!-- New word phase -->
       <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">New word phase (during introduction)</p>
       <div class="space-y-2 mb-5">
-        <div class="flex items-center gap-3">
-          <span class="w-32 text-sm text-gray-600">1st attempt</span>
-          <select id="mode-new-0" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-32 text-sm text-gray-600">1st attempt</span>
+          <select id="mode-new-0" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="w-32 text-sm text-gray-600">2nd attempt</span>
-          <select id="mode-new-1" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-32 text-sm text-gray-600">2nd attempt</span>
+          <select id="mode-new-1" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="w-32 text-sm text-gray-600">3rd attempt+</span>
-          <select id="mode-new-2" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-32 text-sm text-gray-600">3rd attempt+</span>
+          <select id="mode-new-2" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
       </div>
       <!-- New word confirmation inputs -->
@@ -132,17 +132,17 @@
       <div id="cycle-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
       <div id="cycle-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
       <div class="space-y-2 mb-5">
-        <div class="flex items-center gap-3">
-          <span class="w-16 text-sm text-gray-600">Step 1</span>
-          <select id="cycle-step-0" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-16 text-sm text-gray-600">Step 1</span>
+          <select id="cycle-step-0" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="w-16 text-sm text-gray-600">Step 2</span>
-          <select id="cycle-step-1" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-16 text-sm text-gray-600">Step 2</span>
+          <select id="cycle-step-1" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="w-16 text-sm text-gray-600">Step 3</span>
-          <select id="cycle-step-2" class="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span class="sm:w-16 text-sm text-gray-600">Step 3</span>
+          <select id="cycle-step-2" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
       </div>
       <div class="mb-5">
@@ -195,21 +195,21 @@
 
         <div class="flex items-center gap-3">
           <input type="checkbox" id="baseline-due-today-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
-          <span class="text-sm text-gray-700 w-56">Max due words at day start</span>
+          <span class="text-sm text-gray-700 flex-1 min-w-0">Max due words at day start</span>
           <input type="number" id="baseline-due-today-value" min="0" max="9999"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
         </div>
 
         <div class="flex items-center gap-3">
           <input type="checkbox" id="baseline-struggling-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
-          <span class="text-sm text-gray-700 w-56">Max words in <strong>Struggling</strong> bucket</span>
+          <span class="text-sm text-gray-700 flex-1 min-w-0">Max words in <strong>Struggling</strong> bucket</span>
           <input type="number" id="baseline-struggling-value" min="0" max="9999"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
         </div>
 
         <div class="flex items-center gap-3">
           <input type="checkbox" id="baseline-learning-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
-          <span class="text-sm text-gray-700 w-56">Max words in <strong>Learning</strong> bucket</span>
+          <span class="text-sm text-gray-700 flex-1 min-w-0">Max words in <strong>Learning</strong> bucket</span>
           <input type="number" id="baseline-learning-value" min="0" max="9999"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
         </div>
@@ -250,8 +250,8 @@
           <input type="checkbox" id="gamification-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
           <span class="text-sm text-gray-700">Enable word-matching mini-game</span>
         </label>
-        <div class="flex items-center gap-3">
-          <span class="text-sm text-gray-700 w-64">Show game at most every</span>
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="text-sm text-gray-700">Show game at most every</span>
           <input type="number" id="gamification-frequency" min="1" max="1440" value="5"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <span class="text-sm text-gray-700">minutes</span>
@@ -313,7 +313,7 @@
         </div>
       </div>
 
-      <div class="flex gap-3 mt-5">
+      <div class="flex gap-3 mt-5 flex-wrap">
         <button id="apikey-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save API Keys</button>
         <button id="apikey-clear-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-6 py-2 rounded-xl text-sm transition">Clear All Keys</button>
       </div>

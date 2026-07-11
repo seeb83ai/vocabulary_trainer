@@ -347,6 +347,7 @@ func main() {
 		r.Get("/settings", settingsH.Get)
 		r.Patch("/settings", settingsH.Patch)
 		r.Put("/settings/api-keys", settingsH.PutAPIKeys)
+		r.Patch("/training-filters", settingsH.PatchTrainingFilters)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
 		r.With(expensiveLimit).Post("/translate", translateH.Translate)
 		r.Get("/github/config", githubH.ConfigFlag)

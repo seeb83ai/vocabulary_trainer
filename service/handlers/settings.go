@@ -190,6 +190,50 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+var validTrainModes = map[string]bool{
+	"progressive":         true,
+	"random":              true,
+	"cycle":               true,
+	"transl_to_zh":        true,
+	"zh_to_transl":        true,
+	"zh_pinyin_to_transl": true,
+	"":                    true,
+}
+
+// PatchTrainingFilters handles PATCH /api/training-filters — persists the
+// training page filter state (mode, tier bucket, langs, tags, etc.) per user.
+func (h *SettingsHandler) PatchTrainingFilters(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Mode       string   `json:"mode"`
+		Bucket     string   `json:"bucket"`
+		Langs      []string `json:"langs"`
+		Mnemonics  bool     `json:"mnemonics"`
+		Components bool     `json:"components"`
+		Tags       []string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if !validTrainModes[req.Mode] {
+		writeError(w, http.StatusBadRequest, "invalid mode: "+req.Mode)
+		return
+	}
+	if len(req.Langs) == 0 {
+		req.Langs = []string{"en"}
+	}
+	if req.Tags == nil {
+		req.Tags = []string{}
+	}
+	userID := UserIDFromContext(r.Context())
+	if err := h.store.UpdateTrainingFilters(r.Context(), userID,
+		req.Mode, req.Bucket, req.Langs, req.Mnemonics, req.Components, req.Tags); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // PutAPIKeys handles PUT /api/settings/api-keys — encrypts and stores API keys.
 func (h *SettingsHandler) PutAPIKeys(w http.ResponseWriter, r *http.Request) {
 	var req struct {
