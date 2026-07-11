@@ -54,6 +54,60 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+function normalizeAnswer(s) {
+  s = s.toLowerCase().trim();
+  s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
+  return s;
+}
+
+function stripParens(s) {
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+  } while (s !== prev);
+  return s;
+}
+
+function expandVariants(a) {
+  const seen = new Set();
+  const add = s => { const n = normalizeAnswer(s); if (n) seen.add(n); };
+  add(a);
+  const noParens = stripParens(a);
+  add(noParens);
+  for (const base of [a, noParens]) {
+    for (const part of base.split('/')) {
+      add(part);
+      add(stripParens(part));
+    }
+  }
+  return [...seen];
+}
+
+// Returns true if a wrong answer should be offered as "accept as typo".
+// For transl_to_zh mode compares pinyin strings (levenshtein ≤ 1) so that
+// tone-slip / same-sound characters are caught instead of raw character diffs.
+// For other modes expands correct-answer variants (strip parens, split on /)
+// before comparing — mirrors the backend expandVariants / CheckAnswer logic.
+function shouldShowAcceptTypo(answer, result, mode, cardMode) {
+  if (!answer || answer.trim() === '') return false;
+  if (mode === 'always') return true;
+  if (mode !== 'typo') return false;
+  if (cardMode === 'transl_to_zh') {
+    if (result.user_answer_pinyin && result.pinyin) {
+      return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
+                         result.pinyin.toLowerCase().trim()) <= 1;
+    }
+    // Pinyin unavailable (typed word not in vocab): fall back to character comparison.
+    const norm = normalizeAnswer(answer);
+    const variants = (result.correct_answers || []).flatMap(expandVariants);
+    return variants.some(c => levenshtein(norm, c) === 1);
+  }
+  const norm = normalizeAnswer(answer);
+  const variants = (result.correct_answers || []).flatMap(expandVariants);
+  return variants.some(c => levenshtein(norm, c) === 1);
+}
+
 function shouldShowAcceptBtn(answer, normCorrects, mode) {
   if (!answer || answer.trim() === '') return false;
   if (mode === 'always') return true;
@@ -548,13 +602,12 @@ function showCard() {
     setText('mode-label', getModeLabel(currentCard.mode));
     setText('prompt-word', currentCard.prompt);
 
-    // Show play button only when Chinese is the prompt — hide it in transl_to_zh
-    // mode because playing the audio would reveal the answer the user must type.
+    // Show play button only when Chinese is the prompt — never for transl_to_zh
+    // because hearing the Chinese audio would reveal the answer.
     const isZhPrompt = currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
-    const zhAudioText = isZhPrompt ? currentCard.prompt : '';
     const playBtn = $('play-btn');
-    if (zhAudioText) {
-      playBtn.onclick = () => playAudio(currentCard.word_id, zhAudioText);
+    if (isZhPrompt) {
+      playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
       show('play-btn');
     } else {
       hide('play-btn');
@@ -715,8 +768,7 @@ async function submitAnswer(e) {
       }
 
       // Show "Accept as correct" button based on user's mode setting.
-      const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
-      if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
+      if (shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
         const acceptBtn = $('accept-correct-btn');
         acceptBtn.disabled = false;
         acceptBtn.textContent = 'Accept as correct (typo)';
@@ -854,7 +906,8 @@ function showHMMResult(resp) {
     <div class="mt-4 space-y-2 text-left">
       ${yourAnswerHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
-        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${badgeHtml} ${escHtml(currentCard.prompt)}</div>
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${badgeHtml}</div>
+        <div class="text-3xl font-bold text-gray-800 mb-1">${escHtml(currentCard.prompt)}</div>
         <div class="text-xl font-bold text-gray-800">${escHtml(resp.correct_answer)}</div>
       </div>
     </div>`;
@@ -920,7 +973,8 @@ function showComponentResult(resp) {
     <div class="mt-4 space-y-2 text-left">
       ${yourAnswerHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
-        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}: ${escHtml(currentCard.prompt)}</div>
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}</div>
+        <div class="text-3xl font-bold text-gray-800 mb-1">${escHtml(currentCard.prompt)}</div>
         ${defsHtml}
       </div>
     </div>`;
