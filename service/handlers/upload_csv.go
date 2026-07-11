@@ -168,6 +168,8 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 		pinyin := ""
 		if hasPinyin && len(row) > 1 {
 			pinyin = strings.TrimSpace(row[1])
+		} else if !hasPinyin {
+			pinyin = toPinyin(zhText)
 		}
 		if zhText == "" {
 			skipped++
