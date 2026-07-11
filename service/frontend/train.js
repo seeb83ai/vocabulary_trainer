@@ -806,6 +806,7 @@ async function submitAnswer(e) {
                   langs: selectedLangs,
                 }),
               });
+              addBtn.textContent = t('result.added');
               loadNextCard(true);
             } catch (err) {
               addBtn.disabled = false;

@@ -242,6 +242,11 @@ test.describe('Quiz – acknowledged words (main user)', () => {
       });
       expect(seedDeRes.ok()).toBe(true);
 
+      // Server-side is required because _settingsPromise now restores
+      // server-persisted training filters on load (issue #161), overriding localStorage.
+      await page.request.patch('/api/training-filters', {
+        data: { mode: 'zh_to_transl', langs: ['en', 'de'], bucket: '', mnemonics: true, components: true, tags: [] },
+      });
       await page.addInitScript(() => {
         localStorage.setItem('quizMode', 'zh_to_transl');
         localStorage.setItem('quizLangs', JSON.stringify(['en', 'de']));
