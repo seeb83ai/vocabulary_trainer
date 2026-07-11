@@ -238,7 +238,10 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
     });
   }
 
-  function useTranslToZhMode(page) {
+  async function useTranslToZhMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -264,11 +267,11 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
     await expect(page.locator('#play-btn')).toBeVisible();
   });
 
-  test('play button is visible in transl_to_zh mode (hear the word while recalling)', async ({ page }) => {
+  test('play button is hidden in transl_to_zh mode to avoid revealing the answer (issue #168)', async ({ page }) => {
     await useTranslToZhMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-    await expect(page.locator('#play-btn')).toBeVisible();
+    await expect(page.locator('#play-btn')).not.toBeVisible();
   });
 
   test('transl_to_zh card response includes zh_text field for audio', async ({ page }) => {
