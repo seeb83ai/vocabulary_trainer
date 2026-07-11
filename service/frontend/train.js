@@ -742,15 +742,18 @@ async function submitAnswer(e) {
     const breakdown = $('word-breakdown');
     const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
     const allTransTexts = selectedLangs.flatMap(lang => (result.translations || {})[lang] || []);
-    const correctBox = `
+    // For wrong answers use compact equal-sized display so zh and translations are easy to read side-by-side.
+    // For correct answers keep the large Chinese character as a visual reward.
+    const makeCorrectBox = (compact) => `
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('result.correctLabel'))}</div>
         <div class="flex items-center gap-2">
-          <div class="text-3xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
+          <div class="${compact ? 'text-xl' : 'text-3xl'} font-bold text-gray-800 min-w-0">${escHtml(result.zh_text)}${pinyin}</div>
           <button type="button" class="result-inline-play text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
         </div>
-        <div class="text-gray-600 text-sm mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
+        <div class="text-gray-600 ${compact ? 'text-xl' : 'text-sm'} mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
       </div>`;
+    const correctBox = makeCorrectBox(false);
 
     if (!result.correct) {
       const isEmpty = answer.trim() === '';
@@ -773,7 +776,7 @@ async function submitAnswer(e) {
         <div class="mt-4 space-y-2 text-left">
           ${yourAnswerHtml}
           ${confusedHtml}
-          ${correctBox}
+          ${makeCorrectBox(true)}
         </div>`;
       const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
       if (confusedPlayBtn) {
