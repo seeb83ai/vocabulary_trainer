@@ -309,6 +309,10 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
   test('"Got it!" acknowledges the word and transitions to card-area', async ({ page }) => {
     // Use zh_to_transl mode so that after acknowledgement the card shows a
     // deterministic prompt (the zh word '水') rather than a randomly selected mode.
+    // Patch server-side first so _settingsPromise doesn't override localStorage on load.
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
