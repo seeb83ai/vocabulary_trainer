@@ -5226,6 +5226,62 @@ func TestUploadCSV_MultipleLanguages(t *testing.T) {
 	}
 }
 
+func TestUploadCSV_NoPinyinColumn(t *testing.T) {
+	csv := "chinese,en\n我要回家了,I go home\n你好,hello"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for CSV without pinyin column, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 2 {
+		t.Errorf("want imported=2, got %d", resp["imported"])
+	}
+}
+
+func TestUploadCSV_NoPinyinMultipleLangs(t *testing.T) {
+	csv := "chinese,en,de\n你好,hello,Hallo"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for CSV without pinyin column with multiple langs, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 1 {
+		t.Errorf("want imported=1, got %d", resp["imported"])
+	}
+}
+
+func TestUploadCSV_AutoGeneratesPinyinWhenColumnAbsent(t *testing.T) {
+	csv := "chinese,en\n你好,hello"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var upload map[string]int
+	decodeJSON(t, rec, &upload)
+	if upload["imported"] != 1 {
+		t.Fatalf("want imported=1, got %d", upload["imported"])
+	}
+
+	rec2 := do(t, r, "GET", "/api/words?page=1&per_page=20", nil)
+	var resp models.WordListResponse
+	decodeJSON(t, rec2, &resp)
+	if len(resp.Words) != 1 {
+		t.Fatalf("want 1 word in list, got %d", len(resp.Words))
+	}
+	wd := resp.Words[0]
+	if wd.Pinyin == nil || *wd.Pinyin == "" {
+		t.Errorf("expected pinyin to be auto-generated for %q, got nil/empty", wd.ZhText)
+	}
+}
+
 func TestUploadCSV_MultipleSemicolonTranslations(t *testing.T) {
 	csv := "chinese,pinyin,de\n我要回家了,wǒ yào huí jiā le,Ich gehe nach Hause; Ich gehe heim"
 	r := newRouter(openTestDB(t))
