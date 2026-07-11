@@ -396,6 +396,40 @@ func TestCheckAnswer_TrailingWhitespace(t *testing.T) {
 	}
 }
 
+// ── Fullwidth / halfwidth punctuation equivalence ─────────────────────────────
+
+func TestCheckAnswer_FullwidthQuestionMark_Trailing(t *testing.T) {
+	// Trailing fullwidth ？ and ASCII ? are both stripped — should already work.
+	if !CheckAnswer("你好?", []string{"你好？"}) {
+		t.Error("trailing ASCII ? should match stored fullwidth ？")
+	}
+	if !CheckAnswer("你好？", []string{"你好?"}) {
+		t.Error("trailing fullwidth ？ should match stored ASCII ?")
+	}
+}
+
+func TestCheckAnswer_FullwidthQuestionMark_MidString(t *testing.T) {
+	// Non-trailing ？ in the middle: fullwidth and ASCII must be treated as equivalent.
+	if !CheckAnswer("是?对", []string{"是？对"}) {
+		t.Error("mid-string ASCII ? should match stored fullwidth ？")
+	}
+	if !CheckAnswer("是？对", []string{"是?对"}) {
+		t.Error("mid-string fullwidth ？ should match stored ASCII ?")
+	}
+}
+
+func TestCheckAnswer_FullwidthExclamation_MidString(t *testing.T) {
+	if !CheckAnswer("好!好", []string{"好！好"}) {
+		t.Error("mid-string ASCII ! should match stored fullwidth ！")
+	}
+}
+
+func TestCheckAnswer_FullwidthComma_MidString(t *testing.T) {
+	if !CheckAnswer("你好,世界", []string{"你好，世界"}) {
+		t.Error("mid-string ASCII , should match stored fullwidth ，")
+	}
+}
+
 // ── CheckComponentAnswer ──────────────────────────────────────────────────────
 
 func TestCheckComponentAnswer_ExactMatch(t *testing.T) {
