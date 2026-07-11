@@ -548,13 +548,12 @@ function showCard() {
     setText('mode-label', getModeLabel(currentCard.mode));
     setText('prompt-word', currentCard.prompt);
 
-    // Show play button when Chinese is the prompt or when zh_text is available
-    // (transl_to_zh: prompt is the translation, but zh_text lets the user hear the word)
+    // Show play button only when Chinese is the prompt — never for transl_to_zh
+    // because hearing the Chinese audio would reveal the answer.
     const isZhPrompt = currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
-    const zhAudioText = isZhPrompt ? currentCard.prompt : (currentCard.zh_text || '');
     const playBtn = $('play-btn');
-    if (zhAudioText) {
-      playBtn.onclick = () => playAudio(currentCard.word_id, zhAudioText);
+    if (isZhPrompt) {
+      playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
       show('play-btn');
     } else {
       hide('play-btn');
@@ -854,7 +853,8 @@ function showHMMResult(resp) {
     <div class="mt-4 space-y-2 text-left">
       ${yourAnswerHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
-        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${badgeHtml} ${escHtml(currentCard.prompt)}</div>
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${badgeHtml}</div>
+        <div class="text-3xl font-bold text-gray-800 mb-1">${escHtml(currentCard.prompt)}</div>
         <div class="text-xl font-bold text-gray-800">${escHtml(resp.correct_answer)}</div>
       </div>
     </div>`;
@@ -920,7 +920,8 @@ function showComponentResult(resp) {
     <div class="mt-4 space-y-2 text-left">
       ${yourAnswerHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
-        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}: ${escHtml(currentCard.prompt)}</div>
+        <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}</div>
+        <div class="text-3xl font-bold text-gray-800 mb-1">${escHtml(currentCard.prompt)}</div>
         ${defsHtml}
       </div>
     </div>`;
