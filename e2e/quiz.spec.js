@@ -484,7 +484,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
   test('ambiguous answer shows disambiguation input and accepts correct re-type', async ({ page }) => {
     const { quizZh, wrongAnswer } = await setupAmbiguousResult(page);
 
-    // Type the wrong word again — should show "Not quite" feedback.
+    // Type the wrong word again — should show "Not quite" feedback and let the user retry.
     await page.locator('#disambig-input').fill(wrongAnswer);
     await page.locator('#disambig-form button[type="submit"]').click();
     await expect(page.locator('#disambig-feedback')).toContainText('Not quite');
@@ -495,6 +495,30 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
     // Disambiguation input disappears after a successful answer.
     await expect(page.locator('#disambig-input')).not.toBeVisible();
+  });
+
+  // Issue #194: a wrong word typed into the disambiguation form only shows
+  // "Not quite" and lets the user retry. The normal Wrong screen is shown only
+  // once the user gives up and clicks Next without having resolved it.
+  test('wrong word in disambiguation form allows retry; Next shows Wrong screen (issue #194)', async ({ page }) => {
+    const { wrongAnswer } = await setupAmbiguousResult(page);
+
+    await page.locator('#disambig-input').fill(wrongAnswer);
+    await page.locator('#disambig-form button[type="submit"]').click();
+
+    // Still on the disambiguation form — no Wrong screen yet.
+    await expect(page.locator('#disambig-feedback')).toContainText('Not quite');
+    await expect(page.locator('#disambig-input')).toBeVisible();
+    await expect(page.locator('#result-icon')).toHaveText('~ Ambiguous');
+
+    // Clicking Next without resolving reveals the normal Wrong screen first.
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 5_000 });
+    await expect(page.locator('#disambig-input')).not.toBeVisible();
+
+    // A second Next click then actually advances.
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
   // Issue #194: continuing past an unresolved ambiguous result must fall back
@@ -533,6 +557,28 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     // result card — that's the overflow reported in issue #193.
     expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
     expect(btnBox.x + btnBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+  });
+
+  // Below the `sm` breakpoint (640px), the app already switches to a stacked
+  // mobile layout elsewhere (nav menu collapses). The disambiguation input and
+  // "Check" button must follow the same pattern: input full width on its own
+  // line, button full width on the line below — not side by side.
+  test('disambiguation input and Check button stack full-width below the sm breakpoint', async ({ page }) => {
+    await page.setViewportSize({ width: 639, height: 800 });
+    await setupAmbiguousResult(page);
+
+    const formBox = await page.locator('#disambig-form').boundingBox();
+    const inputBox = await page.locator('#disambig-input').boundingBox();
+    const btnBox = await page.locator('#disambig-form button[type="submit"]').boundingBox();
+    expect(formBox).toBeTruthy();
+    expect(inputBox).toBeTruthy();
+    expect(btnBox).toBeTruthy();
+
+    // Button sits on the line below the input (stacked, not side by side).
+    expect(btnBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height - 0.5);
+    // Both the input and the button span the full width of the form.
+    expect(inputBox.width).toBeGreaterThanOrEqual(formBox.width - 0.5);
+    expect(btnBox.width).toBeGreaterThanOrEqual(formBox.width - 0.5);
   });
 
   // The character breakdown toggle would reveal the correct word's characters,
