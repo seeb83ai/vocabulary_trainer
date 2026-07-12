@@ -841,11 +841,11 @@ async function submitAnswer(e) {
             ${confusedHtml}
             <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl overflow-hidden">
               <div class="text-xs text-orange-600 uppercase tracking-wide mb-2 break-words">${escHtml(t('result.disambigPrompt'))}</div>
-              <form id="disambig-form" class="flex gap-2">
+              <form id="disambig-form" class="flex flex-col sm:flex-row gap-2">
                 <input id="disambig-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
-                  class="flex-1 min-w-0 border border-orange-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  class="w-full sm:flex-1 min-w-0 border border-orange-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-300"
                   placeholder="Type Chinese word…" />
-                <button type="submit" class="shrink-0 px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition">Check</button>
+                <button type="submit" class="w-full sm:w-auto sm:shrink-0 px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition">Check</button>
               </form>
               <div id="disambig-feedback" class="mt-1 text-sm hidden"></div>
             </div>

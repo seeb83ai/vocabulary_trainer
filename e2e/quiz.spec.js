@@ -559,6 +559,28 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     expect(btnBox.x + btnBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
   });
 
+  // Below the `sm` breakpoint (640px), the app already switches to a stacked
+  // mobile layout elsewhere (nav menu collapses). The disambiguation input and
+  // "Check" button must follow the same pattern: input full width on its own
+  // line, button full width on the line below — not side by side.
+  test('disambiguation input and Check button stack full-width below the sm breakpoint', async ({ page }) => {
+    await page.setViewportSize({ width: 639, height: 800 });
+    await setupAmbiguousResult(page);
+
+    const formBox = await page.locator('#disambig-form').boundingBox();
+    const inputBox = await page.locator('#disambig-input').boundingBox();
+    const btnBox = await page.locator('#disambig-form button[type="submit"]').boundingBox();
+    expect(formBox).toBeTruthy();
+    expect(inputBox).toBeTruthy();
+    expect(btnBox).toBeTruthy();
+
+    // Button sits on the line below the input (stacked, not side by side).
+    expect(btnBox.y).toBeGreaterThanOrEqual(inputBox.y + inputBox.height - 0.5);
+    // Both the input and the button span the full width of the form.
+    expect(inputBox.width).toBeGreaterThanOrEqual(formBox.width - 0.5);
+    expect(btnBox.width).toBeGreaterThanOrEqual(formBox.width - 0.5);
+  });
+
   // The character breakdown toggle would reveal the correct word's characters,
   // undermining the point of asking the user to disambiguate. Mock the decompose
   // API so it always has data to show, isolating this from whether the test DB
