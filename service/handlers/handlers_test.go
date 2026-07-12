@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"vocabulary_trainer/db"
@@ -36,9 +37,49 @@ func TestMain(m *testing.M) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
+var (
+	templateOnce sync.Once
+	templatePath string
+	templateErr  error
+)
+
+// buildTemplateDB runs all migrations once into a scratch file so individual
+// tests can clone it instead of re-running migrations for every test.
+func buildTemplateDB(tb testing.TB) string {
+	tb.Helper()
+	templateOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "vocab-test-template-*")
+		if err != nil {
+			templateErr = err
+			return
+		}
+		path := filepath.Join(dir, "template.db")
+		if err := db.OpenMigratedTemplate(path); err != nil {
+			templateErr = err
+			return
+		}
+		templatePath = path
+	})
+	if templateErr != nil {
+		tb.Fatalf("build template db: %v", templateErr)
+	}
+	return templatePath
+}
+
+// openTestDB creates a SQLite store for tests by cloning the pre-migrated
+// template database rather than running all migrations from scratch.
 func openTestDB(t *testing.T) *db.Store {
 	t.Helper()
-	s, err := db.Open(":memory:")
+	tmpl := buildTemplateDB(t)
+	data, err := os.ReadFile(tmpl)
+	if err != nil {
+		t.Fatalf("read template db: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "test.db")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatalf("write test db copy: %v", err)
+	}
+	s, err := db.Open(path)
 	if err != nil {
 		t.Fatalf("openTestDB: %v", err)
 	}
