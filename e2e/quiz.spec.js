@@ -482,12 +482,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
   }
 
   test('ambiguous answer shows disambiguation input and accepts correct re-type', async ({ page }) => {
-    const { quizZh, wrongAnswer } = await setupAmbiguousResult(page);
-
-    // Type the wrong word again — should show "Not quite" feedback.
-    await page.locator('#disambig-input').fill(wrongAnswer);
-    await page.locator('#disambig-form button[type="submit"]').click();
-    await expect(page.locator('#disambig-feedback')).toContainText('Not quite');
+    const { quizZh } = await setupAmbiguousResult(page);
 
     // Type the correct zh word — result must flip to Correct.
     await page.locator('#disambig-input').fill(quizZh);
@@ -495,6 +490,23 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
     // Disambiguation input disappears after a successful answer.
     await expect(page.locator('#disambig-input')).not.toBeVisible();
+  });
+
+  // Issue #194: typing a wrong word in the disambiguation form must immediately
+  // show the normal wrong-answer screen — no "Not quite" retry, one shot only.
+  test('wrong word in disambiguation form immediately shows Wrong screen (issue #194)', async ({ page }) => {
+    const { wrongAnswer } = await setupAmbiguousResult(page);
+
+    await page.locator('#disambig-input').fill(wrongAnswer);
+    await page.locator('#disambig-form button[type="submit"]').click();
+
+    // Wrong screen appears immediately — no "Not quite" feedback in between.
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 5_000 });
+    await expect(page.locator('#disambig-input')).not.toBeVisible();
+
+    // A single Next click now actually advances (not a two-step transition).
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
   // Issue #194: continuing past an unresolved ambiguous result must fall back
