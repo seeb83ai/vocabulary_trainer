@@ -124,7 +124,7 @@ function expandVariants(a) {
   const noParens = stripParens(a);
   add(noParens);
   for (const base of [a, noParens]) {
-    for (const part of base.split('/')) {
+    for (const part of base.split(/[/,]/)) {
       add(part);
       add(stripParens(part));
     }
@@ -135,8 +135,8 @@ function expandVariants(a) {
 // Returns true if a wrong answer should be offered as "accept as typo".
 // For transl_to_zh mode compares pinyin strings (levenshtein ≤ 1) so that
 // tone-slip / same-sound characters are caught instead of raw character diffs.
-// For other modes expands correct-answer variants (strip parens, split on /)
-// before comparing — mirrors the backend expandVariants / CheckAnswer logic.
+// For other modes expands correct-answer variants (strip parens, split on /
+// or ,) before comparing — mirrors the backend expandVariants / CheckAnswer logic.
 function shouldShowAcceptTypo(answer, result, mode, cardMode) {
   if (!answer || answer.trim() === '') return false;
   if (mode === 'always') return true;

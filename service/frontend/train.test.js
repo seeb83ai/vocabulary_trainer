@@ -566,7 +566,7 @@ function expandVariants(a) {
   const noParens = stripParens(a);
   add(noParens);
   for (const base of [a, noParens]) {
-    for (const part of base.split('/')) {
+    for (const part of base.split(/[/,]/)) {
       add(part);
       add(stripParens(part));
     }
@@ -640,6 +640,13 @@ describe('expandVariants', () => {
     const vs = expandVariants('good morning (greeting)/morning');
     expect(vs).toContain('good morning');
     expect(vs).toContain('morning');
+  });
+  it('splits on comma', () => {
+    // Regression for #189: "topic, item" stored as one translation must
+    // accept "item" on its own, mirroring the backend expandVariants fix.
+    const vs = expandVariants('topic, item');
+    expect(vs).toContain('topic');
+    expect(vs).toContain('item');
   });
 });
 

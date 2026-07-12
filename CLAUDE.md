@@ -137,7 +137,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 - `GetNextCard` must filter `WHERE w.language = 'zh'` — EN words must never be returned as quiz prompts.
 - Answer normalisation lives in `service/sm2/sm2.go` (`normalize`, `expandVariants`, `CheckAnswer`).
   Rules applied in order: lowercase + trim whitespace → strip trailing sentence punctuation (`。.！!？?`) →
-  strip optional parenthesised segments → split on `/` for alternatives.
+  strip optional parenthesised segments → split on `/` or `,` for alternatives.
 - Static frontend files are embedded in the binary via `//go:embed frontend` (from `service/main.go`). No separate build step.
 - The import tools (`service/cmd/import`, `service/cmd/import-hsk`) call `db.Migrate()` for schema setup and can run
   independently of the main server.
