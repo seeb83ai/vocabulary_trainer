@@ -327,6 +327,27 @@ func TestCheckAnswer_Slash_SecondPart(t *testing.T) {
 	}
 }
 
+func TestCheckAnswer_Comma_FullForm(t *testing.T) {
+	if !CheckAnswer("topic, item", []string{"topic, item"}) {
+		t.Error("full comma form should be accepted")
+	}
+}
+
+func TestCheckAnswer_Comma_FirstPart(t *testing.T) {
+	if !CheckAnswer("topic", []string{"topic, item"}) {
+		t.Error("first comma part should be accepted")
+	}
+}
+
+func TestCheckAnswer_Comma_SecondPart(t *testing.T) {
+	// Regression for #189: "item" is a valid translation for 题, stored as the
+	// single comma-joined translation row "topic, item" — it must be accepted
+	// on its own, just like slash-separated alternatives are.
+	if !CheckAnswer("item", []string{"topic, item"}) {
+		t.Error("second comma part should be accepted")
+	}
+}
+
 func TestCheckAnswer_SlashAndParens_Combined(t *testing.T) {
 	// "(das) Essen / Gericht":
 	//   - full form:               "(das) essen / gericht"

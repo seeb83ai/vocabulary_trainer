@@ -2746,6 +2746,38 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 	}
 }
 
+func TestQuizAnswer_CommaJoinedTranslation_PartAccepted(t *testing.T) {
+	// Regression for #189: a translation stored as a single comma-joined row
+	// (e.g. "topic, item") must accept each comma-separated part on its own,
+	// the same way slash-separated alternatives already do.
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "题",
+		Pinyin:       "tí",
+		Translations: map[string][]string{"en": {"topic, item"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+		Answer: "item",
+		Langs:  []string{"en"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("'item' should be accepted as a valid part of the comma-joined translation 'topic, item'")
+	}
+}
+
 // ── GET /api/quiz/next — new_word with langs ──────────────────────────────────
 
 func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {

@@ -177,8 +177,9 @@ func ProcessAnswer(p models.SM2Progress, correct bool) models.SM2Progress {
 // Two normalisation rules apply to each accepted answer before comparing:
 //  1. Parenthesized segments are optional: "(das Gehörte) nicht verstehen"
 //     also accepts "nicht verstehen".
-//  2. Slash-separated alternatives are each valid on their own:
-//     "Essen / Gericht" also accepts "Essen" or "Gericht".
+//  2. Slash- or comma-separated alternatives are each valid on their own:
+//     "Essen / Gericht" also accepts "Essen" or "Gericht", and
+//     "topic, item" also accepts "topic" or "item".
 //
 // All combinations of the two rules are tried.
 func CheckAnswer(userAnswer string, accepted []string) bool {
@@ -219,7 +220,7 @@ func stripParens(s string) string {
 }
 
 // ExpandVariants returns all valid answer strings derived from a single
-// accepted answer by applying the optional-parens and slash-split rules.
+// accepted answer by applying the optional-parens and slash/comma-split rules.
 func ExpandVariants(a string) []string { return expandVariants(a) }
 
 func expandVariants(a string) []string {
@@ -237,9 +238,9 @@ func expandVariants(a string) []string {
 	noParens := stripParens(a)
 	add(noParens)
 
-	// Slash-split variants of both the original and the paren-stripped form
+	// Slash- or comma-split variants of both the original and the paren-stripped form
 	for _, base := range []string{a, noParens} {
-		for _, part := range strings.Split(base, "/") {
+		for _, part := range strings.FieldsFunc(base, func(r rune) bool { return r == '/' || r == ',' }) {
 			add(part)
 			add(stripParens(part))
 		}
