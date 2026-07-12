@@ -854,9 +854,14 @@ async function submitAnswer(e) {
               disambigFeedback.classList.remove('hidden');
             }
           } else {
-            // Wrong word typed — treat the whole answer as wrong (issue #194).
-            ambiguousUnresolved = null;
-            renderWrongResult();
+            // Wrong word typed — let the user retry; the disambiguation stays
+            // unresolved until they either type the correct word or click Next,
+            // at which point the normal wrong-answer screen is shown (issue #194).
+            disambigInput.value = '';
+            disambigFeedback.textContent = t('result.disambigNotQuite');
+            disambigFeedback.className = 'mt-1 text-sm text-red-500';
+            disambigFeedback.classList.remove('hidden');
+            disambigInput.focus();
           }
         });
       } else {
