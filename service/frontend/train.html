@@ -338,7 +338,10 @@
           <button id="result-play-btn" type="button" class="hidden text-3xl text-gray-400 hover:text-blue-500 transition mb-3" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
 
           <div id="word-breakdown" class="hidden mb-2"></div>
-          <button id="add-translation-btn" class="hidden"></button>
+          <div id="add-translation-row" class="hidden mb-3 flex items-center gap-2">
+            <button id="add-translation-btn" class="flex-1"></button>
+            <select id="add-translation-lang-select" class="hidden shrink-0 w-16 border border-gray-300 rounded-xl px-1.5 py-2 text-xs text-center"></select>
+          </div>
           <button id="accept-correct-btn" class="hidden w-full border border-green-400 hover:border-green-500 text-green-700 hover:text-green-800 font-medium py-2 rounded-xl text-sm transition mb-2"></button>
 
           <div id="review-edit-row" class="flex gap-3 mb-3">

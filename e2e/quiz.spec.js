@@ -214,6 +214,74 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     const thirdPrompt = await page.locator('#prompt-word').textContent();
     expect(thirdPrompt).not.toBe(firstPrompt);
   });
+
+  // Regression test for issue #156: when a user has two active learning
+  // languages, "Add as correct answer" must let them pick which language the
+  // new translation belongs to, defaulting to their primary language.
+  test('choosing a language when adding a wrong answer as a correct translation', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, secondary_lang: 'de' },
+    });
+    expect(patchRes.ok()).toBe(true);
+
+    try {
+      // Pre-fetch the card so we know which word_id to verify afterwards.
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en,de');
+      expect(cardRes.ok()).toBe(true);
+      const card = await cardRes.json();
+
+      // GET /api/quiz/langs (called on page load) only reports languages that
+      // have at least one translation — give this word a DE translation so
+      // 'de' shows up as an active language and the picker is not pruned away.
+      const seedDeRes = await page.request.post(`/api/words/${card.word_id}/translations`, {
+        data: { text: `seed-de-${card.word_id}`, lang: 'de' },
+      });
+      expect(seedDeRes.ok()).toBe(true);
+
+      // Server-side is required because _settingsPromise now restores
+      // server-persisted training filters on load (issue #161), overriding localStorage.
+      await page.request.patch('/api/training-filters', {
+        data: { mode: 'zh_to_transl', langs: ['en', 'de'], bucket: '', mnemonics: true, components: true, tags: [] },
+      });
+      await page.addInitScript(() => {
+        localStorage.setItem('quizMode', 'zh_to_transl');
+        localStorage.setItem('quizLangs', JSON.stringify(['en', 'de']));
+      });
+
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+      const wrongAnswer = 'definitely-not-a-translation';
+      await page.locator('#answer-input').fill(wrongAnswer);
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+      // Two languages are active → the picker must appear, defaulting to
+      // the user's primary language (en).
+      const langSelect = page.locator('#add-translation-lang-select');
+      await expect(langSelect).toBeVisible();
+      await expect(langSelect).toHaveValue('en');
+
+      // Switch to German and add the wrong answer as a correct DE translation.
+      await langSelect.selectOption('de');
+      await page.locator('#add-translation-btn').click();
+      await expect(page.locator('#add-translation-btn')).toHaveText(/added/i, { timeout: 8_000 });
+
+      // The backend must have stored it under DE, not EN.
+      const wordRes = await page.request.get(`/api/words/${card.word_id}`);
+      expect(wordRes.ok()).toBe(true);
+      const word = await wordRes.json();
+      expect(word.translations?.de || []).toContain(wrongAnswer);
+      expect(word.translations?.en || []).not.toContain(wrongAnswer);
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
