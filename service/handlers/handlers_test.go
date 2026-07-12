@@ -5817,6 +5817,42 @@ func TestAnswerAmbiguous_ZhToTranslMode_NotAmbiguous(t *testing.T) {
 	}
 }
 
+// TestAnswerAmbiguous_MultiGlossTranslation_SetsAmbiguousFlag regresses issue
+// #188: 面 ("noodles"/"Nudeln") and 面条 ("noodle"/"Nudeln / Pasta") share the
+// "Nudeln" meaning, but 面条's DE translation is a single multi-gloss entry
+// rather than a separate "Nudeln" row. This must still be detected as
+// ambiguous rather than falling through to a plain wrong answer.
+func TestAnswerAmbiguous_MultiGlossTranslation_SetsAmbiguousFlag(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	id1 := seedWordFull(t, s, int64(2), "面", "miàn", []string{"noodles"}, []string{"Nudeln"}, nil)
+	seedWordFull(t, s, int64(2), "面条", "miàntiáo", []string{"noodle"}, []string{"Nudeln / Pasta"}, nil)
+	if err := s.AcknowledgeWord(context.Background(), int64(2), id1); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id1,
+		Mode:   models.ModeTranslToZh,
+		Answer: "面条",
+		Langs:  []string{"en", "de"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Correct {
+		t.Error("expected correct=false")
+	}
+	if !resp.Ambiguous {
+		t.Error("expected ambiguous=true: 面条's 'Nudeln / Pasta' shares the 'Nudeln' meaning with 面")
+	}
+}
+
 // ── POST /api/quiz/accept-correct ────────────────────────────────────────────
 
 func TestAcceptCorrectNoState(t *testing.T) {

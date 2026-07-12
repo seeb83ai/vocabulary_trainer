@@ -725,41 +725,60 @@ func (s *Store) ClearSM2PrevState(ctx context.Context, wordID int64) error {
 }
 
 // SharesTranslation returns true when zhWordID1 and zhWordID2 share at least
-// one translation text (case-insensitive, whitespace-trimmed) in the given
-// languages. If langs is empty it falls back to ["en"].
+// one translation in the given languages. If langs is empty it falls back to
+// ["en"]. Matching is done in Go using sm2.ExpandVariants (the same
+// slash-alternative / optional-parens expansion CheckAnswer applies) rather
+// than raw string equality, so a multi-gloss entry like "Nudeln / Pasta"
+// correctly overlaps with a plain "Nudeln" translation on another word.
 func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error) {
 	if len(langs) == 0 {
 		langs = []string{"en"}
 	}
 	placeholders := make([]string, len(langs))
-	args := make([]any, 0, 2+len(langs)*2)
-	args = append(args, wordID1)
+	args := make([]any, len(langs))
 	for i, l := range langs {
 		placeholders[i] = "?"
-		args = append(args, l)
+		args[i] = l
 	}
 	langList := strings.Join(placeholders, ",")
-	args = append(args, wordID2)
-	for _, l := range langs {
-		args = append(args, l)
+
+	fetchVariants := func(wordID int64) (map[string]struct{}, error) {
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT w.text FROM words w
+			JOIN translations t ON t.translation_word_id = w.id
+			WHERE t.zh_word_id = ? AND w.language IN (`+langList+`)`,
+			append([]any{wordID}, args...)...)
+		if err != nil {
+			return nil, fmt.Errorf("shares translation: %w", err)
+		}
+		defer rows.Close()
+		variants := map[string]struct{}{}
+		for rows.Next() {
+			var text string
+			if err := rows.Scan(&text); err != nil {
+				return nil, fmt.Errorf("shares translation: %w", err)
+			}
+			for _, v := range sm2.ExpandVariants(text) {
+				variants[v] = struct{}{}
+			}
+		}
+		return variants, rows.Err()
 	}
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM (
-			SELECT LOWER(TRIM(w1.text))
-			FROM words w1
-			JOIN translations t1 ON t1.translation_word_id = w1.id
-			WHERE t1.zh_word_id = ? AND w1.language IN (`+langList+`)
-			INTERSECT
-			SELECT LOWER(TRIM(w2.text))
-			FROM words w2
-			JOIN translations t2 ON t2.translation_word_id = w2.id
-			WHERE t2.zh_word_id = ? AND w2.language IN (`+langList+`)
-		)`, args...).Scan(&count)
+
+	variants1, err := fetchVariants(wordID1)
 	if err != nil {
-		return false, fmt.Errorf("shares translation: %w", err)
+		return false, err
 	}
-	return count > 0, nil
+	variants2, err := fetchVariants(wordID2)
+	if err != nil {
+		return false, err
+	}
+	for v := range variants1 {
+		if _, ok := variants2[v]; ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // difficultCandidateAccuracy is the SQL expression for a word's accuracy, used to

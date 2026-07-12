@@ -5149,6 +5149,40 @@ func TestSharesTranslation_CaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestSharesTranslation_SlashVariantOverlap covers the real-world "Nudeln"
+// scenario (issue #188): 面 has DE translation "Nudeln" while 面条 has DE
+// translation "Nudeln / Pasta" — a single multi-gloss entry rather than a
+// separate row. Plain string equality misses the overlap; the same
+// slash-alternative expansion CheckAnswer already applies (sm2.ExpandVariants)
+// must be used so "Nudeln" is recognised as one of 面条's valid variants.
+func TestSharesTranslation_SlashVariantOverlap(t *testing.T) {
+	s := openTestDB(t)
+	id1, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
+		ZhText:       "面",
+		Pinyin:       "miàn",
+		Translations: map[string][]string{"en": {"noodles"}, "de": {"Nudeln"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
+		ZhText:       "面条",
+		Pinyin:       "miàntiáo",
+		Translations: map[string][]string{"en": {"noodle"}, "de": {"Nudeln / Pasta"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en", "de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true: 面条's 'Nudeln / Pasta' includes the 'Nudeln' variant that 面 has")
+	}
+}
+
 // ── Difficult-words drill ───────────────────────────────────────────────────
 
 // makeDifficult marks a seeded word as graduated (learning_new_word=0) with the
