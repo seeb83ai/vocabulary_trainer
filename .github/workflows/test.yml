@@ -18,6 +18,7 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
+          cache-dependency-path: service/go.sum
 
       # Hard gates (verified clean on the current tree).
       - name: gofmt
@@ -68,17 +69,40 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
+          cache-dependency-path: service/go.sum
 
       - name: Download modules
         run: go mod download
         working-directory: service
 
       - name: Run tests (with coverage, report-only)
-        run: go test ./... -count=1 -race -timeout 20m -coverprofile=coverage.out
+        run: go test ./... -count=1 -timeout 20m -coverprofile=coverage.out
         working-directory: service
 
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1
+        working-directory: service
+
+  test-go-race:
+    name: Go tests (race, main only)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+          cache-dependency-path: service/go.sum
+
+      - name: Download modules
+        run: go mod download
+        working-directory: service
+
+      - name: Run tests with race detector
+        run: go test ./... -count=1 -race -timeout 20m
         working-directory: service
 
   test-js:
@@ -111,6 +135,7 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
+          cache-dependency-path: service/go.sum
 
       - name: Download Go modules
         run: go mod download

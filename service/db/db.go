@@ -63,6 +63,23 @@ func (s *Store) ExecForTest(query string, args ...any) (sql.Result, error) {
 	return s.db.Exec(query, args...)
 }
 
+// OpenMigratedTemplate creates a fresh SQLite database file at path with all
+// schema migrations applied, using the default journal mode (not WAL) so the
+// resulting file is self-contained and safe to copy byte-for-byte. Only for
+// use in tests: build one template per test binary and copy it per test
+// instead of re-running all migrations for every test.
+func OpenMigratedTemplate(path string) error {
+	database, err := sql.Open("sqlite", fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)", path))
+	if err != nil {
+		return fmt.Errorf("open template db: %w", err)
+	}
+	defer database.Close()
+	if err := database.Ping(); err != nil {
+		return fmt.Errorf("ping template db: %w", err)
+	}
+	return Migrate(database)
+}
+
 // ParseDateTime parses SQLite datetime strings into time.Time.
 // SQLite stores datetimes as "2006-01-02 15:04:05" or RFC3339; handle both.
 func ParseDateTime(s string) time.Time {
