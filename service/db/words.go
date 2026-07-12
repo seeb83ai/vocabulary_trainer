@@ -698,12 +698,19 @@ type NewWordBaselines struct {
 }
 
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
-// Returns (word, progress, nil) or (nil, nil, nil) if no words exist.
+// Returns (word, progress, extended, nil) or (nil, nil, false, nil) if no words exist.
 // maxNew caps how many new words (first_seen_at IS NULL) can be introduced today; once
 // the count for today reaches maxNew, only already-seen cards are returned.
 // skipNew forces unseen words to be excluded regardless of the daily cap.
 // baselines provides optional additional gates; a nil pointer means no baselines.
-func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool, baselines *NewWordBaselines, excludeIDs []int64) (*models.Word, *models.SM2Progress, error) {
+// allowSessionExtension controls whether GetNextCard may widen the search beyond
+// today's due-date bound to avoid immediately repeating an excluded (recently
+// answered) word — see the excludeFilter-only fallback below. When false, only
+// genuinely due-today cards are ever returned (excluded words may repeat instead).
+// extended is true when the returned card was pulled in via that widened search,
+// i.e. it is not actually due today; callers should reflect this in any due-today
+// count shown to the user.
+func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool, baselines *NewWordBaselines, excludeIDs []int64, allowSessionExtension bool) (*models.Word, *models.SM2Progress, bool, error) {
 	// Build optional tag filter
 	tagFilter := ""
 	var tagArgs []any
@@ -726,7 +733,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND w.user_id = ? AND date(p.first_seen_at) = date('now')`, userID).Scan(&newToday); err != nil {
-		return nil, nil, fmt.Errorf("count new today: %w", err)
+		return nil, nil, false, fmt.Errorf("count new today: %w", err)
 	}
 
 	// When the daily cap is reached or the user chose to skip new words then exclude never-presented words.
@@ -742,7 +749,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 		if baselines.DueTodayEnabled {
 			snap, err := s.EnsureDueTodaySnapshot(ctx, userID)
 			if err != nil {
-				return nil, nil, fmt.Errorf("due today snapshot: %w", err)
+				return nil, nil, false, fmt.Errorf("due today snapshot: %w", err)
 			}
 			if snap >= baselines.DueTodayValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
@@ -758,7 +765,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				   AND p.learning_new_word = 0
 				   AND (p.total_attempts < 3 OR CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts < 0.50)`,
 				userID).Scan(&struggling); err != nil {
-				return nil, nil, fmt.Errorf("count struggling: %w", err)
+				return nil, nil, false, fmt.Errorf("count struggling: %w", err)
 			}
 			if struggling >= baselines.StrugglingValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
@@ -773,7 +780,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				 WHERE w.language = 'zh' AND w.user_id = ?
 				   AND p.first_seen_at >= datetime('now', ?)`,
 				userID, fmt.Sprintf("-%d minutes", baselines.CooldownMinutes)).Scan(&recentCount); err != nil {
-				return nil, nil, fmt.Errorf("check cooldown: %w", err)
+				return nil, nil, false, fmt.Errorf("check cooldown: %w", err)
 			}
 			if recentCount > 0 {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
@@ -792,7 +799,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				   AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.50
 				   AND NOT (p.total_attempts >= 10 AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.70)`,
 				userID).Scan(&learning); err != nil {
-				return nil, nil, fmt.Errorf("count learning: %w", err)
+				return nil, nil, false, fmt.Errorf("count learning: %w", err)
 			}
 			if learning >= baselines.LearningValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
@@ -856,7 +863,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 			   AND p.first_seen_at IS NOT NULL
 			   AND p.due_date <= CURRENT_TIMESTAMP`,
 			userID).Scan(&learningDue); err != nil {
-			return nil, nil, fmt.Errorf("count learning due: %w", err)
+			return nil, nil, false, fmt.Errorf("count learning due: %w", err)
 		}
 		if learningDue == 0 {
 			unseenQuery := `
@@ -881,14 +888,14 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				&up.TotalCorrect, &up.TotalAttempts, &up.StreakBonus, &learning,
 			)
 			if err != nil && err != sql.ErrNoRows {
-				return nil, nil, fmt.Errorf("get next unseen card: %w", err)
+				return nil, nil, false, fmt.Errorf("get next unseen card: %w", err)
 			}
 			if err == nil {
 				uw.CreatedAt = parseDateTime(createdAt)
 				up.DueDate = parseDateTime(dueDate)
 				up.LearningNewWord = learning == 1
 				up.WordID = uw.ID
-				return &uw, &up, nil
+				return &uw, &up, false, nil
 			}
 		}
 	}
@@ -907,30 +914,35 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 
 	w, p, err := tryQuery("AND p.due_date <= CURRENT_TIMESTAMP" + excludeFilter)
 	if err != nil || w != nil {
-		return w, p, err
+		return w, p, false, err
 	}
 	// No overdue cards — prefer cards outside the wrong-retry window so a
 	// recently failed card is not immediately repeated.
 	w, p, err = tryQuery(fmt.Sprintf("AND p.due_date > datetime('now', '+%d seconds') %s", int(sm2.WrongRetryDelay.Seconds()), todayBound) + excludeFilter)
 	if err != nil || w != nil {
-		return w, p, err
+		return w, p, false, err
 	}
 	// All remaining cards are within the retry window; try with exclusion first.
 	w, p, err = tryQuery(todayBound + excludeFilter)
 	if err != nil || w != nil {
-		return w, p, err
+		return w, p, false, err
 	}
 	// No eligible card within today's bound — widen the search to any due date
 	// (still honoring exclusion) before resorting to repeating a recent word.
 	// Otherwise a non-excluded word due further out (e.g. after a long SM2
 	// interval from a correct answer) would be skipped in favor of an
-	// excluded one just because todayBound ruled it out.
-	if excludeFilter != "" {
+	// excluded one just because todayBound ruled it out. This is the "session
+	// extension" fallback: the returned card is not actually due today, so
+	// callers must report it as such (extended=true) — see allowSessionExtension.
+	if excludeFilter != "" && allowSessionExtension {
 		w, p, err = tryQuery(excludeFilter)
 		if err != nil || w != nil {
-			return w, p, err
+			return w, p, w != nil, err
 		}
 	}
 	// Absolute fallback: ignore excludeIDs when no other cards are available.
-	return tryQuery(todayBound)
+	// Still bounded by todayBound, so this never serves a future (not-yet-due)
+	// card — at worst it repeats a recently answered word.
+	w, p, err = tryQuery(todayBound)
+	return w, p, false, err
 }

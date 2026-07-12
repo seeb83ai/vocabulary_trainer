@@ -1345,6 +1345,68 @@ func TestQuizNext_ExcludeParam_SkipsRecentWord(t *testing.T) {
 	}
 }
 
+// TestQuizNext_SessionExtension_FlagsNonDueCardAndRespectsSetting reproduces
+// issue #186: when the only due-today card is excluded (just answered), the
+// server may serve a not-yet-due word instead of repeating it immediately.
+// The response must flag this via session_extension so the frontend can keep
+// its due-today count accurate, and the new extend_session_with_extra_words
+// user setting must be able to turn the behaviour off entirely.
+func TestQuizNext_SessionExtension_FlagsNonDueCardAndRespectsSetting(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	idA := seedWord(t, s, "一", "", []string{"one"}) // due today, will be excluded
+	idB := seedWord(t, s, "二", "", []string{"two"}) // due far in the future
+
+	if err := s.AcknowledgeWord(ctx, int64(2), idA); err != nil {
+		t.Fatalf("AcknowledgeWord idA: %v", err)
+	}
+	if err := s.AcknowledgeWord(ctx, int64(2), idB); err != nil {
+		t.Fatalf("AcknowledgeWord idB: %v", err)
+	}
+	// Push idB's due date 30 days into the future so it is not itself due today.
+	if err := s.SkipWord(ctx, int64(2), idB, 30); err != nil {
+		t.Fatalf("push idB into the future: %v", err)
+	}
+
+	// Default setting (extend_session_with_extra_words=true): excluding idA
+	// (the only due-today card) must fall back to idB and flag it as extended.
+	rec := do(t, r, "GET", fmt.Sprintf("/api/quiz/next?exclude=%d", idA), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.WordID != idB {
+		t.Errorf("want fallback to non-due word_id=%d, got word_id=%d", idB, card.WordID)
+	}
+	if !card.SessionExtension {
+		t.Error("want session_extension=true when a non-due card was served to avoid repetition")
+	}
+
+	// Disable the setting: the server must no longer widen beyond today's bound,
+	// so it repeats idA instead of serving idB.
+	payload := baseSettingsPatch()
+	payload["extend_session_with_extra_words"] = false
+	if rec := do(t, r, http.MethodPatch, "/api/settings", payload); rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = do(t, r, "GET", fmt.Sprintf("/api/quiz/next?exclude=%d", idA), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	card = models.QuizCard{}
+	decodeJSON(t, rec, &card)
+	if card.WordID != idA {
+		t.Errorf("with extension disabled, want repeated due word_id=%d, got word_id=%d", idA, card.WordID)
+	}
+	if card.SessionExtension {
+		t.Error("want session_extension=false when extension is disabled")
+	}
+}
+
 // ── POST /api/quiz/skip ──────────────────────────────────────────────────────
 
 func TestQuizSkip_Valid(t *testing.T) {
@@ -4300,6 +4362,9 @@ func TestGetSettings_Defaults(t *testing.T) {
 	if !st.NewWordRequireTrans {
 		t.Error("want new_word_require_trans=true by default")
 	}
+	if !st.ExtendSessionWithExtraWords {
+		t.Error("want extend_session_with_extra_words=true by default")
+	}
 }
 
 // PutAPIKeys must reject a local LLM URL that points at an internal address
@@ -4360,6 +4425,25 @@ func TestPatchSettings_Valid(t *testing.T) {
 	}
 	if st.NewWordMode1 != "zh_pinyin_to_transl" {
 		t.Errorf("want new_word_mode_1=zh_pinyin_to_transl, got %q", st.NewWordMode1)
+	}
+}
+
+func TestPatchSettings_ExtendSessionWithExtraWords_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["extend_session_with_extra_words"] = false
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.ExtendSessionWithExtraWords {
+		t.Error("want extend_session_with_extra_words=false after patch")
 	}
 }
 

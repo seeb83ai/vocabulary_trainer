@@ -188,6 +188,15 @@
         <p class="text-xs text-gray-400 mt-1 ml-7">When unchecked, new words must be reviewed — there is no way to skip them.</p>
       </div>
 
+      <!-- Session extension -->
+      <div class="mb-5">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="extend-session-extra-words" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Add extra words at the end of a session to avoid repetition</span>
+        </label>
+        <p class="text-xs text-gray-400 mt-1 ml-7">When enabled, if the only card left due today was just answered, a not-yet-due word is served instead of immediately repeating it. When disabled, only genuinely due-today words are ever served, even if that means repeating one.</p>
+      </div>
+
       <!-- Baselines -->
       <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">Baselines</p>
       <p class="text-xs text-gray-500 mb-3">New words are only introduced when <em>all</em> active conditions pass.</p>

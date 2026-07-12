@@ -145,6 +145,10 @@ In **Settings → Daily Learning**, the **Cooldown between new words** field (de
 
 By default a **Skip** button appears during the new-word introduction screen, letting you defer a word for 7 days. In **Settings → Daily Learning** you can hide this button; when hidden, new words cannot be skipped and must be reviewed.
 
+### Session extension (avoid immediate repetition)
+
+Near the end of a session, if the only review card left due today is the one you just answered, the trainer serves a not-yet-due word instead of immediately repeating it — the **Due today** counter on the training page accounts for this so the number you see always matches what you'll actually be asked. In **Settings → Daily Learning**, the **Add extra words at the end of a session to avoid repetition** toggle (default: on) controls this behaviour; turn it off to only ever be served genuinely due-today words, even if that means occasionally repeating one right away.
+
 ## Progressive mode
 
 The **Progressive** quiz mode introduces new words gently and gradually increases difficulty based on your accuracy (correct answers ÷ total attempts). The default behaviour is:
@@ -224,7 +228,7 @@ Each user has a personal settings page (`/settings`) with:
 - **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase.
 - **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode, and choose whether the cycle advances on every attempt (default) or only after a correct answer.
-- **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
+- **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, toggle session extension (serving an extra not-yet-due word at the end of a session instead of immediately repeating one), and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
 - **Gamification** — Enable a word-matching mini-game that appears during training when you have confused at least 3 word pairs in the last 7 days. Configure how often (in minutes) the game may interrupt training. When triggered, three confused pairs are shown in two shuffled columns; click a Chinese word then its English translation to match them; correct pairs turn green, wrong pairs flash red. The game updates SM-2 progress for each matched word.
 - **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account. A user-supplied local LLM URL must be a public `http(s)` address — internal/loopback/link-local targets are rejected (and blocked at connect time) to prevent server-side request forgery. Operators who run a trusted local model on loopback should configure it via the server-side `LOCAL_LLM_URL` env var instead.
 

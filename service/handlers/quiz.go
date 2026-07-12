@@ -108,13 +108,19 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	// ignoring the normal due-date horizon). Mnemonic/component candidates are
 	// not part of the drill.
 	difficult := r.URL.Query().Get("difficult") == "true"
+	// Opt-in (default): allow GetNextCard to widen beyond today's due-date bound
+	// and serve a not-yet-due word so a just-answered word isn't immediately
+	// repeated. Users can disable this in settings to only ever be served
+	// genuinely due-today cards.
+	allowSessionExtension := userSettings == nil || userSettings.ExtendSessionWithExtraWords
 	var word *models.Word
 	var progress *models.SM2Progress
+	var sessionExtension bool
 	var err error
 	if difficult {
 		word, progress, err = h.Store.GetNextDrillCard(r.Context(), userID)
 	} else {
-		word, progress, err = h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines, excludeIDs)
+		word, progress, sessionExtension, err = h.Store.GetNextCard(r.Context(), userID, tags, cap, bucket, skipNew, baselines, excludeIDs, allowSessionExtension)
 	}
 	if err != nil {
 		internalError(w, err)
@@ -225,12 +231,13 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	// Progressive mode: new words (total_attempts==0) are shown as introductions
 	if progress.TotalAttempts == 0 {
 		card := models.QuizCard{
-			WordID:       word.ID,
-			Mode:         models.ModeNewWord,
-			Prompt:       word.Text,
-			Pinyin:       word.Pinyin,
-			DueDate:      progress.DueDate,
-			IntervalDays: progress.IntervalDays,
+			WordID:           word.ID,
+			Mode:             models.ModeNewWord,
+			Prompt:           word.Text,
+			Pinyin:           word.Pinyin,
+			DueDate:          progress.DueDate,
+			IntervalDays:     progress.IntervalDays,
+			SessionExtension: sessionExtension,
 		}
 		card.Translations = map[string][]string{}
 		for _, lang := range langs {
@@ -287,11 +294,12 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	card := models.QuizCard{
-		WordID:          word.ID,
-		Mode:            mode,
-		DueDate:         progress.DueDate,
-		IntervalDays:    progress.IntervalDays,
-		LearningNewWord: progress.LearningNewWord,
+		WordID:           word.ID,
+		Mode:             mode,
+		DueDate:          progress.DueDate,
+		IntervalDays:     progress.IntervalDays,
+		LearningNewWord:  progress.LearningNewWord,
+		SessionExtension: sessionExtension,
 	}
 
 	switch mode {

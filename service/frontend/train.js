@@ -412,6 +412,16 @@ async function loadTrainSettings() {
   applyComponentPill();
 }
 
+// dueDisplayCount computes the "remaining today" number shown to the user.
+// GetNextCard may serve a not-yet-due (session_extension) card to avoid
+// immediately repeating a just-answered word (see #186); that word isn't
+// counted in stats.due_today, so it must be added back in here to keep the
+// displayed count in sync with what the user will actually be asked.
+function dueDisplayCount(stats, sessionExtension) {
+  return stats.due_today + (stats.hmm_due_today || 0) + (stats.components_due_today || 0)
+    + (sessionExtension ? 1 : 0);
+}
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
@@ -423,7 +433,7 @@ async function loadStats() {
     const statsUrl = qs ? `/api/quiz/stats?${qs}` : '/api/quiz/stats';
     const stats = await apiFetch(statsUrl);
     latestStats = stats;
-    setText('stats-due', stats.due_today + (stats.hmm_due_today || 0) + (stats.components_due_today || 0));
+    setText('stats-due', dueDisplayCount(stats, false));
     setText('stats-total', stats.total);
     setText('stats-new', `${stats.new_today} / ${stats.max_new_per_day}`);
     renderDifficultDrill();
@@ -507,6 +517,12 @@ async function loadNextCard() {
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
+    // The served card was pulled in from beyond today's due-date bound solely
+    // to avoid repeating a just-answered word — it isn't reflected in
+    // latestStats.due_today, so bump the displayed count by 1 to match.
+    if (currentCard?.session_extension && latestStats) {
+      setText('stats-due', dueDisplayCount(latestStats, true));
+    }
   } catch (e) {
     hide('card-area');
     if (e.message === 'no words available' && difficultDrill) {
