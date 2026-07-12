@@ -31,6 +31,7 @@ func seedPinyinSounds(t *testing.T, store *Store) []models.PinyinSound {
 }
 
 func TestInsertPinyinSound(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
@@ -51,6 +52,7 @@ func TestInsertPinyinSound(t *testing.T) {
 }
 
 func TestGetPinyinSoundByID(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
@@ -76,6 +78,7 @@ func TestGetPinyinSoundByID(t *testing.T) {
 }
 
 func TestGetPinyinSoundBySyllableTone(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	seedPinyinSounds(t, store)
 
@@ -92,6 +95,7 @@ func TestGetPinyinSoundBySyllableTone(t *testing.T) {
 }
 
 func TestGetNextPinyinCard(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	seedPinyinSounds(t, store)
 
@@ -112,6 +116,7 @@ func TestGetNextPinyinCard(t *testing.T) {
 }
 
 func TestGetNextPinyinCardWithTags(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	seedPinyinSounds(t, store)
 
@@ -129,6 +134,7 @@ func TestGetNextPinyinCardWithTags(t *testing.T) {
 }
 
 func TestGetPinyinDistractors(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
@@ -148,6 +154,7 @@ func TestGetPinyinDistractors(t *testing.T) {
 }
 
 func TestGetPinyinProgress(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
@@ -164,6 +171,7 @@ func TestGetPinyinProgress(t *testing.T) {
 }
 
 func TestUpdatePinyinProgress(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
@@ -183,6 +191,7 @@ func TestUpdatePinyinProgress(t *testing.T) {
 }
 
 func TestPinyinStats(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	seedPinyinSounds(t, store)
 
@@ -200,6 +209,7 @@ func TestPinyinStats(t *testing.T) {
 }
 
 func TestListPinyinTags(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	seedPinyinSounds(t, store)
 
@@ -213,6 +223,7 @@ func TestListPinyinTags(t *testing.T) {
 }
 
 func TestPinyinConfusions(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 
@@ -241,6 +252,7 @@ func TestPinyinConfusions(t *testing.T) {
 }
 
 func TestAcknowledgePinyinSound(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	sounds := seedPinyinSounds(t, store)
 

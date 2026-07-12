@@ -71,6 +71,7 @@ func doWithCookie(t *testing.T, r http.Handler, method, path string, cookie *htt
 // sent over plain HTTP, and must omit it in dev so HTTP-based local/e2e
 // testing keeps working.
 func TestSessionCookie_SecureInProduction(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	authH, err := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "production")
 	if err != nil {
@@ -91,6 +92,7 @@ func TestSessionCookie_SecureInProduction(t *testing.T) {
 }
 
 func TestSessionCookie_NotSecureInDev(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := do(t, r, "POST", "/api/register", map[string]string{
 		"email": "dev@example.com", "password": "securepass1",
@@ -106,6 +108,7 @@ func TestSessionCookie_NotSecureInDev(t *testing.T) {
 // ── NewAuthHandler ────────────────────────────────────────────────────────────
 
 func TestNewAuthHandler_NoSecret_Succeeds(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
 	if err != nil {
@@ -117,6 +120,7 @@ func TestNewAuthHandler_NoSecret_Succeeds(t *testing.T) {
 // by main.go to validate startup configuration treats an empty
 // SESSION_SECRET as fatal whenever APP_ENV is not "dev".
 func TestRequireProductionSecret_RejectsEmpty(t *testing.T) {
+	t.Parallel()
 	if err := handlers.RequireProductionSecret("", "production"); err == nil {
 		t.Error("want error when SESSION_SECRET is empty in production")
 	}
@@ -129,6 +133,7 @@ func TestRequireProductionSecret_RejectsEmpty(t *testing.T) {
 // SESSION_SECRET is still allowed when the operator explicitly opts in
 // via APP_ENV=dev.
 func TestRequireProductionSecret_AllowsDev(t *testing.T) {
+	t.Parallel()
 	if err := handlers.RequireProductionSecret("", "dev"); err != nil {
 		t.Errorf("dev mode should permit empty secret, got %v", err)
 	}
@@ -137,6 +142,7 @@ func TestRequireProductionSecret_AllowsDev(t *testing.T) {
 // TestRequireProductionSecret_AllowsConfiguredSecret confirms a non-empty
 // secret passes in any env.
 func TestRequireProductionSecret_AllowsConfiguredSecret(t *testing.T) {
+	t.Parallel()
 	if err := handlers.RequireProductionSecret("anything", "production"); err != nil {
 		t.Errorf("production with a secret must succeed, got %v", err)
 	}
@@ -146,6 +152,7 @@ func TestRequireProductionSecret_AllowsConfiguredSecret(t *testing.T) {
 }
 
 func TestNewAuthHandler_ValidSecret_Succeeds(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	secret := "a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2"
 	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", secret)
@@ -155,6 +162,7 @@ func TestNewAuthHandler_ValidSecret_Succeeds(t *testing.T) {
 }
 
 func TestNewAuthHandler_InvalidHex_Errors(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", "notvalidhex!!")
 	if err == nil {
@@ -163,6 +171,7 @@ func TestNewAuthHandler_InvalidHex_Errors(t *testing.T) {
 }
 
 func TestNewAuthHandler_TooShortSecret_Errors(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	// 31 bytes = 62 hex chars — one byte short of the 32-byte minimum.
 	_, err := handlers.NewAuthHandler(s, nil, "http://localhost", "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899aa"[:62])
@@ -172,6 +181,7 @@ func TestNewAuthHandler_TooShortSecret_Errors(t *testing.T) {
 }
 
 func TestNewAuthHandler_PersistentSecret_TokenSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	secret := "a3f1c2e4b5d6a7f8e9c0d1b2a3f4e5d6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2"
 
@@ -208,6 +218,7 @@ func TestNewAuthHandler_PersistentSecret_TokenSurvivesRestart(t *testing.T) {
 // ── AuthStatus ────────────────────────────────────────────────────────────────
 
 func TestAuthStatus_ReturnsTrue(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := do(t, r, "GET", "/api/auth/status", nil)
 	if rec.Code != http.StatusOK {
@@ -223,6 +234,7 @@ func TestAuthStatus_ReturnsTrue(t *testing.T) {
 // ── Middleware ────────────────────────────────────────────────────────────────
 
 func TestMiddleware_NoSession_APIReturns401(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := do(t, r, "GET", "/api/protected", nil)
 	if rec.Code != http.StatusUnauthorized {
@@ -236,6 +248,7 @@ func TestMiddleware_NoSession_APIReturns401(t *testing.T) {
 }
 
 func TestMiddleware_NoSession_PageRedirectsToRoot(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 
 	req := httptest.NewRequest("GET", "/train", nil)
@@ -251,6 +264,7 @@ func TestMiddleware_NoSession_PageRedirectsToRoot(t *testing.T) {
 }
 
 func TestMiddleware_RootAccessibleWithoutSession(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := do(t, r, "GET", "/", nil)
 	if rec.Code != http.StatusOK {
@@ -259,6 +273,7 @@ func TestMiddleware_RootAccessibleWithoutSession(t *testing.T) {
 }
 
 func TestMiddleware_AuthStatusAccessibleWithoutSession(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := do(t, r, "GET", "/api/auth/status", nil)
 	if rec.Code != http.StatusOK {
@@ -269,6 +284,7 @@ func TestMiddleware_AuthStatusAccessibleWithoutSession(t *testing.T) {
 // ── Login ─────────────────────────────────────────────────────────────────────
 
 func TestLogin_CorrectCredentials(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := loginReq(t, r, "me@example.de", "I learn zh")
 	if rec.Code != http.StatusOK {
@@ -278,6 +294,7 @@ func TestLogin_CorrectCredentials(t *testing.T) {
 }
 
 func TestLogin_WrongPassword(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := loginReq(t, r, "me@example.de", "wrong")
 	if rec.Code != http.StatusUnauthorized {
@@ -286,6 +303,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 }
 
 func TestLogin_UnknownEmail(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := loginReq(t, r, "nobody@example.com", "I learn zh")
 	if rec.Code != http.StatusUnauthorized {
@@ -294,6 +312,7 @@ func TestLogin_UnknownEmail(t *testing.T) {
 }
 
 func TestLogin_AdminCredentials(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := loginReq(t, r, "admin@example.de", "I am the admin")
 	if rec.Code != http.StatusOK {
@@ -303,6 +322,7 @@ func TestLogin_AdminCredentials(t *testing.T) {
 }
 
 func TestLogin_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	req := httptest.NewRequest("POST", "/api/login", nil)
 	req.Header.Set("Content-Type", "application/json")
@@ -316,6 +336,7 @@ func TestLogin_InvalidJSON(t *testing.T) {
 // ── Session access ────────────────────────────────────────────────────────────
 
 func TestSession_ValidCookieAllowsAccess(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
@@ -327,6 +348,7 @@ func TestSession_ValidCookieAllowsAccess(t *testing.T) {
 }
 
 func TestSession_TamperedCookieDenied(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
@@ -339,6 +361,7 @@ func TestSession_TamperedCookieDenied(t *testing.T) {
 }
 
 func TestSession_GarbageCookieDenied(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := doWithCookie(t, r, "GET", "/api/protected", &http.Cookie{
 		Name: "vocab_session", Value: "notavalidtoken",
@@ -353,6 +376,7 @@ func TestSession_GarbageCookieDenied(t *testing.T) {
 // cross-site request — the strongest CSRF mitigation available without
 // additional tokens.
 func TestLogin_CookieSameSiteStrict(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := loginReq(t, r, "me@example.de", "I learn zh")
 	if rec.Code != http.StatusOK {
@@ -373,6 +397,7 @@ func TestLogin_CookieSameSiteStrict(t *testing.T) {
 // first differing byte — a timing-attack vector. The behaviour must be
 // identical regardless of where the tamper occurs.
 func TestSession_TamperedSameLengthSignatureDenied(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
@@ -415,6 +440,7 @@ func TestSession_TamperedSameLengthSignatureDenied(t *testing.T) {
 // registration. Returning 409 or a "email already registered" message
 // lets an attacker enumerate valid accounts.
 func TestRegister_ExistingEmail_DoesNotLeak(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 
 	// "me@example.de" is pre-seeded by TestMain.
@@ -443,6 +469,7 @@ func TestRegister_ExistingEmail_DoesNotLeak(t *testing.T) {
 // not by the public response shape. We test that both succeed (200) with
 // no error.
 func TestRegister_FreshEmail_Succeeds(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	rec := do(t, r, "POST", "/api/register", map[string]string{
 		"email":    "new-user@example.de",
@@ -461,6 +488,7 @@ func TestRegister_FreshEmail_Succeeds(t *testing.T) {
 // ── Logout ────────────────────────────────────────────────────────────────────
 
 func TestLogout_ClearsSession(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 
 	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
@@ -496,6 +524,7 @@ func TestLogout_ClearsSession(t *testing.T) {
 // TestRegister_AutoVerifyWhenNoSMTP verifies that when SMTP is not configured,
 // registration always auto-verifies and auto-logs-in the user regardless of APP_ENV.
 func TestRegister_AutoVerifyWhenNoSMTP(t *testing.T) {
+	t.Parallel()
 	for _, env := range []string{"", "dev", "production"} {
 		t.Run("appEnv="+env, func(t *testing.T) {
 			s := openTestDB(t)
@@ -535,6 +564,7 @@ func TestRegister_AutoVerifyWhenNoSMTP(t *testing.T) {
 // password change, any previously-minted session token (e.g. a stolen
 // cookie) is no longer accepted.
 func TestChangePassword_InvalidatesOldSessions(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
 	if err != nil {
@@ -588,6 +618,7 @@ func TestChangePassword_InvalidatesOldSessions(t *testing.T) {
 // login attempts return 403 with a generic error even when the right
 // password is supplied.
 func TestLogin_AccountLocksAfterMaxFailures(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	const tries = handlers.MaxFailedLogins
 	for i := 0; i < tries; i++ {
@@ -607,6 +638,7 @@ func TestLogin_AccountLocksAfterMaxFailures(t *testing.T) {
 // clears any partial failure count so legitimate users don't accumulate
 // risk across sessions.
 func TestLogin_SuccessResetsFailedCounter(t *testing.T) {
+	t.Parallel()
 	r := newAuthRouter(t)
 	// Fewer-than-threshold wrong attempts, then a correct one.
 	for i := 0; i < handlers.MaxFailedLogins-1; i++ {
@@ -631,6 +663,7 @@ func TestLogin_SuccessResetsFailedCounter(t *testing.T) {
 // TestAudit_LoginSuccessRecorded verifies a successful login appends an
 // audit entry tagged with the user id and source IP.
 func TestAudit_LoginSuccessRecorded(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
 	if err != nil {
@@ -668,6 +701,7 @@ func TestAudit_LoginSuccessRecorded(t *testing.T) {
 // also logged (with user_id when the email matches, so an account owner
 // can review activity even when the attacker doesn't know the password).
 func TestAudit_LoginFailureRecorded(t *testing.T) {
+	t.Parallel()
 	s := openTestDB(t)
 	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
 	if err != nil {
@@ -703,6 +737,7 @@ func TestAudit_LoginFailureRecorded(t *testing.T) {
 // ── Crypto helpers ────────────────────────────────────────────────────────────
 
 func TestEncryptDecryptAPIKey_RoundTrip(t *testing.T) {
+	t.Parallel()
 	key := make([]byte, 32)
 	for i := range key {
 		key[i] = byte(i)
@@ -725,6 +760,7 @@ func TestEncryptDecryptAPIKey_RoundTrip(t *testing.T) {
 }
 
 func TestEncryptDecryptAPIKey_Empty(t *testing.T) {
+	t.Parallel()
 	key := make([]byte, 32)
 	enc, err := handlers.EncryptAPIKey(key, "")
 	if err != nil {
@@ -743,6 +779,7 @@ func TestEncryptDecryptAPIKey_Empty(t *testing.T) {
 }
 
 func TestSealOpenSettingsKey_RoundTrip(t *testing.T) {
+	t.Parallel()
 	secret := make([]byte, 32)
 	for i := range secret {
 		secret[i] = byte(i + 100)
@@ -765,6 +802,7 @@ func TestSealOpenSettingsKey_RoundTrip(t *testing.T) {
 }
 
 func TestMaskKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input string
 		want  string

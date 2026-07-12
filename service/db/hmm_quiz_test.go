@@ -47,6 +47,7 @@ func seedHMMLibrary(t *testing.T, db *sql.DB) {
 const testUserID = int64(2)
 
 func TestEnsureHMMProgress(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	seedHMMLibrary(t, store.db)
 
@@ -95,6 +96,7 @@ func TestEnsureHMMProgress(t *testing.T) {
 }
 
 func TestGetHMMProgress_RoundTrip(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	seedHMMLibrary(t, store.db)
 
@@ -138,6 +140,7 @@ func TestGetHMMProgress_RoundTrip(t *testing.T) {
 }
 
 func TestGetHMMStats(t *testing.T) {
+	t.Parallel()
 	store := openTestDB(t)
 	seedHMMLibrary(t, store.db)
 

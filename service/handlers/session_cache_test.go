@@ -6,6 +6,7 @@ import (
 )
 
 func TestInvalidationCache_Hit(t *testing.T) {
+	t.Parallel()
 	c := newInvalidationCache(time.Minute)
 	calls := 0
 	load := func() (time.Time, error) { calls++; return time.Unix(100, 0), nil }
@@ -22,6 +23,7 @@ func TestInvalidationCache_Hit(t *testing.T) {
 }
 
 func TestInvalidationCache_InvalidateReloads(t *testing.T) {
+	t.Parallel()
 	c := newInvalidationCache(time.Minute)
 	calls := 0
 	load := func() (time.Time, error) { calls++; return time.Unix(int64(calls), 0), nil }
@@ -37,6 +39,7 @@ func TestInvalidationCache_InvalidateReloads(t *testing.T) {
 }
 
 func TestInvalidationCache_Expiry(t *testing.T) {
+	t.Parallel()
 	c := newInvalidationCache(time.Second)
 	calls := 0
 	load := func() (time.Time, error) { calls++; return time.Time{}, nil }

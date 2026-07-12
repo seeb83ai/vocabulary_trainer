@@ -10,6 +10,7 @@ func cand(kind cardKind, present bool, due time.Time) CardCandidate {
 }
 
 func TestSelectNextCard_SingleSource(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	got, ok := SelectNextCard([]CardCandidate{
 		cand(cardWord, false, time.Time{}),
@@ -22,6 +23,7 @@ func TestSelectNextCard_SingleSource(t *testing.T) {
 }
 
 func TestSelectNextCard_EarliestDueWins(t *testing.T) {
+	t.Parallel()
 	base := time.Now()
 	got, ok := SelectNextCard([]CardCandidate{
 		cand(cardWord, true, base.Add(10*time.Minute)),
@@ -34,6 +36,7 @@ func TestSelectNextCard_EarliestDueWins(t *testing.T) {
 }
 
 func TestSelectNextCard_TieBreakIsCandidateOrder(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	// All due at the same instant: the earliest in slice order wins. The quiz
 	// passes [word, hmm, component], so word wins an exact tie.
@@ -56,6 +59,7 @@ func TestSelectNextCard_TieBreakIsCandidateOrder(t *testing.T) {
 }
 
 func TestSelectNextCard_AllAbsent(t *testing.T) {
+	t.Parallel()
 	_, ok := SelectNextCard([]CardCandidate{
 		cand(cardWord, false, time.Time{}),
 		cand(cardHMM, false, time.Time{}),

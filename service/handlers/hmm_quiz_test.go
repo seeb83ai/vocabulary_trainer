@@ -63,6 +63,7 @@ func seedHMMActorEntry(t *testing.T, h *handlers.HMMQuizHandler, initial, name s
 }
 
 func TestHMMQuizAnswer_Correct(t *testing.T) {
+	t.Parallel()
 	router, h := hmmQuizRouter(t)
 	seedHMMActorEntry(t, h, "b", "Bruce Lee")
 
@@ -88,6 +89,7 @@ func TestHMMQuizAnswer_Correct(t *testing.T) {
 }
 
 func TestHMMQuizAnswer_Wrong(t *testing.T) {
+	t.Parallel()
 	router, h := hmmQuizRouter(t)
 	seedHMMActorEntry(t, h, "b", "Bruce Lee")
 
@@ -113,6 +115,7 @@ func TestHMMQuizAnswer_Wrong(t *testing.T) {
 }
 
 func TestHMMQuizAnswer_CaseInsensitive(t *testing.T) {
+	t.Parallel()
 	router, h := hmmQuizRouter(t)
 	seedHMMActorEntry(t, h, "b", "Bruce Lee")
 
@@ -132,6 +135,7 @@ func TestHMMQuizAnswer_CaseInsensitive(t *testing.T) {
 }
 
 func TestHMMQuizAnswer_OptionalParensPrefix(t *testing.T) {
+	t.Parallel()
 	router, h := hmmQuizRouter(t)
 	// Stored name has a bracketed prefix; user omits it.
 	seedHMMActorEntry(t, h, "r", "(人) Arnold Schwarzenegger")
@@ -152,6 +156,7 @@ func TestHMMQuizAnswer_OptionalParensPrefix(t *testing.T) {
 }
 
 func TestHMMQuizAnswer_OptionalParensInline(t *testing.T) {
+	t.Parallel()
 	router, h := hmmQuizRouter(t)
 	// Stored name has bracketed segments inline; user omits them.
 	seedHMMActorEntry(t, h, "r", "Kreuz (十) und Rasiermesser (一)")
