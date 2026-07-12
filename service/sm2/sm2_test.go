@@ -378,6 +378,42 @@ func TestCheckAnswer_TrailingPunctNotMidString(t *testing.T) {
 	}
 }
 
+// ── Fullwidth ↔ ASCII punctuation equivalence (issue #175) ───────────────────
+
+func TestCheckAnswer_FullwidthQuestionMark_UserTypesASCII(t *testing.T) {
+	// Stored zh word has ？ (fullwidth); user on mobile types ? (ASCII)
+	if !CheckAnswer("你好吗?", []string{"你好吗？"}) {
+		t.Error("ASCII ? should match fullwidth ？ in stored answer")
+	}
+}
+
+func TestCheckAnswer_FullwidthQuestionMark_StoredHasASCII(t *testing.T) {
+	// Stored answer has ASCII ?; user types fullwidth ？
+	if !CheckAnswer("你好吗？", []string{"你好吗?"}) {
+		t.Error("fullwidth ？ in user answer should match ASCII ? in stored answer")
+	}
+}
+
+func TestCheckAnswer_FullwidthExclamation_UserTypesASCII(t *testing.T) {
+	if !CheckAnswer("好!", []string{"好！"}) {
+		t.Error("ASCII ! should match fullwidth ！")
+	}
+}
+
+func TestNormalizeAnswer_FullwidthEquivalence(t *testing.T) {
+	cases := []struct{ a, b string }{
+		{"你好？", "你好?"},
+		{"好！", "好!"},
+		{"一，二", "一,二"},
+	}
+	for _, c := range cases {
+		na, nb := NormalizeAnswer(c.a), NormalizeAnswer(c.b)
+		if na != nb {
+			t.Errorf("NormalizeAnswer(%q)=%q != NormalizeAnswer(%q)=%q", c.a, na, c.b, nb)
+		}
+	}
+}
+
 func TestCheckAnswer_TrailingComma(t *testing.T) {
 	if !CheckAnswer("hello,", []string{"hello"}) {
 		t.Error("trailing comma in user answer should be ignored")
