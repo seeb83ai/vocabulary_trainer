@@ -37,54 +37,6 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   }
 }).catch(() => {});
 
-function normalizeAnswer(s) {
-  s = s.toLowerCase().trim();
-  s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
-  return s;
-}
-
-function stripParens(s) {
-  let prev;
-  do {
-    prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
-  } while (s !== prev);
-  return s;
-}
-
-function expandVariants(a) {
-  const seen = new Set();
-  const add = s => { const n = normalizeAnswer(s); if (n) seen.add(n); };
-  add(a);
-  const noParens = stripParens(a);
-  add(noParens);
-  for (const base of [a, noParens]) {
-    for (const part of base.split('/')) {
-      add(part);
-      add(stripParens(part));
-    }
-  }
-  return [...seen];
-}
-
-// Returns true if a wrong answer should be offered as an "accept as typo".
-// For transl_to_zh mode, compares pinyin strings (levenshtein ≤ 1) so that
-// sound-alike characters count as a typo rather than raw character differences.
-// For all other modes, expands correct-answer variants (stripping parens and
-// splitting on /) before comparing — mirrors the backend expandVariants logic.
-function shouldShowAcceptTypo(mode, answer, result) {
-  if (!answer || !answer.trim()) return false;
-  if (mode === 'transl_to_zh') {
-    if (!result.user_answer_pinyin || !result.pinyin) return false;
-    const ua = result.user_answer_pinyin.toLowerCase().trim();
-    const ca = result.pinyin.toLowerCase().trim();
-    return levenshtein(ua, ca) <= 1;
-  }
-  const norm = normalizeAnswer(answer);
-  const variants = (result.correct_answers || []).flatMap(expandVariants);
-  return variants.some(c => levenshtein(norm, c) === 1);
-}
-
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
   const dp = Array.from({ length: m + 1 }, (_, i) =>
@@ -181,6 +133,11 @@ const HMM_TYPE_COLORS = {
 
 let currentCard = null;
 let isSubmitted = false;
+// Set while an ambiguous-answer disambiguation panel is shown and unresolved.
+// Holds a function that renders the normal wrong-answer screen; consumed (and
+// cleared) by the Next button so continuing without resolving the ambiguity
+// falls back to the usual wrong-answer result instead of silently advancing.
+let ambiguousUnresolved = null;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
 
 // IDs of the last two answered vocabulary words, used to avoid immediate re-show.
@@ -430,15 +387,16 @@ async function loadStats() {
   } catch (_) {}
 }
 
-async function loadNextCard() {
+async function loadNextCard(trackCurrent = false) {
   _noCardsPaused = true;  // pause until we confirm a card is ready
   await _flushTime();
   // Track the word we're leaving so it isn't immediately re-shown.
   // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
-  if (currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
+  if (trackCurrent && currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
     recentWordIDs = [currentCard.word_id, ...recentWordIDs].slice(0, 2);
   }
   isSubmitted = false;
+  ambiguousUnresolved = null;
   hide('card-area');
   hide('result-area');
   hide('empty-state');
@@ -772,60 +730,139 @@ async function submitAnswer(e) {
             </div>
             <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
           </div>` : '';
-      breakdown.innerHTML = `
-        <div class="mt-4 space-y-2 text-left">
-          ${yourAnswerHtml}
-          ${confusedHtml}
-          ${makeCorrectBox(true)}
-        </div>`;
-      const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
-      if (confusedPlayBtn) {
-        confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
-      }
-      const inlinePlay = breakdown.querySelector('.result-inline-play');
-      if (inlinePlay) inlinePlay.addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
-      show('word-breakdown');
+      // Renders the normal wrong-answer screen. Used directly for non-ambiguous
+      // wrong answers, and as the fallback when the user continues past an
+      // ambiguous result without resolving it (issue #194).
+      const renderWrongResult = () => {
+        icon.textContent = t('result.wrong');
+        icon.className = 'text-3xl font-bold text-red-600 mb-4';
+        breakdown.innerHTML = `
+          <div class="mt-4 space-y-2 text-left">
+            ${yourAnswerHtml}
+            ${confusedHtml}
+            ${makeCorrectBox(true)}
+          </div>`;
+        const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
+        if (confusedPlayBtn) {
+          confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
+        }
+        const inlinePlay = breakdown.querySelector('.result-inline-play');
+        if (inlinePlay) inlinePlay.addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
+        show('word-breakdown');
 
-      if (!isEmpty) {
-        const addBtn = $('add-translation-btn');
-        addBtn.textContent = t('result.addTranslation', { answer });
-        addBtn.disabled = false;
-        addBtn.className = 'mt-3 mb-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
-        show('add-translation-btn');
+        if (!isEmpty) {
+          const addBtn = $('add-translation-btn');
+          addBtn.textContent = t('result.addTranslation', { answer });
+          addBtn.disabled = false;
+          addBtn.className = 'mt-3 mb-3 w-full border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-700 text-sm font-medium py-2 rounded-xl transition';
+          show('add-translation-btn');
 
-        addBtn.onclick = async () => {
-          addBtn.disabled = true;
-          try {
-            await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
-              method: 'POST',
-              body: JSON.stringify({ text: answer, lang: selectedLangs[0] || userPrimaryLang }),
-            });
-            await apiFetch('/api/quiz/accept-correct', {
-              method: 'POST',
-              body: JSON.stringify({
-                word_id: currentCard.word_id,
-                mode: currentCard.mode,
-                langs: selectedLangs,
-              }),
-            });
-            loadNextCard();
-          } catch (err) {
-            addBtn.disabled = false;
-            alert('Could not add translation: ' + err.message);
-          }
-        };
-      } else {
+          addBtn.onclick = async () => {
+            addBtn.disabled = true;
+            try {
+              await apiFetch(`/api/words/${currentCard.word_id}/translations`, {
+                method: 'POST',
+                body: JSON.stringify({ text: answer, lang: selectedLangs[0] || userPrimaryLang }),
+              });
+              await apiFetch('/api/quiz/accept-correct', {
+                method: 'POST',
+                body: JSON.stringify({
+                  word_id: currentCard.word_id,
+                  mode: currentCard.mode,
+                  langs: selectedLangs,
+                }),
+              });
+              loadNextCard(true);
+            } catch (err) {
+              addBtn.disabled = false;
+              alert('Could not add translation: ' + err.message);
+            }
+          };
+        } else {
+          hide('add-translation-btn');
+        }
+
+        // Show "Accept as correct" button based on user's mode setting.
+        if (shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
+          const acceptBtn = $('accept-correct-btn');
+          acceptBtn.disabled = false;
+          acceptBtn.textContent = 'Accept as correct (typo)';
+          show('accept-correct-btn');
+        } else {
+          hide('accept-correct-btn');
+        }
+
+        loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+      };
+
+      if (result.ambiguous) {
+        // Several words share a translation — ask the user to type another word with the same meaning.
+        icon.textContent = t('result.disambigAmbiguous');
+        icon.className = 'text-3xl font-bold text-orange-500 mb-4';
+        const disambigHtml = `
+          <div id="disambig-area" class="mt-4 space-y-2 text-left">
+            ${confusedHtml}
+            <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl">
+              <div class="text-xs text-orange-600 uppercase tracking-wide mb-2">${escHtml(t('result.disambigPrompt'))}</div>
+              <form id="disambig-form" class="flex gap-2">
+                <input id="disambig-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
+                  class="flex-1 min-w-0 border border-orange-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  placeholder="Type Chinese word…" />
+                <button type="submit" class="shrink-0 px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition">Check</button>
+              </form>
+              <div id="disambig-feedback" class="mt-1 text-sm hidden"></div>
+            </div>
+          </div>`;
+        breakdown.innerHTML = disambigHtml;
+        const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
+        if (confusedPlayBtn) {
+          confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
+        }
+        show('word-breakdown');
         hide('add-translation-btn');
-      }
-
-      // Show "Accept as correct" button based on user's mode setting.
-      if (shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
-        const acceptBtn = $('accept-correct-btn');
-        acceptBtn.disabled = false;
-        acceptBtn.textContent = 'Accept as correct (typo)';
-        show('accept-correct-btn');
-      } else {
         hide('accept-correct-btn');
+        // Continuing without resolving falls back to the normal wrong-answer
+        // screen instead of silently advancing (issue #194).
+        ambiguousUnresolved = renderWrongResult;
+
+        const disambigInput = document.getElementById('disambig-input');
+        const disambigFeedback = document.getElementById('disambig-feedback');
+        disambigInput.focus();
+
+        document.getElementById('disambig-form').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const typed = disambigInput.value.trim();
+          if (!typed) return;
+          if (typed.toLowerCase() === result.zh_text.toLowerCase()) {
+            // Correct — upgrade to correct via AcceptCorrect
+            try {
+              await apiFetch('/api/quiz/accept-correct', {
+                method: 'POST',
+                body: JSON.stringify({ word_id: currentCard.word_id, mode: currentCard.mode, langs: selectedLangs }),
+              });
+              ambiguousUnresolved = null;
+              icon.textContent = t('result.correct');
+              icon.className = 'text-3xl font-bold text-green-600 mb-4';
+              const disambigArea = document.getElementById('disambig-area');
+              if (disambigArea) disambigArea.remove();
+              breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
+              show('word-breakdown');
+              loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+            } catch (err) {
+              disambigFeedback.textContent = 'Error: ' + err.message;
+              disambigFeedback.className = 'mt-1 text-sm text-red-600';
+              disambigFeedback.classList.remove('hidden');
+            }
+          } else {
+            disambigInput.value = '';
+            disambigFeedback.textContent = t('result.disambigNotQuite');
+            disambigFeedback.className = 'mt-1 text-sm text-red-500';
+            disambigFeedback.classList.remove('hidden');
+            disambigInput.focus();
+          }
+        });
+      } else {
+        renderWrongResult();
       }
     } else {
       breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
@@ -891,7 +928,14 @@ async function submitAnswer(e) {
     editBtn.onclick = () => window.open(`/vocab?edit=${currentCard.word_id}`, '_blank');
     show('review-edit-row');
 
-    loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+    // Wrong-answer paths (including the ambiguous fallback) load the
+    // character breakdown themselves once the result actually resolves —
+    // it must stay hidden while an ambiguous result is unresolved so it
+    // doesn't give away the answer (issue: "do not show character
+    // breakdown on ambiguous screen").
+    if (result.correct) {
+      loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+    }
 
     // HMM mnemonic scene display
     const hmmEl = $('result-hmm');
@@ -924,7 +968,7 @@ async function submitAnswer(e) {
       show('result-hmm');
     }
 
-    $('next-btn').focus();
+    if (!ambiguousUnresolved) $('next-btn').focus();
     await loadStats();
   } catch (err) {
     isSubmitted = false;
@@ -1396,8 +1440,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('answer-form').addEventListener('submit', submitAnswer);
   $('next-btn').addEventListener('click', async () => {
+    // Continuing past an unresolved ambiguous result reveals the normal
+    // wrong-answer screen first; a second click then actually advances.
+    if (ambiguousUnresolved) {
+      const showFallback = ambiguousUnresolved;
+      ambiguousUnresolved = null;
+      showFallback();
+      return;
+    }
     await _maybeShowMatchGame();
-    loadNextCard();
+    loadNextCard(true);
   });
   $('accept-correct-btn').addEventListener('click', async () => {
     const btn = $('accept-correct-btn');
@@ -1418,7 +1470,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }),
         });
       }
-      loadNextCard();
+      loadNextCard(true);
     } catch (err) {
       btn.disabled = false;
       alert('Could not accept as correct: ' + err.message);

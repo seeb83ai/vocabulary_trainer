@@ -724,6 +724,63 @@ func (s *Store) ClearSM2PrevState(ctx context.Context, wordID int64) error {
 	return err
 }
 
+// SharesTranslation returns true when zhWordID1 and zhWordID2 share at least
+// one translation in the given languages. If langs is empty it falls back to
+// ["en"]. Matching is done in Go using sm2.ExpandVariants (the same
+// slash-alternative / optional-parens expansion CheckAnswer applies) rather
+// than raw string equality, so a multi-gloss entry like "Nudeln / Pasta"
+// correctly overlaps with a plain "Nudeln" translation on another word.
+func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error) {
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
+	placeholders := make([]string, len(langs))
+	args := make([]any, len(langs))
+	for i, l := range langs {
+		placeholders[i] = "?"
+		args[i] = l
+	}
+	langList := strings.Join(placeholders, ",")
+
+	fetchVariants := func(wordID int64) (map[string]struct{}, error) {
+		rows, err := s.db.QueryContext(ctx, `
+			SELECT w.text FROM words w
+			JOIN translations t ON t.translation_word_id = w.id
+			WHERE t.zh_word_id = ? AND w.language IN (`+langList+`)`,
+			append([]any{wordID}, args...)...)
+		if err != nil {
+			return nil, fmt.Errorf("shares translation: %w", err)
+		}
+		defer rows.Close()
+		variants := map[string]struct{}{}
+		for rows.Next() {
+			var text string
+			if err := rows.Scan(&text); err != nil {
+				return nil, fmt.Errorf("shares translation: %w", err)
+			}
+			for _, v := range sm2.ExpandVariants(text) {
+				variants[v] = struct{}{}
+			}
+		}
+		return variants, rows.Err()
+	}
+
+	variants1, err := fetchVariants(wordID1)
+	if err != nil {
+		return false, err
+	}
+	variants2, err := fetchVariants(wordID2)
+	if err != nil {
+		return false, err
+	}
+	for v := range variants1 {
+		if _, ok := variants2[v]; ok {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // difficultCandidateAccuracy is the SQL expression for a word's accuracy, used to
 // rank the user's hardest words. Mirrors the accuracy formula in tierFilter.
 const difficultCandidateAccuracy = `CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts`

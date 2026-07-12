@@ -5076,6 +5076,113 @@ func TestUpdateTrainingFilters_Defaults(t *testing.T) {
 	}
 }
 
+// ── SharesTranslation ─────────────────────────────────────────────────────────
+
+func TestSharesTranslation_SharedEnTranslation(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know", "recognize"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true for two words with common EN translation 'know'")
+	}
+}
+
+func TestSharesTranslation_NoOverlap(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "书", "shū", []string{"book"})
+	id2 := seedWord(t, s, "鱼", "yú", []string{"fish"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shared {
+		t.Error("expected shared=false for words with distinct translations")
+	}
+}
+
+func TestSharesTranslation_WrongLang(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
+
+	// Translations are EN, but we query DE — should return false
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shared {
+		t.Error("expected shared=false when querying a language with no translations")
+	}
+}
+
+func TestSharesTranslation_EmptyLangs_FallsBackToEn(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true with empty langs (should fall back to 'en')")
+	}
+}
+
+func TestSharesTranslation_CaseInsensitive(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"Know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true for case-insensitive translation match")
+	}
+}
+
+// TestSharesTranslation_SlashVariantOverlap covers the real-world "Nudeln"
+// scenario (issue #188): 面 has DE translation "Nudeln" while 面条 has DE
+// translation "Nudeln / Pasta" — a single multi-gloss entry rather than a
+// separate row. Plain string equality misses the overlap; the same
+// slash-alternative expansion CheckAnswer already applies (sm2.ExpandVariants)
+// must be used so "Nudeln" is recognised as one of 面条's valid variants.
+func TestSharesTranslation_SlashVariantOverlap(t *testing.T) {
+	s := openTestDB(t)
+	id1, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
+		ZhText:       "面",
+		Pinyin:       "miàn",
+		Translations: map[string][]string{"en": {"noodles"}, "de": {"Nudeln"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
+		ZhText:       "面条",
+		Pinyin:       "miàntiáo",
+		Translations: map[string][]string{"en": {"noodle"}, "de": {"Nudeln / Pasta"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en", "de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true: 面条's 'Nudeln / Pasta' includes the 'Nudeln' variant that 面 has")
+	}
+}
+
 // ── Difficult-words drill ───────────────────────────────────────────────────
 
 // makeDifficult marks a seeded word as graduated (learning_new_word=0) with the

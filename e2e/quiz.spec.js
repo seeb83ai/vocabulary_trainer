@@ -349,3 +349,149 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
     await expect(page.locator('#prompt-word')).toHaveText('水');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 3: Ambiguous answer — two words sharing the same translation
+//
+// A fresh user is registered with only two words: 知道 and 认识, both with EN
+// "know".  When the user types 认识 in transl_to_zh mode for the 知道 card the
+// server returns ambiguous=true and the frontend shows the disambiguation input.
+//
+// Using a fresh user (registered inside the test) guarantees only these two
+// words are in the quiz queue, making the card selection deterministic.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – ambiguous answer (shared translation)', () => {
+  // Registers a fresh isolated user with exactly the two ambiguous words 知道/认识
+  // (both mean "know"), submits the OTHER zh word for the quizzed card so the
+  // server responds ambiguous=true, and leaves the disambiguation panel showing.
+  // Returns the correct zh word (quizZh) so callers can resolve it if needed.
+  async function setupAmbiguousResult(page) {
+    const email = `e2e-ambig-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'AmbigTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes1 = await page.request.post('/api/words', {
+      data: { zh_text: '知道', pinyin: 'zhīdào', translations: { en: ['know'] }, tags: [], start_training: true },
+    });
+    expect(seedRes1.ok()).toBeTruthy();
+    const seed1 = await seedRes1.json();
+    const seedRes2 = await page.request.post('/api/words', {
+      data: { zh_text: '认识', pinyin: 'rènshi', translations: { en: ['know', 'recognize'] }, tags: [], start_training: true },
+    });
+    expect(seedRes2.ok()).toBeTruthy();
+    const seed2 = await seedRes2.json();
+
+    const idToZh = { [seed1.id]: '知道', [seed2.id]: '认识' };
+    const zhToOpposite = { '知道': '认识', '认识': '知道' };
+
+    const cardRes = await page.request.get('/api/quiz/next?mode=transl_to_zh&langs=en');
+    expect(cardRes.ok()).toBeTruthy();
+    const card = await cardRes.json();
+    const quizZh = idToZh[card.word_id];
+    expect(quizZh).toBeTruthy();
+    const wrongAnswer = zhToOpposite[quizZh];
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill(wrongAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('~ Ambiguous');
+    await expect(page.locator('#disambig-input')).toBeVisible();
+
+    return { quizZh, wrongAnswer };
+  }
+
+  test('ambiguous answer shows disambiguation input and accepts correct re-type', async ({ page }) => {
+    const { quizZh, wrongAnswer } = await setupAmbiguousResult(page);
+
+    // Type the wrong word again — should show "Not quite" feedback.
+    await page.locator('#disambig-input').fill(wrongAnswer);
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#disambig-feedback')).toContainText('Not quite');
+
+    // Type the correct zh word — result must flip to Correct.
+    await page.locator('#disambig-input').fill(quizZh);
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
+    // Disambiguation input disappears after a successful answer.
+    await expect(page.locator('#disambig-input')).not.toBeVisible();
+  });
+
+  // Issue #194: continuing past an unresolved ambiguous result must fall back
+  // to the normal wrong-answer screen instead of silently advancing.
+  test('clicking Next on an unresolved ambiguous result shows the normal Wrong screen first', async ({ page }) => {
+    await setupAmbiguousResult(page);
+
+    // Click Next WITHOUT resolving the disambiguation.
+    await page.locator('#next-btn').click();
+
+    // Still on the result screen — now showing the normal wrong-answer state.
+    await expect(page.locator('#result-area')).toBeVisible();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    await expect(page.locator('#disambig-input')).not.toBeVisible();
+    await expect(page.locator('#word-breakdown')).toContainText('CORRECT', { ignoreCase: true });
+
+    // A second click on Next now actually advances.
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+
+  // Issue #193: on a small viewport the disambiguation input must stay inside
+  // its containing card, not overflow past the right edge.
+  test('disambiguation input fits inside its card on a small viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 389, height: 694 });
+    await setupAmbiguousResult(page);
+
+    const cardBox = await page.locator('#result-area > div').boundingBox();
+    const inputBox = await page.locator('#disambig-input').boundingBox();
+    const btnBox = await page.locator('#disambig-form button[type="submit"]').boundingBox();
+    expect(cardBox).toBeTruthy();
+    expect(inputBox).toBeTruthy();
+    expect(btnBox).toBeTruthy();
+    // Neither the text input nor the "Check" submit button (the two children of
+    // the disambiguation form) may extend past the right edge of the white
+    // result card — that's the overflow reported in issue #193.
+    expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+    expect(btnBox.x + btnBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+  });
+
+  // The character breakdown toggle would reveal the correct word's characters,
+  // undermining the point of asking the user to disambiguate. Mock the decompose
+  // API so it always has data to show, isolating this from whether the test DB
+  // happens to have hanzi decomposition data seeded for these particular words.
+  async function mockDecomposeResponse(page) {
+    await page.route('**/api/hanzi/decompose*', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ character: '知', radical: '矢', definition: 'know', components: [] }]),
+      })
+    );
+  }
+
+  test('character breakdown toggle is hidden while an ambiguous result is unresolved', async ({ page }) => {
+    await mockDecomposeResponse(page);
+    await setupAmbiguousResult(page);
+    await expect(page.locator('#result-decompose')).not.toBeVisible();
+  });
+
+  test('character breakdown toggle appears once the ambiguous result resolves to Wrong', async ({ page }) => {
+    await mockDecomposeResponse(page);
+    await setupAmbiguousResult(page);
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    await expect(page.locator('#result-decompose')).toBeVisible();
+  });
+});
