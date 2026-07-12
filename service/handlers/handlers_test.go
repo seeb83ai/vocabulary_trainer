@@ -237,7 +237,6 @@ func seedWordFull(t *testing.T, s *db.Store, userID int64, zhText, pinyin string
 // ── GET /api/quiz/next ────────────────────────────────────────────────────────
 
 func TestQuizNext_EmptyDB(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/quiz/next", nil)
 	if rec.Code != http.StatusNotFound {
@@ -251,7 +250,6 @@ func TestQuizNext_EmptyDB(t *testing.T) {
 }
 
 func TestQuizNext_ReturnsCard(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -274,7 +272,6 @@ func TestQuizNext_ReturnsCard(t *testing.T) {
 }
 
 func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Word with no pinyin — zh_pinyin_to_en must never be returned
 	_, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
@@ -298,7 +295,6 @@ func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 }
 
 func TestQuizNext_ModeParam(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -343,7 +339,6 @@ func TestQuizNext_ModeParam(t *testing.T) {
 }
 
 func TestQuizNext_TranslToZh_IncludesZhText(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -375,7 +370,6 @@ func TestQuizNext_TranslToZh_IncludesZhText(t *testing.T) {
 }
 
 func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -456,7 +450,6 @@ func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 // ── POST /api/quiz/answer ─────────────────────────────────────────────────────
 
 func TestQuizAnswer_Correct(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -483,7 +476,6 @@ func TestQuizAnswer_Correct(t *testing.T) {
 }
 
 func TestQuizAnswer_Wrong(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -507,7 +499,6 @@ func TestQuizAnswer_Wrong(t *testing.T) {
 }
 
 func TestQuizAnswer_EnToZh(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -527,7 +518,6 @@ func TestQuizAnswer_EnToZh(t *testing.T) {
 // ── TranslToZh wrong answer: user_answer_pinyin ───────────────────────────────
 
 func TestQuizAnswer_TranslToZh_WrongKnownWordIncludesPinyin(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	correctID := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
 	_ = seedWord(t, s, "看数", "kàn shù", []string{"to count"})
@@ -555,7 +545,6 @@ func TestQuizAnswer_TranslToZh_WrongKnownWordIncludesPinyin(t *testing.T) {
 }
 
 func TestQuizAnswer_TranslToZh_WrongUnknownWordNoPinyin(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
 	r := newRouter(s)
@@ -576,7 +565,6 @@ func TestQuizAnswer_TranslToZh_WrongUnknownWordNoPinyin(t *testing.T) {
 }
 
 func TestQuizAnswer_ZhToTransl_NoUserAnswerPinyin(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
 	r := newRouter(s)
@@ -597,7 +585,6 @@ func TestQuizAnswer_ZhToTransl_NoUserAnswerPinyin(t *testing.T) {
 }
 
 func TestQuizAnswer_WordNotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
 		WordID: 9999,
@@ -610,7 +597,6 @@ func TestQuizAnswer_WordNotFound(t *testing.T) {
 }
 
 func TestQuizAnswer_InvalidMode(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "", []string{"hello"})
 	r := newRouter(s)
@@ -626,7 +612,6 @@ func TestQuizAnswer_InvalidMode(t *testing.T) {
 }
 
 func TestQuizAnswer_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	req := httptest.NewRequest("POST", "/api/quiz/answer", bytes.NewBufferString("{bad json"))
 	req.Header.Set("Content-Type", "application/json")
@@ -638,7 +623,6 @@ func TestQuizAnswer_InvalidJSON(t *testing.T) {
 }
 
 func TestQuizAnswer_ResponseContainsZhAndEN(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -661,7 +645,6 @@ func TestQuizAnswer_ResponseContainsZhAndEN(t *testing.T) {
 // ── GET /api/quiz/stats ───────────────────────────────────────────────────────
 
 func TestQuizStats_Empty(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/quiz/stats", nil)
 	if rec.Code != http.StatusOK {
@@ -675,7 +658,6 @@ func TestQuizStats_Empty(t *testing.T) {
 }
 
 func TestQuizStats_AfterInsert(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "", []string{"hello"})
 	seedWord(t, s, "谢谢", "", []string{"thank you"})
@@ -692,7 +674,6 @@ func TestQuizStats_AfterInsert(t *testing.T) {
 // ── GET /api/words ────────────────────────────────────────────────────────────
 
 func TestWordsList_Empty(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/words?page=1&per_page=20", nil)
 	if rec.Code != http.StatusOK {
@@ -706,7 +687,6 @@ func TestWordsList_Empty(t *testing.T) {
 }
 
 func TestWordsList_Search(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
@@ -723,7 +703,6 @@ func TestWordsList_Search(t *testing.T) {
 // ── POST /api/words ───────────────────────────────────────────────────────────
 
 func TestWordsCreate_Valid(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:       "再见",
@@ -741,7 +720,6 @@ func TestWordsCreate_Valid(t *testing.T) {
 }
 
 func TestWordsCreate_MissingZhText(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		Translations: map[string][]string{"en": {"hello"}},
@@ -752,7 +730,6 @@ func TestWordsCreate_MissingZhText(t *testing.T) {
 }
 
 func TestWordsCreate_NoTranslations(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText: "你好",
@@ -763,7 +740,6 @@ func TestWordsCreate_NoTranslations(t *testing.T) {
 }
 
 func TestWordsCreate_DeOnlyValid(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
 		ZhText:       "你好",
@@ -775,7 +751,6 @@ func TestWordsCreate_DeOnlyValid(t *testing.T) {
 }
 
 func TestWordsCreate_InvalidJSON(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	req := httptest.NewRequest("POST", "/api/words", bytes.NewBufferString("{bad"))
 	req.Header.Set("Content-Type", "application/json")
@@ -787,7 +762,6 @@ func TestWordsCreate_InvalidJSON(t *testing.T) {
 }
 
 func TestWordsCreate_StartTraining(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -813,7 +787,6 @@ func TestWordsCreate_StartTraining(t *testing.T) {
 }
 
 func TestWordsUpdate_StartTraining(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -837,7 +810,6 @@ func TestWordsUpdate_StartTraining(t *testing.T) {
 // ── GET /api/words/{id} ───────────────────────────────────────────────────────
 
 func TestWordsGetByID_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -854,7 +826,6 @@ func TestWordsGetByID_Found(t *testing.T) {
 }
 
 func TestWordsGetByID_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/words/9999", nil)
 	if rec.Code != http.StatusNotFound {
@@ -863,7 +834,6 @@ func TestWordsGetByID_NotFound(t *testing.T) {
 }
 
 func TestWordsGetByID_InvalidID(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/words/abc", nil)
 	if rec.Code != http.StatusBadRequest {
@@ -874,7 +844,6 @@ func TestWordsGetByID_InvalidID(t *testing.T) {
 // ── PUT /api/words/{id} ───────────────────────────────────────────────────────
 
 func TestWordsUpdate_Valid(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -895,7 +864,6 @@ func TestWordsUpdate_Valid(t *testing.T) {
 }
 
 func TestWordsUpdate_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "PUT", "/api/words/9999", models.UpdateWordRequest{
 		ZhText:       "test",
@@ -907,7 +875,6 @@ func TestWordsUpdate_NotFound(t *testing.T) {
 }
 
 func TestWordsUpdate_MissingZhText(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "", []string{"hello"})
 	r := newRouter(s)
@@ -923,7 +890,6 @@ func TestWordsUpdate_MissingZhText(t *testing.T) {
 // ── DELETE /api/words/{id} ────────────────────────────────────────────────────
 
 func TestWordsDelete_Valid(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "", []string{"hello"})
 	r := newRouter(s)
@@ -941,7 +907,6 @@ func TestWordsDelete_Valid(t *testing.T) {
 }
 
 func TestWordsDelete_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "DELETE", "/api/words/9999", nil)
 	if rec.Code != http.StatusNotFound {
@@ -952,7 +917,6 @@ func TestWordsDelete_NotFound(t *testing.T) {
 // ── POST /api/words/{id}/translations ────────────────────────────────────────
 
 func TestWordsAddTranslation_Valid(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -979,7 +943,6 @@ func TestWordsAddTranslation_Valid(t *testing.T) {
 }
 
 func TestWordsAddTranslation_EmptyText(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "", []string{"hello"})
 	r := newRouter(s)
@@ -992,7 +955,6 @@ func TestWordsAddTranslation_EmptyText(t *testing.T) {
 }
 
 func TestWordsAddTranslation_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words/9999/translations",
 		map[string]string{"text": "hello", "lang": "en"})
@@ -1002,7 +964,6 @@ func TestWordsAddTranslation_NotFound(t *testing.T) {
 }
 
 func TestWordsAddTranslation_Idempotent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "", []string{"hello"})
 	r := newRouter(s)
@@ -1031,7 +992,6 @@ func TestWordsAddTranslation_Idempotent(t *testing.T) {
 // ── GET /api/words/export ─────────────────────────────────────────────────────
 
 func TestWordsExport_ReturnsAllWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	for i := 0; i < 5; i++ {
 		seedWord(t, s, fmt.Sprintf("词%d", i), "", []string{"word"})
@@ -1050,7 +1010,6 @@ func TestWordsExport_ReturnsAllWords(t *testing.T) {
 }
 
 func TestWordsExport_RespectsFilters(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xièxiè", []string{"thank you"})
@@ -1073,7 +1032,6 @@ func TestWordsExport_RespectsFilters(t *testing.T) {
 // ── GET /api/mismatches ───────────────────────────────────────────────────────
 
 func TestMismatches_Empty(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/mismatches", nil)
 	if rec.Code != http.StatusOK {
@@ -1087,7 +1045,6 @@ func TestMismatches_Empty(t *testing.T) {
 }
 
 func TestMismatches_RecordedOnWrongAnswer(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	xieID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1128,7 +1085,6 @@ func TestMismatches_RecordedOnWrongAnswer(t *testing.T) {
 }
 
 func TestMismatches_NoConfusionWhenAnswerUnknown(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	xieID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	r := newRouter(s)
@@ -1161,7 +1117,6 @@ func TestMismatches_NoConfusionWhenAnswerUnknown(t *testing.T) {
 }
 
 func TestMismatches_NoConfusionOnCorrectAnswer(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	xieID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	r := newRouter(s)
@@ -1192,7 +1147,6 @@ func TestMismatches_NoConfusionOnCorrectAnswer(t *testing.T) {
 }
 
 func TestMismatches_EnToZh_Recorded(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	buchwID := seedWord(t, s, "书", "shū", []string{"Buch"})
 	seedWord(t, s, "五", "wǔ", []string{"five"})
@@ -1225,7 +1179,6 @@ func TestMismatches_EnToZh_Recorded(t *testing.T) {
 }
 
 func TestMismatches_CountIncrementsOnRepeat(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	xieID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1256,7 +1209,6 @@ func TestMismatches_CountIncrementsOnRepeat(t *testing.T) {
 // ── Progressive mode ─────────────────────────────────────────────────────────
 
 func TestQuizNext_ProgressiveNewWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello", "hi"})
 	r := newRouter(s)
@@ -1279,7 +1231,6 @@ func TestQuizNext_ProgressiveNewWord(t *testing.T) {
 }
 
 func TestQuizNext_ProgressiveAfterAcknowledge(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -1303,7 +1254,6 @@ func TestQuizNext_ProgressiveAfterAcknowledge(t *testing.T) {
 }
 
 func TestQuizNext_ProgressiveThresholds(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -1368,7 +1318,6 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 // ── GET /api/quiz/next?exclude=... ───────────────────────────────────────────
 
 func TestQuizNext_ExcludeParam_SkipsRecentWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	r := newRouter(s)
@@ -1403,7 +1352,6 @@ func TestQuizNext_ExcludeParam_SkipsRecentWord(t *testing.T) {
 // its due-today count accurate, and the new extend_session_with_extra_words
 // user setting must be able to turn the behaviour off entirely.
 func TestQuizNext_SessionExtension_FlagsNonDueCardAndRespectsSetting(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	r := newRouter(s)
@@ -1462,7 +1410,6 @@ func TestQuizNext_SessionExtension_FlagsNonDueCardAndRespectsSetting(t *testing.
 // ── POST /api/quiz/skip ──────────────────────────────────────────────────────
 
 func TestQuizSkip_Valid(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -1485,7 +1432,6 @@ func TestQuizSkip_Valid(t *testing.T) {
 }
 
 func TestQuizSkip_DaysOne(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -1509,7 +1455,6 @@ func TestQuizSkip_DaysOne(t *testing.T) {
 }
 
 func TestQuizSkip_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/quiz/skip", map[string]int64{"word_id": 9999})
 	if rec.Code != http.StatusNotFound {
@@ -1520,7 +1465,6 @@ func TestQuizSkip_NotFound(t *testing.T) {
 // ── POST /api/quiz/acknowledge ───────────────────────────────────────────────
 
 func TestQuizAcknowledge_Valid(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -1544,7 +1488,6 @@ func TestQuizAcknowledge_Valid(t *testing.T) {
 }
 
 func TestQuizAcknowledge_Idempotent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -1561,7 +1504,6 @@ func TestQuizAcknowledge_Idempotent(t *testing.T) {
 }
 
 func TestQuizAcknowledge_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/quiz/acknowledge", map[string]int64{"word_id": 9999})
 	if rec.Code != http.StatusNotFound {
@@ -1570,7 +1512,6 @@ func TestQuizAcknowledge_NotFound(t *testing.T) {
 }
 
 func TestQuizAcknowledge_CreatesComponentProgress(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -1603,7 +1544,6 @@ func TestQuizAcknowledge_CreatesComponentProgress(t *testing.T) {
 // ── POST /api/words/{id}/review ───────────────────────────────────────────────
 
 func TestMarkReview_SetsFlag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -1623,7 +1563,6 @@ func TestMarkReview_SetsFlag(t *testing.T) {
 }
 
 func TestMarkReview_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words/9999/review", nil)
 	if rec.Code != http.StatusNotFound {
@@ -1632,7 +1571,6 @@ func TestMarkReview_NotFound(t *testing.T) {
 }
 
 func TestMarkReview_ClearedOnUpdate(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -1656,7 +1594,6 @@ func TestMarkReview_ClearedOnUpdate(t *testing.T) {
 }
 
 func TestWordList_ReviewFilter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -1679,7 +1616,6 @@ func TestWordList_ReviewFilter(t *testing.T) {
 }
 
 func TestWordList_HideUnseenFilter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -1721,7 +1657,6 @@ func TestWordList_HideUnseenFilter(t *testing.T) {
 // ── GET /api/quiz/daily-stats ────────────────────────────────────────────────
 
 func TestDailyStats_Empty(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/quiz/daily-stats", nil)
 	if rec.Code != http.StatusOK {
@@ -1735,7 +1670,6 @@ func TestDailyStats_Empty(t *testing.T) {
 }
 
 func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "猫", "māo", []string{"cat"})
 	r := newRouter(s)
@@ -1782,7 +1716,6 @@ func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
 }
 
 func TestDailyStats_BucketCounts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	catID := seedWord(t, s, "猫", "māo", []string{"cat"})
 	dogID := seedWord(t, s, "狗", "gǒu", []string{"dog"})
@@ -1837,7 +1770,6 @@ func TestDailyStats_BucketCounts(t *testing.T) {
 }
 
 func TestRecordTime_AccumulatesAndAppearsInDailyStats(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -1866,7 +1798,6 @@ func TestRecordTime_AccumulatesAndAppearsInDailyStats(t *testing.T) {
 }
 
 func TestRecordTime_RejectsInvalidSeconds(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 
 	for _, secs := range []int{0, -1, 3601} {
@@ -1878,7 +1809,6 @@ func TestRecordTime_RejectsInvalidSeconds(t *testing.T) {
 }
 
 func TestWordStats_Empty(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -1894,7 +1824,6 @@ func TestWordStats_Empty(t *testing.T) {
 }
 
 func TestWordStats_WithData(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -1961,7 +1890,6 @@ func TestWordStats_WithData(t *testing.T) {
 // ── /api/quiz/stats new fields ────────────────────────────────────────────────
 
 func TestStatsHandlerNewFields(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -1980,7 +1908,6 @@ func TestStatsHandlerNewFields(t *testing.T) {
 }
 
 func TestStatsHandler_HmmDueTodayIncluded(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -2019,7 +1946,6 @@ func seedHMMCard(t *testing.T, s *db.Store) {
 }
 
 func TestQuizNext_MnemonicsFalse_SkipsHMMCard(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHMMCard(t, s)
 	// No vocabulary words — with mnemonics=true the HMM card would be served;
@@ -2038,7 +1964,6 @@ func TestQuizNext_MnemonicsFalse_SkipsHMMCard(t *testing.T) {
 }
 
 func TestQuizNext_MnemonicsTrue_ServesHMMCard(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHMMCard(t, s)
 	r := newRouter(s)
@@ -2055,7 +1980,6 @@ func TestQuizNext_MnemonicsTrue_ServesHMMCard(t *testing.T) {
 }
 
 func TestQuizStats_MnemonicsFalse_HmmDueTodayZero(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHMMCard(t, s)
 	r := newRouter(s)
@@ -2072,7 +1996,6 @@ func TestQuizStats_MnemonicsFalse_HmmDueTodayZero(t *testing.T) {
 }
 
 func TestQuizStats_MnemonicsTrue_HmmDueTodayNonZero(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHMMCard(t, s)
 	r := newRouter(s)
@@ -2091,7 +2014,6 @@ func TestQuizStats_MnemonicsTrue_HmmDueTodayNonZero(t *testing.T) {
 // ── /api/quiz/advance ─────────────────────────────────────────────────────────
 
 func TestAdvanceHandler_NoWordsAvailable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -2108,7 +2030,6 @@ func TestAdvanceHandler_NoWordsAvailable(t *testing.T) {
 }
 
 func TestAdvanceHandler_AdvancesWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	ctx := context.Background()
@@ -2138,7 +2059,6 @@ func TestAdvanceHandler_AdvancesWords(t *testing.T) {
 }
 
 func TestStatsHandlerNewAvailable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Use MaxNewPerDay=0 so new words are blocked by default.
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 0}
@@ -2179,7 +2099,6 @@ func TestStatsHandlerNewAvailable(t *testing.T) {
 }
 
 func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Use a handler with MaxNewPerDay=0 so new words are normally blocked.
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 0}
@@ -2216,7 +2135,6 @@ func TestAdvanceHandler_ResetCapReflectedInNext(t *testing.T) {
 // ── AcknowledgeRandom ─────────────────────────────────────────────────────────
 
 func TestAcknowledgeRandomHandler_MarksWordsDue(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	ctx := context.Background()
@@ -2257,7 +2175,6 @@ func TestAcknowledgeRandomHandler_MarksWordsDue(t *testing.T) {
 }
 
 func TestAcknowledgeRandomHandler_CapsAtAvailable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	ctx := context.Background()
@@ -2282,7 +2199,6 @@ func TestAcknowledgeRandomHandler_CapsAtAvailable(t *testing.T) {
 }
 
 func TestAcknowledgeRandomHandler_InvalidCount(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -2293,7 +2209,6 @@ func TestAcknowledgeRandomHandler_InvalidCount(t *testing.T) {
 }
 
 func TestAcknowledgeRandomHandler_CreatesComponentProgress(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2331,7 +2246,6 @@ func TestAcknowledgeRandomHandler_CreatesComponentProgress(t *testing.T) {
 // ── Stats new_available with learning words present ───────────────────────────
 
 func TestStatsNewAvailable_WithLearningWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Cap of 5; seed 3 unseen words, acknowledge 1 (puts it in learning phase).
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 5}
@@ -2370,7 +2284,6 @@ func TestStatsNewAvailable_WithLearningWords(t *testing.T) {
 // ── StartTraining sets learning phase ─────────────────────────────────────────
 
 func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	ctx := context.Background()
@@ -2398,7 +2311,6 @@ func TestWordsCreate_StartTraining_SetsLearningPhase(t *testing.T) {
 // ── Input length validation ───────────────────────────────────────────────────
 
 func TestWordsCreate_ZhTextTooLong(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	long201 := ""
 	for i := 0; i < 201; i++ {
@@ -2414,7 +2326,6 @@ func TestWordsCreate_ZhTextTooLong(t *testing.T) {
 }
 
 func TestWordsCreate_TooManyTranslations(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	texts := make([]string, 21)
 	for i := range texts {
@@ -2430,7 +2341,6 @@ func TestWordsCreate_TooManyTranslations(t *testing.T) {
 }
 
 func TestWordsCreate_TooManyTags(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	tags := make([]string, 21)
 	for i := range tags {
@@ -2449,7 +2359,6 @@ func TestWordsCreate_TooManyTags(t *testing.T) {
 // ── GET /api/quiz/due-date-distribution ──────────────────────────────────────
 
 func TestDueDateDistribution_Empty(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/quiz/due-date-distribution", nil)
 	if rec.Code != http.StatusOK {
@@ -2463,7 +2372,6 @@ func TestDueDateDistribution_Empty(t *testing.T) {
 }
 
 func TestDueDateDistribution_AfterAnswer(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "猫", "māo", []string{"cat"})
 	r := newRouter(s)
@@ -2507,7 +2415,6 @@ func TestDueDateDistribution_AfterAnswer(t *testing.T) {
 }
 
 func TestDueDateDistribution_TagFilter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2609,7 +2516,6 @@ func seedPinyinSounds(t *testing.T, store *db.Store) {
 }
 
 func TestPinyinQuizNext_EmptyDB(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newPinyinRouter(t, s)
 	rec := do(t, r, "GET", "/api/pinyin-quiz/next", nil)
@@ -2619,7 +2525,6 @@ func TestPinyinQuizNext_EmptyDB(t *testing.T) {
 }
 
 func TestPinyinQuizNext_ReturnsCard(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedPinyinSounds(t, s)
 	r := newPinyinRouter(t, s)
@@ -2647,7 +2552,6 @@ func TestPinyinQuizNext_ReturnsCard(t *testing.T) {
 }
 
 func TestPinyinQuizAnswer_Correct(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedPinyinSounds(t, s)
 	r := newPinyinRouter(t, s)
@@ -2678,7 +2582,6 @@ func TestPinyinQuizAnswer_Correct(t *testing.T) {
 }
 
 func TestPinyinQuizAnswer_Wrong(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedPinyinSounds(t, s)
 	r := newPinyinRouter(t, s)
@@ -2719,7 +2622,6 @@ func TestPinyinQuizAnswer_Wrong(t *testing.T) {
 }
 
 func TestPinyinQuizStats(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedPinyinSounds(t, s)
 	r := newPinyinRouter(t, s)
@@ -2737,7 +2639,6 @@ func TestPinyinQuizStats(t *testing.T) {
 }
 
 func TestPinyinQuizTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedPinyinSounds(t, s)
 	r := newPinyinRouter(t, s)
@@ -2757,7 +2658,6 @@ func TestPinyinQuizTags(t *testing.T) {
 // ── GET /api/quiz/langs ───────────────────────────────────────────────────────
 
 func TestQuizLangs_Empty(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/quiz/langs", nil)
 	if rec.Code != http.StatusOK {
@@ -2771,7 +2671,6 @@ func TestQuizLangs_Empty(t *testing.T) {
 }
 
 func TestQuizLangs_AfterInsertEN(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -2788,7 +2687,6 @@ func TestQuizLangs_AfterInsertEN(t *testing.T) {
 }
 
 func TestQuizLangs_ENandDE(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
@@ -2819,7 +2717,6 @@ func TestQuizLangs_ENandDE(t *testing.T) {
 // ── POST /api/quiz/answer — multi-lang ───────────────────────────────────────
 
 func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
@@ -2850,7 +2747,6 @@ func TestQuizAnswer_MultiLang_DEAccepted(t *testing.T) {
 }
 
 func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
@@ -2883,7 +2779,6 @@ func TestQuizAnswer_MultiLang_ResponseContainsDeTexts(t *testing.T) {
 }
 
 func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
@@ -2914,7 +2809,6 @@ func TestQuizAnswer_DefaultLang_EnOnly(t *testing.T) {
 }
 
 func TestQuizAnswer_CommaJoinedTranslation_PartAccepted(t *testing.T) {
-	t.Parallel()
 	// Regression for #189: a translation stored as a single comma-joined row
 	// (e.g. "topic, item") must accept each comma-separated part on its own,
 	// the same way slash-separated alternatives already do.
@@ -2949,7 +2843,6 @@ func TestQuizAnswer_CommaJoinedTranslation_PartAccepted(t *testing.T) {
 // ── GET /api/quiz/next — new_word with langs ──────────────────────────────────
 
 func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
@@ -2982,7 +2875,6 @@ func TestQuizNext_NewWordWithLangs_PopulatesDeTexts(t *testing.T) {
 // ── PUT /api/words/{id} — unchanged zh_text ───────────────────────────────────
 
 func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -3006,7 +2898,6 @@ func TestWordsUpdate_SameZhText_NoUniqueError(t *testing.T) {
 // ── GET /api/words?missing_lang= ─────────────────────────────────────────────
 
 func TestWordsList_MissingLangDE(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3039,7 +2930,6 @@ func TestWordsList_MissingLangDE(t *testing.T) {
 }
 
 func TestWordsList_MissingLangEmpty_ReturnsAll(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "", []string{"hello"})
 	seedWord(t, s, "再见", "", []string{"goodbye"})
@@ -3059,7 +2949,6 @@ func TestWordsList_MissingLangEmpty_ReturnsAll(t *testing.T) {
 // ── Auth: Register ─────────────────────────────────────────────────────────────
 
 func TestRegister_OK(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/register", map[string]string{
 		"email": "new@example.com", "password": "securepass1",
@@ -3078,7 +2967,6 @@ func TestRegister_OK(t *testing.T) {
 }
 
 func TestRegister_DuplicateEmail(t *testing.T) {
-	t.Parallel()
 	// A duplicate registration must NOT return a distinct status that
 	// reveals the email is already in use. See
 	// TestRegister_ExistingEmail_DoesNotLeak in auth_test.go.
@@ -3092,7 +2980,6 @@ func TestRegister_DuplicateEmail(t *testing.T) {
 }
 
 func TestRegister_ShortPassword(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/register", map[string]string{
 		"email": "a@b.com", "password": "short",
@@ -3103,7 +2990,6 @@ func TestRegister_ShortPassword(t *testing.T) {
 }
 
 func TestRegister_InvalidEmail(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/register", map[string]string{
 		"email": "notanemail", "password": "securepass1",
@@ -3120,7 +3006,6 @@ func TestRegister_InvalidEmail(t *testing.T) {
 // (e.g. after a zh_text edit) is served stale for up to a year. The
 // existing handler set this and was flagged in the security review.
 func TestAudio_NotImmutable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
@@ -3157,7 +3042,6 @@ func TestAudio_NotImmutable(t *testing.T) {
 // word ownership: a user must not be able to fetch a cached <id>.mp3 for a word
 // they do not own (IDOR). The ownership check must run BEFORE serving the file.
 func TestServeAudio_OtherUserForbidden(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Word belongs to user 2 (seedWord default owner).
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -3246,7 +3130,6 @@ func TestServeAudio_TTSFailureLogged(t *testing.T) {
 // ── Auth: VerifyEmail ──────────────────────────────────────────────────────────
 
 func TestVerifyEmail_BadToken(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/verify-email?token=badtoken", nil)
 	if rec.Code != http.StatusFound {
@@ -3259,7 +3142,6 @@ func TestVerifyEmail_BadToken(t *testing.T) {
 }
 
 func TestVerifyEmail_MissingToken(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/verify-email", nil)
 	if rec.Code != http.StatusFound {
@@ -3268,7 +3150,6 @@ func TestVerifyEmail_MissingToken(t *testing.T) {
 }
 
 func TestVerifyEmail_OK(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -3292,7 +3173,6 @@ func TestVerifyEmail_OK(t *testing.T) {
 // ── Auth: Login ────────────────────────────────────────────────────────────────
 
 func TestLogin_UnverifiedEmail(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -3322,7 +3202,6 @@ func TestLogin_UnverifiedEmail(t *testing.T) {
 // ── Auth: Me ───────────────────────────────────────────────────────────────────
 
 func TestMe_OK(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/me", nil)
 	if rec.Code != http.StatusOK {
@@ -3338,7 +3217,6 @@ func TestMe_OK(t *testing.T) {
 // ── Auth: ChangePassword ───────────────────────────────────────────────────────
 
 func TestChangePassword_OK(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -3353,7 +3231,6 @@ func TestChangePassword_OK(t *testing.T) {
 }
 
 func TestChangePassword_WrongCurrent(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/change-password", map[string]string{
 		"current_password": "wrongpassword",
@@ -3365,7 +3242,6 @@ func TestChangePassword_WrongCurrent(t *testing.T) {
 }
 
 func TestChangePassword_ShortNew(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/change-password", map[string]string{
 		"current_password": "I learn zh",
@@ -3379,7 +3255,6 @@ func TestChangePassword_ShortNew(t *testing.T) {
 // ── GET /api/import/source-tags ───────────────────────────────────────────────
 
 func TestImportSourceTags_ReturnsTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
 	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
@@ -3416,7 +3291,6 @@ func TestImportSourceTags_ReturnsTags(t *testing.T) {
 }
 
 func TestImportSourceTags_WithDeFlag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"hallo"}, []string{"greetings"})
 	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"greetings"})
@@ -3449,7 +3323,6 @@ func TestImportSourceTags_WithDeFlag(t *testing.T) {
 }
 
 func TestImportSourceTags_EmptyWhenNoWords(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/import/source-tags", nil)
 	if rec.Code != http.StatusOK {
@@ -3463,7 +3336,6 @@ func TestImportSourceTags_EmptyWhenNoWords(t *testing.T) {
 }
 
 func TestImportSourceTags_HidesNonImportable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"public"})
 	seedWordFull(t, s, 1, "秘密", "", []string{"secret"}, nil, []string{"private"})
@@ -3487,7 +3359,6 @@ func TestImportSourceTags_HidesNonImportable(t *testing.T) {
 // ── GET /api/import/preview ───────────────────────────────────────────────────
 
 func TestImportPreview_ValidTag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"hallo"}, []string{"HSK1"})
 	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
@@ -3536,7 +3407,6 @@ func TestImportPreview_ValidTag(t *testing.T) {
 }
 
 func TestImportPreview_UnknownTag(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/import/preview?tag=nonexistent", nil)
 	if rec.Code != http.StatusOK {
@@ -3552,7 +3422,6 @@ func TestImportPreview_UnknownTag(t *testing.T) {
 }
 
 func TestImportPreview_MissingTag(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/import/preview", nil)
 	if rec.Code != http.StatusBadRequest {
@@ -3563,7 +3432,6 @@ func TestImportPreview_MissingTag(t *testing.T) {
 // ── POST /api/import ──────────────────────────────────────────────────────────
 
 func TestImport_Basic(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
 	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
@@ -3605,7 +3473,6 @@ func TestImport_Basic(t *testing.T) {
 }
 
 func TestImport_SkipsDuplicates(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
 	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
@@ -3635,7 +3502,6 @@ func TestImport_SkipsDuplicates(t *testing.T) {
 }
 
 func TestImport_DeFlag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"Hallo"}, []string{"HSK1"})
 
@@ -3674,7 +3540,6 @@ func TestImport_DeFlag(t *testing.T) {
 }
 
 func TestImport_DeFlagFalse(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"Hallo"}, []string{"HSK1"})
 
@@ -3704,7 +3569,6 @@ func TestImport_DeFlagFalse(t *testing.T) {
 }
 
 func TestImport_ApplyCustomTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
 
@@ -3730,7 +3594,6 @@ func TestImport_ApplyCustomTags(t *testing.T) {
 }
 
 func TestImport_MissingTag(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/import", map[string]any{
 		"import_langs": []string{"en"},
@@ -3744,7 +3607,6 @@ func TestImport_MissingTag(t *testing.T) {
 // ── GET /api/tags/details ─────────────────────────────────────────────────────
 
 func TestTagDetails_Empty(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/tags/details", nil)
 	if rec.Code != http.StatusOK {
@@ -3758,7 +3620,6 @@ func TestTagDetails_Empty(t *testing.T) {
 }
 
 func TestTagDetails_ReturnsTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"greetings"})
 
@@ -3781,7 +3642,6 @@ func TestTagDetails_ReturnsTags(t *testing.T) {
 }
 
 func TestTagDetails_DoesNotReturnOtherUserTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// User 1 has a tag; user 2 (current user in tests) has none.
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"library"})
@@ -3801,7 +3661,6 @@ func TestTagDetails_DoesNotReturnOtherUserTags(t *testing.T) {
 // ── PUT /api/tags/{name} ──────────────────────────────────────────────────────
 
 func TestTagUpdate_SetsDescriptionAndImportable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"hsk1"})
 
@@ -3830,7 +3689,6 @@ func TestTagUpdate_SetsDescriptionAndImportable(t *testing.T) {
 }
 
 func TestTagUpdate_InvalidBody(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	req := httptest.NewRequest("PUT", "/api/tags/hsk1", bytes.NewBufferString("not json"))
 	req.Header.Set("Content-Type", "application/json")
@@ -3845,7 +3703,6 @@ func TestTagUpdate_InvalidBody(t *testing.T) {
 
 // TestConfig_PlusUserSeesAvailable verifies that user 2 (plus) gets deepl_available=true.
 func TestConfig_PlusUserSeesAvailable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouterWithUserID(s, 2)
 	rec := do(t, r, http.MethodGet, "/api/config", nil)
@@ -3864,7 +3721,6 @@ func TestConfig_PlusUserSeesAvailable(t *testing.T) {
 
 // TestConfig_FreeUserSeesConfiguredButNotAvailable verifies free users see configured=true, available=false.
 func TestConfig_FreeUserSeesConfiguredButNotAvailable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	freeID, err := s.CreateUser(ctx, "free@example.com", "hash", "tok-free", time.Now().Add(time.Hour))
@@ -3894,7 +3750,6 @@ func TestConfig_FreeUserSeesConfiguredButNotAvailable(t *testing.T) {
 
 // TestTranslate_FreeUserForbidden verifies free users cannot call the translate endpoint.
 func TestTranslate_FreeUserForbidden(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	freeID, err := s.CreateUser(ctx, "free2@example.com", "hash", "tok-free2", time.Now().Add(time.Hour))
@@ -3911,7 +3766,6 @@ func TestTranslate_FreeUserForbidden(t *testing.T) {
 // TestTranslate_PinyinOnlyAllowedForFreeUser verifies that the pinyin-only path
 // (both zh_text and en_text provided) is not blocked for free users.
 func TestTranslate_PinyinOnlyAllowedForFreeUser(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	freeID, err := s.CreateUser(ctx, "free3@example.com", "hash", "tok-free3", time.Now().Add(time.Hour))
@@ -3935,7 +3789,6 @@ func TestTranslate_PinyinOnlyAllowedForFreeUser(t *testing.T) {
 
 // TestTranslate_PlusUserAllowed verifies plus users can call translate.
 func TestTranslate_PlusUserAllowed(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// user 2 is plus; the actual DeepL call will fail (no real key),
 	// so we only check that we don't get 403.
@@ -3949,7 +3802,6 @@ func TestTranslate_PlusUserAllowed(t *testing.T) {
 // ── Component handler tests ───────────────────────────────────────────────────
 
 func TestComponentAnswer_CorrectAnswer(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -3973,7 +3825,6 @@ func TestComponentAnswer_CorrectAnswer(t *testing.T) {
 }
 
 func TestComponentAnswer_WrongAnswer(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -3996,7 +3847,6 @@ func TestComponentAnswer_WrongAnswer(t *testing.T) {
 }
 
 func TestComponentAnswer_AlternativeSemicolon(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "曰", "to speak; to say"); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -4024,7 +3874,6 @@ func TestComponentAnswer_AlternativeSemicolon(t *testing.T) {
 // "woman, girl; female" accepts any of the three single-word alternatives,
 // not just the semicolon-split halves.
 func TestComponentAnswer_MixedCommaSemicolon(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman, girl; female"); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -4049,7 +3898,6 @@ func TestComponentAnswer_MixedCommaSemicolon(t *testing.T) {
 }
 
 func TestComponentAnswer_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
@@ -4062,7 +3910,6 @@ func TestComponentAnswer_NotFound(t *testing.T) {
 }
 
 func TestComponentAnswer_CorrectAnswersMapReturned(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -4089,7 +3936,6 @@ func TestComponentAnswer_CorrectAnswersMapReturned(t *testing.T) {
 }
 
 func TestComponentAnswer_DELangAccepted(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
 		t.Fatalf("seed EN: %v", err)
@@ -4124,7 +3970,6 @@ func TestComponentAnswer_DELangAccepted(t *testing.T) {
 }
 
 func TestComponentStats_ReturnsEmptyDays(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, http.MethodGet, "/api/component/stats", nil)
@@ -4143,7 +3988,6 @@ func TestComponentStats_ReturnsEmptyDays(t *testing.T) {
 }
 
 func TestQuizNext_ReturnsComponentCard(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -4168,7 +4012,6 @@ func TestQuizNext_ReturnsComponentCard(t *testing.T) {
 }
 
 func TestQuizNext_NewComponentCard_HasIsNewAndDefinitions(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -4201,7 +4044,6 @@ func TestQuizNext_NewComponentCard_HasIsNewAndDefinitions(t *testing.T) {
 }
 
 func TestQuizNext_SeenComponentCard_IsNewFalse(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -4224,7 +4066,6 @@ func TestQuizNext_SeenComponentCard_IsNewFalse(t *testing.T) {
 }
 
 func TestQuizNext_ComponentCard_HasPinyin(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionWithPinyinForTest(ctx, "女", "woman", `["nǚ"]`); err != nil {
@@ -4248,7 +4089,6 @@ func TestQuizNext_ComponentCard_HasPinyin(t *testing.T) {
 }
 
 func TestComponentSeen_MarksFirstSeenDate(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -4272,7 +4112,6 @@ func TestComponentSeen_MarksFirstSeenDate(t *testing.T) {
 }
 
 func TestComponentSeen_MissingCharacter(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodPost, "/api/component/seen", map[string]string{})
 	if rec.Code != http.StatusBadRequest {
@@ -4283,7 +4122,6 @@ func TestComponentSeen_MissingCharacter(t *testing.T) {
 // ── POST /api/component/skip ─────────────────────────────────────────────────
 
 func TestComponentSkip_DaysOne(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -4311,7 +4149,6 @@ func TestComponentSkip_DaysOne(t *testing.T) {
 }
 
 func TestComponentSkip_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodPost, "/api/component/skip", map[string]any{"character": "不存在", "days": 1})
 	if rec.Code != http.StatusNotFound {
@@ -4320,7 +4157,6 @@ func TestComponentSkip_NotFound(t *testing.T) {
 }
 
 func TestComponentSkip_MissingCharacter(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodPost, "/api/component/skip", map[string]any{})
 	if rec.Code != http.StatusBadRequest {
@@ -4331,7 +4167,6 @@ func TestComponentSkip_MissingCharacter(t *testing.T) {
 // ── POST /api/hmm-quiz/skip ──────────────────────────────────────────────────
 
 func TestHMMQuizSkip_DaysOne(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHMMCard(t, s)
 	ctx := context.Background()
@@ -4380,7 +4215,6 @@ func TestHMMQuizSkip_DaysOne(t *testing.T) {
 }
 
 func TestHMMQuizSkip_NotFound(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
 		"entity_type": models.HMMEntityActor,
@@ -4393,7 +4227,6 @@ func TestHMMQuizSkip_NotFound(t *testing.T) {
 }
 
 func TestHMMQuizSkip_BadEntityType(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
 		"entity_type": "garbage",
@@ -4406,7 +4239,6 @@ func TestHMMQuizSkip_BadEntityType(t *testing.T) {
 }
 
 func TestQuizStats_IncludesComponentCounts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -4432,7 +4264,6 @@ func TestQuizStats_IncludesComponentCounts(t *testing.T) {
 }
 
 func TestComponentList_ReturnsComponents(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman; female"); err != nil {
@@ -4464,7 +4295,6 @@ func TestComponentList_ReturnsComponents(t *testing.T) {
 }
 
 func TestComponentList_SearchFilter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman; female"); err != nil {
@@ -4496,7 +4326,6 @@ func TestComponentList_SearchFilter(t *testing.T) {
 }
 
 func TestHMMBreakdown_Empty(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodGet, "/api/hmm/breakdown", nil)
 	if rec.Code != http.StatusOK {
@@ -4528,7 +4357,6 @@ func baseSettingsPatch() map[string]any {
 // ── GET /api/settings ────────────────────────────────────────────────────────
 
 func TestGetSettings_Defaults(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4574,7 +4402,6 @@ func TestGetSettings_Defaults(t *testing.T) {
 // PutAPIKeys must reject a local LLM URL that points at an internal address
 // (SSRF guard) before doing anything else.
 func TestPutAPIKeys_RejectsInternalLLMURL(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4595,7 +4422,6 @@ func TestPutAPIKeys_RejectsInternalLLMURL(t *testing.T) {
 // ── PATCH /api/settings ──────────────────────────────────────────────────────
 
 func TestPatchSettings_Valid(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4635,7 +4461,6 @@ func TestPatchSettings_Valid(t *testing.T) {
 }
 
 func TestPatchSettings_ExtendSessionWithExtraWords_RoundTrip(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4657,7 +4482,6 @@ func TestPatchSettings_ExtendSessionWithExtraWords_RoundTrip(t *testing.T) {
 // ── PATCH /api/training-filters ──────────────────────────────────────────────
 
 func TestPatchTrainingFilters_Valid(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4699,7 +4523,6 @@ func TestPatchTrainingFilters_Valid(t *testing.T) {
 }
 
 func TestPatchTrainingFilters_InvalidMode(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4714,7 +4537,6 @@ func TestPatchTrainingFilters_InvalidMode(t *testing.T) {
 }
 
 func TestPatchSettings_NewWordRequire(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4749,7 +4571,6 @@ func TestPatchSettings_NewWordRequire(t *testing.T) {
 }
 
 func TestPatchSettings_InvalidMode(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4772,7 +4593,6 @@ func TestPatchSettings_InvalidMode(t *testing.T) {
 }
 
 func TestPatchSettings_SameLang(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4795,7 +4615,6 @@ func TestPatchSettings_SameLang(t *testing.T) {
 }
 
 func TestPatchSettings_EmptySecondaryLang(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4828,7 +4647,6 @@ func TestPatchSettings_EmptySecondaryLang(t *testing.T) {
 // ── GET /api/quiz/next uses user primary lang ─────────────────────────────────
 
 func TestQuizNext_UsesUserPrimaryLang(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	ctx := context.Background()
@@ -4873,7 +4691,6 @@ func TestQuizNext_UsesUserPrimaryLang(t *testing.T) {
 // ── Hanzi decompose handler ───────────────────────────────────────────────────
 
 func TestDecompose_EmptyCharsReturnsEmptyArray(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -4889,7 +4706,6 @@ func TestDecompose_EmptyCharsReturnsEmptyArray(t *testing.T) {
 }
 
 func TestDecompose_MarkNew_FlagsUntrainedComponents(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4915,7 +4731,6 @@ func TestDecompose_MarkNew_FlagsUntrainedComponents(t *testing.T) {
 }
 
 func TestDecompose_MarkNew_TrainedComponentNotFlagged(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4950,7 +4765,6 @@ func TestDecompose_MarkNew_TrainedComponentNotFlagged(t *testing.T) {
 }
 
 func TestDecompose_Langs_PopulatesDefinitions(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4986,7 +4800,6 @@ func TestDecompose_Langs_PopulatesDefinitions(t *testing.T) {
 // ── Component review ──────────────────────────────────────────────────────────
 
 func TestComponentReview_Sets204(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -5013,7 +4826,6 @@ func TestComponentReview_Sets204(t *testing.T) {
 // ── Component translation update ──────────────────────────────────────────────
 
 func TestComponentUpdateTranslation_Sets204(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
@@ -5039,7 +4851,6 @@ func TestComponentUpdateTranslation_Sets204(t *testing.T) {
 }
 
 func TestComponentUpdateTranslation_MissingLang(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
@@ -5058,7 +4869,6 @@ func TestComponentUpdateTranslation_MissingLang(t *testing.T) {
 // ── Component list review filter ──────────────────────────────────────────────
 
 func TestComponentList_ReviewFilter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -5098,7 +4908,6 @@ func TestComponentList_ReviewFilter(t *testing.T) {
 // ── GetTranslations ───────────────────────────────────────────────────────────
 
 func TestComponentGetTranslations_ReturnsMap(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
@@ -5127,7 +4936,6 @@ func TestComponentGetTranslations_ReturnsMap(t *testing.T) {
 }
 
 func TestComponentGetTranslations_EmptyForUnknown(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, http.MethodGet, "/api/components/X/translations", nil)
@@ -5144,7 +4952,6 @@ func TestComponentGetTranslations_EmptyForUnknown(t *testing.T) {
 // ── component is_also_word field ─────────────────────────────────────────────
 
 func TestQuizNext_ComponentCard_IsAlsoWord_True(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -5177,7 +4984,6 @@ func TestQuizNext_ComponentCard_IsAlsoWord_True(t *testing.T) {
 }
 
 func TestQuizNext_ComponentCard_IsAlsoWord_False(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -5206,7 +5012,6 @@ func TestQuizNext_ComponentCard_IsAlsoWord_False(t *testing.T) {
 // ── Component HMM scene handler tests ────────────────────────────────────────
 
 func TestComponentGetHMMScene_ReturnsSceneText(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.UpsertComponentHMMScene(ctx, int64(2), "木", "A wooden table"); err != nil {
@@ -5225,7 +5030,6 @@ func TestComponentGetHMMScene_ReturnsSceneText(t *testing.T) {
 }
 
 func TestComponentGetHMMScene_EmptyWhenNoScene(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, http.MethodGet, "/api/components/木/hmm-scene", nil)
@@ -5240,7 +5044,6 @@ func TestComponentGetHMMScene_EmptyWhenNoScene(t *testing.T) {
 }
 
 func TestComponentPutHMMScene_SavesAndReturns204(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, http.MethodPut, "/api/components/木/hmm-scene", map[string]string{
@@ -5260,7 +5063,6 @@ func TestComponentPutHMMScene_SavesAndReturns204(t *testing.T) {
 }
 
 func TestComponentPutHMMScene_MissingChar_Returns400(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, http.MethodPut, "/api/components//hmm-scene", map[string]string{
@@ -5272,7 +5074,6 @@ func TestComponentPutHMMScene_MissingChar_Returns400(t *testing.T) {
 }
 
 func TestComponentDeleteHMMScene_Removes(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.UpsertComponentHMMScene(ctx, int64(2), "水", "Water flows"); err != nil {
@@ -5294,7 +5095,6 @@ func TestComponentDeleteHMMScene_Removes(t *testing.T) {
 }
 
 func TestComponentAnswer_IncludesSceneText(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -5321,7 +5121,6 @@ func TestComponentAnswer_IncludesSceneText(t *testing.T) {
 }
 
 func TestComponentAnswer_NoSceneText_OmitsField(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -5347,7 +5146,6 @@ func TestComponentAnswer_NoSceneText_OmitsField(t *testing.T) {
 // ── Component HMM context handler tests ──────────────────────────────────────
 
 func TestComponentGetHMMContext_ReturnsContext(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	// Seed character with pinyin so initial/final/tone can be parsed.
@@ -5370,7 +5168,6 @@ func TestComponentGetHMMContext_ReturnsContext(t *testing.T) {
 }
 
 func TestComponentGetHMMContext_MissingChar_Returns400(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodGet, "/api/components//hmm/context", nil)
 	if rec.Code == http.StatusOK {
@@ -5379,7 +5176,6 @@ func TestComponentGetHMMContext_MissingChar_Returns400(t *testing.T) {
 }
 
 func TestComponentGetHMMContext_IncludesExistingScene(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "水", "water"); err != nil {
@@ -5409,7 +5205,6 @@ func TestComponentGetHMMContext_IncludesExistingScene(t *testing.T) {
 }
 
 func TestComponentSaveCompScene_SavesActorLocationRoom(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionWithPinyinForTest(ctx, "火", "fire", `["huǒ"]`); err != nil {
@@ -5466,7 +5261,6 @@ func doMultipart(t *testing.T, r http.Handler, path string, fields map[string]st
 }
 
 func TestUploadCSV_NoFile(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv", map[string]string{"tags": "test"}, "")
 	if rec.Code != http.StatusBadRequest {
@@ -5475,7 +5269,6 @@ func TestUploadCSV_NoFile(t *testing.T) {
 }
 
 func TestUploadCSV_MissingTags(t *testing.T) {
-	t.Parallel()
 	csv := "chinese,pinyin,en\n我,wǒ,I"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv", map[string]string{}, csv)
@@ -5485,7 +5278,6 @@ func TestUploadCSV_MissingTags(t *testing.T) {
 }
 
 func TestUploadCSV_BadCSVHeader(t *testing.T) {
-	t.Parallel()
 	csv := "word,pinyin,en\n我,wǒ,I"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv", map[string]string{"tags": "test"}, csv)
@@ -5495,7 +5287,6 @@ func TestUploadCSV_BadCSVHeader(t *testing.T) {
 }
 
 func TestUploadCSV_ValidBasic(t *testing.T) {
-	t.Parallel()
 	csv := "chinese,pinyin,en\n我要回家了,wǒ yào huí jiā le,I go home"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv",
@@ -5517,7 +5308,6 @@ func TestUploadCSV_ValidBasic(t *testing.T) {
 }
 
 func TestUploadCSV_DuplicateCallsUpdate(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "我要回家了", "wǒ yào huí jiā le", []string{"old translation"})
 	csv := "chinese,pinyin,en\n我要回家了,wǒ yào huí jiā le,I go home"
@@ -5538,7 +5328,6 @@ func TestUploadCSV_DuplicateCallsUpdate(t *testing.T) {
 }
 
 func TestUploadCSV_MultipleLanguages(t *testing.T) {
-	t.Parallel()
 	csv := "chinese,pinyin,en,de\n你好,nǐ hǎo,hello,Hallo"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv",
@@ -5554,7 +5343,6 @@ func TestUploadCSV_MultipleLanguages(t *testing.T) {
 }
 
 func TestUploadCSV_NoPinyinColumn(t *testing.T) {
-	t.Parallel()
 	csv := "chinese,en\n我要回家了,I go home\n你好,hello"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv",
@@ -5570,7 +5358,6 @@ func TestUploadCSV_NoPinyinColumn(t *testing.T) {
 }
 
 func TestUploadCSV_NoPinyinMultipleLangs(t *testing.T) {
-	t.Parallel()
 	csv := "chinese,en,de\n你好,hello,Hallo"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv",
@@ -5586,7 +5373,6 @@ func TestUploadCSV_NoPinyinMultipleLangs(t *testing.T) {
 }
 
 func TestUploadCSV_AutoGeneratesPinyinWhenColumnAbsent(t *testing.T) {
-	t.Parallel()
 	csv := "chinese,en\n你好,hello"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv",
@@ -5613,7 +5399,6 @@ func TestUploadCSV_AutoGeneratesPinyinWhenColumnAbsent(t *testing.T) {
 }
 
 func TestUploadCSV_MultipleSemicolonTranslations(t *testing.T) {
-	t.Parallel()
 	csv := "chinese,pinyin,de\n我要回家了,wǒ yào huí jiā le,Ich gehe nach Hause; Ich gehe heim"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv",
@@ -5629,7 +5414,6 @@ func TestUploadCSV_MultipleSemicolonTranslations(t *testing.T) {
 }
 
 func TestUploadCSV_StartTraining(t *testing.T) {
-	t.Parallel()
 	csv := "chinese,pinyin,en\n一,yī,one\n二,èr,two\n三,sān,three"
 	r := newRouter(openTestDB(t))
 	rec := doMultipart(t, r, "/api/words/upload-csv",
@@ -5647,7 +5431,6 @@ func TestUploadCSV_StartTraining(t *testing.T) {
 // ── Cycle mode ────────────────────────────────────────────────────────────────
 
 func TestSettingsCycleSequence(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -5692,7 +5475,6 @@ func TestSettingsCycleSequence(t *testing.T) {
 }
 
 func TestSettingsCycleSequence_InvalidMode(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -5712,7 +5494,6 @@ func TestSettingsCycleSequence_InvalidMode(t *testing.T) {
 }
 
 func TestQuizNext_CycleMode(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -5734,7 +5515,6 @@ func TestQuizNext_CycleMode(t *testing.T) {
 }
 
 func TestQuizCycleAdvances(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -5768,7 +5548,6 @@ func TestQuizCycleAdvances(t *testing.T) {
 }
 
 func TestQuizCycleWraps(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -5804,7 +5583,6 @@ func TestQuizCycleWraps(t *testing.T) {
 }
 
 func TestQuizCycleCustomSequence(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	r := newRouter(s)
@@ -5846,7 +5624,6 @@ func TestQuizCycleCustomSequence(t *testing.T) {
 }
 
 func TestQuizCycleMode_NoLearningPinyinHint(t *testing.T) {
-	t.Parallel()
 	// transl_to_zh in cycle mode must NOT expose the learning-phase pinyin hint,
 	// even when the word is still in the intro phase (LearningNewWord=true).
 	s := openTestDB(t)
@@ -5892,7 +5669,6 @@ func TestQuizCycleMode_NoLearningPinyinHint(t *testing.T) {
 // ── Cycle advance on success only ────────────────────────────────────────────
 
 func TestSettingsCycleAdvanceOnSuccessOnly_DefaultFalse(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -5908,7 +5684,6 @@ func TestSettingsCycleAdvanceOnSuccessOnly_DefaultFalse(t *testing.T) {
 }
 
 func TestSettingsCycleAdvanceOnSuccessOnly_RoundTrip(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -5940,7 +5715,6 @@ func TestSettingsCycleAdvanceOnSuccessOnly_RoundTrip(t *testing.T) {
 }
 
 func TestQuizCycle_AdvanceOnSuccessOnly(t *testing.T) {
-	t.Parallel()
 	// When cycle_advance_on_success_only=true, the cycle position is driven by
 	// TotalCorrect rather than TotalAttempts. A word with TotalAttempts=3 but
 	// TotalCorrect=1 should show position (1-1)%3=0, not (3-1)%3=2.
@@ -6000,7 +5774,6 @@ func TestQuizCycle_AdvanceOnSuccessOnly(t *testing.T) {
 // ── Answer prev_state persistence ────────────────────────────────────────────
 
 func TestAnswerWrongStoresPrevState(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -6035,7 +5808,6 @@ func TestAnswerWrongStoresPrevState(t *testing.T) {
 }
 
 func TestAnswerCorrectClearsPrevState(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -6066,7 +5838,6 @@ func TestAnswerCorrectClearsPrevState(t *testing.T) {
 // ── Ambiguity detection ──────────────────────────────────────────────────────
 
 func TestAnswerAmbiguous_TranslToZh_SetsAmbiguousFlag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -6105,7 +5876,6 @@ func TestAnswerAmbiguous_TranslToZh_SetsAmbiguousFlag(t *testing.T) {
 }
 
 func TestAnswerAmbiguous_NonSharedTranslation_NotAmbiguous(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -6136,7 +5906,6 @@ func TestAnswerAmbiguous_NonSharedTranslation_NotAmbiguous(t *testing.T) {
 }
 
 func TestAnswerAmbiguous_ZhToTranslMode_NotAmbiguous(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -6170,7 +5939,6 @@ func TestAnswerAmbiguous_ZhToTranslMode_NotAmbiguous(t *testing.T) {
 // rather than a separate "Nudeln" row. This must still be detected as
 // ambiguous rather than falling through to a plain wrong answer.
 func TestAnswerAmbiguous_MultiGlossTranslation_SetsAmbiguousFlag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 
@@ -6204,7 +5972,6 @@ func TestAnswerAmbiguous_MultiGlossTranslation_SetsAmbiguousFlag(t *testing.T) {
 // ── POST /api/quiz/accept-correct ────────────────────────────────────────────
 
 func TestAcceptCorrectNoState(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -6219,7 +5986,6 @@ func TestAcceptCorrectNoState(t *testing.T) {
 }
 
 func TestAcceptCorrectRestoresProgress(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -6286,7 +6052,6 @@ func TestAcceptCorrectRestoresProgress(t *testing.T) {
 }
 
 func TestAcceptCorrectInvalidWordID(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
 		WordID: 0,
@@ -6300,7 +6065,6 @@ func TestAcceptCorrectInvalidWordID(t *testing.T) {
 // ── POST /api/component/accept-correct ───────────────────────────────────────
 
 func TestComponentAcceptCorrect_NoState(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -6316,7 +6080,6 @@ func TestComponentAcceptCorrect_NoState(t *testing.T) {
 }
 
 func TestComponentAcceptCorrect_RestoresProgress(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -6364,7 +6127,6 @@ func TestComponentAcceptCorrect_RestoresProgress(t *testing.T) {
 }
 
 func TestComponentAcceptCorrect_MissingCharacter(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": ""})
 	if rec.Code != http.StatusBadRequest {
@@ -6390,7 +6152,6 @@ func validSettingsPayload() map[string]string {
 }
 
 func TestSettingsPatchAcceptCorrectMode(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 
 	payload := validSettingsPayload()
@@ -6412,7 +6173,6 @@ func TestSettingsPatchAcceptCorrectMode(t *testing.T) {
 }
 
 func TestSettingsPatchAcceptCorrectModeInvalid(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	payload := validSettingsPayload()
 	payload["accept_correct_mode"] = "banana"
@@ -6425,7 +6185,6 @@ func TestSettingsPatchAcceptCorrectModeInvalid(t *testing.T) {
 // ── Settings: daily learning ──────────────────────────────────────────────────
 
 func TestGetSettings_DailyLearningDefaults(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 
 	rec := do(t, r, http.MethodGet, "/api/settings", nil)
@@ -6462,7 +6221,6 @@ func TestGetSettings_DailyLearningDefaults(t *testing.T) {
 }
 
 func TestPatchSettings_DailyLearning(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 
 	payload := validSettingsPayload()
@@ -6540,7 +6298,6 @@ func TestPatchSettings_DailyLearning(t *testing.T) {
 }
 
 func TestPatchSettings_MaxNewWordsPerDay_Invalid(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 
 	type payload struct {
@@ -6575,7 +6332,6 @@ func TestPatchSettings_MaxNewWordsPerDay_Invalid(t *testing.T) {
 }
 
 func TestSkip_RejectsNewWordWhenHidden(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	wordID := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	ctx := context.Background()
@@ -6633,7 +6389,6 @@ func TestSkip_RejectsNewWordWhenHidden(t *testing.T) {
 // ── Settings: new word cooldown ───────────────────────────────────────────────
 
 func TestGetSettings_CooldownDefault(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodGet, "/api/settings", nil)
 	if rec.Code != http.StatusOK {
@@ -6647,7 +6402,6 @@ func TestGetSettings_CooldownDefault(t *testing.T) {
 }
 
 func TestPatchSettings_Cooldown(t *testing.T) {
-	t.Parallel()
 	r := newRouter(openTestDB(t))
 
 	type payload struct {
@@ -6693,7 +6447,6 @@ func TestPatchSettings_Cooldown(t *testing.T) {
 // TestQuizStats_MaxNewPerDay_ReflectsUserSetting verifies that the stats
 // endpoint returns the per-user max_new_words_per_day, not the server default.
 func TestQuizStats_MaxNewPerDay_ReflectsUserSetting(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Server default is 100 (set in newRouter via MaxNewPerDay: 100).
 	// Patch the user setting to 3; stats must report 3, not 100.
@@ -6750,7 +6503,6 @@ func uploadRouterWithLimits(s *db.Store, maxBytes int64, maxRows int) http.Handl
 }
 
 func TestUploadCSV_RejectsOversizedBody(t *testing.T) {
-	t.Parallel()
 	// Tiny body cap; the multipart payload below exceeds it.
 	r := uploadRouterWithLimits(openTestDB(t), 500, 5000)
 	var b strings.Builder
@@ -6766,7 +6518,6 @@ func TestUploadCSV_RejectsOversizedBody(t *testing.T) {
 }
 
 func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
-	t.Parallel()
 	// Row cap of 2; the CSV below has 3 data rows.
 	r := uploadRouterWithLimits(openTestDB(t), 0, 2)
 	csv := "chinese,pinyin,en\n一,yī,one\n二,èr,two\n三,sān,three"
@@ -6783,7 +6534,6 @@ func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
 // ── GET /api/quiz/match-game ──────────────────────────────────────────────────
 
 func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -6805,7 +6555,6 @@ func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
 }
 
 func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -6831,7 +6580,6 @@ func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
 }
 
 func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -6856,7 +6604,6 @@ func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
 }
 
 func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -6889,7 +6636,6 @@ func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
 // ── POST /api/quiz/match-answer ───────────────────────────────────────────────
 
 func TestMatchAnswer_Correct(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -6909,7 +6655,6 @@ func TestMatchAnswer_Correct(t *testing.T) {
 }
 
 func TestMatchAnswer_Wrong(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	r := newRouter(s)
@@ -6926,7 +6671,6 @@ func TestMatchAnswer_Wrong(t *testing.T) {
 }
 
 func TestMatchAnswer_MissingWordID(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"correct": true})
@@ -6936,7 +6680,6 @@ func TestMatchAnswer_MissingWordID(t *testing.T) {
 }
 
 func TestMatchAnswer_WordNotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"zh_word_id": 9999, "correct": true})
@@ -6948,7 +6691,6 @@ func TestMatchAnswer_WordNotFound(t *testing.T) {
 // ── PATCH /api/settings — gamification ───────────────────────────────────────
 
 func TestSettingsPatch_GamificationFields(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	body := baseSettingsPatch()
@@ -6970,7 +6712,6 @@ func TestSettingsPatch_GamificationFields(t *testing.T) {
 }
 
 func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	for _, freq := range []int{0, 1441} {
@@ -6986,7 +6727,6 @@ func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 // ── GET /api/audio/component/{char} ──────────────────────────────────────────
 
 func TestServeComponentAudio_ServesPreCachedFile(t *testing.T) {
-	t.Parallel()
 	tmpDir := t.TempDir()
 	audioH := &handlers.AudioHandler{Store: openTestDB(t), AudioDir: tmpDir}
 
@@ -7014,7 +6754,6 @@ func TestServeComponentAudio_ServesPreCachedFile(t *testing.T) {
 }
 
 func TestServeComponentAudio_GeneratesOnDemand(t *testing.T) {
-	t.Parallel()
 	tmpDir := t.TempDir()
 	synthCalled := ""
 	audioH := &handlers.AudioHandler{
@@ -7044,7 +6783,6 @@ func TestServeComponentAudio_GeneratesOnDemand(t *testing.T) {
 }
 
 func TestServeComponentAudio_InvalidChar(t *testing.T) {
-	t.Parallel()
 	audioH := &handlers.AudioHandler{Store: openTestDB(t), AudioDir: t.TempDir()}
 
 	r := chi.NewRouter()
@@ -7061,7 +6799,6 @@ func TestServeComponentAudio_InvalidChar(t *testing.T) {
 }
 
 func TestServeComponentAudio_FilenameDifferentFromWordIDs(t *testing.T) {
-	t.Parallel()
 	// Ensure component files (c_{hex}.mp3) cannot collide with word audio files
 	// ({integer}.mp3). A hex codepoint like "6728" must NOT be a valid word ID
 	// file — verified by checking the naming prefix distinguishes them.
@@ -7076,7 +6813,6 @@ func TestServeComponentAudio_FilenameDifferentFromWordIDs(t *testing.T) {
 }
 
 func TestServeComponentAudio_RadicalUsesCanonicalFormForTTS(t *testing.T) {
-	t.Parallel()
 	// Radical variant characters (e.g. 扌 U+624C) should have TTS generated
 	// using the canonical/pronounceable character (手 U+624B), while the cached
 	// file is still named after the actual component codepoint (c_624c.mp3).
@@ -7146,7 +6882,6 @@ func makeDifficultWord(t *testing.T, s *db.Store, r http.Handler, id int64, tc, 
 }
 
 func TestFlagDifficult_FlagsServesAndClearsOnCorrect(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	id1 := seedWord(t, s, "山", "shān", []string{"mountain"})
@@ -7201,7 +6936,6 @@ func TestFlagDifficult_FlagsServesAndClearsOnCorrect(t *testing.T) {
 }
 
 func TestFlagDifficult_InvalidCount(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/quiz/difficult", map[string]any{"count": 0})
@@ -7211,7 +6945,6 @@ func TestFlagDifficult_InvalidCount(t *testing.T) {
 }
 
 func TestClearDifficult_EmptiesPoolAndDrillReturns404(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r := newRouter(s)
 	id := seedWord(t, s, "山", "shān", []string{"mountain"})

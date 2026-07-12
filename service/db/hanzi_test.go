@@ -9,7 +9,6 @@ import (
 // pictophonetic character the semantic component gets is_semantic=true and
 // the phonetic-only component gets is_semantic=false.
 func TestGetHanziDecomposition_IsSemantic_Pictophonetic(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -54,7 +53,6 @@ func TestGetHanziDecomposition_IsSemantic_Pictophonetic(t *testing.T) {
 // TestGetHanziDecomposition_IsSemantic_Ideographic verifies that all
 // components of an ideographic character get is_semantic=true.
 func TestGetHanziDecomposition_IsSemantic_Ideographic(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -86,7 +84,6 @@ func TestGetHanziDecomposition_IsSemantic_Ideographic(t *testing.T) {
 // etymology, the pinyin similarity fallback marks the matching component
 // as phonetic (is_semantic=false).
 func TestGetHanziDecomposition_IsSemantic_PinyinFallback(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -125,7 +122,6 @@ func TestGetHanziDecomposition_IsSemantic_PinyinFallback(t *testing.T) {
 // queried characters never have IsSemantic populated (it is only set on
 // entries that are components of some parent).
 func TestGetHanziDecomposition_IsSemantic_TopLevelUnset(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 

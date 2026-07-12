@@ -73,7 +73,6 @@ func postGenerateScene(t *testing.T, r http.Handler, id int64, body any) *httpte
 }
 
 func TestLLMGenerateScene_OK(t *testing.T) {
-	t.Parallel()
 	r, id := buildLLMRouter(t, &mockLLMClient{text: "Jackie Chan trips over the sword."})
 
 	rec := postGenerateScene(t, r, id, map[string]any{
@@ -93,7 +92,6 @@ func TestLLMGenerateScene_OK(t *testing.T) {
 }
 
 func TestLLMGenerateScene_BadWordID(t *testing.T) {
-	t.Parallel()
 	r, _ := buildLLMRouter(t, &mockLLMClient{text: "x"})
 	req := httptest.NewRequest(http.MethodPost, "/api/words/notanumber/hmm/generate-scene",
 		strings.NewReader(`{}`))
@@ -105,7 +103,6 @@ func TestLLMGenerateScene_BadWordID(t *testing.T) {
 }
 
 func TestLLMGenerateScene_WordNotFound(t *testing.T) {
-	t.Parallel()
 	r, _ := buildLLMRouter(t, &mockLLMClient{text: "x"})
 	rec := postGenerateScene(t, r, 9999, map[string]any{"actor": "a"})
 	if rec.Code != http.StatusNotFound {
@@ -114,7 +111,6 @@ func TestLLMGenerateScene_WordNotFound(t *testing.T) {
 }
 
 func TestLLMGenerateScene_BadJSON(t *testing.T) {
-	t.Parallel()
 	r, id := buildLLMRouter(t, &mockLLMClient{text: "x"})
 	req := httptest.NewRequest(http.MethodPost,
 		fmt.Sprintf("/api/words/%d/hmm/generate-scene", id),
@@ -128,7 +124,6 @@ func TestLLMGenerateScene_BadJSON(t *testing.T) {
 }
 
 func TestLLMGenerateScene_ClientError(t *testing.T) {
-	t.Parallel()
 	r, id := buildLLMRouter(t, &mockLLMClient{err: fmt.Errorf("network error")})
 	rec := postGenerateScene(t, r, id, map[string]any{"actor": "a"})
 	if rec.Code != http.StatusInternalServerError {
@@ -137,7 +132,6 @@ func TestLLMGenerateScene_ClientError(t *testing.T) {
 }
 
 func TestLLMGenerateScene_InjectionNewlinesStripped(t *testing.T) {
-	t.Parallel()
 	var capturedReq llm.Request
 	r, id := buildLLMRouter(t, &captureLLMClient{out: &capturedReq, text: "ok"})
 
@@ -160,7 +154,6 @@ func TestLLMGenerateScene_InjectionNewlinesStripped(t *testing.T) {
 }
 
 func TestLLMGenerateScene_PromptBuiltServerSide(t *testing.T) {
-	t.Parallel()
 	// Verify that zh_text and meaning come from DB, not from the request.
 	var capturedReq llm.Request
 	r, id := buildLLMRouter(t, &captureLLMClient{out: &capturedReq, text: "scene"})

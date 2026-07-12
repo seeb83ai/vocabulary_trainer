@@ -88,7 +88,6 @@ func seedWordForUser(t *testing.T, s *db.Store, userID int64, zhText, pinyin str
 // ── Words: List isolation ─────────────────────────────────────────────────────
 
 func TestIsolation_WordList_UserSeesOnlyOwnWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 
 	// User 1 owns "再见"; user 2 owns "你好".
@@ -130,7 +129,6 @@ func TestIsolation_WordList_UserSeesOnlyOwnWords(t *testing.T) {
 // ── Words: GetByID isolation ──────────────────────────────────────────────────
 
 func TestIsolation_GetWordByID_CannotAccessOtherUsersWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
 	idB := seedWordForUser(t, s, 2, "你好", "nǐ hǎo", []string{"hello"})
@@ -160,7 +158,6 @@ func TestIsolation_GetWordByID_CannotAccessOtherUsersWord(t *testing.T) {
 // ── Words: Delete isolation ───────────────────────────────────────────────────
 
 func TestIsolation_DeleteWord_CannotDeleteOtherUsersWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
 
@@ -183,7 +180,6 @@ func TestIsolation_DeleteWord_CannotDeleteOtherUsersWord(t *testing.T) {
 // ── Words: Update isolation ───────────────────────────────────────────────────
 
 func TestIsolation_UpdateWord_CannotUpdateOtherUsersWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
 
@@ -202,7 +198,6 @@ func TestIsolation_UpdateWord_CannotUpdateOtherUsersWord(t *testing.T) {
 // ── Words: MarkReview isolation ───────────────────────────────────────────────
 
 func TestIsolation_MarkReview_CannotMarkOtherUsersWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
 
@@ -216,7 +211,6 @@ func TestIsolation_MarkReview_CannotMarkOtherUsersWord(t *testing.T) {
 // ── Quiz: Next card isolation ─────────────────────────────────────────────────
 
 func TestIsolation_QuizNext_OnlyOwnWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 
 	// User 1 has "再见"; user 2 has "你好".
@@ -260,7 +254,6 @@ func TestIsolation_QuizNext_OnlyOwnWords(t *testing.T) {
 // ── Quiz: Stats isolation ─────────────────────────────────────────────────────
 
 func TestIsolation_QuizStats_CountOnlyOwnWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 
 	// User 1 has 3 words; user 2 has 1 word.
@@ -301,7 +294,6 @@ func TestIsolation_QuizStats_CountOnlyOwnWords(t *testing.T) {
 //   - Updating an actor via the HTTP API only affects the requesting user.
 
 func TestIsolation_HMMActors_UserSeesOnlyOwnLibrary(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -346,7 +338,6 @@ func TestIsolation_HMMActors_UserSeesOnlyOwnLibrary(t *testing.T) {
 }
 
 func TestIsolation_HMMActors_UpdateDoesNotAffectOtherUser(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -394,7 +385,6 @@ func TestIsolation_HMMActors_UpdateDoesNotAffectOtherUser(t *testing.T) {
 // ── HMM tone rooms: Library isolation ────────────────────────────────────────
 
 func TestIsolation_HMMToneRooms_UserSeesOnlyOwnRooms(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -441,7 +431,6 @@ func TestIsolation_HMMToneRooms_UserSeesOnlyOwnRooms(t *testing.T) {
 // ── Words: Creation is isolated ───────────────────────────────────────────────
 
 func TestIsolation_CreateWord_WordOnlyVisibleToCreator(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	r1 := newRouterForUser(s, 1)
 	r2 := newRouterForUser(s, 2)
@@ -480,7 +469,6 @@ func TestIsolation_CreateWord_WordOnlyVisibleToCreator(t *testing.T) {
 // ── Quiz answer: word ownership enforced ──────────────────────────────────────
 
 func TestIsolation_QuizAnswer_CannotAnswerOtherUsersWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 
 	// User 1 creates a word.
@@ -506,7 +494,6 @@ func TestIsolation_QuizAnswer_CannotAnswerOtherUsersWord(t *testing.T) {
 // ── Due-date distribution isolation ──────────────────────────────────────────
 
 func TestIsolation_DueDateDistribution_OnlyOwnWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -544,7 +531,6 @@ func TestIsolation_DueDateDistribution_OnlyOwnWords(t *testing.T) {
 // ── Quiz: Skip isolation ──────────────────────────────────────────────────────
 
 func TestIsolation_Skip_CannotSkipOtherUsersWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 
 	// User 1 owns a word.
@@ -562,7 +548,6 @@ func TestIsolation_Skip_CannotSkipOtherUsersWord(t *testing.T) {
 // ── Quiz: Acknowledge isolation ───────────────────────────────────────────────
 
 func TestIsolation_Acknowledge_CannotAcknowledgeOtherUsersWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 
 	// User 1 owns a word.
@@ -579,7 +564,6 @@ func TestIsolation_Acknowledge_CannotAcknowledgeOtherUsersWord(t *testing.T) {
 // ── Quiz: Advance isolation ───────────────────────────────────────────────────
 
 func TestIsolation_Advance_OnlyOwnWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -622,7 +606,6 @@ func TestIsolation_Advance_OnlyOwnWords(t *testing.T) {
 // ── HMM: Scene delete isolation ───────────────────────────────────────────────
 
 func TestIsolation_HMMScene_DeleteCannotDeleteOtherUsersScene(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -653,7 +636,6 @@ func TestIsolation_HMMScene_DeleteCannotDeleteOtherUsersScene(t *testing.T) {
 // ── HMM: Locations isolation ──────────────────────────────────────────────────
 
 func TestIsolation_HMMLocations_UserSeesOnlyOwnLocations(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -700,7 +682,6 @@ func TestIsolation_HMMLocations_UserSeesOnlyOwnLocations(t *testing.T) {
 // ── HMM: Props isolation ──────────────────────────────────────────────────────
 
 func TestIsolation_HMMProps_UserSeesOnlyOwnProps(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -738,7 +719,6 @@ func TestIsolation_HMMProps_UserSeesOnlyOwnProps(t *testing.T) {
 // ── Mismatches: Confusion pairs isolation ─────────────────────────────────────
 
 func TestIsolation_Mismatches_OnlyOwnConfusions(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -778,7 +758,6 @@ func TestIsolation_Mismatches_OnlyOwnConfusions(t *testing.T) {
 // ── Export: Only own words ────────────────────────────────────────────────────
 
 func TestIsolation_Export_OnlyOwnWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 
 	// User 1 has a word; user 2 has a different word.

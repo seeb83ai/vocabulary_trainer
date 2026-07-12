@@ -8,7 +8,6 @@ import (
 )
 
 func TestToPinyin(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		input string
 		want  string
@@ -27,7 +26,6 @@ func TestToPinyin(t *testing.T) {
 }
 
 func TestSplitTranslations(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		input string
 		want  []string
@@ -62,7 +60,6 @@ func TestSplitTranslations(t *testing.T) {
 }
 
 func TestTranslateHandler_ValidationErrors(t *testing.T) {
-	t.Parallel()
 	h := &TranslateHandler{APIKey: "test-key", TargetLang: "DE"}
 
 	t.Run("empty body", func(t *testing.T) {

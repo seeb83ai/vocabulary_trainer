@@ -11,7 +11,6 @@ import (
 // TestSecurityHeaders_SetsAllExpected verifies the middleware sets every
 // header in the baseline policy on a normal 200 response.
 func TestSecurityHeaders_SetsAllExpected(t *testing.T) {
-	t.Parallel()
 	mw := handlers.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))

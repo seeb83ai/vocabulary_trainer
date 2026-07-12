@@ -133,7 +133,6 @@ func TestGitHubIssue_InvalidCategory(t *testing.T) {
 }
 
 func TestGitHubIssue_NotConfigured(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Unconfigured handler (no token) must report disabled and reject submissions.
 	ghH := &handlers.GitHubHandler{Store: s}

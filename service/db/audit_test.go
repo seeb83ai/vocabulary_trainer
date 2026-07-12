@@ -6,7 +6,6 @@ import (
 )
 
 func TestRecordAuditLog_AppendsRow(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -40,7 +39,6 @@ func TestRecordAuditLog_AppendsRow(t *testing.T) {
 }
 
 func TestRecordAuditLog_NoUserID_StillRecorded(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -66,7 +64,6 @@ func TestRecordAuditLog_NoUserID_StillRecorded(t *testing.T) {
 }
 
 func TestGetAuditLogForUser_RespectsLimit(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	for i := 0; i < 5; i++ {

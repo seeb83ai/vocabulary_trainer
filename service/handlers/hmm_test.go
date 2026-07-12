@@ -8,7 +8,6 @@ import (
 )
 
 func TestCollectRadicalDefs(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name  string
 		input models.HanziDecomposition
@@ -92,7 +91,6 @@ func TestCollectRadicalDefs(t *testing.T) {
 }
 
 func TestParsePinyin(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		input   string
 		initial string

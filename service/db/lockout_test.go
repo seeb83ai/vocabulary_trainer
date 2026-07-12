@@ -7,7 +7,6 @@ import (
 )
 
 func TestLockout_IncrementFailedLogins(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -38,7 +37,6 @@ func TestLockout_IncrementFailedLogins(t *testing.T) {
 }
 
 func TestLockout_LockAndCheck(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -60,7 +58,6 @@ func TestLockout_LockAndCheck(t *testing.T) {
 }
 
 func TestLockout_ExpiredLockNotEnforced(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -79,7 +76,6 @@ func TestLockout_ExpiredLockNotEnforced(t *testing.T) {
 }
 
 func TestLockout_ResetClearsCounter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 

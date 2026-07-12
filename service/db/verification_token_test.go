@@ -12,7 +12,6 @@ import (
 // SHA-256 hash of the verification token, never the plaintext. A DB
 // breach should not yield directly-usable verification links.
 func TestCreateUser_HashesVerificationToken(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -41,7 +40,6 @@ func TestCreateUser_HashesVerificationToken(t *testing.T) {
 // verification flow continues to accept the plaintext token from the URL
 // — the DB read side hashes the incoming value to look up the row.
 func TestSetUserEmailVerified_AcceptsPlaintextToken(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 

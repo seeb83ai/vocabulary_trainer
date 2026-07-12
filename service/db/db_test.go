@@ -50,7 +50,6 @@ func seedWord(t *testing.T, s *Store, zhText, pinyin string, enTexts []string) i
 // ── CreateWord ────────────────────────────────────────────────────────────────
 
 func TestCreateWord_ReturnsID(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	if id <= 0 {
@@ -59,7 +58,6 @@ func TestCreateWord_ReturnsID(t *testing.T) {
 }
 
 func TestCreateWord_Idempotent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -69,7 +67,6 @@ func TestCreateWord_Idempotent(t *testing.T) {
 }
 
 func TestCreateWord_MultipleTranslations(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "吃饭", "chī fàn", []string{"eat", "have a meal"})
 	wd, err := s.GetWordByID(context.Background(), int64(2), id)
@@ -84,7 +81,6 @@ func TestCreateWord_MultipleTranslations(t *testing.T) {
 // ── GetWordByID ───────────────────────────────────────────────────────────────
 
 func TestGetWordByID_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	wd, err := s.GetWordByID(context.Background(), int64(2), 9999)
 	if err != nil {
@@ -96,7 +92,6 @@ func TestGetWordByID_NotFound(t *testing.T) {
 }
 
 func TestGetWordByID_ContainsZhAndPinyin(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
 	wd, err := s.GetWordByID(context.Background(), int64(2), id)
@@ -112,7 +107,6 @@ func TestGetWordByID_ContainsZhAndPinyin(t *testing.T) {
 }
 
 func TestGetWordByID_SM2FieldsPresent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "再见", "zàijiàn", []string{"goodbye"})
 	wd, err := s.GetWordByID(context.Background(), int64(2), id)
@@ -130,7 +124,6 @@ func TestGetWordByID_SM2FieldsPresent(t *testing.T) {
 // ── GetWords ──────────────────────────────────────────────────────────────────
 
 func TestGetWords_ReturnsAll(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
@@ -147,7 +140,6 @@ func TestGetWords_ReturnsAll(t *testing.T) {
 }
 
 func TestGetWords_SearchByZh(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
@@ -164,7 +156,6 @@ func TestGetWords_SearchByZh(t *testing.T) {
 }
 
 func TestGetWords_SearchByEnText(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})
@@ -178,7 +169,6 @@ func TestGetWords_SearchByEnText(t *testing.T) {
 }
 
 func TestGetWords_Pagination(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	for i := 0; i < 5; i++ {
 		seedWord(t, s, string(rune(0x4e00+i)), "", []string{"word"})
@@ -206,7 +196,6 @@ func TestGetWords_Pagination(t *testing.T) {
 // ── UpdateWord ────────────────────────────────────────────────────────────────
 
 func TestUpdateWord_ChangesZhText(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
@@ -227,7 +216,6 @@ func TestUpdateWord_ChangesZhText(t *testing.T) {
 }
 
 func TestUpdateWord_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	err := s.UpdateWord(context.Background(), int64(2), 9999, models.UpdateWordRequest{
 		ZhText:       "test",
@@ -241,7 +229,6 @@ func TestUpdateWord_NotFound(t *testing.T) {
 // ── DeleteWord ────────────────────────────────────────────────────────────────
 
 func TestDeleteWord_Removes(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	if err := s.DeleteWord(context.Background(), int64(2), id); err != nil {
@@ -254,7 +241,6 @@ func TestDeleteWord_Removes(t *testing.T) {
 }
 
 func TestDeleteWord_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	err := s.DeleteWord(context.Background(), int64(2), 9999)
 	if err == nil {
@@ -265,7 +251,6 @@ func TestDeleteWord_NotFound(t *testing.T) {
 // ── AddTranslation ────────────────────────────────────────────────────────────
 
 func TestAddTranslation_AddsNewEN(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	if err := s.AddTranslation(context.Background(), int64(2), id, "en", "hi"); err != nil {
@@ -284,7 +269,6 @@ func TestAddTranslation_AddsNewEN(t *testing.T) {
 }
 
 func TestAddTranslation_Idempotent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	s.AddTranslation(context.Background(), int64(2), id, "en", "hi")
@@ -302,7 +286,6 @@ func TestAddTranslation_Idempotent(t *testing.T) {
 }
 
 func TestAddTranslation_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	err := s.AddTranslation(context.Background(), int64(2), 9999, "en", "hello")
 	if err == nil {
@@ -313,7 +296,6 @@ func TestAddTranslation_NotFound(t *testing.T) {
 // ── GetNextCard ───────────────────────────────────────────────────────────────
 
 func TestGetNextCard_NilWhenEmpty(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	w, p, _, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil, nil, true)
 	if err != nil {
@@ -325,7 +307,6 @@ func TestGetNextCard_NilWhenEmpty(t *testing.T) {
 }
 
 func TestGetNextCard_ReturnsZhWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	w, p, _, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil, nil, true)
@@ -344,7 +325,6 @@ func TestGetNextCard_ReturnsZhWord(t *testing.T) {
 }
 
 func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -366,7 +346,6 @@ func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
 }
 
 func TestGetNextCard_MostOverduFirst(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "一", "", []string{"one"})
 	id2 := seedWord(t, s, "二", "", []string{"two"})
@@ -387,7 +366,6 @@ func TestGetNextCard_MostOverduFirst(t *testing.T) {
 }
 
 func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -422,7 +400,6 @@ func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 }
 
 func TestGetNextCard_SkipNewExcludesUnseenWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -447,7 +424,6 @@ func TestGetNextCard_SkipNewExcludesUnseenWords(t *testing.T) {
 }
 
 func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -477,7 +453,6 @@ func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
 // ── UpdateSM2Progress ─────────────────────────────────────────────────────────
 
 func TestUpdateSM2Progress_Persists(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
@@ -515,7 +490,6 @@ func TestUpdateSM2Progress_Persists(t *testing.T) {
 // ── GetStats ──────────────────────────────────────────────────────────────────
 
 func TestGetStats_Empty(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	due, total, _, err := s.GetStats(context.Background(), int64(2), nil, "")
 	if err != nil {
@@ -527,7 +501,6 @@ func TestGetStats_Empty(t *testing.T) {
 }
 
 func TestGetStats_CountsOnlyZh(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello", "hi"})
 	_, total, _, err := s.GetStats(context.Background(), int64(2), nil, "")
@@ -541,7 +514,6 @@ func TestGetStats_CountsOnlyZh(t *testing.T) {
 }
 
 func TestGetStats_DueTodayCount(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "一", "", []string{"one"})
 	seedWord(t, s, "二", "", []string{"two"})
@@ -564,7 +536,6 @@ func TestGetStats_DueTodayCount(t *testing.T) {
 }
 
 func TestGetStats_NewTodayCount(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id1 := seedWord(t, s, "一", "", []string{"one"})
@@ -585,7 +556,6 @@ func TestGetStats_NewTodayCount(t *testing.T) {
 // ── GetTranslationsForWord ────────────────────────────────────────────────────
 
 func TestGetTranslationsForWord_EN(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello", "hi"})
 	words, err := s.GetTranslationsForWord(context.Background(), id, "en")
@@ -598,7 +568,6 @@ func TestGetTranslationsForWord_EN(t *testing.T) {
 }
 
 func TestGetTranslationsForWord_EmptyWhenNone(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Manually insert a zh word with no en links
 	s.db.Exec(`INSERT INTO words (text, language) VALUES ('孤独', 'zh')`)
@@ -631,7 +600,6 @@ func seedWordWithTags(t *testing.T, s *Store, zhText, pinyin string, enTexts, ta
 }
 
 func TestCreateWord_WithTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"greetings", "HSK1"})
 	wd, err := s.GetWordByID(context.Background(), int64(2), id)
@@ -647,7 +615,6 @@ func TestCreateWord_WithTags(t *testing.T) {
 }
 
 func TestUpdateWord_ReplacesTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"old-tag"})
 	err := s.UpdateWord(context.Background(), int64(2), id, models.UpdateWordRequest{
@@ -672,7 +639,6 @@ func TestUpdateWord_ReplacesTags(t *testing.T) {
 }
 
 func TestGetWords_FilterByTag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"greetings"})
 	seedWordWithTags(t, s, "吃饭", "chī fàn", []string{"eat"}, []string{"food"})
@@ -691,7 +657,6 @@ func TestGetWords_FilterByTag(t *testing.T) {
 }
 
 func TestGetWords_FilterByMultipleTags_OR(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
@@ -710,7 +675,6 @@ func TestGetWords_FilterByMultipleTags_OR(t *testing.T) {
 }
 
 func TestGetNextCard_DoesNotReturnFutureCards(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -731,7 +695,6 @@ func TestGetNextCard_DoesNotReturnFutureCards(t *testing.T) {
 }
 
 func TestGetNextCard_ReturnsTodayNotYetOverdue(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -754,7 +717,6 @@ func TestGetNextCard_ReturnsTodayNotYetOverdue(t *testing.T) {
 }
 
 func TestGetNextCard_FilterByTag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	id2 := seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
@@ -772,7 +734,6 @@ func TestGetNextCard_FilterByTag(t *testing.T) {
 }
 
 func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 
@@ -788,7 +749,6 @@ func TestGetNextCard_NoMatchingTag_ReturnsNil(t *testing.T) {
 // ── GetNextCard with excludeIDs ───────────────────────────────────────────────
 
 func TestGetNextCard_ExcludeIDs_SkipsWhenOthersAvailable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -812,7 +772,6 @@ func TestGetNextCard_ExcludeIDs_SkipsWhenOthersAvailable(t *testing.T) {
 }
 
 func TestGetNextCard_ExcludeIDs_FallsBackToExcludedWhenNoOthers(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -838,7 +797,6 @@ func TestGetNextCard_ExcludeIDs_FallsBackToExcludedWhenNoOthers(t *testing.T) {
 // an excluded word, because the final fallback tier dropped the exclusion filter
 // but kept the todayBound restriction.
 func TestGetNextCard_ExcludeIDs_PrefersFarFutureOverExcluded(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -881,7 +839,6 @@ func TestGetNextCard_ExcludeIDs_PrefersFarFutureOverExcluded(t *testing.T) {
 // (via the extended return value) so the displayed due-today count can be
 // corrected to match what the user will actually be asked.
 func TestGetNextCard_SessionExtension_FlagsFutureCardAsExtended(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -924,7 +881,6 @@ func TestGetNextCard_SessionExtension_FlagsFutureCardAsExtended(t *testing.T) {
 // widen beyond today's due-date bound. It should repeat the excluded (but
 // genuinely due) word rather than serve a not-yet-due word.
 func TestGetNextCard_SessionExtensionDisabled_NeverServesFutureCard(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -964,7 +920,6 @@ func TestGetNextCard_SessionExtensionDisabled_NeverServesFutureCard(t *testing.T
 // words_seen and bucket counts must reflect only the calling user's words,
 // not every user's aggregate.
 func TestRecordDailyStat_UserIsolation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -1011,7 +966,6 @@ func TestRecordDailyStat_UserIsolation(t *testing.T) {
 
 // A user must not be able to attach a translation to another user's word.
 func TestAddTranslation_UserIsolation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -1048,7 +1002,6 @@ func TestAddTranslation_UserIsolation(t *testing.T) {
 // ── EnsureDueTodaySnapshot ────────────────────────────────────────────────────
 
 func TestEnsureDueTodaySnapshot_RecordsCount(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -1064,7 +1017,6 @@ func TestEnsureDueTodaySnapshot_RecordsCount(t *testing.T) {
 }
 
 func TestEnsureDueTodaySnapshot_IdempotentOnSecondCall(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -1085,7 +1037,6 @@ func TestEnsureDueTodaySnapshot_IdempotentOnSecondCall(t *testing.T) {
 // ── GetNextCard with baselines ────────────────────────────────────────────────
 
 func TestGetNextCard_BaselineStruggling_BlocksNewWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -1128,7 +1079,6 @@ func TestGetNextCard_BaselineStruggling_BlocksNewWords(t *testing.T) {
 }
 
 func TestGetNextCard_BaselineDueToday_BlocksNewWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -1163,7 +1113,6 @@ func TestGetNextCard_BaselineDueToday_BlocksNewWords(t *testing.T) {
 }
 
 func TestGetNextCard_Baselines_AllDisabled_StillShowsNewWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -1190,7 +1139,6 @@ func TestGetNextCard_Baselines_AllDisabled_StillShowsNewWord(t *testing.T) {
 // ── GetNextCard cooldown ──────────────────────────────────────────────────────
 
 func TestGetNextCard_Cooldown_BlocksSecondNewWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -1225,7 +1173,6 @@ func TestGetNextCard_Cooldown_BlocksSecondNewWord(t *testing.T) {
 }
 
 func TestGetNextCard_Cooldown_Zero_DoesNotBlock(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -1260,7 +1207,6 @@ func TestGetNextCard_Cooldown_Zero_DoesNotBlock(t *testing.T) {
 }
 
 func TestAcknowledgeWord_SetsFirstSeenAt(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -1287,7 +1233,6 @@ func TestAcknowledgeWord_SetsFirstSeenAt(t *testing.T) {
 }
 
 func TestGetStats_FilterByTag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"greetings"})
 	seedWordWithTags(t, s, "吃饭", "", []string{"eat"}, []string{"food"})
@@ -1302,7 +1247,6 @@ func TestGetStats_FilterByTag(t *testing.T) {
 }
 
 func TestGetAllTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"B-tag", "A-tag"})
 	tags, err := s.GetAllTags(context.Background(), int64(2))
@@ -1315,7 +1259,6 @@ func TestGetAllTags(t *testing.T) {
 }
 
 func TestGetAllTags_UserIsolation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	// User 2 owns words with tags (user 2 is created by openTestDB)
@@ -1347,7 +1290,6 @@ func TestGetAllTags_UserIsolation(t *testing.T) {
 }
 
 func TestDeleteWord_CleansOrphanTags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"unique-tag"})
 	if err := s.DeleteWord(context.Background(), int64(2), id); err != nil {
@@ -1362,7 +1304,6 @@ func TestDeleteWord_CleansOrphanTags(t *testing.T) {
 // ── parseDateTime ─────────────────────────────────────────────────────────────
 
 func TestParseDateTime_RFC3339(t *testing.T) {
-	t.Parallel()
 	s := "2026-02-21T15:04:05Z"
 	got := parseDateTime(s)
 	if got.IsZero() {
@@ -1371,7 +1312,6 @@ func TestParseDateTime_RFC3339(t *testing.T) {
 }
 
 func TestParseDateTime_SQLiteFormat(t *testing.T) {
-	t.Parallel()
 	s := "2026-02-21 15:04:05"
 	got := parseDateTime(s)
 	if got.IsZero() {
@@ -1383,7 +1323,6 @@ func TestParseDateTime_SQLiteFormat(t *testing.T) {
 }
 
 func TestParseDateTime_InvalidReturnsZero(t *testing.T) {
-	t.Parallel()
 	got := parseDateTime("not-a-date")
 	if !got.IsZero() {
 		t.Errorf("invalid input should return zero time, got %v", got)
@@ -1393,7 +1332,6 @@ func TestParseDateTime_InvalidReturnsZero(t *testing.T) {
 // ── Confusion pairs ───────────────────────────────────────────────────────────
 
 func TestDetectConfusion_ZhToEn_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1414,7 +1352,6 @@ func TestDetectConfusion_ZhToEn_Found(t *testing.T) {
 // for a shared translation belonging to a *different* entry, returns false for
 // the entry's own (correct) translation, and false for an unknown answer.
 func TestDetectConfusion_Behaviour(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	shoeID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1447,7 +1384,6 @@ func TestDetectConfusion_Behaviour(t *testing.T) {
 }
 
 func TestDetectConfusion_ZhToEn_NoMatch(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
@@ -1461,7 +1397,6 @@ func TestDetectConfusion_ZhToEn_NoMatch(t *testing.T) {
 }
 
 func TestDetectConfusion_EnToZh_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "书", "shū", []string{"Buch"})
 	zhID := seedWord(t, s, "五", "", []string{"five"})
@@ -1479,7 +1414,6 @@ func TestDetectConfusion_EnToZh_Found(t *testing.T) {
 }
 
 func TestDetectConfusion_SameWord_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
@@ -1493,7 +1427,6 @@ func TestDetectConfusion_SameWord_NotFound(t *testing.T) {
 }
 
 func TestUpsertConfusion_IncrementsCount(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1518,7 +1451,6 @@ func TestUpsertConfusion_IncrementsCount(t *testing.T) {
 }
 
 func TestGetConfusions_LastSeenUpdated(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1541,7 +1473,6 @@ func TestGetConfusions_LastSeenUpdated(t *testing.T) {
 }
 
 func TestDetectConfusion_ZhPinyinToEn_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1559,7 +1490,6 @@ func TestDetectConfusion_ZhPinyinToEn_Found(t *testing.T) {
 }
 
 func TestDetectConfusion_InvalidMode_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1574,7 +1504,6 @@ func TestDetectConfusion_InvalidMode_NotFound(t *testing.T) {
 }
 
 func TestDetectConfusion_EmptyAnswer_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 
@@ -1590,7 +1519,6 @@ func TestDetectConfusion_EmptyAnswer_NotFound(t *testing.T) {
 // ── CountLearningNewWords ─────────────────────────────────────────────────────
 
 func TestCountLearningNewWords_BeforePresented(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -1619,7 +1547,6 @@ func TestCountLearningNewWords_BeforePresented(t *testing.T) {
 }
 
 func TestCountLearningNewWords_GraduatedNotCounted(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -1639,7 +1566,6 @@ func TestCountLearningNewWords_GraduatedNotCounted(t *testing.T) {
 // ── AcknowledgeWord ───────────────────────────────────────────────────────────
 
 func TestAcknowledgeWord_SetsLearningPhase(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -1661,7 +1587,6 @@ func TestAcknowledgeWord_SetsLearningPhase(t *testing.T) {
 }
 
 func TestAcknowledgeWord_Idempotent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -1680,7 +1605,6 @@ func TestAcknowledgeWord_Idempotent(t *testing.T) {
 // ── SkipWord ──────────────────────────────────────────────────────────────────
 
 func TestSkipWord_AdvancesDueDateByNDays(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "一", "", []string{"one"})
@@ -1703,7 +1627,6 @@ func TestSkipWord_AdvancesDueDateByNDays(t *testing.T) {
 }
 
 func TestSkipWord_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	err := s.SkipWord(context.Background(), int64(2), 9999, 7)
 	if err == nil {
@@ -1714,7 +1637,6 @@ func TestSkipWord_NotFound(t *testing.T) {
 // ── DeleteWord shared tag ─────────────────────────────────────────────────────
 
 func TestDeleteWord_SharedTagRetained(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -1738,7 +1660,6 @@ func TestDeleteWord_SharedTagRetained(t *testing.T) {
 }
 
 func TestGetConfusions_PopulatesEnTexts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1764,7 +1685,6 @@ func TestGetConfusions_PopulatesEnTexts(t *testing.T) {
 }
 
 func TestGetConfusionDetail_ReturnsRow(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1792,7 +1712,6 @@ func TestGetConfusionDetail_ReturnsRow(t *testing.T) {
 }
 
 func TestGetConfusionDetail_MissingReturnsNil(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1807,7 +1726,6 @@ func TestGetConfusionDetail_MissingReturnsNil(t *testing.T) {
 }
 
 func TestGetConfusionDetail_ReturnsTranslationsForSelectedLangs(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -1852,7 +1770,6 @@ func TestGetConfusionDetail_ReturnsTranslationsForSelectedLangs(t *testing.T) {
 }
 
 func TestUpsertConfusion_DifferentModesSeparateRows(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1874,7 +1791,6 @@ func TestUpsertConfusion_DifferentModesSeparateRows(t *testing.T) {
 }
 
 func TestDeleteWord_CascadesToConfusionPairs(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
@@ -1899,7 +1815,6 @@ func TestDeleteWord_CascadesToConfusionPairs(t *testing.T) {
 // ── MarkWordForReview ─────────────────────────────────────────────────────────
 
 func TestMarkWordForReview_SetsFlag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
@@ -1917,7 +1832,6 @@ func TestMarkWordForReview_SetsFlag(t *testing.T) {
 }
 
 func TestMarkWordForReview_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	err := s.MarkWordForReview(context.Background(), int64(2), 9999)
 	if err == nil {
@@ -1926,7 +1840,6 @@ func TestMarkWordForReview_NotFound(t *testing.T) {
 }
 
 func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
@@ -1952,7 +1865,6 @@ func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
 }
 
 func TestGetWords_ReviewOnlyFilter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	_ = seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -1974,7 +1886,6 @@ func TestGetWords_ReviewOnlyFilter(t *testing.T) {
 }
 
 func TestGetWords_HideUnseenFilter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -2001,7 +1912,6 @@ func TestGetWords_HideUnseenFilter(t *testing.T) {
 // ── DailyStats ────────────────────────────────────────────────────────────────
 
 func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedWord(t, s, "猫", "māo", []string{"cat"})
@@ -2045,7 +1955,6 @@ func TestRecordDailyStat_IncrementsCounts(t *testing.T) {
 }
 
 func TestRecordDailyStat_StreakResets(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2066,7 +1975,6 @@ func TestRecordDailyStat_StreakResets(t *testing.T) {
 }
 
 func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2092,7 +2000,6 @@ func TestGetDailyStatsHistory_OrderedByDate(t *testing.T) {
 }
 
 func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	stats, err := s.GetDailyStatsHistory(context.Background(), int64(2))
 	if err != nil {
@@ -2109,7 +2016,6 @@ func TestGetDailyStatsHistory_EmptyReturnsEmptySlice(t *testing.T) {
 // ── GetTodaySessionInfo ───────────────────────────────────────────────────────
 
 func TestGetTodaySessionInfo_NoRows(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	attempts, mistakes, available, err := s.GetTodaySessionInfo(context.Background(), int64(2))
 	if err != nil {
@@ -2124,7 +2030,6 @@ func TestGetTodaySessionInfo_NoRows(t *testing.T) {
 }
 
 func TestGetTodaySessionInfo_WithData(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2157,7 +2062,6 @@ func TestGetTodaySessionInfo_WithData(t *testing.T) {
 }
 
 func TestRecordTrainingTime_Accumulates(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2181,7 +2085,6 @@ func TestRecordTrainingTime_Accumulates(t *testing.T) {
 }
 
 func TestRecordTrainingTime_CreatesRowWhenNoneExists(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2204,7 +2107,6 @@ func TestRecordTrainingTime_CreatesRowWhenNoneExists(t *testing.T) {
 // ── AdvanceDueDates ───────────────────────────────────────────────────────────
 
 func TestAdvanceDueDates_AdvancesNWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2248,7 +2150,6 @@ func TestAdvanceDueDates_AdvancesNWords(t *testing.T) {
 }
 
 func TestAdvanceDueDates_FewerThanN(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2277,7 +2178,6 @@ func TestAdvanceDueDates_FewerThanN(t *testing.T) {
 // ── AcknowledgeRandomWords ────────────────────────────────────────────────────
 
 func TestAcknowledgeRandomWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2318,7 +2218,6 @@ func TestAcknowledgeRandomWords(t *testing.T) {
 }
 
 func TestGetZhTextByID_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	req := models.CreateWordRequest{ZhText: "你好", Translations: map[string][]string{"en": {"hello"}}}
@@ -2336,7 +2235,6 @@ func TestGetZhTextByID_Found(t *testing.T) {
 }
 
 func TestGetZhTextByID_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	text, err := s.GetZhTextByID(context.Background(), 2, 9999)
 	if err != nil {
@@ -2348,7 +2246,6 @@ func TestGetZhTextByID_NotFound(t *testing.T) {
 }
 
 func TestIsZhWordForUser_True(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
@@ -2367,7 +2264,6 @@ func TestIsZhWordForUser_True(t *testing.T) {
 }
 
 func TestIsZhWordForUser_False(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ok, err := s.IsZhWordForUser(context.Background(), 2, "女")
 	if err != nil {
@@ -2379,7 +2275,6 @@ func TestIsZhWordForUser_False(t *testing.T) {
 }
 
 func TestIsZhWordForUser_DifferentUser(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	_, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
@@ -2398,7 +2293,6 @@ func TestIsZhWordForUser_DifferentUser(t *testing.T) {
 }
 
 func TestAcknowledgeRandomWords_InitComponents(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -2438,7 +2332,6 @@ func TestAcknowledgeRandomWords_InitComponents(t *testing.T) {
 }
 
 func TestGetTranslationLanguages_EmptyDB(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	langs, err := s.GetTranslationLanguages(context.Background())
 	if err != nil {
@@ -2450,7 +2343,6 @@ func TestGetTranslationLanguages_EmptyDB(t *testing.T) {
 }
 
 func TestGetTranslationLanguages_OnlyEN(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	langs, err := s.GetTranslationLanguages(context.Background())
@@ -2463,7 +2355,6 @@ func TestGetTranslationLanguages_OnlyEN(t *testing.T) {
 }
 
 func TestGetTranslationLanguages_ENandDE(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Create a word with both EN and DE translations.
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
@@ -2490,7 +2381,6 @@ func TestGetTranslationLanguages_ENandDE(t *testing.T) {
 // ── GetTranslationsForWord (DE) ───────────────────────────────────────────────
 
 func TestGetTranslationsForWord_DE(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:       "再见",
@@ -2515,7 +2405,6 @@ func TestGetTranslationsForWord_DE(t *testing.T) {
 }
 
 func TestGetTranslationsForWord_DEvsEN_NoMix(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:       "吃",
@@ -2544,7 +2433,6 @@ func TestGetTranslationsForWord_DEvsEN_NoMix(t *testing.T) {
 // ── GetWords with missingLang filter ─────────────────────────────────────────
 
 func TestGetWords_MissingLangEN(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Word with EN only (no DE).
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -2572,7 +2460,6 @@ func TestGetWords_MissingLangEN(t *testing.T) {
 }
 
 func TestGetWords_MissingLangDE(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Word missing EN (raw insert to bypass CreateWord EN requirement).
 	s.db.Exec(`INSERT INTO words (text, language, user_id) VALUES ('孤独', 'zh', 2)`)
@@ -2606,7 +2493,6 @@ func TestGetWords_MissingLangDE(t *testing.T) {
 }
 
 func TestGetWords_MissingLangEmpty_ReturnsAll(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "", []string{"hello"})
 	seedWord(t, s, "再见", "", []string{"goodbye"})
@@ -2622,7 +2508,6 @@ func TestGetWords_MissingLangEmpty_ReturnsAll(t *testing.T) {
 // ── UpdateWord with unchanged zh_text ────────────────────────────────────────
 
 func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	// Save with the exact same ZhText — should not cause a UNIQUE constraint error.
@@ -2646,7 +2531,6 @@ func TestUpdateWord_UnchangedZhText_NoError(t *testing.T) {
 // ── CreateWord and UpdateWord with DeTexts ────────────────────────────────────
 
 func TestCreateWord_WithDeTexts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:       "你好",
@@ -2666,7 +2550,6 @@ func TestCreateWord_WithDeTexts(t *testing.T) {
 }
 
 func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:       "再见",
@@ -2699,7 +2582,6 @@ func TestUpdateWord_ReplacesDeTexts(t *testing.T) {
 // ── Migration v20: users table + initial user ─────────────────────────────────
 
 func TestMigration_v20_UsersTableExists(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	var count int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'`).Scan(&count); err != nil {
@@ -2711,7 +2593,6 @@ func TestMigration_v20_UsersTableExists(t *testing.T) {
 }
 
 func TestMigration_v20_BothUsersSeeded(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 
 	var adminHash, meHash string
@@ -2731,7 +2612,6 @@ func TestMigration_v20_BothUsersSeeded(t *testing.T) {
 }
 
 func TestMigration_v20_AdminIsUserID1(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	var id int64
 	if err := s.db.QueryRow(`SELECT id FROM users WHERE email = 'admin@example.de'`).Scan(&id); err != nil {
@@ -2743,7 +2623,6 @@ func TestMigration_v20_AdminIsUserID1(t *testing.T) {
 }
 
 func TestMigration_v20_IdempotentOnFreshDB(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	var count int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
@@ -2757,7 +2636,6 @@ func TestMigration_v20_IdempotentOnFreshDB(t *testing.T) {
 // ── Migration v21: words.user_id + template seeding ──────────────────────────
 
 func TestMigration_v21_WordsHaveUserIDColumn(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	var count int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('words') WHERE name = 'user_id'`).Scan(&count); err != nil {
@@ -2769,7 +2647,6 @@ func TestMigration_v21_WordsHaveUserIDColumn(t *testing.T) {
 }
 
 func TestMigration_v21_CreateWordSetsUserID(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id := seedWord(t, s, "测试", "cè shì", []string{"test"})
 
@@ -2788,7 +2665,6 @@ func TestMigration_v21_CreateWordSetsUserID(t *testing.T) {
 // the column and schema are correct and that the seeding path doesn't error.)
 
 func TestMigration_v21_TemplateWordsAreSubsetOfAllWords(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// Insert a template word (admin user, id=1) and a regular word (me user, id=2).
 	seedTemplateWord(t, s, "学习", "xuéxí", []string{"study"}, nil)
@@ -2833,7 +2709,6 @@ func insertTestUser(t *testing.T, s *Store, email string) int64 {
 }
 
 func TestImportTemplateWords_CopiesWordsForUser(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedTemplateWord(t, s, "苹果", "píngguǒ", []string{"apple"}, nil)
 
@@ -2852,7 +2727,6 @@ func TestImportTemplateWords_CopiesWordsForUser(t *testing.T) {
 }
 
 func TestImportTemplateWords_CreatesSM2Progress(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedTemplateWord(t, s, "猫", "māo", []string{"cat"}, nil)
 
@@ -2874,7 +2748,6 @@ func TestImportTemplateWords_CreatesSM2Progress(t *testing.T) {
 }
 
 func TestImportTemplateWords_CopiesTranslations(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedTemplateWord(t, s, "书", "shū", []string{"book"}, nil)
 
@@ -2898,7 +2771,6 @@ func TestImportTemplateWords_CopiesTranslations(t *testing.T) {
 }
 
 func TestImportTemplateWords_Idempotent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedTemplateWord(t, s, "水", "shuǐ", []string{"water"}, nil)
 
@@ -2922,7 +2794,6 @@ func TestImportTemplateWords_Idempotent(t *testing.T) {
 }
 
 func TestImportTemplateWords_TemplatesUnchanged(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedTemplateWord(t, s, "火", "huǒ", []string{"fire"}, nil)
 
@@ -2942,7 +2813,6 @@ func TestImportTemplateWords_TemplatesUnchanged(t *testing.T) {
 }
 
 func TestImportTemplateWords_NoSM2ForTemplates(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	tmplID := seedTemplateWord(t, s, "地", "dì", []string{"earth", "ground"}, nil)
 
@@ -2968,7 +2838,6 @@ func TestImportTemplateWords_NoSM2ForTemplates(t *testing.T) {
 }
 
 func TestDetectConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3006,7 +2875,6 @@ func TestDetectConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 }
 
 func TestDetectConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3041,7 +2909,6 @@ func TestDetectConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 }
 
 func TestDetectConfusion_ZhToEn_DeMatchedEvenWhenLangIsEnOnly(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3078,7 +2945,6 @@ func TestDetectConfusion_ZhToEn_DeMatchedEvenWhenLangIsEnOnly(t *testing.T) {
 }
 
 func TestDetectConfusion_UmlautTranslation_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3115,7 +2981,6 @@ func TestDetectConfusion_UmlautTranslation_Found(t *testing.T) {
 }
 
 func TestDetectConfusion_SlashVariant_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3158,7 +3023,6 @@ func TestDetectConfusion_SlashVariant_Found(t *testing.T) {
 // found no EN translations and fell back to zh_to_transl — but mismatch
 // detection must still find the DE translation of the other word.
 func TestDetectConfusion_ZhToTransl_DeOnlyWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3197,7 +3061,6 @@ func TestDetectConfusion_ZhToTransl_DeOnlyWord(t *testing.T) {
 }
 
 func TestDetectConfusion_TranslToZh_TranslationOfOtherWord(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3235,7 +3098,6 @@ func TestDetectConfusion_TranslToZh_TranslationOfOtherWord(t *testing.T) {
 }
 
 func TestDetectConfusion_TranslToZh_SlashVariant(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3275,7 +3137,6 @@ func TestDetectConfusion_TranslToZh_SlashVariant(t *testing.T) {
 // ── CreateUser ────────────────────────────────────────────────────────────────
 
 func TestCreateUser_ReturnsID(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id, err := s.CreateUser(context.Background(), "testuser@example.com", "hash", "token123", time.Now().Add(time.Hour))
 	if err != nil {
@@ -3287,7 +3148,6 @@ func TestCreateUser_ReturnsID(t *testing.T) {
 }
 
 func TestCreateUser_EmailNotVerified(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	_, err := s.CreateUser(context.Background(), "unverified@example.com", "hash", "tok", time.Now().Add(time.Hour))
 	if err != nil {
@@ -3308,7 +3168,6 @@ func TestCreateUser_EmailNotVerified(t *testing.T) {
 // ── GetUserByID ────────────────────────────────────────────────────────────────
 
 func TestGetUserByID_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id, err := s.CreateUser(context.Background(), "byid@example.com", "hash", "tok2", time.Now().Add(time.Hour))
 	if err != nil {
@@ -3327,7 +3186,6 @@ func TestGetUserByID_Found(t *testing.T) {
 }
 
 func TestGetUserByID_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	user, err := s.GetUserByID(context.Background(), 99999)
 	if err != nil {
@@ -3341,7 +3199,6 @@ func TestGetUserByID_NotFound(t *testing.T) {
 // ── SetUserEmailVerified ───────────────────────────────────────────────────────
 
 func TestSetUserEmailVerified_OK(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	token := "validtoken12345678901234567890ab"
 	_, err := s.CreateUser(context.Background(), "verify@example.com", "hash", token, time.Now().Add(time.Hour))
@@ -3371,7 +3228,6 @@ func TestSetUserEmailVerified_OK(t *testing.T) {
 }
 
 func TestSetUserEmailVerified_UnknownToken(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	user, err := s.SetUserEmailVerified(context.Background(), "nosuchtoken")
 	if err != nil {
@@ -3383,7 +3239,6 @@ func TestSetUserEmailVerified_UnknownToken(t *testing.T) {
 }
 
 func TestSetUserEmailVerified_ExpiredToken(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	token := "expiredtoken1234567890123456789"
 	_, err := s.CreateUser(context.Background(), "expired@example.com", "hash", token, time.Now().Add(-time.Hour))
@@ -3403,7 +3258,6 @@ func TestSetUserEmailVerified_ExpiredToken(t *testing.T) {
 // ── UpdateUserPassword ────────────────────────────────────────────────────────
 
 func TestUpdateUserPassword_OK(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id, err := s.CreateUser(context.Background(), "pwchange@example.com", "oldhash", "tok3", time.Now().Add(time.Hour))
 	if err != nil {
@@ -3424,7 +3278,6 @@ func TestUpdateUserPassword_OK(t *testing.T) {
 }
 
 func TestInitPinyinProgressForUser(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3472,7 +3325,6 @@ func TestInitPinyinProgressForUser(t *testing.T) {
 // ── Tag metadata tests ────────────────────────────────────────────────────────
 
 func TestGetTagDetails_Empty(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3486,7 +3338,6 @@ func TestGetTagDetails_Empty(t *testing.T) {
 }
 
 func TestUpsertTagMeta_AndGetTagDetails(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3538,7 +3389,6 @@ func TestUpsertTagMeta_AndGetTagDetails(t *testing.T) {
 }
 
 func TestGetImportableSourceTags_FiltersImportable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3571,7 +3421,6 @@ func TestGetImportableSourceTags_FiltersImportable(t *testing.T) {
 }
 
 func TestGetImportableSourceTags_AvailableLangs(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3603,7 +3452,6 @@ func TestGetImportableSourceTags_AvailableLangs(t *testing.T) {
 }
 
 func TestGetImportableSourceTags_WithDescription(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -3630,7 +3478,6 @@ func TestGetImportableSourceTags_WithDescription(t *testing.T) {
 // ── GetUserRole ───────────────────────────────────────────────────────────────
 
 func TestGetUserRole_SeedAdmin(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	role, err := s.GetUserRole(context.Background(), 1)
 	if err != nil {
@@ -3642,7 +3489,6 @@ func TestGetUserRole_SeedAdmin(t *testing.T) {
 }
 
 func TestGetUserRole_SeedPlus(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	role, err := s.GetUserRole(context.Background(), 2)
 	if err != nil {
@@ -3654,7 +3500,6 @@ func TestGetUserRole_SeedPlus(t *testing.T) {
 }
 
 func TestGetUserRole_NewUserDefaultsFree(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id, err := s.CreateUser(context.Background(), "new@example.com", "hash", "tok-new", time.Now().Add(time.Hour))
 	if err != nil {
@@ -3670,7 +3515,6 @@ func TestGetUserRole_NewUserDefaultsFree(t *testing.T) {
 }
 
 func TestGetUserRole_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	role, err := s.GetUserRole(context.Background(), 99999)
 	if err != nil {
@@ -3682,7 +3526,6 @@ func TestGetUserRole_NotFound(t *testing.T) {
 }
 
 func TestGetUserByEmail_IncludesRole(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	user, err := s.GetUserByEmail(context.Background(), "admin@example.de")
 	if err != nil {
@@ -3737,7 +3580,6 @@ func seedHanziDecomp(t *testing.T, s *Store, character, decomp string) {
 // extracted from a word's hanzi decomposition are inserted into component_progress.
 // "好" decomposes to ⿰女子, so components 女 and 子 (both with definitions) should be inserted.
 func TestInitComponentsForWord_InsertsKnownCharacters(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDecomp(t, s, "好", "⿰女子")
 	seedHanziDef(t, s, "女", "woman; female")
@@ -3758,7 +3600,6 @@ func TestInitComponentsForWord_InsertsKnownCharacters(t *testing.T) {
 // TestInitComponentsForWord_SkipsNoDecomp verifies that characters with no
 // decomposition entry are skipped (no component_progress rows inserted).
 func TestInitComponentsForWord_SkipsNoDecomp(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// No hanzi_decomposition entries at all → should not insert anything.
 	err := s.InitComponentsForWord(context.Background(), int64(2), "好", time.Now())
@@ -3775,7 +3616,6 @@ func TestInitComponentsForWord_SkipsNoDecomp(t *testing.T) {
 // TestInitComponentsForWord_SkipsComponentsWithNoDefinition verifies that
 // components without a definition are not inserted.
 func TestInitComponentsForWord_SkipsComponentsWithNoDefinition(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDecomp(t, s, "好", "⿰女子")
 	// Decomposition exists for 好 but neither 女 nor 子 has a definition.
@@ -3794,7 +3634,6 @@ func TestInitComponentsForWord_SkipsComponentsWithNoDefinition(t *testing.T) {
 // TestInitComponentsForWord_Idempotent verifies that repeated calls do not
 // create duplicate component_progress rows.
 func TestInitComponentsForWord_Idempotent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDecomp(t, s, "好", "⿰女子")
 	seedHanziDef(t, s, "女", "woman") // 子 has no definition, so only 女 is inserted.
@@ -3812,7 +3651,6 @@ func TestInitComponentsForWord_Idempotent(t *testing.T) {
 }
 
 func TestGetNextComponentCard_ReturnsNilWhenEmpty(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
 	if err != nil {
@@ -3826,7 +3664,6 @@ func TestGetNextComponentCard_ReturnsNilWhenEmpty(t *testing.T) {
 // TestGetNextComponentCard_ReturnsDueCard verifies that a component inserted
 // via the two-step lookup (word→decomposition→components) is returned as due.
 func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDecomp(t, s, "好", "⿰女子")
 	seedHanziDef(t, s, "女", "woman; female")
@@ -3851,7 +3688,6 @@ func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
 }
 
 func TestRecordComponentAnswer_UpdatesProgress(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman")
 	// Insert directly — this test is about RecordComponentAnswer, not InitComponentsForWord.
@@ -3870,7 +3706,6 @@ func TestRecordComponentAnswer_UpdatesProgress(t *testing.T) {
 }
 
 func TestRecordComponentStat_IncreasesCount(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	if err := s.RecordComponentStat(context.Background(), int64(2), true); err != nil {
 		t.Fatalf("RecordComponentStat: %v", err)
@@ -3883,7 +3718,6 @@ func TestRecordComponentStat_IncreasesCount(t *testing.T) {
 }
 
 func TestGetComponentCounts_ReturnsCorrectCounts(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman")
 	past := time.Now().Add(-24 * time.Hour)
@@ -3918,7 +3752,6 @@ func seedHanziTranslation(t *testing.T, s *Store, character, lang, definition st
 }
 
 func TestGetComponentDefinitions_ENOnly(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman; female")
 
@@ -3935,7 +3768,6 @@ func TestGetComponentDefinitions_ENOnly(t *testing.T) {
 }
 
 func TestGetComponentDefinitions_ENAndDE(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman; female")
 	seedHanziTranslation(t, s, "女", "de", "Frau; weiblich")
@@ -3953,7 +3785,6 @@ func TestGetComponentDefinitions_ENAndDE(t *testing.T) {
 }
 
 func TestGetComponentDefinitions_MissingDEOmitted(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman")
 	// No DE translation seeded.
@@ -3971,7 +3802,6 @@ func TestGetComponentDefinitions_MissingDEOmitted(t *testing.T) {
 }
 
 func TestGetNextComponentCard_DELangFilter(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	// 女 has only EN definition, no DE translation → should be skipped when DE-only.
 	seedHanziDecomp(t, s, "好", "⿰女子")
@@ -3991,7 +3821,6 @@ func TestGetNextComponentCard_DELangFilter(t *testing.T) {
 }
 
 func TestGetNextComponentCard_DEWithTranslation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDecomp(t, s, "好", "⿰女子")
 	seedHanziDef(t, s, "女", "woman; female")
@@ -4017,7 +3846,6 @@ func TestGetNextComponentCard_DEWithTranslation(t *testing.T) {
 }
 
 func TestGetNextComponentCard_ENAndDE(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDecomp(t, s, "好", "⿰女子")
 	seedHanziDef(t, s, "女", "woman; female")
@@ -4043,7 +3871,6 @@ func TestGetNextComponentCard_ENAndDE(t *testing.T) {
 }
 
 func TestGetComponentList_BasicAndSearch(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman; female")
@@ -4083,7 +3910,6 @@ func TestGetComponentList_BasicAndSearch(t *testing.T) {
 // ── User Settings ─────────────────────────────────────────────────────────────
 
 func TestGetUserSettings_Defaults(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	const userID = int64(2)
@@ -4134,7 +3960,6 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 }
 
 func TestUpdateUserSettings_RoundTrip(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	const userID = int64(2)
@@ -4182,7 +4007,6 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 }
 
 func TestUpdateUserAPIKeys_RoundTrip(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	const userID = int64(2)
@@ -4214,7 +4038,6 @@ func TestUpdateUserAPIKeys_RoundTrip(t *testing.T) {
 }
 
 func TestAnnotateComponentDefinitions_PopulatesENAndDE(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4253,7 +4076,6 @@ func TestAnnotateComponentDefinitions_PopulatesENAndDE(t *testing.T) {
 }
 
 func TestAnnotateComponentDefinitions_NoLangsIsNoop(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4276,7 +4098,6 @@ func TestAnnotateComponentDefinitions_NoLangsIsNoop(t *testing.T) {
 }
 
 func TestGetNextCard_PrefersUnseenOverAdvancedSeen(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4306,7 +4127,6 @@ func TestGetNextCard_PrefersUnseenOverAdvancedSeen(t *testing.T) {
 }
 
 func TestAnnotateNewComponents_MarksNewAndExisting(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -4379,7 +4199,6 @@ func TestAnnotateNewComponents_MarksNewAndExisting(t *testing.T) {
 // ── StoreComponentTranslation ─────────────────────────────────────────────────
 
 func TestStoreComponentTranslation_UpsertAndRetrieve(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman")
@@ -4397,7 +4216,6 @@ func TestStoreComponentTranslation_UpsertAndRetrieve(t *testing.T) {
 }
 
 func TestStoreComponentTranslation_UpdateExisting(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman")
@@ -4418,7 +4236,6 @@ func TestStoreComponentTranslation_UpdateExisting(t *testing.T) {
 // ── GetComponentTranslations ──────────────────────────────────────────────────
 
 func TestGetComponentTranslations_ReturnsAllLangs(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman")
 	seedHanziTranslation(t, s, "女", "en", "woman")
@@ -4437,7 +4254,6 @@ func TestGetComponentTranslations_ReturnsAllLangs(t *testing.T) {
 }
 
 func TestGetComponentTranslations_EmptyForUnknownChar(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	got, err := s.GetComponentTranslations(context.Background(), 2, "X")
 	if err != nil {
@@ -4451,7 +4267,6 @@ func TestGetComponentTranslations_EmptyForUnknownChar(t *testing.T) {
 // ── GetComponentDefinitions (EN from translation table) ───────────────────────
 
 func TestGetComponentDefinitions_ENFromTranslationTable(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	// Seed EN only in translation table, NOT in hanzi_decomposition.definition.
@@ -4473,7 +4288,6 @@ func TestGetComponentDefinitions_ENFromTranslationTable(t *testing.T) {
 // ── MarkComponentForReview ────────────────────────────────────────────────────
 
 func TestMarkComponentForReview_SetsFlag(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman")
@@ -4500,7 +4314,6 @@ func TestMarkComponentForReview_SetsFlag(t *testing.T) {
 // ── GetComponentList with reviewOnly ─────────────────────────────────────────
 
 func TestGetComponentList_ReviewOnly(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman")
@@ -4528,7 +4341,6 @@ func TestGetComponentList_ReviewOnly(t *testing.T) {
 }
 
 func TestGetComponentList_ReviewOnlyFalse(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman")
@@ -4555,7 +4367,6 @@ func TestGetComponentList_ReviewOnlyFalse(t *testing.T) {
 }
 
 func TestGetWordIDByZhText_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	req := models.CreateWordRequest{ZhText: "你好", Translations: map[string][]string{"en": {"hello"}}}
@@ -4573,7 +4384,6 @@ func TestGetWordIDByZhText_Found(t *testing.T) {
 }
 
 func TestGetWordIDByZhText_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	got, err := s.GetWordIDByZhText(context.Background(), 2, "你好")
 	if err != nil {
@@ -4587,7 +4397,6 @@ func TestGetWordIDByZhText_NotFound(t *testing.T) {
 // ── GetPinyinByZhText ─────────────────────────────────────────────────────────
 
 func TestGetPinyinByZhText_Found(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedWord(t, s, "看书", "kàn shū", []string{"to read"})
@@ -4604,7 +4413,6 @@ func TestGetPinyinByZhText_Found(t *testing.T) {
 }
 
 func TestGetPinyinByZhText_NoPinyin(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedWord(t, s, "看书", "", []string{"to read"})
@@ -4618,7 +4426,6 @@ func TestGetPinyinByZhText_NoPinyin(t *testing.T) {
 }
 
 func TestGetPinyinByZhText_NotFound(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	got, err := s.GetPinyinByZhText(context.Background(), 2, "不存在")
 	if err != nil {
@@ -4632,7 +4439,6 @@ func TestGetPinyinByZhText_NotFound(t *testing.T) {
 // ── SaveSM2PrevState / GetSM2PrevState / ClearSM2PrevState ───────────────────
 
 func TestSaveSM2PrevState_RoundTrips(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -4681,7 +4487,6 @@ func TestSaveSM2PrevState_RoundTrips(t *testing.T) {
 }
 
 func TestClearSM2PrevState_ReturnsNil(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "谢谢", "", []string{"thank you"})
@@ -4702,7 +4507,6 @@ func TestClearSM2PrevState_ReturnsNil(t *testing.T) {
 }
 
 func TestGetSM2PrevState_NilWhenUnset(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "水", "", []string{"water"})
@@ -4719,7 +4523,6 @@ func TestGetSM2PrevState_NilWhenUnset(t *testing.T) {
 // ── accept_correct_mode setting ───────────────────────────────────────────────
 
 func TestAcceptCorrectModeDefault(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4733,7 +4536,6 @@ func TestAcceptCorrectModeDefault(t *testing.T) {
 }
 
 func TestAcceptCorrectModeRoundTrip(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4757,7 +4559,6 @@ func TestAcceptCorrectModeRoundTrip(t *testing.T) {
 // ── component prev_state (accept-correct support) ─────────────────────────────
 
 func TestComponentPrevState_RoundTrip(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -4801,7 +4602,6 @@ func TestComponentPrevState_RoundTrip(t *testing.T) {
 }
 
 func TestComponentPrevState_NilWhenAbsent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -4819,7 +4619,6 @@ func TestComponentPrevState_NilWhenAbsent(t *testing.T) {
 }
 
 func TestComponentPrevState_ClearAfterAccept(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -4847,7 +4646,6 @@ func TestComponentPrevState_ClearAfterAccept(t *testing.T) {
 // (issue 04 / plan item 1.10): a second read within the TTL returns the cached
 // snapshot (same pointer = no second DB load), and a settings write invalidates it.
 func TestGetUserSettings_CachesAndInvalidates(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.UpdateUserSettings(ctx, 2, models.UserSettings{PrimaryLang: "en"}); err != nil {
@@ -4887,7 +4685,6 @@ func TestGetUserSettings_CachesAndInvalidates(t *testing.T) {
 // produces a restorable copy with data intact. Production uses `sqlite3 .backup`;
 // this exercises the equivalent via the Go driver so it runs without the CLI.
 func TestBackupRestore_RoundTrip(t *testing.T) {
-	t.Parallel()
 	dir := t.TempDir()
 	src, err := Open(filepath.Join(dir, "vocab.db"))
 	if err != nil {
@@ -4923,7 +4720,6 @@ func TestBackupRestore_RoundTrip(t *testing.T) {
 //   - 4.4: every selected word is acknowledged atomically (all get first_seen_at
 //   - total_attempts=1).
 func TestAcknowledgeRandomWords_AtomicAndConsolidated(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 
@@ -4975,7 +4771,6 @@ func TestAcknowledgeRandomWords_AtomicAndConsolidated(t *testing.T) {
 // ── Per-user component dictionary overlay (issue 09) ──────────────────────────
 
 func TestComponentTranslation_FallsBackToGlobal(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman") // seeds the shared global EN default
@@ -4990,7 +4785,6 @@ func TestComponentTranslation_FallsBackToGlobal(t *testing.T) {
 }
 
 func TestComponentTranslation_UserOverride(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman")
@@ -5027,7 +4821,6 @@ func TestComponentTranslation_UserOverride(t *testing.T) {
 }
 
 func TestComponentTranslation_UserIsolation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDef(t, s, "女", "woman")
@@ -5065,7 +4858,6 @@ func TestComponentTranslation_UserIsolation(t *testing.T) {
 // StartTraining=true atomically acknowledges the word (first_seen_date set) and
 // initialises its component cards, inside the same transaction.
 func TestCreateWord_StartTraining(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDecomp(t, s, "好", "⿰女子")
@@ -5099,7 +4891,6 @@ func TestCreateWord_StartTraining(t *testing.T) {
 // TestCreateWord_NoStartTraining verifies StartTraining=false leaves the word
 // unseen (first_seen_date NULL) and creates no component rows.
 func TestCreateWord_NoStartTraining(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziDecomp(t, s, "明", "⿰日月")
@@ -5133,7 +4924,6 @@ func TestCreateWord_NoStartTraining(t *testing.T) {
 // ── GetRecentMismatches ───────────────────────────────────────────────────────
 
 func TestGetRecentMismatches_Empty(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	since := time.Now().UTC().AddDate(0, 0, -7)
@@ -5147,7 +4937,6 @@ func TestGetRecentMismatches_Empty(t *testing.T) {
 }
 
 func TestGetRecentMismatches_ReturnsOnlyRecent(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -5180,7 +4969,6 @@ func TestGetRecentMismatches_ReturnsOnlyRecent(t *testing.T) {
 }
 
 func TestGetRecentMismatches_Limit(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -5206,7 +4994,6 @@ func TestGetRecentMismatches_Limit(t *testing.T) {
 }
 
 func TestGetRecentMismatches_HydratesTranslations(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -5235,7 +5022,6 @@ func TestGetRecentMismatches_HydratesTranslations(t *testing.T) {
 }
 
 func TestMarkConfusionsShownInGame_FiltersSubsequentCalls(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -5274,7 +5060,6 @@ func TestMarkConfusionsShownInGame_FiltersSubsequentCalls(t *testing.T) {
 }
 
 func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -5324,7 +5109,6 @@ func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
 // ── UpdateTrainingFilters ─────────────────────────────────────────────────────
 
 func TestUpdateTrainingFilters_PersistsAndReloads(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -5359,7 +5143,6 @@ func TestUpdateTrainingFilters_PersistsAndReloads(t *testing.T) {
 }
 
 func TestUpdateTrainingFilters_Defaults(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	userID := int64(2)
@@ -5386,7 +5169,6 @@ func TestUpdateTrainingFilters_Defaults(t *testing.T) {
 // ── SharesTranslation ─────────────────────────────────────────────────────────
 
 func TestSharesTranslation_SharedEnTranslation(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
 	id2 := seedWord(t, s, "认识", "rènshi", []string{"know", "recognize"})
@@ -5401,7 +5183,6 @@ func TestSharesTranslation_SharedEnTranslation(t *testing.T) {
 }
 
 func TestSharesTranslation_NoOverlap(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "书", "shū", []string{"book"})
 	id2 := seedWord(t, s, "鱼", "yú", []string{"fish"})
@@ -5416,7 +5197,6 @@ func TestSharesTranslation_NoOverlap(t *testing.T) {
 }
 
 func TestSharesTranslation_WrongLang(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
 	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
@@ -5432,7 +5212,6 @@ func TestSharesTranslation_WrongLang(t *testing.T) {
 }
 
 func TestSharesTranslation_EmptyLangs_FallsBackToEn(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
 	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
@@ -5447,7 +5226,6 @@ func TestSharesTranslation_EmptyLangs_FallsBackToEn(t *testing.T) {
 }
 
 func TestSharesTranslation_CaseInsensitive(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"Know"})
 	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
@@ -5468,7 +5246,6 @@ func TestSharesTranslation_CaseInsensitive(t *testing.T) {
 // slash-alternative expansion CheckAnswer already applies (sm2.ExpandVariants)
 // must be used so "Nudeln" is recognised as one of 面条's valid variants.
 func TestSharesTranslation_SlashVariantOverlap(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	id1, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:       "面",
@@ -5524,7 +5301,6 @@ func isFlagged(t *testing.T, s *Store, id int64) bool {
 }
 
 func TestFlagDifficultWords_LowestAccuracyAndEasiness(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	a := seedWord(t, s, "一", "", []string{"one"})   // lowest accuracy (10%)
@@ -5555,7 +5331,6 @@ func TestFlagDifficultWords_LowestAccuracyAndEasiness(t *testing.T) {
 }
 
 func TestFlagDifficultWords_RespectsAttemptsGuard(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	few := seedWord(t, s, "一", "", []string{"one"}) // ta=2, below guard
@@ -5579,7 +5354,6 @@ func TestFlagDifficultWords_RespectsAttemptsGuard(t *testing.T) {
 }
 
 func TestFlagDifficultWords_ClearsPreviousFlags(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	a := seedWord(t, s, "一", "", []string{"one"})
@@ -5608,7 +5382,6 @@ func TestFlagDifficultWords_ClearsPreviousFlags(t *testing.T) {
 }
 
 func TestGetNextDrillCard_OrdersByDueDateAndIgnoresHorizon(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	soon := seedWord(t, s, "一", "", []string{"one"})
@@ -5648,7 +5421,6 @@ func TestGetNextDrillCard_OrdersByDueDateAndIgnoresHorizon(t *testing.T) {
 }
 
 func TestGetNextDrillCard_NoneFlagged_ReturnsNil(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	id := seedWord(t, s, "一", "", []string{"one"})
@@ -5663,7 +5435,6 @@ func TestGetNextDrillCard_NoneFlagged_ReturnsNil(t *testing.T) {
 }
 
 func TestClearAllDrillFlags_And_Count(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	ctx := context.Background()
 	a := seedWord(t, s, "一", "", []string{"one"})

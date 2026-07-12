@@ -12,7 +12,6 @@ import (
 // behaviour: requests up to the burst capacity succeed, the next one is
 // rejected with 429.
 func TestRateLimiter_AllowsBurstThenBlocks(t *testing.T) {
-	t.Parallel()
 	lim := handlers.NewRateLimiter(3, time.Minute)
 	for i := 0; i < 3; i++ {
 		if !lim.Allow("ip-1") {
@@ -26,7 +25,6 @@ func TestRateLimiter_AllowsBurstThenBlocks(t *testing.T) {
 
 // TestRateLimiter_KeysAreIndependent confirms two callers don't share buckets.
 func TestRateLimiter_KeysAreIndependent(t *testing.T) {
-	t.Parallel()
 	lim := handlers.NewRateLimiter(2, time.Minute)
 	for i := 0; i < 2; i++ {
 		lim.Allow("ip-1")
@@ -38,7 +36,6 @@ func TestRateLimiter_KeysAreIndependent(t *testing.T) {
 
 // TestRateLimiter_Refills verifies tokens refill over time.
 func TestRateLimiter_Refills(t *testing.T) {
-	t.Parallel()
 	// 4 tokens per second window — one token refills every 250ms.
 	lim := handlers.NewRateLimiter(4, time.Second)
 	for i := 0; i < 4; i++ {
@@ -56,7 +53,6 @@ func TestRateLimiter_Refills(t *testing.T) {
 // TestRateLimitMiddleware_Returns429 verifies the HTTP middleware returns
 // 429 with a JSON error body after the burst is exceeded.
 func TestRateLimitMiddleware_Returns429(t *testing.T) {
-	t.Parallel()
 	lim := handlers.NewRateLimiter(2, time.Minute)
 	mw := handlers.RateLimitMiddleware(lim, func(r *http.Request) string {
 		return "fixed-key"
@@ -93,7 +89,6 @@ func TestRateLimitMiddleware_Returns429(t *testing.T) {
 // callers to opt out (e.g. trusted internal traffic) without forking the
 // middleware.
 func TestRateLimitMiddleware_EmptyKeySkips(t *testing.T) {
-	t.Parallel()
 	lim := handlers.NewRateLimiter(1, time.Minute)
 	mw := handlers.RateLimitMiddleware(lim, func(r *http.Request) string { return "" })
 	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +109,6 @@ func TestRateLimitMiddleware_EmptyKeySkips(t *testing.T) {
 // TestClientIP_PrefersXRealIP verifies the helper uses X-Real-IP (set by the
 // trusted reverse proxy) ahead of the connection's RemoteAddr.
 func TestClientIP_PrefersXRealIP(t *testing.T) {
-	t.Parallel()
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("X-Real-IP", "203.0.113.5")
 	req.RemoteAddr = "10.0.0.1:5555"
@@ -129,7 +123,6 @@ func TestClientIP_PrefersXRealIP(t *testing.T) {
 // spoofable header must not influence the derived client IP. With no
 // X-Real-IP present we fall back to RemoteAddr, ignoring X-Forwarded-For.
 func TestClientIP_IgnoresXFF(t *testing.T) {
-	t.Parallel()
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("X-Forwarded-For", "203.0.113.5, 10.0.0.1")
 	req.RemoteAddr = "192.0.2.10:5555"
@@ -143,7 +136,6 @@ func TestClientIP_IgnoresXFF(t *testing.T) {
 // TestClientIP_FallsBackToRemoteAddr verifies that without X-Real-IP we use
 // the connection's remote address (host only, port stripped).
 func TestClientIP_FallsBackToRemoteAddr(t *testing.T) {
-	t.Parallel()
 	req := httptest.NewRequest("GET", "/", nil)
 	req.RemoteAddr = "192.0.2.10:5555"
 
@@ -158,7 +150,6 @@ func TestClientIP_FallsBackToRemoteAddr(t *testing.T) {
 // same IP. This guards the brute-force protection on the credential
 // endpoint.
 func TestRateLimitMiddleware_LoginEnforced(t *testing.T) {
-	t.Parallel()
 	s := openTestDB(t)
 	authH, err := handlers.NewAuthHandler(s, nil, "http://localhost", "")
 	if err != nil {

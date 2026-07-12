@@ -17,7 +17,6 @@ import (
 // keeps the response timing of the "no such user" path indistinguishable
 // from the "wrong password" path, defeating user-enumeration via timing.
 func TestLogin_NoUserStillComparesBcrypt(t *testing.T) {
-	t.Parallel()
 	s, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +55,6 @@ func TestLogin_NoUserStillComparesBcrypt(t *testing.T) {
 // TestDummyBcryptHashIsValid guards that the constant used for the dummy
 // comparison is a real bcrypt hash (so the compare does real work).
 func TestDummyBcryptHashIsValid(t *testing.T) {
-	t.Parallel()
 	if _, err := bcrypt.Cost([]byte(dummyBcryptHash)); err != nil {
 		t.Fatalf("dummyBcryptHash is not a valid bcrypt hash: %v", err)
 	}

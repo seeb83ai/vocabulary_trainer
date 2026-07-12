@@ -23,7 +23,6 @@ func jsonEcho(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestMaxBytes_AllowsSmallBody(t *testing.T) {
-	t.Parallel()
 	mw := handlers.MaxBytes(64)(http.HandlerFunc(jsonEcho))
 	req := httptest.NewRequest("POST", "/api/words", strings.NewReader(`{"a":1}`))
 	rec := httptest.NewRecorder()
@@ -34,7 +33,6 @@ func TestMaxBytes_AllowsSmallBody(t *testing.T) {
 }
 
 func TestMaxBytes_RejectsOversizedBody(t *testing.T) {
-	t.Parallel()
 	body := `{"a":"` + strings.Repeat("x", 4096) + `"}`
 	mw := handlers.MaxBytes(64)(http.HandlerFunc(jsonEcho))
 	req := httptest.NewRequest("POST", "/api/words", strings.NewReader(body))
@@ -48,7 +46,6 @@ func TestMaxBytes_RejectsOversizedBody(t *testing.T) {
 // TestMaxBytes_LimitedReaderErrors confirms the wrapped body returns an error
 // once the limit is exceeded, so downstream decoders can detect it.
 func TestMaxBytes_LimitedReaderErrors(t *testing.T) {
-	t.Parallel()
 	var readErr error
 	mw := handlers.MaxBytes(8)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, readErr = io.ReadAll(r.Body)
