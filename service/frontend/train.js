@@ -387,12 +387,12 @@ async function loadStats() {
   } catch (_) {}
 }
 
-async function loadNextCard() {
+async function loadNextCard(trackCurrent = false) {
   _noCardsPaused = true;  // pause until we confirm a card is ready
   await _flushTime();
   // Track the word we're leaving so it isn't immediately re-shown.
   // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
-  if (currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
+  if (trackCurrent && currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
     recentWordIDs = [currentCard.word_id, ...recentWordIDs].slice(0, 2);
   }
   isSubmitted = false;
@@ -772,7 +772,7 @@ async function submitAnswer(e) {
                   langs: selectedLangs,
                 }),
               });
-              loadNextCard();
+              loadNextCard(true);
             } catch (err) {
               addBtn.disabled = false;
               alert('Could not add translation: ' + err.message);
@@ -968,7 +968,7 @@ async function submitAnswer(e) {
       show('result-hmm');
     }
 
-    $('next-btn').focus();
+    if (!ambiguousUnresolved) $('next-btn').focus();
     await loadStats();
   } catch (err) {
     isSubmitted = false;
@@ -1449,7 +1449,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     await _maybeShowMatchGame();
-    loadNextCard();
+    loadNextCard(true);
   });
   $('accept-correct-btn').addEventListener('click', async () => {
     const btn = $('accept-correct-btn');
@@ -1470,7 +1470,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }),
         });
       }
-      loadNextCard();
+      loadNextCard(true);
     } catch (err) {
       btn.disabled = false;
       alert('Could not accept as correct: ' + err.message);
