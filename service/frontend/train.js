@@ -725,7 +725,7 @@ async function submitAnswer(e) {
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
             <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
             <div class="flex items-center gap-2">
-              <div class="text-base font-semibold text-gray-800">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+              <div class="text-base font-semibold text-gray-800 min-w-0 overflow-hidden">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
               <button class="btn-confused-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
             </div>
             <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
@@ -802,8 +802,8 @@ async function submitAnswer(e) {
         const disambigHtml = `
           <div id="disambig-area" class="mt-4 space-y-2 text-left">
             ${confusedHtml}
-            <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl">
-              <div class="text-xs text-orange-600 uppercase tracking-wide mb-2">${escHtml(t('result.disambigPrompt'))}</div>
+            <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl overflow-hidden">
+              <div class="text-xs text-orange-600 uppercase tracking-wide mb-2 break-words">${escHtml(t('result.disambigPrompt'))}</div>
               <form id="disambig-form" class="flex gap-2">
                 <input id="disambig-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
                   class="flex-1 min-w-0 border border-orange-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-300"
@@ -854,11 +854,9 @@ async function submitAnswer(e) {
               disambigFeedback.classList.remove('hidden');
             }
           } else {
-            disambigInput.value = '';
-            disambigFeedback.textContent = t('result.disambigNotQuite');
-            disambigFeedback.className = 'mt-1 text-sm text-red-500';
-            disambigFeedback.classList.remove('hidden');
-            disambigInput.focus();
+            // Wrong word typed — treat the whole answer as wrong (issue #194).
+            ambiguousUnresolved = null;
+            renderWrongResult();
           }
         });
       } else {
