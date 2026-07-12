@@ -497,6 +497,11 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+
+		if req.Mode == models.ModeTranslToZh {
+			pinyin, _ := h.Store.GetPinyinByZhText(r.Context(), UserIDFromContext(r.Context()), req.Answer)
+			resp.UserAnswerPinyin = pinyin
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)

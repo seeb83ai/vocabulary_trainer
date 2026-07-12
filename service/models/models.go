@@ -170,26 +170,27 @@ type ComponentAcceptCorrectRequest struct {
 }
 
 type AnswerResponse struct {
-	Correct         bool                `json:"correct"`
-	CorrectAnswers  []string            `json:"correct_answers"`
-	ZhText          string              `json:"zh_text"`
-	Pinyin          *string             `json:"pinyin"`
-	Translations    map[string][]string `json:"translations"`
-	NextDue         time.Time           `json:"next_due"`
-	IntervalDays    int                 `json:"interval_days"`
-	TotalCorrect    int                 `json:"total_correct"`
-	TotalAttempts   int                 `json:"total_attempts"`
-	StreakBonus     int                 `json:"streak_bonus"`
-	Repetitions     int                 `json:"repetitions"`
-	GraduateReps    int                 `json:"graduate_reps,omitempty"`
-	LearningNewWord bool                `json:"learning_new_word"`
-	Graduated       bool                `json:"graduated,omitempty"`
-	ConfusedWith    *ConfusionDetail    `json:"confused_with,omitempty"`
-	SessionStreak   int                 `json:"session_streak,omitempty"`
-	Tier            string              `json:"tier,omitempty"`
-	PrevTier        string              `json:"prev_tier,omitempty"`
-	SceneText       string              `json:"scene_text,omitempty"`
-	Ambiguous       bool                `json:"ambiguous,omitempty"`
+	Correct          bool                `json:"correct"`
+	CorrectAnswers   []string            `json:"correct_answers"`
+	ZhText           string              `json:"zh_text"`
+	Pinyin           *string             `json:"pinyin"`
+	Translations     map[string][]string `json:"translations"`
+	NextDue          time.Time           `json:"next_due"`
+	IntervalDays     int                 `json:"interval_days"`
+	TotalCorrect     int                 `json:"total_correct"`
+	TotalAttempts    int                 `json:"total_attempts"`
+	StreakBonus      int                 `json:"streak_bonus"`
+	Repetitions      int                 `json:"repetitions"`
+	GraduateReps     int                 `json:"graduate_reps,omitempty"`
+	LearningNewWord  bool                `json:"learning_new_word"`
+	Graduated        bool                `json:"graduated,omitempty"`
+	ConfusedWith     *ConfusionDetail    `json:"confused_with,omitempty"`
+	SessionStreak    int                 `json:"session_streak,omitempty"`
+	Tier             string              `json:"tier,omitempty"`
+	PrevTier         string              `json:"prev_tier,omitempty"`
+	SceneText        string              `json:"scene_text,omitempty"`
+	Ambiguous        bool                `json:"ambiguous,omitempty"`
+	UserAnswerPinyin *string             `json:"user_answer_pinyin,omitempty"`
 }
 
 type CreateWordRequest struct {

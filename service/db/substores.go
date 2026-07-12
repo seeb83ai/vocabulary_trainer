@@ -21,6 +21,7 @@ type WordStore interface {
 	GetWords(ctx context.Context, userID int64, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string, missingLang string) ([]models.WordDetail, int, error)
 	IsZhWordForUser(ctx context.Context, userID int64, text string) (bool, error)
 	GetWordIDByZhText(ctx context.Context, userID int64, text string) (int64, error)
+	GetPinyinByZhText(ctx context.Context, userID int64, text string) (*string, error)
 	GetZhTextByID(ctx context.Context, userID, wordID int64) (string, error)
 	GetWordByID(ctx context.Context, userID, id int64) (*models.WordDetail, error)
 	CreateWord(ctx context.Context, userID int64, req models.CreateWordRequest) (int64, error)

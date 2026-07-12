@@ -231,14 +231,20 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 test.describe('Quiz – Chinese character size and play button (issue #158)', () => {
   test.use({ storageState: 'e2e/.auth/user.json' });
 
-  function useZhToTranslMode(page) {
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
     });
   }
 
-  function useTranslToZhMode(page) {
+  async function useTranslToZhMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -264,11 +270,11 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
     await expect(page.locator('#play-btn')).toBeVisible();
   });
 
-  test('play button is visible in transl_to_zh mode (hear the word while recalling)', async ({ page }) => {
+  test('play button is hidden in transl_to_zh mode to avoid revealing the answer (issue #168)', async ({ page }) => {
     await useTranslToZhMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-    await expect(page.locator('#play-btn')).toBeVisible();
+    await expect(page.locator('#play-btn')).not.toBeVisible();
   });
 
   test('transl_to_zh card response includes zh_text field for audio', async ({ page }) => {
@@ -309,6 +315,11 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
   test('"Got it!" acknowledges the word and transitions to card-area', async ({ page }) => {
     // Use zh_to_transl mode so that after acknowledgement the card shows a
     // deterministic prompt (the zh word '水') rather than a randomly selected mode.
+    // Patch server-side first because _settingsPromise restores server-persisted filters
+    // on load, overriding localStorage values.
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));

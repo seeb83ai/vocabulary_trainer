@@ -515,6 +515,75 @@ func TestQuizAnswer_EnToZh(t *testing.T) {
 	}
 }
 
+// ── TranslToZh wrong answer: user_answer_pinyin ───────────────────────────────
+
+func TestQuizAnswer_TranslToZh_WrongKnownWordIncludesPinyin(t *testing.T) {
+	s := openTestDB(t)
+	correctID := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
+	_ = seedWord(t, s, "看数", "kàn shù", []string{"to count"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: correctID,
+		Mode:   models.ModeTranslToZh,
+		Answer: "看数",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Fatal("'看数' should be wrong for 看书")
+	}
+	if resp.UserAnswerPinyin == nil {
+		t.Fatal("expected user_answer_pinyin to be set when wrong answer is in vocab")
+	}
+	if *resp.UserAnswerPinyin != "kàn shù" {
+		t.Errorf("want user_answer_pinyin=%q, got %q", "kàn shù", *resp.UserAnswerPinyin)
+	}
+}
+
+func TestQuizAnswer_TranslToZh_WrongUnknownWordNoPinyin(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeTranslToZh,
+		Answer: "不存在",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.UserAnswerPinyin != nil {
+		t.Errorf("expected user_answer_pinyin nil for unknown word, got %q", *resp.UserAnswerPinyin)
+	}
+}
+
+func TestQuizAnswer_ZhToTransl_NoUserAnswerPinyin(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "看书", "kàn shū", []string{"to read"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+		Answer: "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.UserAnswerPinyin != nil {
+		t.Errorf("user_answer_pinyin should be absent for zh_to_transl, got %q", *resp.UserAnswerPinyin)
+	}
+}
+
 func TestQuizAnswer_WordNotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
@@ -5154,6 +5223,62 @@ func TestUploadCSV_MultipleLanguages(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if resp["imported"] != 1 {
 		t.Errorf("want imported=1, got %d", resp["imported"])
+	}
+}
+
+func TestUploadCSV_NoPinyinColumn(t *testing.T) {
+	csv := "chinese,en\n我要回家了,I go home\n你好,hello"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for CSV without pinyin column, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 2 {
+		t.Errorf("want imported=2, got %d", resp["imported"])
+	}
+}
+
+func TestUploadCSV_NoPinyinMultipleLangs(t *testing.T) {
+	csv := "chinese,en,de\n你好,hello,Hallo"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for CSV without pinyin column with multiple langs, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 1 {
+		t.Errorf("want imported=1, got %d", resp["imported"])
+	}
+}
+
+func TestUploadCSV_AutoGeneratesPinyinWhenColumnAbsent(t *testing.T) {
+	csv := "chinese,en\n你好,hello"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var upload map[string]int
+	decodeJSON(t, rec, &upload)
+	if upload["imported"] != 1 {
+		t.Fatalf("want imported=1, got %d", upload["imported"])
+	}
+
+	rec2 := do(t, r, "GET", "/api/words?page=1&per_page=20", nil)
+	var resp models.WordListResponse
+	decodeJSON(t, rec2, &resp)
+	if len(resp.Words) != 1 {
+		t.Fatalf("want 1 word in list, got %d", len(resp.Words))
+	}
+	wd := resp.Words[0]
+	if wd.Pinyin == nil || *wd.Pinyin == "" {
+		t.Errorf("expected pinyin to be auto-generated for %q, got nil/empty", wd.ZhText)
 	}
 }
 

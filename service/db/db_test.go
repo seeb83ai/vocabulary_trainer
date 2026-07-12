@@ -4304,6 +4304,48 @@ func TestGetWordIDByZhText_NotFound(t *testing.T) {
 	}
 }
 
+// ── GetPinyinByZhText ─────────────────────────────────────────────────────────
+
+func TestGetPinyinByZhText_Found(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "看书", "kàn shū", []string{"to read"})
+	got, err := s.GetPinyinByZhText(ctx, 2, "看书")
+	if err != nil {
+		t.Fatalf("GetPinyinByZhText: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil pinyin")
+	}
+	if *got != "kàn shū" {
+		t.Errorf("want %q, got %q", "kàn shū", *got)
+	}
+}
+
+func TestGetPinyinByZhText_NoPinyin(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "看书", "", []string{"to read"})
+	got, err := s.GetPinyinByZhText(ctx, 2, "看书")
+	if err != nil {
+		t.Fatalf("GetPinyinByZhText: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil for empty pinyin, got %q", *got)
+	}
+}
+
+func TestGetPinyinByZhText_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	got, err := s.GetPinyinByZhText(context.Background(), 2, "不存在")
+	if err != nil {
+		t.Fatalf("want no error for missing word, got: %v", err)
+	}
+	if got != nil {
+		t.Errorf("want nil for missing word, got %q", *got)
+	}
+}
+
 // ── SaveSM2PrevState / GetSM2PrevState / ClearSM2PrevState ───────────────────
 
 func TestSaveSM2PrevState_RoundTrips(t *testing.T) {
