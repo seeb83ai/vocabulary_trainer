@@ -773,7 +773,7 @@ async function submitAnswer(e) {
         if (inlinePlay) inlinePlay.addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
         show('word-breakdown');
 
-        if (!isEmpty) {
+        if (!isEmpty && currentCard.mode !== 'transl_to_zh') {
           const addBtn = $('add-translation-btn');
           const langSelect = $('add-translation-lang-select');
           addBtn.textContent = t('result.addTranslation', { answer });
@@ -819,7 +819,8 @@ async function submitAnswer(e) {
         }
 
         // Show "Accept as correct" button based on user's mode setting.
-        if (shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
+        // ponytail: transl_to_zh stores zh answers as en/de translations — wrong shape, hide both buttons.
+        if (currentCard.mode !== 'transl_to_zh' && shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
           const acceptBtn = $('accept-correct-btn');
           acceptBtn.disabled = false;
           acceptBtn.textContent = 'Accept as correct (typo)';
