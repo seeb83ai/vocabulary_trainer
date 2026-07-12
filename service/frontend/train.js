@@ -791,6 +791,8 @@ async function submitAnswer(e) {
         } else {
           hide('accept-correct-btn');
         }
+
+        loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
       };
 
       if (result.ambiguous) {
@@ -845,6 +847,7 @@ async function submitAnswer(e) {
               if (disambigArea) disambigArea.remove();
               breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
               show('word-breakdown');
+              loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
             } catch (err) {
               disambigFeedback.textContent = 'Error: ' + err.message;
               disambigFeedback.className = 'mt-1 text-sm text-red-600';
@@ -925,7 +928,14 @@ async function submitAnswer(e) {
     editBtn.onclick = () => window.open(`/vocab?edit=${currentCard.word_id}`, '_blank');
     show('review-edit-row');
 
-    loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+    // Wrong-answer paths (including the ambiguous fallback) load the
+    // character breakdown themselves once the result actually resolves —
+    // it must stay hidden while an ambiguous result is unresolved so it
+    // doesn't give away the answer (issue: "do not show character
+    // breakdown on ambiguous screen").
+    if (result.correct) {
+      loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+    }
 
     // HMM mnemonic scene display
     const hmmEl = $('result-hmm');

@@ -466,4 +466,32 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
     expect(btnBox.x + btnBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
   });
+
+  // The character breakdown toggle would reveal the correct word's characters,
+  // undermining the point of asking the user to disambiguate. Mock the decompose
+  // API so it always has data to show, isolating this from whether the test DB
+  // happens to have hanzi decomposition data seeded for these particular words.
+  async function mockDecomposeResponse(page) {
+    await page.route('**/api/hanzi/decompose*', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ character: '知', radical: '矢', definition: 'know', components: [] }]),
+      })
+    );
+  }
+
+  test('character breakdown toggle is hidden while an ambiguous result is unresolved', async ({ page }) => {
+    await mockDecomposeResponse(page);
+    await setupAmbiguousResult(page);
+    await expect(page.locator('#result-decompose')).not.toBeVisible();
+  });
+
+  test('character breakdown toggle appears once the ambiguous result resolves to Wrong', async ({ page }) => {
+    await mockDecomposeResponse(page);
+    await setupAmbiguousResult(page);
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    await expect(page.locator('#result-decompose')).toBeVisible();
+  });
 });
