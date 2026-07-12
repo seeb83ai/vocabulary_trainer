@@ -164,6 +164,8 @@ async function loadSettings() {
     if (cooldownEl) cooldownEl.value = st.new_word_cooldown_minutes ?? 1;
     const skipVisEl = document.getElementById('skip-new-visible');
     if (skipVisEl) skipVisEl.checked = st.skip_new_words_visible !== false;
+    const extendSessionEl = document.getElementById('extend-session-extra-words');
+    if (extendSessionEl) extendSessionEl.checked = st.extend_session_with_extra_words !== false;
     setBaselineRow('baseline-due-today', st.baseline_due_today_enabled, st.baseline_due_today_value ?? 20);
     setBaselineRow('baseline-struggling', st.baseline_struggling_enabled, st.baseline_struggling_value ?? 10);
     setBaselineRow('baseline-learning', st.baseline_learning_enabled, st.baseline_learning_value ?? 20);
@@ -267,6 +269,7 @@ function buildDailyPayload() {
     max_new_words_per_day:         parseInt(document.getElementById('max-new-words')?.value || '5', 10),
     new_word_cooldown_minutes:     parseInt(document.getElementById('new-word-cooldown')?.value || '1', 10),
     skip_new_words_visible:        !!(document.getElementById('skip-new-visible')?.checked),
+    extend_session_with_extra_words: !!(document.getElementById('extend-session-extra-words')?.checked),
     baseline_due_today_enabled:    !!(document.getElementById('baseline-due-today-enabled')?.checked),
     baseline_due_today_value:      parseInt(document.getElementById('baseline-due-today-value')?.value || '20', 10),
     baseline_struggling_enabled:   !!(document.getElementById('baseline-struggling-enabled')?.checked),

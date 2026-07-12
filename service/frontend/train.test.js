@@ -762,3 +762,35 @@ describe('splitComponentDefs', () => {
     expect(splitComponentDefs({})).toEqual([]);
   });
 });
+
+// ── due-today display count (#186) ─────────────────────────────────────────
+// Mirrors dueDisplayCount in train.js: the backend may serve a not-yet-due
+// "session extension" card to avoid immediately repeating a just-answered
+// word; that card isn't counted in stats.due_today, so the displayed
+// remaining count must add 1 back in when such a card is being shown.
+
+function dueDisplayCount(stats, sessionExtension) {
+  return stats.due_today + (stats.hmm_due_today || 0) + (stats.components_due_today || 0)
+    + (sessionExtension ? 1 : 0);
+}
+
+describe('dueDisplayCount', () => {
+  it('sums due_today, hmm_due_today, and components_due_today', () => {
+    const stats = { due_today: 3, hmm_due_today: 2, components_due_today: 1 };
+    expect(dueDisplayCount(stats, false)).toBe(6);
+  });
+
+  it('treats missing hmm/component counts as zero', () => {
+    expect(dueDisplayCount({ due_today: 5 }, false)).toBe(5);
+  });
+
+  it('adds 1 when the current card is a session extension (non-due) card', () => {
+    const stats = { due_today: 1, hmm_due_today: 0, components_due_today: 0 };
+    expect(dueDisplayCount(stats, true)).toBe(2);
+  });
+
+  it('does not inflate the count when session extension is false', () => {
+    const stats = { due_today: 0, hmm_due_today: 0, components_due_today: 0 };
+    expect(dueDisplayCount(stats, false)).toBe(0);
+  });
+});

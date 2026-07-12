@@ -39,6 +39,10 @@ test.describe('Gamification — match game', () => {
         new_word_mode_0: 'transl_to_zh',
         new_word_mode_1: 'zh_pinyin_to_transl',
         new_word_mode_2: 'zh_to_transl',
+        // PATCH replaces the full settings row — booleans not sent here would
+        // otherwise reset to the JSON zero-value (false), so preserve the
+        // pre-existing default here explicitly rather than clobbering it.
+        extend_session_with_extra_words: true,
         gamification_enabled: true,
         gamification_frequency: 1,
       },

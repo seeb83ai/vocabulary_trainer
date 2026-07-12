@@ -36,32 +36,33 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Patch handles PATCH /api/settings — updates language prefs and quiz mode settings.
 func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PrimaryLang               string `json:"primary_lang"`
-		SecondaryLang             string `json:"secondary_lang"`
-		ProgNew                   string `json:"prog_new"`
-		ProgTierStruggling        string `json:"prog_tier_struggling"`
-		ProgTierLearning          string `json:"prog_tier_learning"`
-		ProgTierPracticing        string `json:"prog_tier_practicing"`
-		ProgTierMastered          string `json:"prog_tier_mastered"`
-		NewWordMode0              string `json:"new_word_mode_0"`
-		NewWordMode1              string `json:"new_word_mode_1"`
-		NewWordMode2              string `json:"new_word_mode_2"`
-		CycleSequence             string `json:"cycle_sequence"`
-		CycleAdvanceOnSuccessOnly bool   `json:"cycle_advance_on_success_only"`
-		NewWordRequireZh          bool   `json:"new_word_require_zh"`
-		NewWordRequireTrans       bool   `json:"new_word_require_trans"`
-		AcceptCorrectMode         string `json:"accept_correct_mode"`
-		MaxNewWordsPerDay         *int   `json:"max_new_words_per_day"`
-		NewWordCooldownMinutes    int    `json:"new_word_cooldown_minutes"`
-		SkipNewWordsVisible       bool   `json:"skip_new_words_visible"`
-		BaselineDueTodayEnabled   bool   `json:"baseline_due_today_enabled"`
-		BaselineDueTodayValue     int    `json:"baseline_due_today_value"`
-		BaselineStrugglingEnabled bool   `json:"baseline_struggling_enabled"`
-		BaselineStrugglingValue   int    `json:"baseline_struggling_value"`
-		BaselineLearningEnabled   bool   `json:"baseline_learning_enabled"`
-		BaselineLearningValue     int    `json:"baseline_learning_value"`
-		GamificationEnabled       bool   `json:"gamification_enabled"`
-		GamificationFrequency     *int   `json:"gamification_frequency"`
+		PrimaryLang                 string `json:"primary_lang"`
+		SecondaryLang               string `json:"secondary_lang"`
+		ProgNew                     string `json:"prog_new"`
+		ProgTierStruggling          string `json:"prog_tier_struggling"`
+		ProgTierLearning            string `json:"prog_tier_learning"`
+		ProgTierPracticing          string `json:"prog_tier_practicing"`
+		ProgTierMastered            string `json:"prog_tier_mastered"`
+		NewWordMode0                string `json:"new_word_mode_0"`
+		NewWordMode1                string `json:"new_word_mode_1"`
+		NewWordMode2                string `json:"new_word_mode_2"`
+		CycleSequence               string `json:"cycle_sequence"`
+		CycleAdvanceOnSuccessOnly   bool   `json:"cycle_advance_on_success_only"`
+		NewWordRequireZh            bool   `json:"new_word_require_zh"`
+		NewWordRequireTrans         bool   `json:"new_word_require_trans"`
+		AcceptCorrectMode           string `json:"accept_correct_mode"`
+		MaxNewWordsPerDay           *int   `json:"max_new_words_per_day"`
+		NewWordCooldownMinutes      int    `json:"new_word_cooldown_minutes"`
+		SkipNewWordsVisible         bool   `json:"skip_new_words_visible"`
+		ExtendSessionWithExtraWords bool   `json:"extend_session_with_extra_words"`
+		BaselineDueTodayEnabled     bool   `json:"baseline_due_today_enabled"`
+		BaselineDueTodayValue       int    `json:"baseline_due_today_value"`
+		BaselineStrugglingEnabled   bool   `json:"baseline_struggling_enabled"`
+		BaselineStrugglingValue     int    `json:"baseline_struggling_value"`
+		BaselineLearningEnabled     bool   `json:"baseline_learning_enabled"`
+		BaselineLearningValue       int    `json:"baseline_learning_value"`
+		GamificationEnabled         bool   `json:"gamification_enabled"`
+		GamificationFrequency       *int   `json:"gamification_frequency"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -156,32 +157,33 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 
 	userID := UserIDFromContext(r.Context())
 	st := models.UserSettings{
-		PrimaryLang:               req.PrimaryLang,
-		SecondaryLang:             req.SecondaryLang,
-		ProgNew:                   req.ProgNew,
-		ProgTierStruggling:        req.ProgTierStruggling,
-		ProgTierLearning:          req.ProgTierLearning,
-		ProgTierPracticing:        req.ProgTierPracticing,
-		ProgTierMastered:          req.ProgTierMastered,
-		NewWordMode0:              req.NewWordMode0,
-		NewWordMode1:              req.NewWordMode1,
-		NewWordMode2:              req.NewWordMode2,
-		CycleSequence:             cycleSeq,
-		CycleAdvanceOnSuccessOnly: req.CycleAdvanceOnSuccessOnly,
-		NewWordRequireZh:          req.NewWordRequireZh,
-		NewWordRequireTrans:       req.NewWordRequireTrans,
-		AcceptCorrectMode:         req.AcceptCorrectMode,
-		MaxNewWordsPerDay:         resolvedMaxNew,
-		NewWordCooldownMinutes:    req.NewWordCooldownMinutes,
-		SkipNewWordsVisible:       req.SkipNewWordsVisible,
-		BaselineDueTodayEnabled:   req.BaselineDueTodayEnabled,
-		BaselineDueTodayValue:     req.BaselineDueTodayValue,
-		BaselineStrugglingEnabled: req.BaselineStrugglingEnabled,
-		BaselineStrugglingValue:   req.BaselineStrugglingValue,
-		BaselineLearningEnabled:   req.BaselineLearningEnabled,
-		BaselineLearningValue:     req.BaselineLearningValue,
-		GamificationEnabled:       req.GamificationEnabled,
-		GamificationFrequency:     resolvedFrequency,
+		PrimaryLang:                 req.PrimaryLang,
+		SecondaryLang:               req.SecondaryLang,
+		ProgNew:                     req.ProgNew,
+		ProgTierStruggling:          req.ProgTierStruggling,
+		ProgTierLearning:            req.ProgTierLearning,
+		ProgTierPracticing:          req.ProgTierPracticing,
+		ProgTierMastered:            req.ProgTierMastered,
+		NewWordMode0:                req.NewWordMode0,
+		NewWordMode1:                req.NewWordMode1,
+		NewWordMode2:                req.NewWordMode2,
+		CycleSequence:               cycleSeq,
+		CycleAdvanceOnSuccessOnly:   req.CycleAdvanceOnSuccessOnly,
+		NewWordRequireZh:            req.NewWordRequireZh,
+		NewWordRequireTrans:         req.NewWordRequireTrans,
+		AcceptCorrectMode:           req.AcceptCorrectMode,
+		MaxNewWordsPerDay:           resolvedMaxNew,
+		NewWordCooldownMinutes:      req.NewWordCooldownMinutes,
+		SkipNewWordsVisible:         req.SkipNewWordsVisible,
+		ExtendSessionWithExtraWords: req.ExtendSessionWithExtraWords,
+		BaselineDueTodayEnabled:     req.BaselineDueTodayEnabled,
+		BaselineDueTodayValue:       req.BaselineDueTodayValue,
+		BaselineStrugglingEnabled:   req.BaselineStrugglingEnabled,
+		BaselineStrugglingValue:     req.BaselineStrugglingValue,
+		BaselineLearningEnabled:     req.BaselineLearningEnabled,
+		BaselineLearningValue:       req.BaselineLearningValue,
+		GamificationEnabled:         req.GamificationEnabled,
+		GamificationFrequency:       resolvedFrequency,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

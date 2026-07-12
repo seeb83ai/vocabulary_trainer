@@ -81,4 +81,35 @@ test.describe('Settings – Daily Learning', () => {
     await page.locator('#baseline-due-today-enabled').uncheck();
     await page.locator('#daily-save-btn').click();
   });
+
+  test('extend-session toggle is visible and defaults to checked', async ({ page }) => {
+    await page.goto('/settings');
+    const toggle = page.locator('#extend-session-extra-words');
+    await expect(toggle).toBeVisible();
+    // Default (current, pre-existing) behaviour is enabled for existing/new users.
+    await expect(toggle).toBeChecked();
+  });
+
+  test('extend-session toggle saves and persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+    const toggle = page.locator('#extend-session-extra-words');
+
+    // Disable: user opts out of session-extension with extra (not-yet-due) words.
+    await toggle.uncheck();
+    await page.locator('#daily-save-btn').click();
+    await expect(page.locator('#daily-success')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#extend-session-extra-words')).not.toBeChecked();
+
+    // Verify the API reflects the change too.
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.extend_session_with_extra_words).toBe(false);
+
+    // Re-enable and restore default.
+    await toggle.check();
+    await page.locator('#daily-save-btn').click();
+    await expect(page.locator('#daily-success')).toBeVisible();
+  });
 });
