@@ -133,6 +133,11 @@ const HMM_TYPE_COLORS = {
 
 let currentCard = null;
 let isSubmitted = false;
+// Set while an ambiguous-answer disambiguation panel is shown and unresolved.
+// Holds a function that renders the normal wrong-answer screen; consumed (and
+// cleared) by the Next button so continuing without resolving the ambiguity
+// falls back to the usual wrong-answer result instead of silently advancing.
+let ambiguousUnresolved = null;
 let selectedMode = localStorage.getItem('quizMode') || 'random';
 
 // IDs of the last two answered vocabulary words, used to avoid immediate re-show.
@@ -391,6 +396,7 @@ async function loadNextCard() {
     recentWordIDs = [currentCard.word_id, ...recentWordIDs].slice(0, 2);
   }
   isSubmitted = false;
+  ambiguousUnresolved = null;
   hide('card-area');
   hide('result-area');
   hide('empty-state');
@@ -724,68 +730,12 @@ async function submitAnswer(e) {
             </div>
             <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
           </div>` : '';
-      if (result.ambiguous) {
-        // Several words share a translation — ask the user to type another word with the same meaning.
-        icon.textContent = t('result.disambigAmbiguous');
-        icon.className = 'text-3xl font-bold text-orange-500 mb-4';
-        const disambigHtml = `
-          <div id="disambig-area" class="mt-4 space-y-2 text-left">
-            ${confusedHtml}
-            <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl">
-              <div class="text-xs text-orange-600 uppercase tracking-wide mb-2">${escHtml(t('result.disambigPrompt'))}</div>
-              <form id="disambig-form" class="flex gap-2">
-                <input id="disambig-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
-                  class="flex-1 border border-orange-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  placeholder="Type Chinese word…" />
-                <button type="submit" class="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition">Check</button>
-              </form>
-              <div id="disambig-feedback" class="mt-1 text-sm hidden"></div>
-            </div>
-          </div>`;
-        breakdown.innerHTML = disambigHtml;
-        const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
-        if (confusedPlayBtn) {
-          confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
-        }
-        show('word-breakdown');
-        hide('add-translation-btn');
-        hide('accept-correct-btn');
-
-        const disambigInput = document.getElementById('disambig-input');
-        const disambigFeedback = document.getElementById('disambig-feedback');
-        disambigInput.focus();
-
-        document.getElementById('disambig-form').addEventListener('submit', async (ev) => {
-          ev.preventDefault();
-          const typed = disambigInput.value.trim();
-          if (!typed) return;
-          if (typed.toLowerCase() === result.zh_text.toLowerCase()) {
-            // Correct — upgrade to correct via AcceptCorrect
-            try {
-              await apiFetch('/api/quiz/accept-correct', {
-                method: 'POST',
-                body: JSON.stringify({ word_id: currentCard.word_id, mode: currentCard.mode, langs: selectedLangs }),
-              });
-              icon.textContent = t('result.correct');
-              icon.className = 'text-3xl font-bold text-green-600 mb-4';
-              const disambigArea = document.getElementById('disambig-area');
-              if (disambigArea) disambigArea.remove();
-              breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
-              show('word-breakdown');
-            } catch (err) {
-              disambigFeedback.textContent = 'Error: ' + err.message;
-              disambigFeedback.className = 'mt-1 text-sm text-red-600';
-              disambigFeedback.classList.remove('hidden');
-            }
-          } else {
-            disambigInput.value = '';
-            disambigFeedback.textContent = t('result.disambigNotQuite');
-            disambigFeedback.className = 'mt-1 text-sm text-red-500';
-            disambigFeedback.classList.remove('hidden');
-            disambigInput.focus();
-          }
-        });
-      } else {
+      // Renders the normal wrong-answer screen. Used directly for non-ambiguous
+      // wrong answers, and as the fallback when the user continues past an
+      // ambiguous result without resolving it (issue #194).
+      const renderWrongResult = () => {
+        icon.textContent = t('result.wrong');
+        icon.className = 'text-3xl font-bold text-red-600 mb-4';
         breakdown.innerHTML = `
           <div class="mt-4 space-y-2 text-left">
             ${yourAnswerHtml}
@@ -841,6 +791,75 @@ async function submitAnswer(e) {
         } else {
           hide('accept-correct-btn');
         }
+      };
+
+      if (result.ambiguous) {
+        // Several words share a translation — ask the user to type another word with the same meaning.
+        icon.textContent = t('result.disambigAmbiguous');
+        icon.className = 'text-3xl font-bold text-orange-500 mb-4';
+        const disambigHtml = `
+          <div id="disambig-area" class="mt-4 space-y-2 text-left">
+            ${confusedHtml}
+            <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl">
+              <div class="text-xs text-orange-600 uppercase tracking-wide mb-2">${escHtml(t('result.disambigPrompt'))}</div>
+              <form id="disambig-form" class="flex gap-2">
+                <input id="disambig-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
+                  class="flex-1 min-w-0 border border-orange-300 rounded-lg px-3 py-1.5 text-base focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  placeholder="Type Chinese word…" />
+                <button type="submit" class="shrink-0 px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition">Check</button>
+              </form>
+              <div id="disambig-feedback" class="mt-1 text-sm hidden"></div>
+            </div>
+          </div>`;
+        breakdown.innerHTML = disambigHtml;
+        const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
+        if (confusedPlayBtn) {
+          confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
+        }
+        show('word-breakdown');
+        hide('add-translation-btn');
+        hide('accept-correct-btn');
+        // Continuing without resolving falls back to the normal wrong-answer
+        // screen instead of silently advancing (issue #194).
+        ambiguousUnresolved = renderWrongResult;
+
+        const disambigInput = document.getElementById('disambig-input');
+        const disambigFeedback = document.getElementById('disambig-feedback');
+        disambigInput.focus();
+
+        document.getElementById('disambig-form').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const typed = disambigInput.value.trim();
+          if (!typed) return;
+          if (typed.toLowerCase() === result.zh_text.toLowerCase()) {
+            // Correct — upgrade to correct via AcceptCorrect
+            try {
+              await apiFetch('/api/quiz/accept-correct', {
+                method: 'POST',
+                body: JSON.stringify({ word_id: currentCard.word_id, mode: currentCard.mode, langs: selectedLangs }),
+              });
+              ambiguousUnresolved = null;
+              icon.textContent = t('result.correct');
+              icon.className = 'text-3xl font-bold text-green-600 mb-4';
+              const disambigArea = document.getElementById('disambig-area');
+              if (disambigArea) disambigArea.remove();
+              breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
+              show('word-breakdown');
+            } catch (err) {
+              disambigFeedback.textContent = 'Error: ' + err.message;
+              disambigFeedback.className = 'mt-1 text-sm text-red-600';
+              disambigFeedback.classList.remove('hidden');
+            }
+          } else {
+            disambigInput.value = '';
+            disambigFeedback.textContent = t('result.disambigNotQuite');
+            disambigFeedback.className = 'mt-1 text-sm text-red-500';
+            disambigFeedback.classList.remove('hidden');
+            disambigInput.focus();
+          }
+        });
+      } else {
+        renderWrongResult();
       }
     } else {
       breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
@@ -1411,6 +1430,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('answer-form').addEventListener('submit', submitAnswer);
   $('next-btn').addEventListener('click', async () => {
+    // Continuing past an unresolved ambiguous result reveals the normal
+    // wrong-answer screen first; a second click then actually advances.
+    if (ambiguousUnresolved) {
+      const showFallback = ambiguousUnresolved;
+      ambiguousUnresolved = null;
+      showFallback();
+      return;
+    }
     await _maybeShowMatchGame();
     loadNextCard();
   });

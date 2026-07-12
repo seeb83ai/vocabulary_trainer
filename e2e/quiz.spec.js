@@ -361,29 +361,28 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
 // words are in the quiz queue, making the card selection deterministic.
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Quiz – ambiguous answer (shared translation)', () => {
-  test('ambiguous answer shows disambiguation input and accepts correct re-type', async ({ page }) => {
-    // Register a fresh isolated user so the quiz queue contains only our two words.
-    const email = `e2e-ambig-${Date.now()}@test.local`;
+  // Registers a fresh isolated user with exactly the two ambiguous words 知道/认识
+  // (both mean "know"), submits the OTHER zh word for the quizzed card so the
+  // server responds ambiguous=true, and leaves the disambiguation panel showing.
+  // Returns the correct zh word (quizZh) so callers can resolve it if needed.
+  async function setupAmbiguousResult(page) {
+    const email = `e2e-ambig-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
     const regRes = await page.request.post('/api/register', {
       data: { email, password: 'AmbigTest123!' },
     });
     expect(regRes.ok()).toBeTruthy();
-    // Registration sets a session cookie on the browser context automatically.
 
-    // Seed exactly the two ambiguous words for this user, capturing their IDs.
     const seedRes1 = await page.request.post('/api/words', {
       data: { zh_text: '知道', pinyin: 'zhīdào', translations: { en: ['know'] }, tags: [], start_training: true },
     });
     expect(seedRes1.ok()).toBeTruthy();
-    const seed1 = await seedRes1.json(); // { id: N }
+    const seed1 = await seedRes1.json();
     const seedRes2 = await page.request.post('/api/words', {
       data: { zh_text: '认识', pinyin: 'rènshi', translations: { en: ['know', 'recognize'] }, tags: [], start_training: true },
     });
     expect(seedRes2.ok()).toBeTruthy();
-    const seed2 = await seedRes2.json(); // { id: M }
+    const seed2 = await seedRes2.json();
 
-    // In transl_to_zh mode the card prompt is the EN translation ("know"), not the
-    // zh text. Use word_id to identify which word is being quizzed.
     const idToZh = { [seed1.id]: '知道', [seed2.id]: '认识' };
     const zhToOpposite = { '知道': '认识', '认识': '知道' };
 
@@ -391,17 +390,12 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     expect(cardRes.ok()).toBeTruthy();
     const card = await cardRes.json();
     const quizZh = idToZh[card.word_id];
-    expect(quizZh).toBeTruthy(); // word_id must be one of our two seeded words
+    expect(quizZh).toBeTruthy();
     const wrongAnswer = zhToOpposite[quizZh];
 
-    // Persist transl_to_zh mode server-side too — /train awaits the settings
-    // fetch before requesting a card, which otherwise overwrites localStorage
-    // with the user's default (random) mode.
     await page.request.patch('/api/training-filters', {
       data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
-
-    // Force transl_to_zh mode in localStorage before page load.
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -410,16 +404,17 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
-    // Submit the OTHER zh word — it shares "know" so this is an ambiguous answer.
     await page.locator('#answer-input').fill(wrongAnswer);
     await page.locator('#answer-form button[type="submit"]').click();
-
-    // Header must read "~ Ambiguous", not "✗ Wrong".
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('#result-icon')).toHaveText('~ Ambiguous');
-
-    // Disambiguation input must be present.
     await expect(page.locator('#disambig-input')).toBeVisible();
+
+    return { quizZh, wrongAnswer };
+  }
+
+  test('ambiguous answer shows disambiguation input and accepts correct re-type', async ({ page }) => {
+    const { quizZh, wrongAnswer } = await setupAmbiguousResult(page);
 
     // Type the wrong word again — should show "Not quite" feedback.
     await page.locator('#disambig-input').fill(wrongAnswer);
@@ -432,5 +427,43 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
     // Disambiguation input disappears after a successful answer.
     await expect(page.locator('#disambig-input')).not.toBeVisible();
+  });
+
+  // Issue #194: continuing past an unresolved ambiguous result must fall back
+  // to the normal wrong-answer screen instead of silently advancing.
+  test('clicking Next on an unresolved ambiguous result shows the normal Wrong screen first', async ({ page }) => {
+    await setupAmbiguousResult(page);
+
+    // Click Next WITHOUT resolving the disambiguation.
+    await page.locator('#next-btn').click();
+
+    // Still on the result screen — now showing the normal wrong-answer state.
+    await expect(page.locator('#result-area')).toBeVisible();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    await expect(page.locator('#disambig-input')).not.toBeVisible();
+    await expect(page.locator('#word-breakdown')).toContainText('CORRECT', { ignoreCase: true });
+
+    // A second click on Next now actually advances.
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+
+  // Issue #193: on a small viewport the disambiguation input must stay inside
+  // its containing card, not overflow past the right edge.
+  test('disambiguation input fits inside its card on a small viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 389, height: 694 });
+    await setupAmbiguousResult(page);
+
+    const cardBox = await page.locator('#result-area > div').boundingBox();
+    const inputBox = await page.locator('#disambig-input').boundingBox();
+    const btnBox = await page.locator('#disambig-form button[type="submit"]').boundingBox();
+    expect(cardBox).toBeTruthy();
+    expect(inputBox).toBeTruthy();
+    expect(btnBox).toBeTruthy();
+    // Neither the text input nor the "Check" submit button (the two children of
+    // the disambiguation form) may extend past the right edge of the white
+    // result card — that's the overflow reported in issue #193.
+    expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
+    expect(btnBox.x + btnBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
   });
 });
