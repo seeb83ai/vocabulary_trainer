@@ -394,13 +394,6 @@ func TestCheckAnswer_FullwidthQuestionMark_StoredHasASCII(t *testing.T) {
 	}
 }
 
-func TestCheckAnswer_FullwidthQuestionMark_MidString(t *testing.T) {
-	// ？ in the middle (not trailing) — must still match ? mid-string
-	if !CheckAnswer("你好?谢谢", []string{"你好？谢谢"}) {
-		t.Error("ASCII ? mid-string should match fullwidth ？ mid-string")
-	}
-}
-
 func TestCheckAnswer_FullwidthExclamation_UserTypesASCII(t *testing.T) {
 	if !CheckAnswer("好!", []string{"好！"}) {
 		t.Error("ASCII ! should match fullwidth ！")
@@ -436,6 +429,40 @@ func TestCheckAnswer_TrailingColon(t *testing.T) {
 func TestCheckAnswer_TrailingWhitespace(t *testing.T) {
 	if !CheckAnswer("hello   ", []string{"hello"}) {
 		t.Error("trailing whitespace in user answer should be ignored")
+	}
+}
+
+// ── Fullwidth / halfwidth punctuation equivalence ─────────────────────────────
+
+func TestCheckAnswer_FullwidthQuestionMark_Trailing(t *testing.T) {
+	// Trailing fullwidth ？ and ASCII ? are both stripped — should already work.
+	if !CheckAnswer("你好?", []string{"你好？"}) {
+		t.Error("trailing ASCII ? should match stored fullwidth ？")
+	}
+	if !CheckAnswer("你好？", []string{"你好?"}) {
+		t.Error("trailing fullwidth ？ should match stored ASCII ?")
+	}
+}
+
+func TestCheckAnswer_FullwidthQuestionMark_MidString(t *testing.T) {
+	// Non-trailing ？ in the middle: fullwidth and ASCII must be treated as equivalent.
+	if !CheckAnswer("是?对", []string{"是？对"}) {
+		t.Error("mid-string ASCII ? should match stored fullwidth ？")
+	}
+	if !CheckAnswer("是？对", []string{"是?对"}) {
+		t.Error("mid-string fullwidth ？ should match stored ASCII ?")
+	}
+}
+
+func TestCheckAnswer_FullwidthExclamation_MidString(t *testing.T) {
+	if !CheckAnswer("好!好", []string{"好！好"}) {
+		t.Error("mid-string ASCII ! should match stored fullwidth ！")
+	}
+}
+
+func TestCheckAnswer_FullwidthComma_MidString(t *testing.T) {
+	if !CheckAnswer("你好,世界", []string{"你好，世界"}) {
+		t.Error("mid-string ASCII , should match stored fullwidth ，")
 	}
 }
 

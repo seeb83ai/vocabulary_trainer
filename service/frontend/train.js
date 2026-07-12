@@ -54,6 +54,60 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+function normalizeAnswer(s) {
+  s = s.toLowerCase().trim();
+  s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
+  return s;
+}
+
+function stripParens(s) {
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+  } while (s !== prev);
+  return s;
+}
+
+function expandVariants(a) {
+  const seen = new Set();
+  const add = s => { const n = normalizeAnswer(s); if (n) seen.add(n); };
+  add(a);
+  const noParens = stripParens(a);
+  add(noParens);
+  for (const base of [a, noParens]) {
+    for (const part of base.split('/')) {
+      add(part);
+      add(stripParens(part));
+    }
+  }
+  return [...seen];
+}
+
+// Returns true if a wrong answer should be offered as "accept as typo".
+// For transl_to_zh mode compares pinyin strings (levenshtein ≤ 1) so that
+// tone-slip / same-sound characters are caught instead of raw character diffs.
+// For other modes expands correct-answer variants (strip parens, split on /)
+// before comparing — mirrors the backend expandVariants / CheckAnswer logic.
+function shouldShowAcceptTypo(answer, result, mode, cardMode) {
+  if (!answer || answer.trim() === '') return false;
+  if (mode === 'always') return true;
+  if (mode !== 'typo') return false;
+  if (cardMode === 'transl_to_zh') {
+    if (result.user_answer_pinyin && result.pinyin) {
+      return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
+                         result.pinyin.toLowerCase().trim()) <= 1;
+    }
+    // Pinyin unavailable (typed word not in vocab): fall back to character comparison.
+    const norm = normalizeAnswer(answer);
+    const variants = (result.correct_answers || []).flatMap(expandVariants);
+    return variants.some(c => levenshtein(norm, c) === 1);
+  }
+  const norm = normalizeAnswer(answer);
+  const variants = (result.correct_answers || []).flatMap(expandVariants);
+  return variants.some(c => levenshtein(norm, c) === 1);
+}
+
 function shouldShowAcceptBtn(answer, normCorrects, mode) {
   if (!answer || answer.trim() === '') return false;
   if (mode === 'always') return true;
@@ -640,15 +694,18 @@ async function submitAnswer(e) {
     const breakdown = $('word-breakdown');
     const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
     const allTransTexts = selectedLangs.flatMap(lang => (result.translations || {})[lang] || []);
-    const correctBox = `
+    // For wrong answers use compact equal-sized display so zh and translations are easy to read side-by-side.
+    // For correct answers keep the large Chinese character as a visual reward.
+    const makeCorrectBox = (compact) => `
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('result.correctLabel'))}</div>
         <div class="flex items-center gap-2">
-          <div class="text-3xl font-bold text-gray-800">${escHtml(result.zh_text)}${pinyin}</div>
+          <div class="${compact ? 'text-xl' : 'text-3xl'} font-bold text-gray-800 min-w-0">${escHtml(result.zh_text)}${pinyin}</div>
           <button type="button" class="result-inline-play text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
         </div>
-        <div class="text-gray-600 text-sm mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
+        <div class="text-gray-600 ${compact ? 'text-xl' : 'text-sm'} mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
       </div>`;
+    const correctBox = makeCorrectBox(false);
 
     if (!result.correct) {
       const isEmpty = answer.trim() === '';
@@ -671,7 +728,7 @@ async function submitAnswer(e) {
         <div class="mt-4 space-y-2 text-left">
           ${yourAnswerHtml}
           ${confusedHtml}
-          ${correctBox}
+          ${makeCorrectBox(true)}
         </div>`;
       const confusedPlayBtn = breakdown.querySelector('.btn-confused-play');
       if (confusedPlayBtn) {
@@ -714,8 +771,7 @@ async function submitAnswer(e) {
       }
 
       // Show "Accept as correct" button based on user's mode setting.
-      const normCorrects = (result.correct_answers || []).map(a => a.toLowerCase().trim());
-      if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
+      if (shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
         const acceptBtn = $('accept-correct-btn');
         acceptBtn.disabled = false;
         acceptBtn.textContent = 'Accept as correct (typo)';
