@@ -732,7 +732,7 @@ async function submitAnswer(e) {
           <div class="${compact ? 'text-xl' : 'text-3xl'} font-bold text-gray-800 min-w-0">${escHtml(result.zh_text)}${pinyin}</div>
           <button type="button" class="result-inline-play text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
         </div>
-        <div class="text-gray-600 ${compact ? 'text-xl' : 'text-sm'} mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
+        <div class="text-gray-600 text-sm mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
       </div>`;
     const correctBox = makeCorrectBox(false);
 
@@ -742,7 +742,7 @@ async function submitAnswer(e) {
       const yourAnswerHtml = isEmpty ? '' : `
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
             <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
-            <div class="text-lg font-medium text-red-700">${escHtml(answer)}</div>
+            <div class="text-sm font-medium text-red-700">${escHtml(answer)}</div>
           </div>`;
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
