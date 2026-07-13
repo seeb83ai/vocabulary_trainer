@@ -563,6 +563,7 @@ async function loadNextCard(trackCurrent = false) {
     _noCardsPaused = false; _onFocusOrVisibility();
     show('new-component-area');
     setText('new-component-char', currentCard.prompt);
+    $('new-component-play-btn').onclick = () => playComponentAudio(currentCard.prompt);
     const compPinyin = currentCard.pinyin || null;
     setText('new-component-pinyin', compPinyin || '');
     compPinyin ? show('new-component-pinyin-row') : hide('new-component-pinyin-row');
@@ -1112,11 +1113,16 @@ function showComponentResult(resp) {
       ${yourAnswerHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}</div>
-        <div class="text-3xl font-bold text-gray-800 mb-1">${escHtml(currentCard.prompt)}</div>
+        <div class="flex items-center gap-2 mb-1">
+          <div class="text-3xl font-bold text-gray-800">${escHtml(currentCard.prompt)}</div>
+          <button type="button" class="component-inline-play text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+        </div>
         ${defsHtml}
       </div>
     </div>`;
   show('word-breakdown');
+  const inlinePlay = $('word-breakdown').querySelector('.component-inline-play');
+  if (inlinePlay) inlinePlay.addEventListener('click', () => playComponentAudio(currentCard.prompt));
 
   hide('add-translation-row');
   hide('add-translation-lang-select');
