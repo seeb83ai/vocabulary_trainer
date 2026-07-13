@@ -3997,6 +3997,9 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if !st.ExtendSessionWithExtraWords {
 		t.Error("want extend_session_with_extra_words=true by default (preserves pre-existing behaviour)")
 	}
+	if st.BlurPinyin {
+		t.Error("want blur_pinyin=false by default")
+	}
 }
 
 func TestUpdateUserSettings_RoundTrip(t *testing.T) {
@@ -4018,6 +4021,7 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 		NewWordRequireZh:            false,
 		NewWordRequireTrans:         true,
 		ExtendSessionWithExtraWords: false,
+		BlurPinyin:                  true,
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -4043,6 +4047,9 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if out.ExtendSessionWithExtraWords {
 		t.Error("extend_session_with_extra_words: want false after update")
+	}
+	if !out.BlurPinyin {
+		t.Error("blur_pinyin: want true after update")
 	}
 }
 

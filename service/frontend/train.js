@@ -5,6 +5,7 @@ let userPrimaryLang = 'en';
 let userSecondaryLang = '';
 let acceptCorrectMode = 'typo';
 let skipNewWordsVisible = true;
+let blurPinyin = false;
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
@@ -13,6 +14,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   userSecondaryLang = st?.secondary_lang ?? '';
   acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
   skipNewWordsVisible = st?.skip_new_words_visible !== false;
+  blurPinyin = !!st?.blur_pinyin;
   _gamificationEnabled = !!st?.gamification_enabled;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   const btn = document.getElementById('new-word-skip-btn');
@@ -583,6 +585,20 @@ async function loadNextCard(trackCurrent = false) {
   await loadStats();
 }
 
+// applyPinyinBlur blurs the pinyin hint (if the user enabled the setting)
+// until the user taps/clicks it to reveal it, re-blurring on the next card.
+function applyPinyinBlur() {
+  const el = $('pinyin-hint');
+  if (!el) return;
+  if (blurPinyin) {
+    el.classList.add('blur-sm', 'cursor-pointer');
+    el.onclick = () => el.classList.remove('blur-sm');
+  } else {
+    el.classList.remove('blur-sm', 'cursor-pointer');
+    el.onclick = null;
+  }
+}
+
 function showCard() {
   show('card-area');
 
@@ -664,6 +680,7 @@ function showCard() {
     }
   }
 
+  applyPinyinBlur();
   $('answer-input').focus();
 }
 

@@ -356,6 +356,50 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Group: Blur pinyin setting (issue #201)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – blur pinyin (issue #201)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  async function useZhPinyinToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_pinyin_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_pinyin_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('pinyin hint is NOT blurred by default', async ({ page }) => {
+    await useZhPinyinToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#pinyin-hint')).toBeVisible();
+    await expect(page.locator('#pinyin-hint')).not.toHaveClass(/blur/);
+  });
+
+  test('pinyin hint is blurred on load and reveals on click when blur_pinyin is enabled', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, blur_pinyin: true } });
+
+    try {
+      await useZhPinyinToTranslMode(page);
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await expect(page.locator('#pinyin-hint')).toBeVisible();
+      await expect(page.locator('#pinyin-hint')).toHaveClass(/blur/);
+
+      await page.locator('#pinyin-hint').click();
+      await expect(page.locator('#pinyin-hint')).not.toHaveClass(/blur/);
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 test.describe('Quiz – new word introduction (new-word user)', () => {
   test.use({ storageState: 'e2e/.auth/new-word-user.json' });
 

@@ -156,6 +156,8 @@ async function loadSettings() {
     if (requireZhEl) requireZhEl.checked = st.new_word_require_zh !== false;
     const requireTransEl = document.getElementById('require-trans');
     if (requireTransEl) requireTransEl.checked = st.new_word_require_trans !== false;
+    const blurPinyinEl = document.getElementById('blur-pinyin');
+    if (blurPinyinEl) blurPinyinEl.checked = !!st.blur_pinyin;
 
     // Daily learning
     const maxNewEl = document.getElementById('max-new-words');
@@ -261,6 +263,7 @@ function buildModePayload() {
     cycle_advance_on_success_only:  !!(document.getElementById('cycle-advance-on-success-only')?.checked),
     new_word_require_zh:            !!(document.getElementById('require-zh')?.checked),
     new_word_require_trans: !!(document.getElementById('require-trans')?.checked),
+    blur_pinyin:            !!(document.getElementById('blur-pinyin')?.checked),
   };
 }
 

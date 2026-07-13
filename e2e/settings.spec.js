@@ -113,3 +113,36 @@ test.describe('Settings – Daily Learning', () => {
     await expect(page.locator('#daily-success')).toBeVisible();
   });
 });
+
+// Issue #201: a "Blur pinyin" option in Training Mode settings blurs the
+// pinyin hint on the quiz card until the user taps/clicks to reveal it.
+test.describe('Settings – Blur pinyin (issue #201)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('blur-pinyin toggle is visible and defaults to unchecked', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.locator('#blur-pinyin')).toBeVisible();
+    await expect(page.locator('#blur-pinyin')).not.toBeChecked();
+  });
+
+  test('blur-pinyin toggle saves and persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+    const toggle = page.locator('#blur-pinyin');
+
+    await toggle.check();
+    await page.locator('#mode-save-btn').click();
+    await expect(page.locator('#mode-success')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#blur-pinyin')).toBeChecked();
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.blur_pinyin).toBe(true);
+
+    // Reset to default.
+    await toggle.uncheck();
+    await page.locator('#mode-save-btn').click();
+    await expect(page.locator('#mode-success')).toBeVisible();
+  });
+});
