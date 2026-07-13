@@ -63,6 +63,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineLearningValue       int    `json:"baseline_learning_value"`
 		GamificationEnabled         bool   `json:"gamification_enabled"`
 		GamificationFrequency       *int   `json:"gamification_frequency"`
+		BlurPinyin                  bool   `json:"blur_pinyin"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -184,6 +185,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineLearningValue:       req.BaselineLearningValue,
 		GamificationEnabled:         req.GamificationEnabled,
 		GamificationFrequency:       resolvedFrequency,
+		BlurPinyin:                  req.BlurPinyin,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

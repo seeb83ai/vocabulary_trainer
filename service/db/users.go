@@ -230,7 +230,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(train_langs, '["en"]'),
 		       COALESCE(train_mnemonics, 1),
 		       COALESCE(train_components, 1),
-		       COALESCE(train_tags, '[]')
+		       COALESCE(train_tags, '[]'),
+		       COALESCE(blur_pinyin, 0)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -259,6 +260,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&trainMnemonicsInt,
 		&trainComponentsInt,
 		&trainTagsJSON,
+		&st.BlurPinyin,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
@@ -355,7 +357,8 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			baseline_learning_enabled       = ?,
 			baseline_learning_value         = ?,
 			gamification_enabled            = ?,
-			gamification_frequency          = ?
+			gamification_frequency          = ?,
+			blur_pinyin                     = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -377,6 +380,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.BaselineLearningValue,
 		st.GamificationEnabled,
 		st.GamificationFrequency,
+		st.BlurPinyin,
 		userID,
 	)
 	if err == nil {

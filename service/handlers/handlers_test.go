@@ -6765,6 +6765,30 @@ func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_BlurPinyin(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["blur_pinyin"] != false {
+		t.Errorf("blur_pinyin: want false by default, got %v", st["blur_pinyin"])
+	}
+
+	body := baseSettingsPatch()
+	body["blur_pinyin"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["blur_pinyin"] != true {
+		t.Errorf("blur_pinyin: want true after update, got %v", st["blur_pinyin"])
+	}
+}
+
 // ── GET /api/audio/component/{char} ──────────────────────────────────────────
 
 func TestServeComponentAudio_ServesPreCachedFile(t *testing.T) {

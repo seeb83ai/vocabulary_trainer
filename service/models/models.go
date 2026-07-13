@@ -54,6 +54,7 @@ type UserSettings struct {
 	TrainMnemonics              bool     `json:"train_mnemonics"`
 	TrainComponents             bool     `json:"train_components"`
 	TrainTags                   []string `json:"train_tags"`
+	BlurPinyin                  bool     `json:"blur_pinyin"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
