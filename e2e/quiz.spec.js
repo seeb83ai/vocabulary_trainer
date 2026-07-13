@@ -180,6 +180,35 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await expect(page.locator('#word-breakdown .result-inline-play')).toBeVisible();
   });
 
+  test('translation text font size matches across your-answer, confused-with, and correct boxes (issue #199)', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    const prompt = await page.locator('#prompt-word').textContent();
+    // Answer with a translation belonging to a DIFFERENT seeded word so the
+    // server detects a confusion pair and renders the yellow "belongs to" box.
+    const otherZh = Object.keys(SEED_TRANSLATIONS).find(zh => zh !== prompt);
+    const confusingAnswer = SEED_TRANSLATIONS[otherZh][0];
+
+    await page.locator('#answer-input').fill(confusingAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
+    await expect(yellowBox).toBeVisible();
+
+    const redSize = await page.locator('#word-breakdown .bg-red-50 .text-red-700')
+      .evaluate(el => getComputedStyle(el).fontSize);
+    const yellowSize = await yellowBox.locator('.text-sm').first()
+      .evaluate(el => getComputedStyle(el).fontSize);
+    const greenSize = await page.locator('#word-breakdown .bg-green-50 .text-sm').first()
+      .evaluate(el => getComputedStyle(el).fontSize);
+
+    expect(redSize).toBe(yellowSize);
+    expect(greenSize).toBe(yellowSize);
+  });
+
   test('issue-report button z-index is above gamification overlay (issue #152)', async ({ page }) => {
     await page.goto('/train');
     const cls = await page.locator('#issue-report-btn').getAttribute('style');
