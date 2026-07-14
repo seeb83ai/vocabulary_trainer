@@ -757,10 +757,11 @@ async function submitAnswer(e) {
     if (!result.correct) {
       const isEmpty = answer.trim() === '';
       const cw = result.confused_with;
+      const userAnswerPinyin = result.user_answer_pinyin;
       const yourAnswerHtml = isEmpty ? '' : `
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
             <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
-            <div class="text-sm font-medium text-red-700">${escHtml(answer)}</div>
+            <div class="text-sm font-medium text-red-700">${escHtml(answer)}${userAnswerPinyin ? `<span class="text-red-400 text-xs ml-1">${escHtml(userAnswerPinyin)}</span>` : ''}</div>
           </div>`;
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
@@ -1131,7 +1132,7 @@ function showComponentResult(resp) {
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}</div>
         <div class="flex items-center gap-2 mb-1">
-          <div class="text-3xl font-bold text-gray-800">${escHtml(currentCard.prompt)}</div>
+          <div class="text-3xl font-bold text-gray-800">${escHtml(currentCard.prompt)}${currentCard.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(currentCard.pinyin)}</span>` : ''}</div>
           <button type="button" class="component-inline-play text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
         </div>
         ${defsHtml}

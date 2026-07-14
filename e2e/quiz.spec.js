@@ -682,3 +682,69 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-decompose')).toBeVisible();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Show pinyin in answer boxes (issue #205)
+//
+// When a user types a Chinese word as a wrong answer in transl_to_zh mode,
+// the red "Your Answer" box should show the pinyin alongside the typed word.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – pinyin shown in Your Answer box (issue #205)', () => {
+  // Seed data pinyin map (matches global-setup.js seed)
+  const SEED_PINYIN = {
+    '你好': 'nǐ hǎo',
+    '谢谢': 'xiè xiè',
+    '再见': 'zài jiàn',
+  };
+
+  test('wrong Chinese answer in transl_to_zh mode shows pinyin in the Your Answer box', async ({ page }) => {
+    // Register a fresh isolated user so card selection is deterministic.
+    const email = `e2e-pinyin205-${Date.now()}@test.local`;
+    const password = 'PinyinTest123!';
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    // Seed two words with pinyin and start_training: true
+    const seedRes1 = await page.request.post('/api/words', {
+      data: { zh_text: '你好', pinyin: 'nǐ hǎo', translations: { en: ['hello'] }, tags: [], start_training: true },
+    });
+    expect(seedRes1.ok()).toBeTruthy();
+    await page.request.post('/api/words', {
+      data: { zh_text: '谢谢', pinyin: 'xiè xiè', translations: { en: ['thank you'] }, tags: [], start_training: true },
+    });
+
+    // Set transl_to_zh mode
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    // Find out which card will be served next
+    const cardRes = await page.request.get('/api/quiz/next?mode=transl_to_zh&langs=en');
+    expect(cardRes.ok()).toBeTruthy();
+    const card = await cardRes.json();
+    expect(card.mode).toBe('transl_to_zh');
+
+    // Pick the OTHER seeded word to type as a wrong answer
+    const wrongZh = card.zh_text === '你好' ? '谢谢' : '你好';
+    const expectedPinyin = SEED_PINYIN[wrongZh];
+    expect(expectedPinyin).toBeTruthy();
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // Submit the wrong Chinese word
+    await page.locator('#answer-input').fill(wrongZh);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    // The red "Your Answer" box must show the pinyin of the wrong word typed
+    await expect(page.locator('#word-breakdown .bg-red-50')).toBeVisible();
+    await expect(page.locator('#word-breakdown .bg-red-50')).toContainText(expectedPinyin);
+  });
+});
