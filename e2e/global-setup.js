@@ -129,6 +129,8 @@ export default async function globalSetup() {
       SMTP_PORT: '',
       SMTP_USER: '',
       SMTP_PASS: '',
+      // Allow enough registrations for all per-test fresh-user setups.
+      RATE_LIMIT_AUTH_PER_MIN: '100',
       // Enable in-app GitHub issue reporting against the mock GitHub API.
       GITHUB_TOKEN: 'e2e-test-token',
       GITHUB_ISSUE_REPO: 'owner/repo',
