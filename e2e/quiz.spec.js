@@ -216,7 +216,33 @@ test.describe('Quiz – acknowledged words (main user)', () => {
   });
 
   test('wrong answer is not repeated in the next two cards', async ({ page }) => {
-    await useZhToTranslMode(page);
+    // Use a fresh isolated user with exactly 3 due words so the test is not
+    // affected by state left behind by earlier tests on the shared main user.
+    const email = `e2e-norepeat-${Date.now()}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'NoRepeat123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    for (const [zh, pinyin, en] of [
+      ['你好', 'nǐ hǎo', 'hello'],
+      ['谢谢', 'xiè xiè', 'thank you'],
+      ['再见', 'zài jiàn', 'goodbye'],
+    ]) {
+      const r = await page.request.post('/api/words', {
+        data: { zh_text: zh, pinyin, translations: { en: [en] }, tags: [], start_training: true },
+      });
+      expect(r.ok()).toBeTruthy();
+    }
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
