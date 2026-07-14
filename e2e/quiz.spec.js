@@ -28,6 +28,13 @@ const SEED_TRANSLATIONS = {
   '再见': ['goodbye', 'bye'],
 };
 
+/** Pinyin keyed by zh word — derived from the seed in global-setup.js. */
+const SEED_PINYINS = {
+  '你好': 'nǐ hǎo',
+  '谢谢': 'xiè xiè',
+  '再见': 'zài jiàn',
+};
+
 test.describe('Quiz – acknowledged words (main user)', () => {
   test.use({ storageState: 'e2e/.auth/user.json' });
 
@@ -381,6 +388,33 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
     expect(card.mode).toBe('transl_to_zh');
     expect(card.zh_text).toBeTruthy();
     expect(['你好', '谢谢', '再见']).toContain(card.zh_text);
+  });
+
+  // Issue #205: in transl_to_zh mode, when the user types a wrong Chinese answer
+  // that exists in the DB, the "Your answer" box must show pinyin beside it.
+  test('wrong zh answer in transl_to_zh mode shows pinyin in Your Answer box (issue #205)', async ({ page }) => {
+    const cardRes = await page.request.get('/api/quiz/next?mode=transl_to_zh&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+    // card.zh_text is the correct zh answer; pick a different seeded word as the wrong answer
+    const wrongZh = Object.keys(SEED_PINYINS).find(zh => zh !== card.zh_text);
+    expect(wrongZh).toBeTruthy();
+    const expectedPinyin = SEED_PINYINS[wrongZh];
+
+    await useTranslToZhMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill(wrongZh);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+
+    // The "Your answer" red box must show the typed zh word AND its pinyin.
+    const redBox = page.locator('#word-breakdown .bg-red-50');
+    await expect(redBox).toBeVisible();
+    await expect(redBox).toContainText(wrongZh);
+    await expect(redBox).toContainText(expectedPinyin);
   });
 });
 

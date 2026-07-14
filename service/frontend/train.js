@@ -757,10 +757,13 @@ async function submitAnswer(e) {
     if (!result.correct) {
       const isEmpty = answer.trim() === '';
       const cw = result.confused_with;
+      const userAnswerPinyin = result.user_answer_pinyin
+        ? `<span class="text-gray-400 text-sm ml-1">${escHtml(result.user_answer_pinyin)}</span>`
+        : '';
       const yourAnswerHtml = isEmpty ? '' : `
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
             <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
-            <div class="text-sm font-medium text-red-700">${escHtml(answer)}</div>
+            <div class="text-sm font-medium text-red-700">${escHtml(answer)}${userAnswerPinyin}</div>
           </div>`;
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
