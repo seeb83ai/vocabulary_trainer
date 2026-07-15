@@ -426,6 +426,7 @@ async function loadNextCard(trackCurrent = false) {
   hide('result-play-btn');
   hide('new-word-area');
   hide('new-component-area');
+  hide('result-question');
   hide('result-decompose');
   hide('result-decompose-content');
   hide('bucket-info');
@@ -733,6 +734,17 @@ async function submitAnswer(e) {
     hide('card-area');
     show('result-area');
 
+    // Show the "what was asked" recap at the top of the result
+    $('result-question-label').textContent = getModeLabel(currentCard.mode);
+    $('result-question-word').textContent = currentCard.prompt;
+    if (currentCard.pinyin) {
+      $('result-question-pinyin').textContent = currentCard.pinyin;
+      show('result-question-pinyin');
+    } else {
+      hide('result-question-pinyin');
+    }
+    show('result-question');
+
     const icon = $('result-icon');
     if (result.correct) {
       icon.textContent = t('result.correct');
@@ -1005,32 +1017,25 @@ async function submitAnswer(e) {
       loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
     }
 
-    // HMM mnemonic scene display
+    // HMM mnemonic scene display — always collapsed regardless of correct/wrong
     const hmmEl = $('result-hmm');
     if (result.scene_text) {
-      if (!result.correct) {
-        // Wrong answer: auto-show scene
-        renderHMMSceneReadOnly('result-hmm', result.scene_text);
-        show('result-hmm');
-      } else {
-        // Correct answer: collapsed toggle
-        hmmEl.innerHTML = `
-          <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
-          <div id="hmm-toggle-content" class="hidden mt-2"></div>
-        `;
-        show('result-hmm');
-        $('hmm-toggle-btn').addEventListener('click', () => {
-          const content = $('hmm-toggle-content');
-          if (content.classList.contains('hidden')) {
-            renderHMMSceneReadOnly('hmm-toggle-content', result.scene_text);
-            content.classList.remove('hidden');
-            $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
-          } else {
-            content.classList.add('hidden');
-            $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
-          }
-        });
-      }
+      hmmEl.innerHTML = `
+        <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
+        <div id="hmm-toggle-content" class="hidden mt-2"></div>
+      `;
+      show('result-hmm');
+      $('hmm-toggle-btn').addEventListener('click', () => {
+        const content = $('hmm-toggle-content');
+        if (content.classList.contains('hidden')) {
+          renderHMMSceneReadOnly('hmm-toggle-content', result.scene_text);
+          content.classList.remove('hidden');
+          $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
+        } else {
+          content.classList.add('hidden');
+          $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
+        }
+      });
     } else {
       hmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
       show('result-hmm');
@@ -1047,6 +1052,11 @@ async function submitAnswer(e) {
 function showHMMResult(resp) {
   hide('card-area');
   show('result-area');
+
+  $('result-question-label').textContent = t('hmm.modeLabel');
+  $('result-question-word').textContent = currentCard.prompt;
+  hide('result-question-pinyin');
+  show('result-question');
 
   const icon = $('result-icon');
   if (resp.correct) {
@@ -1109,6 +1119,16 @@ function showHMMResult(resp) {
 function showComponentResult(resp) {
   hide('card-area');
   show('result-area');
+
+  $('result-question-label').textContent = t('component.modeLabel');
+  $('result-question-word').textContent = currentCard.prompt;
+  if (currentCard.pinyin) {
+    $('result-question-pinyin').textContent = currentCard.pinyin;
+    show('result-question-pinyin');
+  } else {
+    hide('result-question-pinyin');
+  }
+  show('result-question');
 
   const icon = $('result-icon');
   if (resp.correct) {
@@ -1175,27 +1195,22 @@ function showComponentResult(resp) {
 
   const hmmEl = $('result-hmm');
   if (resp.scene_text) {
-    if (!resp.correct) {
-      renderHMMSceneReadOnly('result-hmm', resp.scene_text);
-      show('result-hmm');
-    } else {
-      hmmEl.innerHTML = `
-        <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
-        <div id="hmm-toggle-content" class="hidden mt-2"></div>
-      `;
-      show('result-hmm');
-      $('hmm-toggle-btn').addEventListener('click', () => {
-        const content = $('hmm-toggle-content');
-        if (content.classList.contains('hidden')) {
-          renderHMMSceneReadOnly('hmm-toggle-content', resp.scene_text);
-          content.classList.remove('hidden');
-          $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
-        } else {
-          content.classList.add('hidden');
-          $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
-        }
-      });
-    }
+    hmmEl.innerHTML = `
+      <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
+      <div id="hmm-toggle-content" class="hidden mt-2"></div>
+    `;
+    show('result-hmm');
+    $('hmm-toggle-btn').addEventListener('click', () => {
+      const content = $('hmm-toggle-content');
+      if (content.classList.contains('hidden')) {
+        renderHMMSceneReadOnly('hmm-toggle-content', resp.scene_text);
+        content.classList.remove('hidden');
+        $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
+      } else {
+        content.classList.add('hidden');
+        $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
+      }
+    });
   } else {
     hmmEl.innerHTML = `<a href="/vocab?editComp=${encodeURIComponent(currentCard.prompt)}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
     show('result-hmm');
