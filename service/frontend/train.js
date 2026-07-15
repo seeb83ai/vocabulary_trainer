@@ -1017,9 +1017,9 @@ async function submitAnswer(e) {
       loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
     }
 
-    // HMM mnemonic scene display — always collapsed regardless of correct/wrong
+    // HMM mnemonic scene: show collapsed toggle on correct; hide completely on wrong
     const hmmEl = $('result-hmm');
-    if (result.scene_text) {
+    if (result.scene_text && result.correct) {
       hmmEl.innerHTML = `
         <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
         <div id="hmm-toggle-content" class="hidden mt-2"></div>
@@ -1036,9 +1036,11 @@ async function submitAnswer(e) {
           $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
         }
       });
-    } else {
+    } else if (!result.scene_text) {
       hmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
       show('result-hmm');
+    } else {
+      hide('result-hmm');
     }
 
     if (!ambiguousUnresolved) $('next-btn').focus();
@@ -1194,7 +1196,7 @@ function showComponentResult(resp) {
   }
 
   const hmmEl = $('result-hmm');
-  if (resp.scene_text) {
+  if (resp.scene_text && resp.correct) {
     hmmEl.innerHTML = `
       <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
       <div id="hmm-toggle-content" class="hidden mt-2"></div>
@@ -1211,9 +1213,11 @@ function showComponentResult(resp) {
         $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
       }
     });
-  } else {
+  } else if (!resp.scene_text) {
     hmmEl.innerHTML = `<a href="/vocab?editComp=${encodeURIComponent(currentCard.prompt)}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
     show('result-hmm');
+  } else {
+    hide('result-hmm');
   }
 
   const reviewBtn = $('needs-review-btn');
