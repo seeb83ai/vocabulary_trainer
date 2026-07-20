@@ -757,10 +757,13 @@ async function submitAnswer(e) {
     if (!result.correct) {
       const isEmpty = answer.trim() === '';
       const cw = result.confused_with;
+      const yourAnswerPinyin = currentCard.mode === 'transl_to_zh' && result.user_answer_pinyin
+        ? `<span class="text-gray-400 text-xs ml-1">${escHtml(result.user_answer_pinyin)}</span>`
+        : '';
       const yourAnswerHtml = isEmpty ? '' : `
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
             <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
-            <div class="text-sm font-medium text-red-700">${escHtml(answer)}</div>
+            <div class="text-sm font-medium text-red-700">${escHtml(answer)}${yourAnswerPinyin}</div>
           </div>`;
       const confusedHtml = cw ? `
           <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
@@ -1124,6 +1127,9 @@ function showComponentResult(resp) {
        <span class="text-xl font-bold text-gray-800">${escHtml(def)}</span>
      </div>`
   ).join('');
+  const compResultPinyin = currentCard.pinyin
+    ? `<span class="text-gray-400 text-base ml-2">${escHtml(currentCard.pinyin)}</span>`
+    : '';
 
   $('word-breakdown').innerHTML = `
     <div class="mt-4 space-y-2 text-left">
@@ -1131,7 +1137,7 @@ function showComponentResult(resp) {
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(t('component.character'))}</div>
         <div class="flex items-center gap-2 mb-1">
-          <div class="text-3xl font-bold text-gray-800">${escHtml(currentCard.prompt)}</div>
+          <div class="text-3xl font-bold text-gray-800">${escHtml(currentCard.prompt)}${compResultPinyin}</div>
           <button type="button" class="component-inline-play text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
         </div>
         ${defsHtml}

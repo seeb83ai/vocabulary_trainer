@@ -682,3 +682,50 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-decompose')).toBeVisible();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Show pinyin beside zh words in answer boxes (issue #205)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – pinyin in answer boxes (issue #205)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  const SEED_PINYINS = {
+    '你好': 'nǐ hǎo',
+    '谢谢': 'xiè xiè',
+    '再见': 'zài jiàn',
+  };
+
+  test('transl_to_zh wrong answer box shows pinyin beside the typed zh word', async ({ page }) => {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    // Pre-fetch the card to know which zh word is the correct answer.
+    const cardRes = await page.request.get('/api/quiz/next?mode=transl_to_zh&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+    expect(card.mode).toBe('transl_to_zh');
+    const correctZh = card.zh_text;
+
+    // Pick a different seeded word as wrong answer (it's in the user's vocab so pinyin is known).
+    const wrongZh = Object.keys(SEED_PINYINS).find(zh => zh !== correctZh);
+    const expectedPinyin = SEED_PINYINS[wrongZh];
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill(wrongZh);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    // The red "your answer" box must show the typed zh word AND its pinyin.
+    const redBox = page.locator('#word-breakdown .bg-red-50');
+    await expect(redBox).toBeVisible();
+    await expect(redBox).toContainText(wrongZh);
+    await expect(redBox).toContainText(expectedPinyin);
+  });
+});
