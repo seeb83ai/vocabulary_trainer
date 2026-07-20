@@ -734,17 +734,6 @@ async function submitAnswer(e) {
     hide('card-area');
     show('result-area');
 
-    // Show the "what was asked" recap at the top of the result
-    $('result-question-label').textContent = getModeLabel(currentCard.mode);
-    $('result-question-word').textContent = currentCard.prompt;
-    if (currentCard.pinyin) {
-      $('result-question-pinyin').textContent = currentCard.pinyin;
-      show('result-question-pinyin');
-    } else {
-      hide('result-question-pinyin');
-    }
-    show('result-question');
-
     const icon = $('result-icon');
     if (result.correct) {
       icon.textContent = t('result.correct');
@@ -777,6 +766,19 @@ async function submitAnswer(e) {
       const yourAnswerPinyin = currentCard.mode === 'transl_to_zh' && result.user_answer_pinyin
         ? `<span class="text-gray-400 text-xs ml-1">${escHtml(result.user_answer_pinyin)}</span>`
         : '';
+
+      if (result.ambiguous) {
+        $('result-question-label').textContent = getModeLabel(currentCard.mode);
+        $('result-question-word').textContent = currentCard.prompt;
+        if (currentCard.pinyin) {
+          $('result-question-pinyin').textContent = currentCard.pinyin;
+          show('result-question-pinyin');
+        } else {
+          hide('result-question-pinyin');
+        }
+        show('result-question');
+      }
+
       const yourAnswerHtml = isEmpty ? '' : `
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
             <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
@@ -1036,7 +1038,7 @@ async function submitAnswer(e) {
           $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
         }
       });
-    } else if (!result.scene_text) {
+    } else if (!result.scene_text && !result.ambiguous) {
       hmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
       show('result-hmm');
     } else {
@@ -1054,11 +1056,6 @@ async function submitAnswer(e) {
 function showHMMResult(resp) {
   hide('card-area');
   show('result-area');
-
-  $('result-question-label').textContent = t('hmm.modeLabel');
-  $('result-question-word').textContent = currentCard.prompt;
-  hide('result-question-pinyin');
-  show('result-question');
 
   const icon = $('result-icon');
   if (resp.correct) {
@@ -1121,16 +1118,6 @@ function showHMMResult(resp) {
 function showComponentResult(resp) {
   hide('card-area');
   show('result-area');
-
-  $('result-question-label').textContent = t('component.modeLabel');
-  $('result-question-word').textContent = currentCard.prompt;
-  if (currentCard.pinyin) {
-    $('result-question-pinyin').textContent = currentCard.pinyin;
-    show('result-question-pinyin');
-  } else {
-    hide('result-question-pinyin');
-  }
-  show('result-question');
 
   const icon = $('result-icon');
   if (resp.correct) {
