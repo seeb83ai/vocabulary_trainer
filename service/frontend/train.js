@@ -426,6 +426,7 @@ async function loadNextCard(trackCurrent = false) {
   hide('result-play-btn');
   hide('new-word-area');
   hide('new-component-area');
+  hide('result-question');
   hide('result-decompose');
   hide('result-decompose-content');
   hide('bucket-info');
@@ -765,6 +766,19 @@ async function submitAnswer(e) {
       const yourAnswerPinyin = currentCard.mode === 'transl_to_zh' && result.user_answer_pinyin
         ? `<span class="text-gray-400 text-xs ml-1">${escHtml(result.user_answer_pinyin)}</span>`
         : '';
+
+      if (result.ambiguous) {
+        $('result-question-label').textContent = getModeLabel(currentCard.mode);
+        $('result-question-word').textContent = currentCard.prompt;
+        if (currentCard.pinyin) {
+          $('result-question-pinyin').textContent = currentCard.pinyin;
+          show('result-question-pinyin');
+        } else {
+          hide('result-question-pinyin');
+        }
+        show('result-question');
+      }
+
       const yourAnswerHtml = isEmpty ? '' : `
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
             <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
@@ -1005,35 +1019,30 @@ async function submitAnswer(e) {
       loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
     }
 
-    // HMM mnemonic scene display
+    // HMM mnemonic scene: show collapsed toggle on correct; hide completely on wrong
     const hmmEl = $('result-hmm');
-    if (result.scene_text) {
-      if (!result.correct) {
-        // Wrong answer: auto-show scene
-        renderHMMSceneReadOnly('result-hmm', result.scene_text);
-        show('result-hmm');
-      } else {
-        // Correct answer: collapsed toggle
-        hmmEl.innerHTML = `
-          <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
-          <div id="hmm-toggle-content" class="hidden mt-2"></div>
-        `;
-        show('result-hmm');
-        $('hmm-toggle-btn').addEventListener('click', () => {
-          const content = $('hmm-toggle-content');
-          if (content.classList.contains('hidden')) {
-            renderHMMSceneReadOnly('hmm-toggle-content', result.scene_text);
-            content.classList.remove('hidden');
-            $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
-          } else {
-            content.classList.add('hidden');
-            $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
-          }
-        });
-      }
-    } else {
+    if (result.scene_text && result.correct) {
+      hmmEl.innerHTML = `
+        <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
+        <div id="hmm-toggle-content" class="hidden mt-2"></div>
+      `;
+      show('result-hmm');
+      $('hmm-toggle-btn').addEventListener('click', () => {
+        const content = $('hmm-toggle-content');
+        if (content.classList.contains('hidden')) {
+          renderHMMSceneReadOnly('hmm-toggle-content', result.scene_text);
+          content.classList.remove('hidden');
+          $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
+        } else {
+          content.classList.add('hidden');
+          $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
+        }
+      });
+    } else if (!result.scene_text && !result.ambiguous) {
       hmmEl.innerHTML = `<a href="/vocab?edit=${currentCard.word_id}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
       show('result-hmm');
+    } else {
+      hide('result-hmm');
     }
 
     if (!ambiguousUnresolved) $('next-btn').focus();
@@ -1174,31 +1183,28 @@ function showComponentResult(resp) {
   }
 
   const hmmEl = $('result-hmm');
-  if (resp.scene_text) {
-    if (!resp.correct) {
-      renderHMMSceneReadOnly('result-hmm', resp.scene_text);
-      show('result-hmm');
-    } else {
-      hmmEl.innerHTML = `
-        <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
-        <div id="hmm-toggle-content" class="hidden mt-2"></div>
-      `;
-      show('result-hmm');
-      $('hmm-toggle-btn').addEventListener('click', () => {
-        const content = $('hmm-toggle-content');
-        if (content.classList.contains('hidden')) {
-          renderHMMSceneReadOnly('hmm-toggle-content', resp.scene_text);
-          content.classList.remove('hidden');
-          $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
-        } else {
-          content.classList.add('hidden');
-          $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
-        }
-      });
-    }
-  } else {
+  if (resp.scene_text && resp.correct) {
+    hmmEl.innerHTML = `
+      <button id="hmm-toggle-btn" type="button" class="text-sm text-purple-400 hover:text-purple-600 transition">&#9654; ${t('hmm.showMnemonic')}</button>
+      <div id="hmm-toggle-content" class="hidden mt-2"></div>
+    `;
+    show('result-hmm');
+    $('hmm-toggle-btn').addEventListener('click', () => {
+      const content = $('hmm-toggle-content');
+      if (content.classList.contains('hidden')) {
+        renderHMMSceneReadOnly('hmm-toggle-content', resp.scene_text);
+        content.classList.remove('hidden');
+        $('hmm-toggle-btn').innerHTML = `&#9660; ${t('hmm.hideMnemonic')}`;
+      } else {
+        content.classList.add('hidden');
+        $('hmm-toggle-btn').innerHTML = `&#9654; ${t('hmm.showMnemonic')}`;
+      }
+    });
+  } else if (!resp.scene_text) {
     hmmEl.innerHTML = `<a href="/vocab?editComp=${encodeURIComponent(currentCard.prompt)}" target="_blank" class="text-sm text-purple-400 hover:text-purple-600 transition">+ ${t('hmm.createMnemonic')}</a>`;
     show('result-hmm');
+  } else {
+    hide('result-hmm');
   }
 
   const reviewBtn = $('needs-review-btn');

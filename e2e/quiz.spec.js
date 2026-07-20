@@ -382,6 +382,32 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
     expect(card.zh_text).toBeTruthy();
     expect(['你好', '谢谢', '再见']).toContain(card.zh_text);
   });
+
+  test('mnemonic toggle is hidden completely on wrong answer (issue #212)', async ({ page }) => {
+    // Mock the answer endpoint to inject a scene_text into a wrong response,
+    // so we can verify the mnemonic toggle is not shown regardless of scene presence.
+    await page.route('**/api/quiz/answer', async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...json, correct: false, scene_text: 'Test mnemonic scene' }),
+      });
+    });
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    // The mnemonic toggle must NOT appear on a wrong answer
+    await expect(page.locator('#hmm-toggle-btn')).not.toBeVisible();
+    await expect(page.locator('#result-hmm')).not.toBeVisible();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -693,6 +719,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
     await expect(page.locator('#result-decompose')).toBeVisible();
   });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
