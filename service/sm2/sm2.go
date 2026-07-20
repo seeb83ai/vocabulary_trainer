@@ -195,11 +195,13 @@ func CheckAnswer(userAnswer string, accepted []string) bool {
 }
 
 // NormalizeAnswer lowercases, trims whitespace, converts common fullwidth punctuation
-// to their ASCII equivalents, and strips all trailing punctuation and whitespace.
+// to their ASCII equivalents, strips all trailing punctuation and whitespace, and
+// collapses internal runs of whitespace to a single space.
 func NormalizeAnswer(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = fullwidthToHalfwidth.Replace(s)
 	s = reTrailingPunct.ReplaceAllString(s, "")
+	s = strings.Join(strings.Fields(s), " ")
 	return s
 }
 

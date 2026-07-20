@@ -453,6 +453,35 @@ func TestCheckAnswer_TrailingWhitespace(t *testing.T) {
 	}
 }
 
+func TestCheckAnswer_InternalDoubleSpace_UserAnswer(t *testing.T) {
+	// User types extra space between words (common on mobile)
+	if !CheckAnswer("go  home", []string{"go home"}) {
+		t.Error("double space in user answer should still match")
+	}
+}
+
+func TestCheckAnswer_InternalDoubleSpace_StoredAnswer(t *testing.T) {
+	// Stored answer has double space (data entry error)
+	if !CheckAnswer("go home", []string{"go  home"}) {
+		t.Error("double space in stored answer should still match")
+	}
+}
+
+func TestCheckAnswer_InternalDoubleSpace_BothAnswers(t *testing.T) {
+	if !CheckAnswer("to  go home", []string{"to go  home"}) {
+		t.Error("double spaces in both answers should still match")
+	}
+}
+
+func TestCheckAnswer_InternalDoubleSpace_StripParensLeaksSpace(t *testing.T) {
+	// "(prefix) word" with prefix stripped: regex replaces "(prefix) " with " ",
+	// leaving " word" after TrimSpace = "word". But "word  suffix" from "(prefix) word suffix"
+	// via "(prefix) " → " " → " word suffix" → "word suffix". Test multi-word case:
+	if !CheckAnswer("nicht verstehen", []string{"(das Gehörte) nicht  verstehen"}) {
+		t.Error("double space in stored answer after paren-content should match")
+	}
+}
+
 // ── Fullwidth / halfwidth punctuation equivalence ─────────────────────────────
 
 func TestCheckAnswer_FullwidthQuestionMark_Trailing(t *testing.T) {
