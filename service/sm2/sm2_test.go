@@ -810,6 +810,42 @@ func TestCheckAnswer_OnlyParens(t *testing.T) {
 	}
 }
 
+// ── Internal whitespace normalisation (issue #216) ───────────────────────────
+
+func TestCheckAnswer_ExtraInternalWhitespace_UserAnswer(t *testing.T) {
+	// User types "thank  you" (double space) — stored answer is "thank you"
+	if !CheckAnswer("thank  you", []string{"thank you"}) {
+		t.Error("extra internal whitespace in user answer should be accepted")
+	}
+}
+
+func TestCheckAnswer_ExtraInternalWhitespace_StoredAnswer(t *testing.T) {
+	// Stored answer has double space; user types single space
+	if !CheckAnswer("thank you", []string{"thank  you"}) {
+		t.Error("extra internal whitespace in stored answer should be accepted")
+	}
+}
+
+func TestCheckAnswer_TabInUserAnswer(t *testing.T) {
+	if !CheckAnswer("thank\tyou", []string{"thank you"}) {
+		t.Error("tab character in user answer should be normalised to space")
+	}
+}
+
+func TestNormalizeAnswer_CollapseInternalSpaces(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"hello  world", "hello world"},
+		{"  hello   world  ", "hello world"},
+		{"a  b  c", "a b c"},
+		{"no extra spaces", "no extra spaces"},
+	}
+	for _, c := range cases {
+		if got := NormalizeAnswer(c.in); got != c.want {
+			t.Errorf("NormalizeAnswer(%q): want %q, got %q", c.in, c.want, got)
+		}
+	}
+}
+
 // ── MaskPinyin edge cases ─────────────────────────────────────────────────────
 
 func TestMaskPinyin_Doublespace_NoEmptyPanic(t *testing.T) {
