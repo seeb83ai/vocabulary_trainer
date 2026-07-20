@@ -68,4 +68,28 @@ test.describe('Vocabulary Management', () => {
       await expect(page.locator('#words-tbody')).toBeVisible();
     }
   });
+
+  test('search box moves to its own row on small screens', async ({ page }) => {
+    // Emulate a small mobile viewport (matches the issue report: 360×641)
+    await page.setViewportSize({ width: 360, height: 641 });
+    await page.goto('/vocab');
+
+    const searchInput = page.locator('#search-input');
+    await expect(searchInput).toBeVisible({ timeout: 10_000 });
+
+    // On small screens the search input should span the full container width
+    const inputBox = await searchInput.boundingBox();
+    expect(inputBox).not.toBeNull();
+
+    // The container has 16px padding on each side at two levels (main + card) = 64px total.
+    // On a 360px viewport the search input should fill ~296px — well over 250px.
+    expect(inputBox.width).toBeGreaterThan(250);
+
+    // The heading and toggle buttons should be on the row above the search input.
+    // Their bottom edge should be above (or at) the top edge of the search input.
+    const heading = page.locator('.bg-white.rounded-2xl.shadow.overflow-hidden h2').first();
+    const headingBox = await heading.boundingBox();
+    expect(headingBox).not.toBeNull();
+    expect(headingBox.y + headingBox.height).toBeLessThanOrEqual(inputBox.y + 2); // +2px tolerance
+  });
 });
