@@ -573,6 +573,10 @@ vocabulary_trainer/
 └── Dockerfile / docker-compose.yml
 ```
 
+## Usage tracking
+
+Every request is recorded internally in the `usage_events` table (`user_id`, `name`, `count`, `last_seen`), so admins can see which pages/endpoints are actually used. `name` is the HTTP method + matched route (e.g. `GET /train`, `POST /api/quiz/answer`); hits for the same user and route aggregate into one row with an incrementing `count` and a refreshed `last_seen`. Anonymous requests are recorded with `user_id = 0`. Static asset requests and audio-streaming routes (`/api/audio/*`, `/api/pinyin-quiz/audio/*`) are excluded as noise. There is currently no UI or API endpoint for viewing this data — it must be queried directly from the database.
+
 ## API
 
 | Method | Path | Description |
