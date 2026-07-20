@@ -232,6 +232,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(handlers.SecurityHeaders)
 	r.Use(authH.Middleware)
+	r.Use(handlers.UsageTracking(store))
 	// Apply the user-bucket limiter to every request that survived auth
 	// middleware (UserOrIPKey falls back to IP for unauth-allowed paths).
 	r.Use(handlers.RateLimitMiddleware(userLimiter, handlers.UserOrIPKey()))
