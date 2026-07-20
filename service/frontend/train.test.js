@@ -809,9 +809,9 @@ describe('splitComponentDefs', () => {
 // word; that card isn't counted in stats.due_today, so the displayed
 // remaining count must add 1 back in when such a card is being shown.
 
-function dueDisplayCount(stats, sessionExtension) {
+function dueDisplayCount(stats, sessionExtension, newWordIntro = false) {
   return stats.due_today + (stats.hmm_due_today || 0) + (stats.components_due_today || 0)
-    + (sessionExtension ? 1 : 0);
+    + (sessionExtension ? 1 : 0) + (newWordIntro ? 1 : 0);
 }
 
 describe('dueDisplayCount', () => {
@@ -832,5 +832,18 @@ describe('dueDisplayCount', () => {
   it('does not inflate the count when session extension is false', () => {
     const stats = { due_today: 0, hmm_due_today: 0, components_due_today: 0 };
     expect(dueDisplayCount(stats, false)).toBe(0);
+  });
+
+  it('adds 1 when the current card is a new-word introduction (issue #206)', () => {
+    // The word being introduced has first_seen_at IS NULL so it is NOT counted
+    // in stats.due_today.  The display must still show 1 so the user sees the
+    // card they are actively working on reflected in the counter.
+    const stats = { due_today: 0, hmm_due_today: 0, components_due_today: 0 };
+    expect(dueDisplayCount(stats, false, true)).toBe(1);
+  });
+
+  it('combines session-extension and new-word-intro additions', () => {
+    const stats = { due_today: 2, hmm_due_today: 0, components_due_today: 0 };
+    expect(dueDisplayCount(stats, true, true)).toBe(4);
   });
 });

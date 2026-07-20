@@ -382,9 +382,9 @@ async function loadTrainSettings() {
 // immediately repeating a just-answered word (see #186); that word isn't
 // counted in stats.due_today, so it must be added back in here to keep the
 // displayed count in sync with what the user will actually be asked.
-function dueDisplayCount(stats, sessionExtension) {
+function dueDisplayCount(stats, sessionExtension, newWordIntro = false) {
   return stats.due_today + (stats.hmm_due_today || 0) + (stats.components_due_today || 0)
-    + (sessionExtension ? 1 : 0);
+    + (sessionExtension ? 1 : 0) + (newWordIntro ? 1 : 0);
 }
 
 async function loadStats() {
@@ -555,6 +555,11 @@ async function loadNextCard(trackCurrent = false) {
     }
     loadNewWordBreakdown(currentCard.prompt);
     await loadStats();
+    // The word being introduced has first_seen_at IS NULL and is not counted in
+    // stats.due_today; add 1 so the counter reflects the card the user is working on.
+    if (latestStats) {
+      setText('stats-due', dueDisplayCount(latestStats, false, true));
+    }
     return;
   }
 

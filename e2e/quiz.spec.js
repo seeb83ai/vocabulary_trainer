@@ -453,6 +453,18 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
     await expect(page.locator('#new-word-area')).toContainText('water');
   });
 
+  test('stats-due counter shows 1 while new word introduction is displayed (issue #206)', async ({ page }) => {
+    await page.goto('/train');
+
+    // The unseen word triggers new-word-area
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 12_000 });
+
+    // stats-due must show 1: the word being introduced counts toward today's work
+    // even though it hasn't been acknowledged yet (first_seen_at IS NULL) and
+    // therefore isn't included in stats.due_today from the backend.
+    await expect(page.locator('#stats-due')).toHaveText('1', { timeout: 8_000 });
+  });
+
   test('"Got it!" acknowledges the word and transitions to card-area', async ({ page }) => {
     // Use zh_to_transl mode so that after acknowledgement the card shows a
     // deterministic prompt (the zh word '水') rather than a randomly selected mode.
