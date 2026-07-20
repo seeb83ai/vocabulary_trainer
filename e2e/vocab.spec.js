@@ -37,6 +37,29 @@ test.describe('Vocabulary Management', () => {
     await expect(page.locator('#words-tbody')).toContainText('水', { timeout: 8_000 });
   });
 
+  test('search box appears in a new row on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 641 });
+    await page.goto('/vocab');
+
+    const searchInput = page.locator('#search-input');
+    await expect(searchInput).toBeVisible({ timeout: 8_000 });
+
+    const toggleBtn = page.locator('#view-words-btn');
+    await expect(toggleBtn).toBeVisible({ timeout: 8_000 });
+
+    const searchBox = await searchInput.boundingBox();
+    const toggleBox = await toggleBtn.boundingBox();
+    expect(searchBox).not.toBeNull();
+    expect(toggleBox).not.toBeNull();
+
+    // Search input must be fully within horizontal viewport bounds (no overflow)
+    expect(searchBox.x).toBeGreaterThanOrEqual(0);
+    expect(searchBox.x + searchBox.width).toBeLessThanOrEqual(360);
+
+    // Search input must be on a new row below the toggle button
+    expect(searchBox.y).toBeGreaterThan(toggleBox.y + toggleBox.height - 5);
+  });
+
   test('delete a word removes it from the list', async ({ page }) => {
     await page.goto('/vocab');
 
