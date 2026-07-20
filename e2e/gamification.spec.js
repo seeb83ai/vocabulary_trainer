@@ -26,6 +26,24 @@ async function api(request, method, path, body) {
 }
 
 test.describe('Gamification — match game', () => {
+  // This describe block permanently mutates the shared main-user's settings
+  // (gamification_enabled, gamification_frequency, etc. — /api/settings PATCH
+  // replaces the full row). Other spec files reuse the same seeded user via
+  // 'e2e/.auth/user.json', so without restoring the original settings here,
+  // gamification stays enabled for every test that runs afterward — causing
+  // the match-game overlay to intercept unrelated flows (e.g. quiz.spec.js's
+  // "wrong answer is not repeated" test) once enough confusion pairs exist.
+  let originalSettings;
+
+  test.beforeAll(async ({ request }) => {
+    const res = await request.get(`${BASE_URL}/api/settings`);
+    originalSettings = await res.json();
+  });
+
+  test.afterAll(async ({ request }) => {
+    await request.patch(`${BASE_URL}/api/settings`, { data: originalSettings });
+  });
+
   test('settings: gamification fields round-trip', async ({ request }) => {
     // Patch gamification settings
     const patch = await request.patch(`${BASE_URL}/api/settings`, {

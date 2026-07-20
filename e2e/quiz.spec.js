@@ -136,8 +136,12 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
-    // Submit any answer to get to result-area
-    await page.locator('#answer-input').fill('hello');
+    // Submit a clearly wrong answer (not any known translation) to get to
+    // result-area. 'hello' would also work, but it happens to be one of the
+    // seed translations (你好) — if the current prompt is a *different* word
+    // that "wrong" answer registers as a genuine confusion pair, nondeterministically
+    // polluting shared state for later tests in this describe block.
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
 
