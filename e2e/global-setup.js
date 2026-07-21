@@ -124,6 +124,13 @@ export default async function globalSetup() {
       USER_PASSWORD: 'SeedE2ePassword1!',
       // Use minimum bcrypt cost for fast test user creation
       BCRYPT_COST: 'min',
+      // The default per-minute rate limits are tuned for real user traffic
+      // (~5 rps). A single E2E worker fires far more requests than that in
+      // rapid page-navigation bursts (every static asset + API call shares
+      // one bucket), which trips 429s and makes tests flaky. Raise the caps
+      // for the isolated E2E server only.
+      RATE_LIMIT_USER_PER_MIN: '100000',
+      RATE_LIMIT_EXPENSIVE_PER_MIN: '100000',
       // Explicitly unset SMTP so the server auto-verifies registrations
       SMTP_HOST: '',
       SMTP_PORT: '',

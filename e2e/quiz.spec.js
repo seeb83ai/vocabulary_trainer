@@ -217,31 +217,59 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 
   test('wrong answer is not repeated in the next two cards', async ({ page }) => {
     await useZhToTranslMode(page);
-    await page.goto('/train');
-    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
-    // Record the first card shown, then answer it wrong
-    const firstPrompt = await page.locator('#prompt-word').textContent();
-    await page.locator('#answer-input').fill('xxxxxxxxxxx');
-    await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+    // Earlier tests in this file answer the 3 shared seed words correctly or
+    // incorrectly, which pushes their SM-2 due_date minutes-to-days into the
+    // future (WrongRetryDelay / interval growth). By the time this test runs
+    // the shared pool can be down to 0-2 currently-due words, which is not
+    // enough to guarantee 3 distinct cards. Seed 3 dedicated words — acknowledged
+    // immediately (start_training: true → due_date=now) — so this test has a
+    // deterministic due pool regardless of what earlier tests did.
+    const extraWordIds = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await page.request.post('/api/words', {
+        data: {
+          zh_text: `测${i}${Date.now()}`,
+          translations: { en: [`repeat-test-${i}`] },
+          tags: [],
+          start_training: true,
+        },
+      });
+      const body = await res.json();
+      extraWordIds.push(body.id);
+    }
 
-    // Go to the second card — must NOT be the same word we just answered wrong
-    await page.locator('#next-btn').click();
-    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
-    const secondPrompt = await page.locator('#prompt-word').textContent();
-    expect(secondPrompt).not.toBe(firstPrompt);
+    try {
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
-    // Answer the second card (wrong to keep things simple)
-    await page.locator('#answer-input').fill('xxxxxxxxxxx');
-    await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+      // Record the first card shown, then answer it wrong
+      const firstPrompt = await page.locator('#prompt-word').textContent();
+      await page.locator('#answer-input').fill('xxxxxxxxxxx');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
 
-    // Go to the third card — must still NOT be the originally wrong-answered word
-    await page.locator('#next-btn').click();
-    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
-    const thirdPrompt = await page.locator('#prompt-word').textContent();
-    expect(thirdPrompt).not.toBe(firstPrompt);
+      // Go to the second card — must NOT be the same word we just answered wrong
+      await page.locator('#next-btn').click();
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+      const secondPrompt = await page.locator('#prompt-word').textContent();
+      expect(secondPrompt).not.toBe(firstPrompt);
+
+      // Answer the second card (wrong to keep things simple)
+      await page.locator('#answer-input').fill('xxxxxxxxxxx');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+      // Go to the third card — must still NOT be the originally wrong-answered word
+      await page.locator('#next-btn').click();
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+      const thirdPrompt = await page.locator('#prompt-word').textContent();
+      expect(thirdPrompt).not.toBe(firstPrompt);
+    } finally {
+      for (const id of extraWordIds) {
+        await page.request.delete(`/api/words/${id}`);
+      }
+    }
   });
 
   // Regression test for issue #156: when a user has two active learning
