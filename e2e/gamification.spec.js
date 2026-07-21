@@ -26,6 +26,34 @@ async function api(request, method, path, body) {
 }
 
 test.describe('Gamification — match game', () => {
+  // This suite enables gamification_enabled=true for the shared main test
+  // user (e2e/.auth/user.json), which every later spec file that uses the
+  // same user also runs against (single worker, single DB, tests run in
+  // file order). Left enabled, any later "click Next" in e.g. quiz.spec.js
+  // can unexpectedly trigger the match-game overlay — which blocks
+  // loadNextCard() until the overlay is interacted with — hanging tests
+  // that never expect it. Restore the default (disabled) once this file's
+  // tests are done so gamification state doesn't leak into other specs.
+  test.afterAll(async ({ request }) => {
+    await request.patch(`${BASE_URL}/api/settings`, {
+      data: {
+        primary_lang: 'en',
+        prog_new: 'zh_to_transl',
+        prog_tier_struggling: 'transl_to_zh',
+        prog_tier_learning: 'zh_pinyin_to_transl',
+        prog_tier_practicing: 'zh_to_transl',
+        prog_tier_mastered: 'random',
+        new_word_mode_0: 'transl_to_zh',
+        new_word_mode_1: 'zh_pinyin_to_transl',
+        new_word_mode_2: 'zh_to_transl',
+        extend_session_with_extra_words: true,
+        gamification_enabled: false,
+        gamification_frequency: 5,
+      },
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+
   test('settings: gamification fields round-trip', async ({ request }) => {
     // Patch gamification settings
     const patch = await request.patch(`${BASE_URL}/api/settings`, {
