@@ -706,6 +706,27 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     );
   }
 
+  // Issue #231: gray question box must appear between the yellow confused-with
+  // box and the orange disambiguation form, not at the top of the result card.
+  test('question box sits between confused-with and disambiguation form (issue #231)', async ({ page }) => {
+    await setupAmbiguousResult(page);
+
+    const grayBox   = page.locator('#word-breakdown .bg-gray-50');
+    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
+    const orangeBox = page.locator('#word-breakdown .bg-orange-50');
+
+    await expect(yellowBox).toBeVisible();
+    await expect(grayBox).toBeVisible();
+    await expect(orangeBox).toBeVisible();
+
+    const yellowTop = await yellowBox.evaluate(el => el.getBoundingClientRect().top);
+    const grayTop   = await grayBox.evaluate(el => el.getBoundingClientRect().top);
+    const orangeTop = await orangeBox.evaluate(el => el.getBoundingClientRect().top);
+
+    expect(grayTop).toBeGreaterThan(yellowTop);
+    expect(orangeTop).toBeGreaterThan(grayTop);
+  });
+
   test('character breakdown toggle is hidden while an ambiguous result is unresolved', async ({ page }) => {
     await mockDecomposeResponse(page);
     await setupAmbiguousResult(page);

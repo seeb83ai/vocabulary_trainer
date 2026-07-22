@@ -426,7 +426,6 @@ async function loadNextCard(trackCurrent = false) {
   hide('result-play-btn');
   hide('new-word-area');
   hide('new-component-area');
-  hide('result-question');
   hide('result-decompose');
   hide('result-decompose-content');
   hide('bucket-info');
@@ -767,18 +766,6 @@ async function submitAnswer(e) {
         ? `<span class="text-gray-400 text-xs ml-1">${escHtml(result.user_answer_pinyin)}</span>`
         : '';
 
-      if (result.ambiguous) {
-        $('result-question-label').textContent = getModeLabel(currentCard.mode);
-        $('result-question-word').textContent = currentCard.prompt;
-        if (currentCard.pinyin) {
-          $('result-question-pinyin').textContent = currentCard.pinyin;
-          show('result-question-pinyin');
-        } else {
-          hide('result-question-pinyin');
-        }
-        show('result-question');
-      }
-
       const yourAnswerHtml = isEmpty ? '' : `
           <div class="p-3 bg-red-50 border border-red-200 rounded-xl">
             <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
@@ -876,9 +863,19 @@ async function submitAnswer(e) {
         // Several words share a translation — ask the user to type another word with the same meaning.
         icon.textContent = t('result.disambigAmbiguous');
         icon.className = 'text-3xl font-bold text-orange-500 mb-4';
+        const promptPinyinRow = currentCard.pinyin
+          ? `<div class="text-sm text-gray-500 mt-0.5">${escHtml(currentCard.pinyin)}</div>`
+          : '';
+        const questionBoxHtml = `
+          <div class="p-3 bg-gray-50 border border-gray-100 rounded-xl text-left">
+            <div class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">${escHtml(getModeLabel(currentCard.mode))}</div>
+            <div class="text-2xl font-bold text-gray-800 break-words">${escHtml(currentCard.prompt)}</div>
+            ${promptPinyinRow}
+          </div>`;
         const disambigHtml = `
           <div id="disambig-area" class="mt-4 space-y-2 text-left">
             ${confusedHtml}
+            ${questionBoxHtml}
             <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl overflow-hidden">
               <div class="text-xs text-orange-600 uppercase tracking-wide mb-2 break-words">${escHtml(t('result.disambigPrompt'))}</div>
               <form id="disambig-form" class="flex flex-col sm:flex-row gap-2">
