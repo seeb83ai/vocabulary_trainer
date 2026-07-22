@@ -651,6 +651,27 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
+  // Issue #231: the "TO CHINESE / <prompt>" gray recap box must sit between
+  // the yellow "belongs to" box and the orange disambiguation box, not above
+  // both of them.
+  test('question recap box sits between the confused-with and disambiguation boxes (issue #231)', async ({ page }) => {
+    await setupAmbiguousResult(page);
+
+    const disambigArea = page.locator('#disambig-area');
+    const boxes = await disambigArea.locator(':scope > div').all();
+    const classes = await Promise.all(boxes.map((box) => box.getAttribute('class')));
+
+    const yellowIndex = classes.findIndex((c) => c && c.includes('bg-yellow-50'));
+    const grayIndex = classes.findIndex((c) => c && c.includes('bg-gray-50'));
+    const orangeIndex = classes.findIndex((c) => c && c.includes('bg-orange-50'));
+
+    expect(yellowIndex).toBeGreaterThanOrEqual(0);
+    expect(grayIndex).toBeGreaterThanOrEqual(0);
+    expect(orangeIndex).toBeGreaterThanOrEqual(0);
+    expect(grayIndex).toBeGreaterThan(yellowIndex);
+    expect(grayIndex).toBeLessThan(orangeIndex);
+  });
+
   // Issue #193: on a small viewport the disambiguation input must stay inside
   // its containing card, not overflow past the right edge.
   test('disambiguation input fits inside its card on a small viewport', async ({ page }) => {
