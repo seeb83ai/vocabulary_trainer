@@ -837,14 +837,30 @@ func (s *Store) GetComponentPinyin(ctx context.Context, character string) string
 }
 
 // GetComponentCounts returns the number of components due today and the total
-// number of components in training for the given user.
-func (s *Store) GetComponentCounts(ctx context.Context, userID int64) (dueToday, total int, err error) {
+// number of components in training for the given user. dueToday is filtered
+// to components with a translation in one of langs (defaulting to EN when
+// langs is empty), matching the language filter GetNextComponentCard uses —
+// otherwise a component due only in a non-English language would be served
+// as a card while being undercounted here (#230, #232).
+func (s *Store) GetComponentCounts(ctx context.Context, userID int64, langs []string) (dueToday, total int, err error) {
+	whereFrags := []string{}
+	langArgs := []any{}
+	for _, lang := range langs {
+		whereFrags = append(whereFrags, "EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = ? AND definition != '')")
+		langArgs = append(langArgs, strings.ToUpper(lang))
+	}
+	if len(whereFrags) == 0 {
+		whereFrags = []string{"EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = 'EN' AND definition != '')"}
+	}
+	langFilter := strings.Join(whereFrags, " OR ")
+
+	args := append([]any{userID}, langArgs...)
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM component_progress cp
 		 WHERE cp.user_id = ?
-		   AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = 'EN' AND definition != '')
+		   AND (`+langFilter+`)
 		   AND cp.due_date < date('now', '+1 day')`,
-		userID,
+		args...,
 	).Scan(&dueToday)
 	if err != nil {
 		return 0, 0, fmt.Errorf("get component due count: %w", err)
