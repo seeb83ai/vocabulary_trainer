@@ -37,6 +37,26 @@ test.describe('Vocabulary Management', () => {
     await expect(page.locator('#words-tbody')).toContainText('水', { timeout: 8_000 });
   });
 
+  test('title is on its own line above controls on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 641 });
+    await page.goto('/vocab');
+
+    const title = page.locator('h2[data-i18n="vocab.listTitle"]');
+    const toggleBtn = page.locator('#view-words-btn');
+
+    await expect(title).toBeVisible({ timeout: 8_000 });
+    await expect(toggleBtn).toBeVisible({ timeout: 8_000 });
+
+    const titleBox = await title.boundingBox();
+    const toggleBox = await toggleBtn.boundingBox();
+
+    expect(titleBox).not.toBeNull();
+    expect(toggleBox).not.toBeNull();
+
+    // Title must be above the toggle button on mobile — they must not share the same row
+    expect(titleBox.y + titleBox.height).toBeLessThanOrEqual(toggleBox.y + 5);
+  });
+
   test('search box appears in a new row on mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 641 });
     await page.goto('/vocab');
