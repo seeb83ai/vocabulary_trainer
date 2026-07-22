@@ -544,7 +544,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
   // (both mean "know"), submits the OTHER zh word for the quizzed card so the
   // server responds ambiguous=true, and leaves the disambiguation panel showing.
   // Returns the correct zh word (quizZh) so callers can resolve it if needed.
-  async function setupAmbiguousResult(page) {
+  async function setupAmbiguousResult(page, translations = { '知道': ['know'], '认识': ['know', 'recognize'] }) {
     const email = `e2e-ambig-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
     const regRes = await page.request.post('/api/register', {
       data: { email, password: 'AmbigTest123!' },
@@ -552,12 +552,12 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     expect(regRes.ok()).toBeTruthy();
 
     const seedRes1 = await page.request.post('/api/words', {
-      data: { zh_text: '知道', pinyin: 'zhīdào', translations: { en: ['know'] }, tags: [], start_training: true },
+      data: { zh_text: '知道', pinyin: 'zhīdào', translations: { en: translations['知道'] }, tags: [], start_training: true },
     });
     expect(seedRes1.ok()).toBeTruthy();
     const seed1 = await seedRes1.json();
     const seedRes2 = await page.request.post('/api/words', {
-      data: { zh_text: '认识', pinyin: 'rènshi', translations: { en: ['know', 'recognize'] }, tags: [], start_training: true },
+      data: { zh_text: '认识', pinyin: 'rènshi', translations: { en: translations['认识'] }, tags: [], start_training: true },
     });
     expect(seedRes2.ok()).toBeTruthy();
     const seed2 = await seedRes2.json();
@@ -645,10 +645,52 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
     await expect(page.locator('#disambig-input')).not.toBeVisible();
     await expect(page.locator('#word-breakdown')).toContainText('CORRECT', { ignoreCase: true });
+    // The gray question-recap box is ambiguous-only; the fallback Wrong
+    // screen must not show it (issue #231 follow-up).
+    await expect(page.locator('#result-question')).not.toBeVisible();
 
     // A second click on Next now actually advances.
     await page.locator('#next-btn').click();
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+
+  // Issue #231: the "TO CHINESE / <prompt>" gray recap box must sit between
+  // the yellow "belongs to" box and the orange disambiguation box, not above
+  // both of them.
+  test('question recap box sits between the confused-with and disambiguation boxes (issue #231)', async ({ page }) => {
+    await setupAmbiguousResult(page);
+
+    const disambigArea = page.locator('#disambig-area');
+    const boxes = await disambigArea.locator(':scope > div').all();
+    const classes = await Promise.all(boxes.map((box) => box.getAttribute('class')));
+
+    const yellowIndex = classes.findIndex((c) => c && c.includes('bg-yellow-50'));
+    const grayIndex = classes.findIndex((c) => c && c.includes('bg-gray-50'));
+    const orangeIndex = classes.findIndex((c) => c && c.includes('bg-orange-50'));
+
+    expect(yellowIndex).toBeGreaterThanOrEqual(0);
+    expect(grayIndex).toBeGreaterThanOrEqual(0);
+    expect(orangeIndex).toBeGreaterThanOrEqual(0);
+    expect(grayIndex).toBeGreaterThan(yellowIndex);
+    expect(grayIndex).toBeLessThan(orangeIndex);
+  });
+
+  // Issue #231 (follow-up): the recap box must list every other translation
+  // of the quizzed word, same as the original question does before answering.
+  test('question recap box shows all translations like the original question (issue #231)', async ({ page }) => {
+    const translations = { '知道': ['know', 'understand'], '认识': ['know', 'recognize'] };
+    const { quizZh } = await setupAmbiguousResult(page, translations);
+
+    const promptText = (await page.locator('#result-question-word').textContent()).trim();
+    const others = translations[quizZh].filter((w) => w !== promptText);
+    expect(others.length).toBeGreaterThan(0);
+
+    const transEl = page.locator('#result-question-translations');
+    await expect(transEl).toBeVisible();
+    const transText = await transEl.textContent();
+    for (const other of others) {
+      expect(transText).toContain(other);
+    }
   });
 
   // Issue #193: on a small viewport the disambiguation input must stay inside

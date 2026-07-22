@@ -131,6 +131,10 @@ export default async function globalSetup() {
       // for the isolated E2E server only.
       RATE_LIMIT_USER_PER_MIN: '100000',
       RATE_LIMIT_EXPENSIVE_PER_MIN: '100000',
+      // Several specs register a fresh user per test (e.g. the ambiguous-answer
+      // suite in quiz.spec.js), which can exceed the default 10/min auth-IP
+      // budget under CI's tighter timing and cause flaky 429s on /api/register.
+      RATE_LIMIT_AUTH_PER_MIN: '100000',
       // Explicitly unset SMTP so the server auto-verifies registrations
       SMTP_HOST: '',
       SMTP_PORT: '',

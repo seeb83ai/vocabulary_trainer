@@ -735,6 +735,16 @@ async function submitAnswer(e) {
     show('result-area');
 
     const icon = $('result-icon');
+    // The question-recap box is temporarily relocated into the ambiguous
+    // disambiguation panel (issue #231); restore it to its normal spot
+    // before any breakdown/panel it might be sitting inside gets replaced
+    // or removed, so the still-referenced #result-question node isn't lost.
+    const restoreResultQuestion = () => {
+      const el = $('result-question');
+      if (el.parentElement !== icon.parentElement) {
+        icon.parentElement.insertBefore(el, icon);
+      }
+    };
     if (result.correct) {
       icon.textContent = t('result.correct');
       icon.className = 'text-3xl font-bold text-green-600 mb-4';
@@ -776,6 +786,19 @@ async function submitAnswer(e) {
         } else {
           hide('result-question-pinyin');
         }
+        if (currentCard.mode === 'transl_to_zh') {
+          // Show all translations across all languages except the one already shown as prompt.
+          const allTexts = Object.values(currentCard.translations || {}).flat();
+          const others = allTexts.filter(txt => txt !== currentCard.prompt);
+          if (others.length > 0) {
+            $('result-question-translations').innerHTML = others.map(escHtml).join(' · ');
+            show('result-question-translations');
+          } else {
+            hide('result-question-translations');
+          }
+        } else {
+          hide('result-question-translations');
+        }
         show('result-question');
       }
 
@@ -797,6 +820,8 @@ async function submitAnswer(e) {
       // wrong answers, and as the fallback when the user continues past an
       // ambiguous result without resolving it (issue #194).
       const renderWrongResult = () => {
+        restoreResultQuestion();
+        hide('result-question');
         icon.textContent = t('result.wrong');
         icon.className = 'text-3xl font-bold text-red-600 mb-4';
         breakdown.innerHTML = `
@@ -895,6 +920,11 @@ async function submitAnswer(e) {
         if (confusedPlayBtn) {
           confusedPlayBtn.addEventListener('click', () => playAudio(cw.confused_with_id, cw.confused_with_text));
         }
+        // Move the question-recap box (shown/populated above) between the
+        // "belongs to" box and the disambiguation input (issue #231).
+        const disambigArea = document.getElementById('disambig-area');
+        const orangeBox = disambigArea.querySelector('.bg-orange-50');
+        disambigArea.insertBefore($('result-question'), orangeBox);
         show('word-breakdown');
         hide('add-translation-row');
         hide('add-translation-lang-select');
@@ -919,6 +949,7 @@ async function submitAnswer(e) {
                 body: JSON.stringify({ word_id: currentCard.word_id, mode: currentCard.mode, langs: selectedLangs }),
               });
               ambiguousUnresolved = null;
+              restoreResultQuestion();
               icon.textContent = t('result.correct');
               icon.className = 'text-3xl font-bold text-green-600 mb-4';
               const disambigArea = document.getElementById('disambig-area');
