@@ -60,6 +60,28 @@ test.describe('Vocabulary Management', () => {
     expect(searchBox.y).toBeGreaterThan(toggleBox.y + toggleBox.height - 5);
   });
 
+  test('vocabulary list title appears on its own row on mobile viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 641 });
+    await page.goto('/vocab');
+
+    const title = page.locator('h2', { hasText: 'Vocabulary List' });
+    await expect(title).toBeVisible({ timeout: 8_000 });
+
+    const toggleBtn = page.locator('#view-words-btn');
+    await expect(toggleBtn).toBeVisible({ timeout: 8_000 });
+
+    const titleBox = await title.boundingBox();
+    const toggleBox = await toggleBtn.boundingBox();
+    expect(titleBox).not.toBeNull();
+    expect(toggleBox).not.toBeNull();
+
+    // Title must span (close to) the full row width, not be squeezed next to the toggle buttons
+    expect(titleBox.width).toBeGreaterThan(200);
+
+    // The view toggle buttons must be on a new row below the title
+    expect(toggleBox.y).toBeGreaterThan(titleBox.y + titleBox.height - 5);
+  });
+
   test('delete a word removes it from the list', async ({ page }) => {
     await page.goto('/vocab');
 
