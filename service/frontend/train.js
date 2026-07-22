@@ -821,6 +821,7 @@ async function submitAnswer(e) {
       // ambiguous result without resolving it (issue #194).
       const renderWrongResult = () => {
         restoreResultQuestion();
+        hide('result-question');
         icon.textContent = t('result.wrong');
         icon.className = 'text-3xl font-bold text-red-600 mb-4';
         breakdown.innerHTML = `

@@ -645,6 +645,9 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
     await expect(page.locator('#disambig-input')).not.toBeVisible();
     await expect(page.locator('#word-breakdown')).toContainText('CORRECT', { ignoreCase: true });
+    // The gray question-recap box is ambiguous-only; the fallback Wrong
+    // screen must not show it (issue #231 follow-up).
+    await expect(page.locator('#result-question')).not.toBeVisible();
 
     // A second click on Next now actually advances.
     await page.locator('#next-btn').click();
