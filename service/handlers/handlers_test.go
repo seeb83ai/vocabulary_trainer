@@ -1573,7 +1573,7 @@ func TestQuizAcknowledge_CreatesComponentProgress(t *testing.T) {
 		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
 	}
 
-	_, total, err := s.GetComponentCounts(ctx, int64(2))
+	_, total, err := s.GetComponentCounts(ctx, int64(2), nil)
 	if err != nil {
 		t.Fatalf("GetComponentCounts: %v", err)
 	}
@@ -2275,7 +2275,7 @@ func TestAcknowledgeRandomHandler_CreatesComponentProgress(t *testing.T) {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	_, total, err := s.GetComponentCounts(ctx, int64(2))
+	_, total, err := s.GetComponentCounts(ctx, int64(2), nil)
 	if err != nil {
 		t.Fatalf("GetComponentCounts: %v", err)
 	}
@@ -4301,6 +4301,35 @@ func TestQuizStats_IncludesComponentCounts(t *testing.T) {
 	}
 	if v, _ := resp["components_due_today"].(float64); int(v) != 1 {
 		t.Errorf("want components_due_today=1, got %v", resp["components_due_today"])
+	}
+}
+
+// TestQuizStats_ComponentCounts_MatchesNonEnglishLang reproduces issues
+// #230/#232: a user training in German saw "Due today: 0" while the /next
+// endpoint kept serving a due component whose only translation was German.
+// GetComponentCounts must honor the same langs the Next handler uses instead
+// of hardcoding EN, so due-today reflects what is actually served.
+func TestQuizStats_ComponentCounts_MatchesNonEnglishLang(t *testing.T) {
+	s := openTestDB(t)
+	if _, err := s.ExecForTest(`INSERT INTO hanzi_decomposition (character, definition) VALUES ('女', 'woman')`); err != nil {
+		t.Fatalf("seed hanzi_decomposition: %v", err)
+	}
+	if err := s.SeedHanziTranslationForTest(context.Background(), "女", "de", "Frau"); err != nil {
+		t.Fatalf("SeedHanziTranslationForTest: %v", err)
+	}
+	past := time.Now().Add(-24 * time.Hour)
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", past)
+	s.SetComponentSeenForTest(context.Background(), int64(2), "女")
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/stats?trainComponents=1&langs=de", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if v, _ := resp["components_due_today"].(float64); int(v) != 1 {
+		t.Errorf("want components_due_today=1 for a de-only due component when langs=de, got %v", resp["components_due_today"])
 	}
 }
 

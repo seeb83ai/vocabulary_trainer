@@ -3760,13 +3760,14 @@ func TestRecordComponentStat_IncreasesCount(t *testing.T) {
 func TestGetComponentCounts_ReturnsCorrectCounts(t *testing.T) {
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman")
+	seedHanziTranslation(t, s, "女", "en", "woman")
 	past := time.Now().Add(-24 * time.Hour)
 	// Insert directly — this test is about GetComponentCounts, not InitComponentsForWord.
 	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", past)
 	// Mark as seen so it counts toward due_today.
 	s.db.Exec(`UPDATE component_progress SET first_seen_date = date('now') WHERE character = '女' AND user_id = 2`)
 
-	due, total, err := s.GetComponentCounts(context.Background(), int64(2))
+	due, total, err := s.GetComponentCounts(context.Background(), int64(2), []string{"en"})
 	if err != nil {
 		t.Fatalf("GetComponentCounts: %v", err)
 	}
@@ -3775,6 +3776,38 @@ func TestGetComponentCounts_ReturnsCorrectCounts(t *testing.T) {
 	}
 	if total != 1 {
 		t.Errorf("want total=1, got %d", total)
+	}
+}
+
+// TestGetComponentCounts_FiltersByLang reproduces issues #230/#232: a user
+// training in a non-English language (e.g. German) saw "Due today: 0" while
+// GetNextComponentCard kept serving a due component whose only translation
+// was in German — because GetComponentCounts hardcoded lang='EN' instead of
+// honoring the caller's configured langs.
+func TestGetComponentCounts_FiltersByLang(t *testing.T) {
+	s := openTestDB(t)
+	if _, err := s.db.Exec(`INSERT INTO hanzi_decomposition (character, definition) VALUES ('女', 'woman')`); err != nil {
+		t.Fatalf("seed hanzi_decomposition: %v", err)
+	}
+	seedHanziTranslation(t, s, "女", "de", "Frau")
+	past := time.Now().Add(-24 * time.Hour)
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", past)
+	s.db.Exec(`UPDATE component_progress SET first_seen_date = date('now') WHERE character = '女' AND user_id = 2`)
+
+	due, _, err := s.GetComponentCounts(context.Background(), int64(2), []string{"de"})
+	if err != nil {
+		t.Fatalf("GetComponentCounts: %v", err)
+	}
+	if due != 1 {
+		t.Errorf("want due=1 for de-only component with langs=[de], got %d", due)
+	}
+
+	due, _, err = s.GetComponentCounts(context.Background(), int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetComponentCounts: %v", err)
+	}
+	if due != 0 {
+		t.Errorf("want due=0 for de-only component with langs=[en], got %d", due)
 	}
 }
 

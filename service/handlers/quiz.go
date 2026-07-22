@@ -767,9 +767,14 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	}
 	maxNew := h.MaxNewPerDay
 	userSettings, _ := h.Store.GetUserSettings(r.Context(), userID)
-	if userSettings != nil && h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
-		maxNew = userSettings.MaxNewWordsPerDay
+	primaryLang := "en"
+	if userSettings != nil {
+		if h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
+			maxNew = userSettings.MaxNewWordsPerDay
+		}
+		primaryLang = userSettings.PrimaryLang
 	}
+	langs := parseLangs(r, primaryLang)
 	h.mu.Lock()
 	cap := maxNew
 	if h.capResetDate == time.Now().Format("2006-01-02") {
@@ -809,7 +814,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	compTotal := 0
 	if r.URL.Query().Get("trainComponents") == "1" {
 		var cErr error
-		compDueToday, compTotal, cErr = h.Store.GetComponentCounts(r.Context(), UserIDFromContext(r.Context()))
+		compDueToday, compTotal, cErr = h.Store.GetComponentCounts(r.Context(), UserIDFromContext(r.Context()), langs)
 		if cErr != nil {
 			writeError(w, http.StatusInternalServerError, cErr.Error())
 			return
