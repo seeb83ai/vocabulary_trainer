@@ -90,17 +90,16 @@ type componentCard struct {
 // considering only characters that have a definition in at least one of langs.
 // Returns nil if nothing is due.
 func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []string) (*componentCard, error) {
-	// Build a per-lang filter so we only return cards the user can answer.
-	whereFrags := []string{}
-	langArgs := []any{}
-	for _, lang := range langs {
-		whereFrags = append(whereFrags, "EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = ? AND definition != '')")
-		langArgs = append(langArgs, strings.ToUpper(lang))
+	// Only return cards the user can answer in one of langs (defaulting to EN).
+	if len(langs) == 0 {
+		langs = []string{"en"}
 	}
-	if len(whereFrags) == 0 {
-		whereFrags = []string{"EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = 'EN' AND definition != '')"}
+	placeholders := make([]string, len(langs))
+	langArgs := make([]any, len(langs))
+	for i, lang := range langs {
+		placeholders[i] = "?"
+		langArgs[i] = strings.ToUpper(lang)
 	}
-	langFilter := strings.Join(whereFrags, " OR ")
 
 	args := append([]any{userID}, langArgs...)
 
@@ -113,7 +112,8 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		       cp.total_correct, cp.total_attempts, cp.first_seen_date
 		FROM component_progress cp
 		WHERE cp.user_id = ?
-		  AND (`+langFilter+`)
+		  AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation
+		              WHERE character = cp.character AND lang IN (`+strings.Join(placeholders, ",")+`) AND definition != '')
 		  AND cp.due_date < datetime('now', '+1 day')
 		ORDER BY cp.due_date ASC
 		LIMIT 1`,
@@ -843,22 +843,22 @@ func (s *Store) GetComponentPinyin(ctx context.Context, character string) string
 // otherwise a component due only in a non-English language would be served
 // as a card while being undercounted here (#230, #232).
 func (s *Store) GetComponentCounts(ctx context.Context, userID int64, langs []string) (dueToday, total int, err error) {
-	whereFrags := []string{}
-	langArgs := []any{}
-	for _, lang := range langs {
-		whereFrags = append(whereFrags, "EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = ? AND definition != '')")
-		langArgs = append(langArgs, strings.ToUpper(lang))
+	if len(langs) == 0 {
+		langs = []string{"en"}
 	}
-	if len(whereFrags) == 0 {
-		whereFrags = []string{"EXISTS (SELECT 1 FROM hanzi_decomposition_translation WHERE character = cp.character AND lang = 'EN' AND definition != '')"}
+	placeholders := make([]string, len(langs))
+	langArgs := make([]any, len(langs))
+	for i, lang := range langs {
+		placeholders[i] = "?"
+		langArgs[i] = strings.ToUpper(lang)
 	}
-	langFilter := strings.Join(whereFrags, " OR ")
 
 	args := append([]any{userID}, langArgs...)
 	err = s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM component_progress cp
 		 WHERE cp.user_id = ?
-		   AND (`+langFilter+`)
+		   AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation
+		               WHERE character = cp.character AND lang IN (`+strings.Join(placeholders, ",")+`) AND definition != '')
 		   AND cp.due_date < date('now', '+1 day')`,
 		args...,
 	).Scan(&dueToday)
