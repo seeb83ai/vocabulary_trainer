@@ -786,6 +786,19 @@ async function submitAnswer(e) {
         } else {
           hide('result-question-pinyin');
         }
+        if (currentCard.mode === 'transl_to_zh') {
+          // Show all translations across all languages except the one already shown as prompt.
+          const allTexts = Object.values(currentCard.translations || {}).flat();
+          const others = allTexts.filter(txt => txt !== currentCard.prompt);
+          if (others.length > 0) {
+            $('result-question-translations').innerHTML = others.map(escHtml).join(' · ');
+            show('result-question-translations');
+          } else {
+            hide('result-question-translations');
+          }
+        } else {
+          hide('result-question-translations');
+        }
         show('result-question');
       }
 
