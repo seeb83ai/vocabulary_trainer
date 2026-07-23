@@ -3943,6 +3943,30 @@ func TestGetNextComponentCard_ENAndDE(t *testing.T) {
 	}
 }
 
+// TestGetNextComponentCard_DoesNotServeFutureComponent verifies that a component
+// with a due_date in the future (even if within 24 hours) is not returned.
+// Regression test for issue #238: GetNextComponentCard used datetime('now', '+1 day')
+// instead of date('now', '+1 day'), so a component answered correctly (new due_date =
+// now+22-24h via SM-2) was immediately re-served in the same session while the stats
+// counter correctly showed 0.
+func TestGetNextComponentCard_DoesNotServeFutureComponent(t *testing.T) {
+	s := openTestDB(t)
+	seedHanziDef(t, s, "女", "woman; female")
+	seedHanziTranslation(t, s, "女", "en", "woman")
+	// Simulate a component whose due_date is 23 hours from now — this is the
+	// range SM-2 uses after a correct answer with interval=1 day + negative jitter.
+	future := time.Now().Add(23 * time.Hour)
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", future)
+
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card != nil {
+		t.Errorf("want nil for future-due component (due in ~23h), got card for %q", card.Character)
+	}
+}
+
 func TestGetComponentList_BasicAndSearch(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
