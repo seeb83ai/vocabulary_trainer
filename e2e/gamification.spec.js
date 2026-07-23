@@ -120,6 +120,52 @@ test.describe('Gamification — match game', () => {
     await expect(page.locator('#gamification-frequency')).toBeVisible();
   });
 
+  test('shared-translation claim is blocked (yellow) instead of stealing the true owner\'s box (issue #215)', async ({ page, request }) => {
+    // 能 and 可能 both have "können" among their DE translations. Picking
+    // 能 + "können" (可能's own box) must not be silently accepted — that
+    // would make 可能 look unsolvable, since matched boxes turn green and
+    // give no indication they can still be reused.
+    const wA = await api(request, 'POST', '/api/words', {
+      zh_text: '能', pinyin: 'néng', translations: { de: ['in der Lage sein', 'können'] }, tags: [], start_training: true,
+    });
+    const wB = await api(request, 'POST', '/api/words', {
+      zh_text: '可能', pinyin: 'kě néng', translations: { de: ['können', 'möglicherweise'] }, tags: [], start_training: true,
+    });
+    const words = [
+      { zh_word_id: wA.id, zh_text: '能', pinyin: 'néng', translations: { de: ['in der Lage sein', 'können'] } },
+      { zh_word_id: wB.id, zh_text: '可能', pinyin: 'kě néng', translations: { de: ['können', 'möglicherweise'] } },
+    ];
+
+    await page.goto(`${BASE_URL}/train`);
+    await page.evaluate((w) => {
+      // @ts-ignore
+      window.__mgDone = false;
+      // @ts-ignore
+      window.showMatchGame(w).then(() => { window.__mgDone = true; });
+    }, words);
+    await expect(page.locator('#match-game-overlay')).toBeVisible();
+
+    const nengBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('能', { exact: true }) });
+    const konnenBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('können', { exact: true }) });
+    const keNengBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('可能', { exact: true }) });
+    const lageBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('in der Lage sein', { exact: true }) });
+
+    await nengBox.click();
+    await konnenBox.click();
+    await expect(nengBox).toHaveClass(/border-yellow-500/);
+    await expect(nengBox).not.toHaveClass(/border-green-500/);
+    await page.waitForTimeout(900); // let the blocked-state reset timeout fire
+
+    // 能 solves against its own box, then 可能 can still claim "können".
+    await nengBox.click();
+    await lageBox.click();
+    await keNengBox.click();
+    await konnenBox.click();
+
+    await expect(page.locator('#match-game-overlay')).toBeHidden({ timeout: 3000 });
+    expect(await page.evaluate(() => /** @ts-ignore */ window.__mgDone)).toBe(true);
+  });
+
   test('settings page saves gamification toggle', async ({ page }) => {
     await page.goto(`${BASE_URL}/settings`);
     const checkbox = page.locator('#gamification-enabled');
