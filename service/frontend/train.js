@@ -2002,6 +2002,19 @@ async function _maybeShowMatchGame() {
   await showMatchGame(data.words);
 }
 
+// Decides the outcome of matching a left word (lIdx) to a right box whose true
+// owner is rightIdx. A right box may legitimately be claimed by a non-owning
+// word when they share a translation text — but only once its true owner is
+// already matched elsewhere. Otherwise the claim is "blocked": accepting it
+// would visually strand the true owner's only matching box (issue #215).
+function matchGameOutcome(rightIdx, lIdx, rightText, leftTransls, matchedLeftIdxs) {
+  if (rightIdx === lIdx) return 'correct';
+  if (leftTransls.includes(rightText)) {
+    return matchedLeftIdxs.has(rightIdx) ? 'correct' : 'blocked';
+  }
+  return 'wrong';
+}
+
 // showMatchGame accepts the flat words array returned by GET /api/quiz/match-game.
 // Each word: { zh_word_id, zh_text, pinyin, translations }
 // Left column shows Chinese words; right column shows one translation each, shuffled.
@@ -2068,12 +2081,11 @@ function showMatchGame(words) {
         const lIdx = selectedLeft;
         if (matched.has(lIdx)) return;
         const rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
-        // Also accept when two words share the same translation text.
         const rightText = shuffledRight[rIdx].text;
         const leftTransls = Object.values(words[lIdx].translations || {}).flat();
-        const isCorrect = rightIdx === lIdx || leftTransls.includes(rightText);
+        const outcome = matchGameOutcome(rightIdx, lIdx, rightText, leftTransls, matched);
 
-        if (isCorrect) {
+        if (outcome === 'correct') {
           // Correct match
           leftBoxes[lIdx].classList.remove('border-blue-500', 'bg-blue-50');
           leftBoxes[lIdx].classList.add('border-green-500', 'bg-green-50', 'cursor-default');
@@ -2089,6 +2101,16 @@ function showMatchGame(words) {
           if (matched.size === words.length) {
             setTimeout(() => { overlay.remove(); resolve(); }, 600);
           }
+        } else if (outcome === 'blocked') {
+          // Right box is still needed as its true owner's only match — flash
+          // yellow (not a mistake) and reset without recording an SM2 answer.
+          leftBoxes[lIdx].classList.add('border-yellow-500', 'bg-yellow-50');
+          box.classList.add('border-yellow-500', 'bg-yellow-50');
+          setTimeout(() => {
+            leftBoxes[lIdx].classList.remove('border-yellow-500', 'bg-yellow-50', 'border-blue-500', 'bg-blue-50');
+            box.classList.remove('border-yellow-500', 'bg-yellow-50');
+            selectedLeft = null;
+          }, 800);
         } else {
           // Wrong match — flash red both boxes, then reset
           leftBoxes[lIdx].classList.add('border-red-500', 'bg-red-50');
