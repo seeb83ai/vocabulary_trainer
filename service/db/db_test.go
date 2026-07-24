@@ -2203,13 +2203,48 @@ func TestAdvanceDueDates_FewerThanN(t *testing.T) {
 		}
 	}
 
-	// Request 10 but only 2 available — should return 0 without error.
+	// Request 10 but only 2 available — advance whatever is available.
 	nowDue, err := s.AdvanceDueDates(ctx, int64(2), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if nowDue != 0 {
-		t.Errorf("expected 0, got %d", nowDue)
+	if nowDue != 2 {
+		t.Errorf("expected 2 (all available), got %d", nowDue)
+	}
+}
+
+func TestAdvanceDueDates_ClusteredDueDates_OnlyAdvancesN(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Seed 15 words all with the same future due date (+1 day).
+	// This simulates words that all completed their first SM-2 interval at roughly
+	// the same time (e.g. user trained all words in one session).
+	for i := 0; i < 15; i++ {
+		id := seedWord(t, s, string(rune('a'+i)), "", []string{"en"})
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE sm2_progress SET first_seen_at = date('now'), due_date = datetime('now', '+1 day') WHERE word_id = ?`,
+			id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Advance 5 words — must not advance all 15.
+	nowDue, err := s.AdvanceDueDates(ctx, int64(2), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nowDue != 5 {
+		t.Errorf("expected exactly 5 words due now, got %d", nowDue)
+	}
+
+	var future int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress WHERE due_date > CURRENT_TIMESTAMP AND first_seen_at IS NOT NULL`).Scan(&future); err != nil {
+		t.Fatal(err)
+	}
+	if future != 10 {
+		t.Errorf("expected 10 words still in the future, got %d", future)
 	}
 }
 
