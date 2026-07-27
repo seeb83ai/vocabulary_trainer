@@ -950,6 +950,7 @@ async function submitAnswer(e) {
               });
               ambiguousUnresolved = null;
               restoreResultQuestion();
+              hide('result-question');
               icon.textContent = t('result.correct');
               icon.className = 'text-3xl font-bold text-green-600 mb-4';
               const disambigArea = document.getElementById('disambig-area');
