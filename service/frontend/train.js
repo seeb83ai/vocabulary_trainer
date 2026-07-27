@@ -956,6 +956,8 @@ async function submitAnswer(e) {
               const disambigArea = document.getElementById('disambig-area');
               if (disambigArea) disambigArea.remove();
               breakdown.innerHTML = `<div class="mt-4 space-y-2 text-left">${correctBox}</div>`;
+              const disambigInlinePlay = breakdown.querySelector('.result-inline-play');
+              if (disambigInlinePlay) disambigInlinePlay.addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
               show('word-breakdown');
               loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
             } catch (err) {

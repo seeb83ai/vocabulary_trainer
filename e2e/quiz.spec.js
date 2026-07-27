@@ -592,6 +592,33 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     return { quizZh, wrongAnswer };
   }
 
+  // Issue #245: after the user resolves an ambiguous answer correctly, the inline
+  // play button (🔊) in the green correct-answer box must trigger audio playback.
+  test('inline play button fires audio request after disambiguation resolves to Correct (issue #245)', async ({ page }) => {
+    const { quizZh } = await setupAmbiguousResult(page);
+
+    // Intercept audio requests so we can detect if the button wires up playAudio.
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    // Resolve the disambiguation correctly.
+    await page.locator('#disambig-input').fill(quizZh);
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
+
+    // The inline play button must exist in the green box.
+    const playBtn = page.locator('#word-breakdown .result-inline-play');
+    await expect(playBtn).toBeVisible();
+
+    // Clicking it must fire an audio request — proving the event listener is attached.
+    await playBtn.click();
+    await page.waitForTimeout(300);
+    expect(audioRequests.length).toBeGreaterThan(0);
+  });
+
   test('ambiguous answer shows disambiguation input and accepts correct re-type', async ({ page }) => {
     const { quizZh, wrongAnswer } = await setupAmbiguousResult(page);
 
