@@ -266,6 +266,23 @@ func (s *Store) SkipComponent(ctx context.Context, userID int64, character strin
 	return nil
 }
 
+// GetComponentProgress returns the total_correct/total_attempts counts for a
+// component, or nil if no progress row exists yet.
+func (s *Store) GetComponentProgress(ctx context.Context, userID int64, character string) (*models.ComponentProgress, error) {
+	var p models.ComponentProgress
+	err := s.db.QueryRowContext(ctx,
+		`SELECT total_correct, total_attempts FROM component_progress WHERE user_id = ? AND character = ?`,
+		userID, character,
+	).Scan(&p.TotalCorrect, &p.TotalAttempts)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get component progress: %w", err)
+	}
+	return &p, nil
+}
+
 // RecordComponentAnswer updates SM-2 state for a component after an answer.
 // Returns the updated progress and the next due time.Time (for JSON responses).
 func (s *Store) RecordComponentAnswer(ctx context.Context, userID int64, character string, correct bool) (models.ComponentProgress, time.Time, error) {
@@ -680,6 +697,14 @@ func (s *Store) SetComponentAttemptsForTest(ctx context.Context, userID int64, c
 	s.db.ExecContext(ctx, //nolint:errcheck
 		`UPDATE component_progress SET total_attempts = ? WHERE user_id = ? AND character = ?`,
 		attempts, userID, character)
+}
+
+// SetComponentProgressForTest sets total_correct/total_attempts directly.
+// Intended for use in tests only.
+func (s *Store) SetComponentProgressForTest(ctx context.Context, userID int64, character string, totalCorrect, totalAttempts int) {
+	s.db.ExecContext(ctx, //nolint:errcheck
+		`UPDATE component_progress SET total_correct = ?, total_attempts = ? WHERE user_id = ? AND character = ?`,
+		totalCorrect, totalAttempts, userID, character)
 }
 
 // UpdateComponentProgress writes an SM-2 update to component_progress and clears

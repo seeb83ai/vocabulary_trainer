@@ -55,6 +55,7 @@ type UserSettings struct {
 	TrainComponents             bool     `json:"train_components"`
 	TrainTags                   []string `json:"train_tags"`
 	BlurPinyin                  bool     `json:"blur_pinyin"`
+	CelebrateBucketChange       bool     `json:"celebrate_bucket_change"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
@@ -401,6 +402,8 @@ type ComponentAnswerResponse struct {
 	TotalAttempts  int               `json:"total_attempts"`
 	Repetitions    int               `json:"repetitions"`
 	SceneText      string            `json:"scene_text,omitempty"`
+	Tier           string            `json:"tier,omitempty"`
+	PrevTier       string            `json:"prev_tier,omitempty"`
 }
 
 type HanziDecomposition struct {

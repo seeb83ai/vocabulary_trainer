@@ -539,6 +539,26 @@ func TestQuizAnswer_Wrong(t *testing.T) {
 	}
 }
 
+func TestQuizAnswer_Wrong_IncludesTier(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+		Answer: "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Tier != "New" {
+		t.Errorf("tier: want 'New' on a wrong answer for a fresh learning-phase word, got %q", resp.Tier)
+	}
+}
+
 func TestQuizAnswer_EnToZh(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -3887,6 +3907,28 @@ func TestComponentAnswer_WrongAnswer(t *testing.T) {
 	}
 }
 
+func TestComponentAnswer_WrongAnswer_IncludesTier(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "man",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["tier"] != "Struggling" {
+		t.Errorf("want tier=Struggling on a wrong first attempt, got %v", resp["tier"])
+	}
+}
+
 func TestComponentAnswer_AlternativeSemicolon(t *testing.T) {
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "曰", "to speak; to say"); err != nil {
@@ -4007,6 +4049,59 @@ func TestComponentAnswer_DELangAccepted(t *testing.T) {
 	}
 	if answers["de"] != "Frau" {
 		t.Errorf("want correct_answers[de]=Frau, got %v", answers["de"])
+	}
+}
+
+func TestComponentAnswer_TierOnFirstAttempt(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "woman",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["tier"] != "Struggling" {
+		t.Errorf("want tier=Struggling on first attempt, got %v", resp["tier"])
+	}
+	if _, has := resp["prev_tier"]; has {
+		t.Errorf("want no prev_tier on first-ever attempt, got %v", resp["prev_tier"])
+	}
+}
+
+func TestComponentAnswer_TierChangeOnBoundaryCrossing(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+	// 9/9 correct = 100% accuracy but under the 10-attempt graduation floor,
+	// so this sits in the "Learning" tier just below the Mastered boundary.
+	s.SetComponentProgressForTest(context.Background(), int64(2), "女", 9, 9)
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "woman",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["tier"] != "Mastered" {
+		t.Errorf("want tier=Mastered after 10th correct answer, got %v", resp["tier"])
+	}
+	if resp["prev_tier"] != "Learning" {
+		t.Errorf("want prev_tier=Learning, got %v", resp["prev_tier"])
 	}
 }
 
@@ -6815,6 +6910,30 @@ func TestSettingsPatch_BlurPinyin(t *testing.T) {
 	decodeJSON(t, rec2, &st)
 	if st["blur_pinyin"] != true {
 		t.Errorf("blur_pinyin: want true after update, got %v", st["blur_pinyin"])
+	}
+}
+
+func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["celebrate_bucket_change"] != false {
+		t.Errorf("celebrate_bucket_change: want false by default, got %v", st["celebrate_bucket_change"])
+	}
+
+	body := baseSettingsPatch()
+	body["celebrate_bucket_change"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["celebrate_bucket_change"] != true {
+		t.Errorf("celebrate_bucket_change: want true after update, got %v", st["celebrate_bucket_change"])
 	}
 }
 

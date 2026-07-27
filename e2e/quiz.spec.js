@@ -993,3 +993,121 @@ test.describe('Quiz – green result box title (issue #246)', () => {
     await expect(greenLabel).not.toContainText('Character', { ignoreCase: true });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Bucket-change growth indicator + celebration interstitial
+//
+// Mocks the /api/quiz/answer response to inject a tier change (Learning →
+// Practicing) so the test doesn't depend on the real graduation/accuracy
+// timing needed to organically cross a tier boundary. This isolates the
+// frontend behaviour under test: the growth-icon indicator on the result
+// screen, and the celebration interstitial gated by celebrate_bucket_change.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – celebrate bucket change setting', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  async function mockTierChangeAnswer(page, correct = true) {
+    await page.route('**/api/quiz/answer', async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...json, correct, tier: 'Practicing', prev_tier: 'Learning' }),
+      });
+    });
+  }
+
+  async function submitAnswerAndWait(page, answer) {
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    const card = await cardRes.json();
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+    await page.locator('#answer-input').fill(answer);
+    await page.locator('#answer-form button[type="submit"]').click();
+  }
+
+  async function submitCorrectAnswer(page) {
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    const card = await cardRes.json();
+    const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+    expect(correctAnswer).toBeTruthy();
+    await submitAnswerAndWait(page, correctAnswer);
+  }
+
+  test('celebration screen appears before the result screen, then reveals it after Continue', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, celebrate_bucket_change: true } });
+
+    try {
+      await mockTierChangeAnswer(page);
+      await submitCorrectAnswer(page);
+
+      // Celebration appears immediately, BEFORE the correct/wrong result screen.
+      await expect(page.locator('#celebration-screen')).toBeVisible({ timeout: 8_000 });
+      await expect(page.locator('#result-area')).not.toBeVisible();
+      await expect(page.locator('#celebration-transition')).toContainText('Learning');
+      await expect(page.locator('#celebration-transition')).toContainText('Practicing');
+
+      // Continuing reveals the result screen, with a single tier icon (not the full ladder).
+      await page.locator('#celebration-continue-btn').click();
+      await expect(page.locator('#celebration-screen')).not.toBeVisible();
+      await expect(page.locator('#result-area')).toBeVisible();
+      await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+      await expect(page.locator('#bucket-info .tier-icon')).toHaveCount(1);
+      await expect(page.locator('#bucket-info .tier-icon')).toHaveAttribute('title', 'Practicing');
+
+      // Next now behaves normally — straight to the next card, no second celebration.
+      await page.locator('#next-btn').click();
+      await expect(page.locator('#result-area')).not.toBeVisible();
+      await expect(page.locator('#celebration-screen')).not.toBeVisible();
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+
+  test('celebration screen never appears when the setting is disabled (default)', async ({ page }) => {
+    await mockTierChangeAnswer(page);
+    await submitCorrectAnswer(page);
+
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+    await expect(page.locator('#celebration-screen')).not.toBeVisible();
+  });
+
+  test('the tier icon also shows on a wrong answer, and celebration never fires for a tier drop', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, celebrate_bucket_change: true } });
+
+    try {
+      await mockTierChangeAnswer(page, false);
+      await submitAnswerAndWait(page, 'xxxxxxxxxxx');
+
+      // Result appears directly — no celebration screen in between, even
+      // though the mocked response carries a (downward) tier change.
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+      await expect(page.locator('#celebration-screen')).not.toBeVisible();
+
+      // The icon still appears on a wrong-answer result screen.
+      await expect(page.locator('#bucket-info')).toBeVisible();
+      await expect(page.locator('#bucket-info .tier-icon')).toHaveCount(1);
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+});

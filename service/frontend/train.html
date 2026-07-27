@@ -378,15 +378,34 @@
           </div>
 
           <div class="flex justify-center gap-6 text-sm text-gray-500 mb-8 mt-3">
-            <div class="text-center">
+            <div class="text-center flex items-center justify-center gap-1.5">
+              <span id="bucket-info" class="hidden text-base leading-none"></span>
               <span id="next-due-info"></span>
-              <div id="bucket-info" class="hidden text-xs text-gray-400 mt-0.5"></div>
             </div>
             <div class="text-center">
               <span id="attempt-stats"></span>
               <div id="streak-info" class="hidden text-xs text-gray-400 mt-0.5"></div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div id="celebration-screen" class="hidden">
+        <div class="bg-white rounded-2xl shadow p-8 text-center">
+          <div class="text-4xl mb-2">🎉</div>
+          <div class="text-lg font-bold text-gray-800 mb-4" data-i18n="celebration.levelUp">Level up!</div>
+          <div id="celebration-icons" class="relative mx-auto mb-3 text-3xl" style="width: 2.5em; height: 2.5em;">
+            <span id="celebration-icon-old" class="absolute inset-0 flex items-center justify-center"></span>
+            <span id="celebration-icon-new" class="absolute inset-0 flex items-center justify-center"></span>
+          </div>
+          <div id="celebration-transition" class="text-sm text-gray-500 mb-6"></div>
+          <button
+            id="celebration-continue-btn"
+            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
+            data-i18n="celebration.continue"
+          >
+            Continue
+          </button>
         </div>
       </div>
 

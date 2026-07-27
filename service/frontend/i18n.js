@@ -111,6 +111,8 @@ const I18N = {
     'result.streakBonus': '+{n} streak bonus',
     'result.streak': 'Streak: {n}',
     'result.streakProgress': 'Streak: {n} / {total}',
+    'celebration.levelUp': 'Level up!',
+    'celebration.continue': 'Continue',
 
     // Vocab page
     'vocab.addWord': 'Add Word',
@@ -549,6 +551,8 @@ const I18N = {
     'result.streakBonus': '+{n} 连续奖励',
     'result.streak': '连续：{n}',
     'result.streakProgress': '连续：{n} / {total}',
+    'celebration.levelUp': '升级了！',
+    'celebration.continue': '继续',
 
     // Vocab page
     'vocab.addWord': '添加词汇',
