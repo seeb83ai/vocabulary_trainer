@@ -1121,7 +1121,7 @@ function showCelebrationScreen({ prevTier, tier }, onContinue) {
   const newEl = $('celebration-icon-new');
   oldEl.textContent = oldEntry ? oldEntry.icon : '';
   newEl.textContent = newEntry ? newEntry.icon : '';
-  const base = 'absolute inset-0 flex items-center justify-center transition-all duration-700 ease-in-out';
+  const base = 'absolute inset-0 flex items-center justify-center transition-all duration-[1400ms] ease-in-out';
   oldEl.className = `${base} opacity-100 scale-100`;
   newEl.className = `${base} opacity-0 scale-50`;
   // Apply the transitioned end-state one frame later so the browser paints
