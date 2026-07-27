@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 	"vocabulary_trainer/models"
 )
 
@@ -365,39 +364,52 @@ func (s *Store) GetTodaySessionInfo(ctx context.Context, userID int64) (attempts
 	return
 }
 
-// AdvanceDueDates pulls forward the due dates of seen zh words so that at least
-// n words become due now. It finds the Nth earliest future due date among seen
-// zh words, computes the delta to now, and subtracts it from all seen zh words'
-// due dates. Returns the number of zh words now due after the operation.
+// AdvanceDueDates pulls forward the due dates of exactly n seen zh words so
+// they become due now. It selects the n earliest future-due words by ID and
+// sets only those to due-now, leaving all other words' due dates untouched.
+// Returns the total number of zh words due after the operation.
 func (s *Store) AdvanceDueDates(ctx context.Context, userID int64, n int) (int, error) {
-	var nthDueDateStr string
-	err := s.db.QueryRowContext(ctx, `
-		SELECT p.due_date FROM sm2_progress p
+	// Collect the IDs of the n earliest future-due zh words before updating,
+	// per the single-connection SQLite rule (rows must be closed before the
+	// next write on the same connection).
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT p.word_id FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_at IS NOT NULL
 		  AND p.due_date > CURRENT_TIMESTAMP
 		ORDER BY p.due_date ASC
-		LIMIT 1 OFFSET ?`, userID, n-1).Scan(&nthDueDateStr)
-	if err == sql.ErrNoRows {
-		return 0, nil
-	}
+		LIMIT ?`, userID, n)
 	if err != nil {
-		return 0, fmt.Errorf("find nth due date: %w", err)
+		return 0, fmt.Errorf("find next n words: %w", err)
 	}
-
-	nthDueDate := parseDateTime(nthDueDateStr)
-	delta := time.Until(nthDueDate)
-	if delta <= 0 {
+	var wordIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scan word id: %w", err)
+		}
+		wordIDs = append(wordIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(wordIDs) == 0 {
 		return 0, nil
 	}
-	modifier := fmt.Sprintf("-%d seconds", int64(delta.Seconds())+1)
 
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE sm2_progress SET due_date = datetime(due_date, ?)
-		WHERE first_seen_at IS NOT NULL
-		  AND word_id IN (SELECT id FROM words WHERE language = 'zh' AND user_id = ?)`,
-		modifier, userID); err != nil {
+	placeholders := make([]string, len(wordIDs))
+	args := make([]any, len(wordIDs))
+	for i, id := range wordIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = datetime('now', '-1 second')
+		 WHERE word_id IN (`+strings.Join(placeholders, ",")+`)`,
+		args...); err != nil {
 		return 0, fmt.Errorf("advance due dates: %w", err)
 	}
 
