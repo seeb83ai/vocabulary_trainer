@@ -993,3 +993,90 @@ test.describe('Quiz – green result box title (issue #246)', () => {
     await expect(greenLabel).not.toContainText('Character', { ignoreCase: true });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Bucket-change growth indicator + celebration interstitial
+//
+// Mocks the /api/quiz/answer response to inject a tier change (Learning →
+// Practicing) so the test doesn't depend on the real graduation/accuracy
+// timing needed to organically cross a tier boundary. This isolates the
+// frontend behaviour under test: the growth-icon indicator on the result
+// screen, and the celebration interstitial gated by celebrate_bucket_change.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – celebrate bucket change setting', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  async function mockTierChangeAnswer(page) {
+    await page.route('**/api/quiz/answer', async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...json, correct: true, tier: 'Practicing', prev_tier: 'Learning' }),
+      });
+    });
+  }
+
+  async function answerCorrectly(page) {
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    const card = await cardRes.json();
+    const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+    expect(correctAnswer).toBeTruthy();
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+    await page.locator('#answer-input').fill(correctAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+  }
+
+  test('growth icons show the new tier and celebration screen appears when enabled', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, celebrate_bucket_change: true } });
+
+    try {
+      await mockTierChangeAnswer(page);
+      await answerCorrectly(page);
+
+      // Inline growth-icon indicator reflects the new tier.
+      await expect(page.locator('#bucket-info')).toBeVisible();
+      await expect(page.locator('#bucket-info .tier-growth-active')).toHaveCount(1);
+
+      // Clicking Next shows the celebration interstitial instead of the next card.
+      await page.locator('#next-btn').click();
+      await expect(page.locator('#celebration-screen')).toBeVisible({ timeout: 8_000 });
+      await expect(page.locator('#celebration-transition')).toContainText('Learning');
+      await expect(page.locator('#celebration-transition')).toContainText('Practicing');
+      await expect(page.locator('#result-area')).not.toBeVisible();
+
+      // Continuing dismisses the celebration screen and loads the next card.
+      await page.locator('#celebration-continue-btn').click();
+      await expect(page.locator('#celebration-screen')).not.toBeVisible();
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+
+  test('celebration screen never appears when the setting is disabled (default)', async ({ page }) => {
+    await mockTierChangeAnswer(page);
+    await answerCorrectly(page);
+
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#celebration-screen')).not.toBeVisible();
+  });
+});

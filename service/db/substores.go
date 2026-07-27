@@ -134,6 +134,7 @@ type ComponentStore interface {
 	MarkComponentForReview(userID int64, character string) error
 	MarkComponentSeen(ctx context.Context, userID int64, character string) error
 	SkipComponent(ctx context.Context, userID int64, character string, days int) error
+	GetComponentProgress(ctx context.Context, userID int64, character string) (*models.ComponentProgress, error)
 	RecordComponentAnswer(ctx context.Context, userID int64, character string, correct bool) (models.ComponentProgress, time.Time, error)
 	RecordComponentStat(ctx context.Context, userID int64, correct bool) error
 	GetComponentStatsHistory(ctx context.Context, userID int64) ([]models.ComponentDailyStat, error)

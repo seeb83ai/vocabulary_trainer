@@ -4092,6 +4092,9 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.BlurPinyin {
 		t.Error("want blur_pinyin=false by default")
 	}
+	if st.CelebrateBucketChange {
+		t.Error("want celebrate_bucket_change=false by default")
+	}
 }
 
 func TestUpdateUserSettings_RoundTrip(t *testing.T) {
@@ -4114,6 +4117,7 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 		NewWordRequireTrans:         true,
 		ExtendSessionWithExtraWords: false,
 		BlurPinyin:                  true,
+		CelebrateBucketChange:       true,
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -4142,6 +4146,9 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if !out.BlurPinyin {
 		t.Error("blur_pinyin: want true after update")
+	}
+	if !out.CelebrateBucketChange {
+		t.Error("celebrate_bucket_change: want true after update")
 	}
 }
 

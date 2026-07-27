@@ -151,6 +151,71 @@ func TestHMMQuizAnswer_OptionalParensPrefix(t *testing.T) {
 	}
 }
 
+func TestHMMQuizAnswer_TierOnFirstAttempt(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityActor,
+		EntityKey:  "b",
+		Answer:     "Bruce Lee",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Tier != "New" {
+		t.Errorf("tier = %q, want 'New' for a fresh learning-phase entry", resp.Tier)
+	}
+	if resp.PrevTier != "" {
+		t.Errorf("prev_tier = %q, want empty on first-ever attempt", resp.PrevTier)
+	}
+}
+
+func TestHMMQuizAnswer_TierGraduatesFromLearningPhase(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+	ctx := context.Background()
+
+	// Two correct answers in the learning phase (graduate reps = 3);
+	// the third correct answer graduates the entry out of "New".
+	for i := 0; i < 2; i++ {
+		rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+			EntityType: models.HMMEntityActor,
+			EntityKey:  "b",
+			Answer:     "Bruce Lee",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+		}
+	}
+	progress, err := h.Store.GetHMMProgress(ctx, int64(2), models.HMMEntityActor, "b")
+	if err != nil || progress == nil {
+		t.Fatalf("GetHMMProgress: %v", err)
+	}
+	if !progress.Learning {
+		t.Fatalf("expected entry to still be in learning phase after 2 correct answers")
+	}
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityActor,
+		EntityKey:  "b",
+		Answer:     "Bruce Lee",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.PrevTier != "New" {
+		t.Errorf("prev_tier = %q, want 'New'", resp.PrevTier)
+	}
+	if resp.Tier == "" || resp.Tier == "New" {
+		t.Errorf("tier = %q, want a graduated tier after leaving the learning phase", resp.Tier)
+	}
+}
+
 func TestHMMQuizAnswer_OptionalParensInline(t *testing.T) {
 	router, h := hmmQuizRouter(t)
 	// Stored name has bracketed segments inline; user omits them.

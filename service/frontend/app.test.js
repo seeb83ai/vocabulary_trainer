@@ -62,11 +62,11 @@ describe('escHtml', () => {
 // Inline from app.js
 
 const TIERS = [
-  { key: 'new',    label: 'New',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700' },
-  { key: '0-49',   label: 'Struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700'    },
-  { key: '50-69',  label: 'Learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700' },
-  { key: '70-84',  label: 'Practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700'   },
-  { key: '85-100', label: 'Mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700' },
+  { key: 'new',    label: 'New',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700', icon: '🌰' },
+  { key: '0-49',   label: 'Struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700',    icon: '🌱' },
+  { key: '50-69',  label: 'Learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700', icon: '🌿' },
+  { key: '70-84',  label: 'Practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700',   icon: '🌳' },
+  { key: '85-100', label: 'Mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700', icon: '🌸' },
 ];
 
 function wordTier(totalCorrect, totalAttempts, learningNewWord, streakBonus) {
@@ -124,6 +124,65 @@ describe('wordTier', () => {
     // Same as without bonus
     const tier = wordTier(4, 10, false);
     expect(tier.label).toBe('Struggling');
+  });
+});
+
+// ── tierGrowthHTML ────────────────────────────────────────────────────────────
+// Inline from app.js. Reuses the TIERS/escHtml already inlined above.
+
+function tierGrowthHTML(tier, prevTier) {
+  if (!tier) return '';
+  return TIERS.map(entry => {
+    const active = entry.label === tier;
+    const changed = active && !!prevTier && prevTier !== tier;
+    const classes = [
+      'tier-growth-icon',
+      active ? 'tier-growth-active' : 'tier-growth-inactive',
+      changed ? 'tier-growth-changed' : '',
+    ].filter(Boolean).join(' ');
+    return `<span class="${classes}" title="${escHtml(entry.label)}">${entry.icon}</span>`;
+  }).join('');
+}
+
+describe('tierGrowthHTML', () => {
+  it('returns empty string when there is no tier', () => {
+    expect(tierGrowthHTML('', '')).toBe('');
+    expect(tierGrowthHTML(undefined, undefined)).toBe('');
+  });
+
+  it('renders all 5 tier icons', () => {
+    const html = tierGrowthHTML('Learning', '');
+    for (const entry of TIERS) {
+      expect(html).toContain(entry.icon);
+    }
+  });
+
+  it('marks the current tier active and others inactive', () => {
+    const html = tierGrowthHTML('Practicing', '');
+    const practicingSpan = html.match(/<span[^>]*title="Practicing"[^>]*>/)[0];
+    expect(practicingSpan).toContain('tier-growth-active');
+    const strugglingSpan = html.match(/<span[^>]*title="Struggling"[^>]*>/)[0];
+    expect(strugglingSpan).toContain('tier-growth-inactive');
+    expect(strugglingSpan).not.toContain('tier-growth-active');
+  });
+
+  it('adds a changed class only to the new tier when prevTier differs', () => {
+    const html = tierGrowthHTML('Practicing', 'Learning');
+    const practicingSpan = html.match(/<span[^>]*title="Practicing"[^>]*>/)[0];
+    expect(practicingSpan).toContain('tier-growth-changed');
+    const learningSpan = html.match(/<span[^>]*title="Learning"[^>]*>/)[0];
+    expect(learningSpan).not.toContain('tier-growth-changed');
+  });
+
+  it('does not add a changed class when prevTier equals tier', () => {
+    const html = tierGrowthHTML('Practicing', 'Practicing');
+    const practicingSpan = html.match(/<span[^>]*title="Practicing"[^>]*>/)[0];
+    expect(practicingSpan).not.toContain('tier-growth-changed');
+  });
+
+  it('escapes the tier label used in the title attribute', () => {
+    const html = tierGrowthHTML('<b>New</b>', '');
+    expect(html).not.toContain('<b>New</b>"');
   });
 });
 

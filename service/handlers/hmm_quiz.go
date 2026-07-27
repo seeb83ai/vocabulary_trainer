@@ -17,23 +17,7 @@ type HMMQuizHandler struct {
 
 // hmmTier returns the accuracy bucket label for an HMM progress record.
 func hmmTier(p models.HMMProgress) string {
-	if p.TotalAttempts == 0 {
-		return ""
-	}
-	if p.Learning {
-		return "New"
-	}
-	acc := float64(p.TotalCorrect+p.StreakBonus) / float64(p.TotalAttempts)
-	switch {
-	case p.TotalAttempts >= 10 && acc >= 0.85:
-		return "Mastered"
-	case p.TotalAttempts >= 10 && acc >= 0.70:
-		return "Practicing"
-	case p.TotalAttempts >= 3 && acc >= 0.50:
-		return "Learning"
-	default:
-		return "Struggling"
-	}
+	return sm2.ClassifyTier(hmmToSM2(p)).String()
 }
 
 // hmmToSM2 converts an HMMProgress into SM2Progress for use with sm2 functions.

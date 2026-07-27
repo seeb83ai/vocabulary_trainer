@@ -2,12 +2,38 @@
 
 // Accuracy/attempt tier definitions — mirrors the progressive mode ladder.
 const TIERS = [
-  { key: 'new',    label: 'New',        i18nKey: 'tier.new',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700' },
-  { key: '0-49',   label: 'Struggling', i18nKey: 'tier.struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700'    },
-  { key: '50-69',  label: 'Learning',   i18nKey: 'tier.learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700' },
-  { key: '70-84',  label: 'Practicing', i18nKey: 'tier.practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700'   },
-  { key: '85-100', label: 'Mastered',   i18nKey: 'tier.mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700' },
+  { key: 'new',    label: 'New',        i18nKey: 'tier.new',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700', icon: '🌰' },
+  { key: '0-49',   label: 'Struggling', i18nKey: 'tier.struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700',    icon: '🌱' },
+  { key: '50-69',  label: 'Learning',   i18nKey: 'tier.learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700', icon: '🌿' },
+  { key: '70-84',  label: 'Practicing', i18nKey: 'tier.practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700',   icon: '🌳' },
+  { key: '85-100', label: 'Mastered',   i18nKey: 'tier.mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700', icon: '🌸' },
 ];
+
+// Builds the growth-icon row HTML for a tier/prevTier pair (server-sent tier
+// label strings, e.g. "Struggling"/"Practicing"). Pure — testable in
+// isolation and shared by every result screen that shows a bucket change.
+function tierGrowthHTML(tier, prevTier) {
+  if (!tier) return '';
+  return TIERS.map(entry => {
+    const active = entry.label === tier;
+    const changed = active && !!prevTier && prevTier !== tier;
+    const classes = [
+      'tier-growth-icon',
+      active ? 'tier-growth-active' : 'tier-growth-inactive',
+      changed ? 'tier-growth-changed' : '',
+    ].filter(Boolean).join(' ');
+    return `<span class="${classes}" title="${escHtml(entry.label)}">${entry.icon}</span>`;
+  }).join('');
+}
+
+// Renders the growth-icon row into a container element. Caller is
+// responsible for show()/hide()'ing the element based on whether a tier is
+// present. Shared by train.js's vocab/HMM/component result screens so the
+// bucket indicator isn't reimplemented per card type.
+function renderTierGrowth(el, tier, prevTier) {
+  if (!el) return;
+  el.innerHTML = tierGrowthHTML(tier, prevTier);
+}
 
 // Returns the TIERS entry for a word, or null for brand-new words (0 attempts).
 // Must stay in sync with tierFilter (db/db.go) and AccBuckets (GetWordStats).

@@ -6,6 +6,8 @@ let userSecondaryLang = '';
 let acceptCorrectMode = 'typo';
 let skipNewWordsVisible = true;
 let blurPinyin = false;
+let celebrateBucketChange = false;
+let lastTierChange = null;
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
@@ -15,6 +17,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
   skipNewWordsVisible = st?.skip_new_words_visible !== false;
   blurPinyin = !!st?.blur_pinyin;
+  celebrateBucketChange = !!st?.celebrate_bucket_change;
   _gamificationEnabled = !!st?.gamification_enabled;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   const btn = document.getElementById('new-word-skip-btn');
@@ -417,6 +420,7 @@ async function loadNextCard(trackCurrent = false) {
   ambiguousUnresolved = null;
   hide('card-area');
   hide('result-area');
+  hide('celebration-screen');
   hide('empty-state');
   hide('success-state');
   hide('error-state');
@@ -431,6 +435,7 @@ async function loadNextCard(trackCurrent = false) {
   hide('result-decompose-content');
   hide('bucket-info');
   hide('streak-info');
+  lastTierChange = null;
   $('answer-input').value = '';
   const reviewBtn = $('needs-review-btn');
   reviewBtn.textContent = t('result.flagReview');
@@ -989,14 +994,14 @@ async function submitAnswer(e) {
       hide('accept-correct-btn');
 
       if (result.tier) {
-        const bucketEl = $('bucket-info');
-        bucketEl.textContent = result.prev_tier
-          ? `${result.prev_tier} → ${result.tier}`
-          : result.tier;
+        renderTierGrowth($('bucket-info'), result.tier, result.prev_tier);
         show('bucket-info');
       } else {
         hide('bucket-info');
       }
+      lastTierChange = (result.tier && result.prev_tier && result.prev_tier !== result.tier)
+        ? { prevTier: result.prev_tier, tier: result.tier }
+        : null;
 
       if (!result.learning_new_word && result.repetitions > 1) {
         $('streak-info').textContent = t('result.streak', { n: result.repetitions });
@@ -1087,6 +1092,22 @@ async function submitAnswer(e) {
   }
 }
 
+// Shows a full-screen interstitial celebrating a tier advance, gated by the
+// celebrate_bucket_change user setting. Shared by all three card types
+// (vocab word, HMM, component) via the single next-btn click handler.
+function showCelebrationScreen({ prevTier, tier }, onContinue) {
+  hide('card-area');
+  hide('result-area');
+  show('celebration-screen');
+  $('celebration-icons').innerHTML = tierGrowthHTML(tier, prevTier);
+  setText('celebration-transition', `${prevTier} → ${tier}`);
+  $('celebration-continue-btn').onclick = () => {
+    hide('celebration-screen');
+    onContinue();
+  };
+  $('celebration-continue-btn').focus();
+}
+
 function showHMMResult(resp) {
   hide('card-area');
   show('result-area');
@@ -1133,11 +1154,14 @@ function showHMMResult(resp) {
   }
 
   if (resp.tier) {
-    $('bucket-info').textContent = resp.prev_tier ? `${resp.prev_tier} → ${resp.tier}` : resp.tier;
+    renderTierGrowth($('bucket-info'), resp.tier, resp.prev_tier);
     show('bucket-info');
   } else {
     hide('bucket-info');
   }
+  lastTierChange = (resp.tier && resp.prev_tier && resp.prev_tier !== resp.tier)
+    ? { prevTier: resp.prev_tier, tier: resp.tier }
+    : null;
 
   const eff = resp.total_correct + (resp.streak_bonus || 0);
   setText('attempt-stats',
@@ -1198,7 +1222,15 @@ function showComponentResult(resp) {
   hide('add-translation-row');
   hide('add-translation-lang-select');
   loadDecomposition(currentCard.prompt, 'result-decompose', 'result-decompose-toggle');
-  hide('bucket-info');
+  if (resp.tier) {
+    renderTierGrowth($('bucket-info'), resp.tier, resp.prev_tier);
+    show('bucket-info');
+  } else {
+    hide('bucket-info');
+  }
+  lastTierChange = (resp.tier && resp.prev_tier && resp.prev_tier !== resp.tier)
+    ? { prevTier: resp.prev_tier, tier: resp.tier }
+    : null;
   hide('streak-info');
 
   if (!resp.correct) {
@@ -1569,6 +1601,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     await _maybeShowMatchGame();
+    if (celebrateBucketChange && lastTierChange) {
+      showCelebrationScreen(lastTierChange, () => loadNextCard(true));
+      return;
+    }
     loadNextCard(true);
   });
   $('accept-correct-btn').addEventListener('click', async () => {

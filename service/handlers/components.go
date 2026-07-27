@@ -122,6 +122,19 @@ type ComponentHandler struct {
 	Store componentStore
 }
 
+// componentToSM2 adapts a ComponentProgress (which has no streak-bonus or
+// learning-phase concept) onto SM2Progress for use with sm2.ClassifyTier.
+func componentToSM2(p models.ComponentProgress) models.SM2Progress {
+	return models.SM2Progress{
+		TotalCorrect:  p.TotalCorrect,
+		TotalAttempts: p.TotalAttempts,
+	}
+}
+
+func componentTier(p models.ComponentProgress) string {
+	return sm2.ClassifyTier(componentToSM2(p)).String()
+}
+
 // Answer processes a component quiz answer.
 func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	var req models.ComponentAnswerRequest
@@ -164,6 +177,15 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := UserIDFromContext(r.Context())
+
+	prevTier := ""
+	if prevProgress, err := h.Store.GetComponentProgress(r.Context(), userID, req.Character); err != nil {
+		internalError(w, err)
+		return
+	} else if prevProgress != nil {
+		prevTier = componentTier(*prevProgress)
+	}
+
 	progress, nextDue, err := h.Store.RecordComponentAnswer(r.Context(), userID, req.Character, correct)
 	if err != nil {
 		internalError(w, err)
@@ -176,7 +198,7 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sceneText, _ := h.Store.GetComponentHMMSceneText(r.Context(), userID, req.Character)
-	writeJSON(w, http.StatusOK, models.ComponentAnswerResponse{
+	resp := models.ComponentAnswerResponse{
 		Correct:        correct,
 		CorrectAnswers: defs,
 		NextDue:        nextDue,
@@ -185,7 +207,14 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		TotalAttempts:  progress.TotalAttempts,
 		Repetitions:    progress.Repetitions,
 		SceneText:      sceneText,
-	})
+	}
+	if correct {
+		resp.Tier = componentTier(progress)
+		if prevTier != "" && prevTier != resp.Tier {
+			resp.PrevTier = prevTier
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // AcceptCorrect handles POST /api/component/accept-correct. It restores the
@@ -216,6 +245,8 @@ func (h *ComponentHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	prevTier := componentTier(*prev)
+
 	sm2p := models.SM2Progress{
 		Repetitions:   prev.Repetitions,
 		Easiness:      prev.Easiness,
@@ -238,14 +269,20 @@ func (h *ComponentHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request)
 	}
 
 	sceneText, _ := h.Store.GetComponentHMMSceneText(ctx, userID, req.Character)
-	writeJSON(w, http.StatusOK, models.ComponentAnswerResponse{
+	tier := componentTier(models.ComponentProgress{TotalCorrect: updated.TotalCorrect, TotalAttempts: updated.TotalAttempts})
+	resp := models.ComponentAnswerResponse{
 		Correct:       true,
 		IntervalDays:  updated.IntervalDays,
 		TotalCorrect:  updated.TotalCorrect,
 		TotalAttempts: updated.TotalAttempts,
 		Repetitions:   updated.Repetitions,
 		SceneText:     sceneText,
-	})
+		Tier:          tier,
+	}
+	if prevTier != "" && prevTier != tier {
+		resp.PrevTier = prevTier
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // Seen marks a component as introduced so it enters the regular quiz rotation.
