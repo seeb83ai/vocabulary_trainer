@@ -1451,11 +1451,13 @@ async function loadTrainTags() {
   const desktopContainer = $('tag-chips-desktop');
   desktopContainer.querySelectorAll('.tag-pill').forEach(p => p.remove());
   if (allTags.length === 0) {
-    tagBar.classList.add('hidden');
+    tagBar.classList.remove('sm:block');
     $('overlay-tags-section').classList.add('hidden');
     return;
   }
-  tagBar.classList.remove('hidden');
+  // Keep the base "hidden" class so the bar stays hidden on mobile; only
+  // toggle "sm:block" to show/hide it on desktop.
+  tagBar.classList.add('sm:block');
   for (const tag of allTags) {
     const pill = document.createElement('button');
     const active = selectedTags.includes(tag);
