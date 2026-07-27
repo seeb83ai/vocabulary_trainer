@@ -644,7 +644,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-area')).toBeVisible();
     await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
     await expect(page.locator('#disambig-input')).not.toBeVisible();
-    await expect(page.locator('#word-breakdown')).toContainText('CORRECT', { ignoreCase: true });
+    await expect(page.locator('#word-breakdown .bg-green-50')).toBeVisible();
     // The gray question-recap box is ambiguous-only; the fallback Wrong
     // screen must not show it (issue #231 follow-up).
     await expect(page.locator('#result-question')).not.toBeVisible();
@@ -808,5 +808,148 @@ test.describe('Quiz – pinyin in answer boxes (issue #205)', () => {
     await expect(redBox).toBeVisible();
     await expect(redBox).toContainText(wrongZh);
     await expect(redBox).toContainText(expectedPinyin);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Green result box title shows what was learned (issue #246)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – green result box title (issue #246)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  const SEED_FIRST_ANSWERS = { '你好': 'hello', '谢谢': 'thank you', '再见': 'goodbye' };
+
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('correct vocabulary answer shows "Word" label in green box, not "Correct"', async ({ page }) => {
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+    const correctAnswer = SEED_FIRST_ANSWERS[card.prompt];
+    expect(correctAnswer).toBeTruthy();
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+    await page.locator('#answer-input').fill(correctAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+
+    const greenLabel = page.locator('#word-breakdown .bg-green-50 .text-green-500').first();
+    await expect(greenLabel).toBeVisible();
+    await expect(greenLabel).toContainText('Word', { ignoreCase: true });
+    await expect(greenLabel).not.toContainText('Correct', { ignoreCase: true });
+  });
+
+  test('wrong vocabulary answer shows "Word" label in green correct-answer box, not "Correct"', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const greenLabel = page.locator('#word-breakdown .bg-green-50 .text-green-500').first();
+    await expect(greenLabel).toBeVisible();
+    await expect(greenLabel).toContainText('Word', { ignoreCase: true });
+    await expect(greenLabel).not.toContainText('Correct', { ignoreCase: true });
+  });
+
+  test('component answer shows "Component" label in green box, not "Character"', async ({ page }) => {
+    await page.route('**/api/quiz/next*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          card_type: 'component',
+          prompt: '木',
+          pinyin: 'mù',
+          is_new: false,
+          is_also_word: false,
+          definitions: { en: 'wood, tree' },
+        }),
+      });
+    });
+    await page.route('**/api/component/answer', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          correct: true,
+          correct_answers: { en: 'wood, tree' },
+          interval_days: 1,
+          total_correct: 1,
+          total_attempts: 1,
+        }),
+      });
+    });
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('木');
+
+    await page.locator('#answer-input').fill('wood');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    const greenLabel = page.locator('#word-breakdown .bg-green-50 .text-green-500').first();
+    await expect(greenLabel).toBeVisible();
+    await expect(greenLabel).toContainText('Component', { ignoreCase: true });
+    await expect(greenLabel).not.toContainText('Character', { ignoreCase: true });
+  });
+
+  test('component-also-word answer shows "Component & Word" label in green box', async ({ page }) => {
+    await page.route('**/api/quiz/next*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          card_type: 'component',
+          prompt: '木',
+          pinyin: 'mù',
+          is_new: false,
+          is_also_word: true,
+          definitions: { en: 'wood, tree' },
+        }),
+      });
+    });
+    await page.route('**/api/component/answer', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          correct: true,
+          correct_answers: { en: 'wood, tree' },
+          interval_days: 1,
+          total_correct: 1,
+          total_attempts: 1,
+        }),
+      });
+    });
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('wood');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    const greenLabel = page.locator('#word-breakdown .bg-green-50 .text-green-500').first();
+    await expect(greenLabel).toBeVisible();
+    await expect(greenLabel).toContainText('Component', { ignoreCase: true });
+    await expect(greenLabel).not.toContainText('Character', { ignoreCase: true });
   });
 });
