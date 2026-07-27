@@ -186,6 +186,60 @@ describe('tierGrowthHTML', () => {
   });
 });
 
+// ── tierIconHTML ──────────────────────────────────────────────────────────────
+// Inline from app.js. Distinct from tierGrowthHTML (the full 5-tier ladder
+// used only by the celebration screen) — this renders just the ONE icon for
+// the word's current tier, for the compact inline result-screen indicator.
+
+function tierIconHTML(tier, prevTier) {
+  if (!tier) return '';
+  const entry = TIERS.find(e => e.label === tier);
+  if (!entry) return '';
+  const changed = !!prevTier && prevTier !== tier;
+  const cls = 'tier-icon' + (changed ? ' tier-icon-changed' : '');
+  return `<span class="${cls}" title="${escHtml(tier)}">${entry.icon}</span>`;
+}
+
+describe('tierIconHTML', () => {
+  it('returns empty string when there is no tier', () => {
+    expect(tierIconHTML('', '')).toBe('');
+    expect(tierIconHTML(undefined, undefined)).toBe('');
+  });
+
+  it('renders exactly one icon for the given tier', () => {
+    const html = tierIconHTML('Practicing', '');
+    const matches = html.match(/<span/g) || [];
+    expect(matches.length).toBe(1);
+    expect(html).toContain(TIERS.find(e => e.label === 'Practicing').icon);
+  });
+
+  it('does not render icons for other tiers', () => {
+    const html = tierIconHTML('Practicing', '');
+    expect(html).not.toContain(TIERS.find(e => e.label === 'Struggling').icon);
+    expect(html).not.toContain(TIERS.find(e => e.label === 'Mastered').icon);
+  });
+
+  it('adds a changed class when prevTier differs from tier', () => {
+    const html = tierIconHTML('Practicing', 'Learning');
+    expect(html).toContain('tier-icon-changed');
+  });
+
+  it('does not add a changed class when prevTier equals tier', () => {
+    const html = tierIconHTML('Practicing', 'Practicing');
+    expect(html).not.toContain('tier-icon-changed');
+  });
+
+  it('does not add a changed class when prevTier is absent', () => {
+    const html = tierIconHTML('Practicing', '');
+    expect(html).not.toContain('tier-icon-changed');
+  });
+
+  it('escapes the tier label used in the title attribute', () => {
+    const html = tierIconHTML('New', '');
+    expect(html).toContain('title="New"');
+  });
+});
+
 // ── apiFetch ──────────────────────────────────────────────────────────────────
 // Re-implement apiFetch the same way app.js does, using the global fetch.
 

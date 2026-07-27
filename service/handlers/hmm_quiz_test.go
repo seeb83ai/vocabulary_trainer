@@ -112,6 +112,25 @@ func TestHMMQuizAnswer_Wrong(t *testing.T) {
 	}
 }
 
+func TestHMMQuizAnswer_Wrong_IncludesTier(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityActor,
+		EntityKey:  "b",
+		Answer:     "Jackie Chan",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Tier != "New" {
+		t.Errorf("tier = %q, want 'New' on a wrong answer for a fresh learning-phase entry", resp.Tier)
+	}
+}
+
 func TestHMMQuizAnswer_CaseInsensitive(t *testing.T) {
 	router, h := hmmQuizRouter(t)
 	seedHMMActorEntry(t, h, "b", "Bruce Lee")

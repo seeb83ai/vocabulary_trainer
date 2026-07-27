@@ -189,11 +189,9 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	if !correct {
 		resp.YourAnswer = req.Answer
 	}
-	if correct {
-		resp.Tier = hmmTier(updated)
-		if prevTier != "" && prevTier != resp.Tier {
-			resp.PrevTier = prevTier
-		}
+	resp.Tier = hmmTier(updated)
+	if prevTier != "" && prevTier != resp.Tier {
+		resp.PrevTier = prevTier
 	}
 
 	writeJSON(w, http.StatusOK, resp)

@@ -9,9 +9,11 @@ const TIERS = [
   { key: '85-100', label: 'Mastered',   i18nKey: 'tier.mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700', icon: '🌸' },
 ];
 
-// Builds the growth-icon row HTML for a tier/prevTier pair (server-sent tier
-// label strings, e.g. "Struggling"/"Practicing"). Pure — testable in
-// isolation and shared by every result screen that shows a bucket change.
+// Builds the full 5-tier growth-icon ladder HTML for a tier/prevTier pair
+// (server-sent tier label strings, e.g. "Struggling"/"Practicing"). Pure —
+// testable in isolation. Used only by the celebration interstitial
+// (train.js's showCelebrationScreen), which is the one place a "before →
+// after" ladder view makes sense.
 function tierGrowthHTML(tier, prevTier) {
   if (!tier) return '';
   return TIERS.map(entry => {
@@ -26,13 +28,33 @@ function tierGrowthHTML(tier, prevTier) {
   }).join('');
 }
 
-// Renders the growth-icon row into a container element. Caller is
+// Renders the growth-icon ladder into a container element. Caller is
 // responsible for show()/hide()'ing the element based on whether a tier is
-// present. Shared by train.js's vocab/HMM/component result screens so the
-// bucket indicator isn't reimplemented per card type.
+// present.
 function renderTierGrowth(el, tier, prevTier) {
   if (!el) return;
   el.innerHTML = tierGrowthHTML(tier, prevTier);
+}
+
+// Builds a single icon for the word's current tier — the compact inline
+// indicator shown on every result screen (vocab word, HMM, component),
+// distinct from tierGrowthHTML's full ladder. Pure — testable in isolation.
+function tierIconHTML(tier, prevTier) {
+  if (!tier) return '';
+  const entry = TIERS.find(e => e.label === tier);
+  if (!entry) return '';
+  const changed = !!prevTier && prevTier !== tier;
+  const cls = 'tier-icon' + (changed ? ' tier-icon-changed' : '');
+  return `<span class="${cls}" title="${escHtml(tier)}">${entry.icon}</span>`;
+}
+
+// Renders the single current-tier icon into a container element. Caller is
+// responsible for show()/hide()'ing the element based on whether a tier is
+// present. Shared by train.js's vocab/HMM/component result screens so the
+// bucket indicator isn't reimplemented per card type.
+function renderTierIcon(el, tier, prevTier) {
+  if (!el) return;
+  el.innerHTML = tierIconHTML(tier, prevTier);
 }
 
 // Returns the TIERS entry for a word, or null for brand-new words (0 attempts).

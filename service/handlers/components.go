@@ -208,11 +208,9 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		Repetitions:    progress.Repetitions,
 		SceneText:      sceneText,
 	}
-	if correct {
-		resp.Tier = componentTier(progress)
-		if prevTier != "" && prevTier != resp.Tier {
-			resp.PrevTier = prevTier
-		}
+	resp.Tier = componentTier(progress)
+	if prevTier != "" && prevTier != resp.Tier {
+		resp.PrevTier = prevTier
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

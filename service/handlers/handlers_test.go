@@ -539,6 +539,26 @@ func TestQuizAnswer_Wrong(t *testing.T) {
 	}
 }
 
+func TestQuizAnswer_Wrong_IncludesTier(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTransl,
+		Answer: "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Tier != "New" {
+		t.Errorf("tier: want 'New' on a wrong answer for a fresh learning-phase word, got %q", resp.Tier)
+	}
+}
+
 func TestQuizAnswer_EnToZh(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -3884,6 +3904,28 @@ func TestComponentAnswer_WrongAnswer(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if correct, _ := resp["correct"].(bool); correct {
 		t.Errorf("want correct=false")
+	}
+}
+
+func TestComponentAnswer_WrongAnswer_IncludesTier(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "man",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	if resp["tier"] != "Struggling" {
+		t.Errorf("want tier=Struggling on a wrong first attempt, got %v", resp["tier"])
 	}
 }
 

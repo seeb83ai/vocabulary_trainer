@@ -1016,16 +1016,30 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     });
   }
 
-  async function mockTierChangeAnswer(page) {
+  async function mockTierChangeAnswer(page, correct = true) {
     await page.route('**/api/quiz/answer', async (route) => {
       const response = await route.fetch();
       const json = await response.json();
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ ...json, correct: true, tier: 'Practicing', prev_tier: 'Learning' }),
+        body: JSON.stringify({ ...json, correct, tier: 'Practicing', prev_tier: 'Learning' }),
       });
     });
+  }
+
+  async function answerCard(page, answer, expectedIcon) {
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    const card = await cardRes.json();
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+    await page.locator('#answer-input').fill(answer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText(expectedIcon, { timeout: 8_000 });
   }
 
   async function answerCorrectly(page) {
@@ -1033,18 +1047,10 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     const card = await cardRes.json();
     const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
     expect(correctAnswer).toBeTruthy();
-
-    await useZhToTranslMode(page);
-    await page.goto('/train');
-    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
-
-    await page.locator('#answer-input').fill(correctAnswer);
-    await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+    await answerCard(page, correctAnswer, '✓ Correct!');
   }
 
-  test('growth icons show the new tier and celebration screen appears when enabled', async ({ page }) => {
+  test('a single tier icon shows the new tier and celebration screen appears when enabled', async ({ page }) => {
     const settingsRes = await page.request.get('/api/settings');
     const originalSettings = await settingsRes.json();
     await page.request.patch('/api/settings', { data: { ...originalSettings, celebrate_bucket_change: true } });
@@ -1053,9 +1059,10 @@ test.describe('Quiz – celebrate bucket change setting', () => {
       await mockTierChangeAnswer(page);
       await answerCorrectly(page);
 
-      // Inline growth-icon indicator reflects the new tier.
+      // Exactly one icon shows the current tier (not the full ladder).
       await expect(page.locator('#bucket-info')).toBeVisible();
-      await expect(page.locator('#bucket-info .tier-growth-active')).toHaveCount(1);
+      await expect(page.locator('#bucket-info .tier-icon')).toHaveCount(1);
+      await expect(page.locator('#bucket-info .tier-icon')).toHaveAttribute('title', 'Practicing');
 
       // Clicking Next shows the celebration interstitial instead of the next card.
       await page.locator('#next-btn').click();
@@ -1078,5 +1085,26 @@ test.describe('Quiz – celebrate bucket change setting', () => {
 
     await page.locator('#next-btn').click();
     await expect(page.locator('#celebration-screen')).not.toBeVisible();
+  });
+
+  test('the tier icon also shows on a wrong answer, and celebration never fires for a tier drop', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, celebrate_bucket_change: true } });
+
+    try {
+      await mockTierChangeAnswer(page, false);
+      await answerCard(page, 'xxxxxxxxxxx', '✗ Wrong');
+
+      // The icon still appears on a wrong-answer result screen.
+      await expect(page.locator('#bucket-info')).toBeVisible();
+      await expect(page.locator('#bucket-info .tier-icon')).toHaveCount(1);
+
+      // A tier change from a WRONG answer must never trigger the celebration screen.
+      await page.locator('#next-btn').click();
+      await expect(page.locator('#celebration-screen')).not.toBeVisible();
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
   });
 });

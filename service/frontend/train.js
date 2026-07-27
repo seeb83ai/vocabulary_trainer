@@ -993,16 +993,6 @@ async function submitAnswer(e) {
       hide('add-translation-lang-select');
       hide('accept-correct-btn');
 
-      if (result.tier) {
-        renderTierGrowth($('bucket-info'), result.tier, result.prev_tier);
-        show('bucket-info');
-      } else {
-        hide('bucket-info');
-      }
-      lastTierChange = (result.tier && result.prev_tier && result.prev_tier !== result.tier)
-        ? { prevTier: result.prev_tier, tier: result.tier }
-        : null;
-
       if (!result.learning_new_word && result.repetitions > 1) {
         $('streak-info').textContent = t('result.streak', { n: result.repetitions });
         show('streak-info');
@@ -1010,6 +1000,16 @@ async function submitAnswer(e) {
         hide('streak-info');
       }
     }
+
+    if (result.tier) {
+      renderTierIcon($('bucket-info'), result.tier, result.prev_tier);
+      show('bucket-info');
+    } else {
+      hide('bucket-info');
+    }
+    lastTierChange = (result.correct && result.tier && result.prev_tier && result.prev_tier !== result.tier)
+      ? { prevTier: result.prev_tier, tier: result.tier }
+      : null;
 
     if (result.graduated) {
       setText('next-due-info', t('result.graduated'));
@@ -1154,12 +1154,12 @@ function showHMMResult(resp) {
   }
 
   if (resp.tier) {
-    renderTierGrowth($('bucket-info'), resp.tier, resp.prev_tier);
+    renderTierIcon($('bucket-info'), resp.tier, resp.prev_tier);
     show('bucket-info');
   } else {
     hide('bucket-info');
   }
-  lastTierChange = (resp.tier && resp.prev_tier && resp.prev_tier !== resp.tier)
+  lastTierChange = (resp.correct && resp.tier && resp.prev_tier && resp.prev_tier !== resp.tier)
     ? { prevTier: resp.prev_tier, tier: resp.tier }
     : null;
 
@@ -1223,12 +1223,12 @@ function showComponentResult(resp) {
   hide('add-translation-lang-select');
   loadDecomposition(currentCard.prompt, 'result-decompose', 'result-decompose-toggle');
   if (resp.tier) {
-    renderTierGrowth($('bucket-info'), resp.tier, resp.prev_tier);
+    renderTierIcon($('bucket-info'), resp.tier, resp.prev_tier);
     show('bucket-info');
   } else {
     hide('bucket-info');
   }
-  lastTierChange = (resp.tier && resp.prev_tier && resp.prev_tier !== resp.tier)
+  lastTierChange = (resp.correct && resp.tier && resp.prev_tier && resp.prev_tier !== resp.tier)
     ? { prevTier: resp.prev_tier, tier: resp.tier }
     : null;
   hide('streak-info');

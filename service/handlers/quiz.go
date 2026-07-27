@@ -481,14 +481,12 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		resp.SceneText = sceneText
 	}
 
-	if correct {
-		if sessionStreak > 1 {
-			resp.SessionStreak = sessionStreak
-		}
-		resp.Tier = sm2.ClassifyTier(updated).String()
-		if prevTier != "" && prevTier != resp.Tier {
-			resp.PrevTier = prevTier
-		}
+	resp.Tier = sm2.ClassifyTier(updated).String()
+	if prevTier != "" && prevTier != resp.Tier {
+		resp.PrevTier = prevTier
+	}
+	if correct && sessionStreak > 1 {
+		resp.SessionStreak = sessionStreak
 	}
 
 	if !correct {
