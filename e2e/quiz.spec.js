@@ -608,6 +608,20 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#disambig-input')).not.toBeVisible();
   });
 
+  // Issue #244: after the user resolves an ambiguous answer correctly, the gray
+  // question-recap box (#result-question) must be hidden on the success screen.
+  test('gray question-recap box is hidden after disambiguation resolves to Correct (issue #244)', async ({ page }) => {
+    const { quizZh } = await setupAmbiguousResult(page);
+
+    // Resolve the disambiguation correctly by typing the correct zh word.
+    await page.locator('#disambig-input').fill(quizZh);
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
+
+    // The gray question-recap box must NOT be visible on the success screen.
+    await expect(page.locator('#result-question')).not.toBeVisible();
+  });
+
   // Issue #194: a wrong word typed into the disambiguation form only shows
   // "Not quite" and lets the user retry. The normal Wrong screen is shown only
   // once the user gives up and clicks Next without having resolved it.
