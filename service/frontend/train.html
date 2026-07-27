@@ -3,10 +3,11 @@
 
   <!-- Stats bar -->
   <div class="bg-blue-50 border-b border-blue-100">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-6 text-sm text-blue-700">
+    <div class="max-w-2xl mx-auto px-4 py-2 flex items-center gap-6 text-sm text-blue-700">
       <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.dueToday">Due today:</span> <strong id="stats-due">—</strong></span>
       <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.totalWords">Total words:</span> <strong id="stats-total">—</strong></span>
       <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.newToday">New today:</span> <strong id="stats-new">—</strong></span>
+      <button id="open-filter-overlay" class="sm:hidden ml-auto bg-white text-xs text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition" data-i18n="filter.edit">▼ Edit</button>
     </div>
   </div>
 
@@ -22,22 +23,15 @@
     </div>
   </div>
 
-  <!-- Mode selector -->
-  <div class="bg-white border-b border-gray-200">
-    <!-- Desktop: all chips -->
-    <div class="hidden sm:flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap">
+  <!-- Mode selector (desktop only; mobile uses the Edit overlay instead) -->
+  <div class="hidden sm:block bg-white border-b border-gray-200">
+    <div class="flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap">
       <button data-mode="progressive"     class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.progressive">Progressive</button>
       <button data-mode="random"          class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.random">Random</button>
       <button data-mode="cycle"           class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.cycle">Cycle</button>
       <button data-mode="transl_to_zh"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.transl_to_zh">Transl → ZH</button>
       <button data-mode="zh_to_transl"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.zh_to_transl">ZH → Transl</button>
       <button data-mode="zh_pinyin_to_transl" class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.zh_pinyin_to_transl">ZH + Pinyin → Transl</button>
-    </div>
-    <!-- Mobile: selected chip + level chip + edit trigger -->
-    <div class="flex sm:hidden max-w-2xl mx-auto px-4 py-2 items-center gap-2">
-      <span id="mode-mobile-label" class="px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white"></span>
-      <span id="level-mobile-label" class="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600"></span>
-      <button id="open-filter-overlay" class="ml-auto text-xs text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition" data-i18n="filter.edit">▼ Edit</button>
     </div>
   </div>
 
