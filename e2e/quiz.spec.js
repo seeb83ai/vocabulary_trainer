@@ -1028,7 +1028,7 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     });
   }
 
-  async function answerCard(page, answer, expectedIcon) {
+  async function submitAnswerAndWait(page, answer) {
     const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
     const card = await cardRes.json();
 
@@ -1039,40 +1039,42 @@ test.describe('Quiz – celebrate bucket change setting', () => {
 
     await page.locator('#answer-input').fill(answer);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText(expectedIcon, { timeout: 8_000 });
   }
 
-  async function answerCorrectly(page) {
+  async function submitCorrectAnswer(page) {
     const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
     const card = await cardRes.json();
     const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
     expect(correctAnswer).toBeTruthy();
-    await answerCard(page, correctAnswer, '✓ Correct!');
+    await submitAnswerAndWait(page, correctAnswer);
   }
 
-  test('a single tier icon shows the new tier and celebration screen appears when enabled', async ({ page }) => {
+  test('celebration screen appears before the result screen, then reveals it after Continue', async ({ page }) => {
     const settingsRes = await page.request.get('/api/settings');
     const originalSettings = await settingsRes.json();
     await page.request.patch('/api/settings', { data: { ...originalSettings, celebrate_bucket_change: true } });
 
     try {
       await mockTierChangeAnswer(page);
-      await answerCorrectly(page);
+      await submitCorrectAnswer(page);
 
-      // Exactly one icon shows the current tier (not the full ladder).
-      await expect(page.locator('#bucket-info')).toBeVisible();
+      // Celebration appears immediately, BEFORE the correct/wrong result screen.
+      await expect(page.locator('#celebration-screen')).toBeVisible({ timeout: 8_000 });
+      await expect(page.locator('#result-area')).not.toBeVisible();
+      await expect(page.locator('#celebration-transition')).toContainText('Learning');
+      await expect(page.locator('#celebration-transition')).toContainText('Practicing');
+
+      // Continuing reveals the result screen, with a single tier icon (not the full ladder).
+      await page.locator('#celebration-continue-btn').click();
+      await expect(page.locator('#celebration-screen')).not.toBeVisible();
+      await expect(page.locator('#result-area')).toBeVisible();
+      await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
       await expect(page.locator('#bucket-info .tier-icon')).toHaveCount(1);
       await expect(page.locator('#bucket-info .tier-icon')).toHaveAttribute('title', 'Practicing');
 
-      // Clicking Next shows the celebration interstitial instead of the next card.
+      // Next now behaves normally — straight to the next card, no second celebration.
       await page.locator('#next-btn').click();
-      await expect(page.locator('#celebration-screen')).toBeVisible({ timeout: 8_000 });
-      await expect(page.locator('#celebration-transition')).toContainText('Learning');
-      await expect(page.locator('#celebration-transition')).toContainText('Practicing');
       await expect(page.locator('#result-area')).not.toBeVisible();
-
-      // Continuing dismisses the celebration screen and loads the next card.
-      await page.locator('#celebration-continue-btn').click();
       await expect(page.locator('#celebration-screen')).not.toBeVisible();
     } finally {
       await page.request.patch('/api/settings', { data: originalSettings });
@@ -1081,9 +1083,9 @@ test.describe('Quiz – celebrate bucket change setting', () => {
 
   test('celebration screen never appears when the setting is disabled (default)', async ({ page }) => {
     await mockTierChangeAnswer(page);
-    await answerCorrectly(page);
+    await submitCorrectAnswer(page);
 
-    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
     await expect(page.locator('#celebration-screen')).not.toBeVisible();
   });
 
@@ -1094,15 +1096,16 @@ test.describe('Quiz – celebrate bucket change setting', () => {
 
     try {
       await mockTierChangeAnswer(page, false);
-      await answerCard(page, 'xxxxxxxxxxx', '✗ Wrong');
+      await submitAnswerAndWait(page, 'xxxxxxxxxxx');
+
+      // Result appears directly — no celebration screen in between, even
+      // though the mocked response carries a (downward) tier change.
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+      await expect(page.locator('#celebration-screen')).not.toBeVisible();
 
       // The icon still appears on a wrong-answer result screen.
       await expect(page.locator('#bucket-info')).toBeVisible();
       await expect(page.locator('#bucket-info .tier-icon')).toHaveCount(1);
-
-      // A tier change from a WRONG answer must never trigger the celebration screen.
-      await page.locator('#next-btn').click();
-      await expect(page.locator('#celebration-screen')).not.toBeVisible();
     } finally {
       await page.request.patch('/api/settings', { data: originalSettings });
     }

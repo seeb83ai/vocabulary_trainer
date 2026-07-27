@@ -127,69 +127,9 @@ describe('wordTier', () => {
   });
 });
 
-// ── tierGrowthHTML ────────────────────────────────────────────────────────────
-// Inline from app.js. Reuses the TIERS/escHtml already inlined above.
-
-function tierGrowthHTML(tier, prevTier) {
-  if (!tier) return '';
-  return TIERS.map(entry => {
-    const active = entry.label === tier;
-    const changed = active && !!prevTier && prevTier !== tier;
-    const classes = [
-      'tier-growth-icon',
-      active ? 'tier-growth-active' : 'tier-growth-inactive',
-      changed ? 'tier-growth-changed' : '',
-    ].filter(Boolean).join(' ');
-    return `<span class="${classes}" title="${escHtml(entry.label)}">${entry.icon}</span>`;
-  }).join('');
-}
-
-describe('tierGrowthHTML', () => {
-  it('returns empty string when there is no tier', () => {
-    expect(tierGrowthHTML('', '')).toBe('');
-    expect(tierGrowthHTML(undefined, undefined)).toBe('');
-  });
-
-  it('renders all 5 tier icons', () => {
-    const html = tierGrowthHTML('Learning', '');
-    for (const entry of TIERS) {
-      expect(html).toContain(entry.icon);
-    }
-  });
-
-  it('marks the current tier active and others inactive', () => {
-    const html = tierGrowthHTML('Practicing', '');
-    const practicingSpan = html.match(/<span[^>]*title="Practicing"[^>]*>/)[0];
-    expect(practicingSpan).toContain('tier-growth-active');
-    const strugglingSpan = html.match(/<span[^>]*title="Struggling"[^>]*>/)[0];
-    expect(strugglingSpan).toContain('tier-growth-inactive');
-    expect(strugglingSpan).not.toContain('tier-growth-active');
-  });
-
-  it('adds a changed class only to the new tier when prevTier differs', () => {
-    const html = tierGrowthHTML('Practicing', 'Learning');
-    const practicingSpan = html.match(/<span[^>]*title="Practicing"[^>]*>/)[0];
-    expect(practicingSpan).toContain('tier-growth-changed');
-    const learningSpan = html.match(/<span[^>]*title="Learning"[^>]*>/)[0];
-    expect(learningSpan).not.toContain('tier-growth-changed');
-  });
-
-  it('does not add a changed class when prevTier equals tier', () => {
-    const html = tierGrowthHTML('Practicing', 'Practicing');
-    const practicingSpan = html.match(/<span[^>]*title="Practicing"[^>]*>/)[0];
-    expect(practicingSpan).not.toContain('tier-growth-changed');
-  });
-
-  it('escapes the tier label used in the title attribute', () => {
-    const html = tierGrowthHTML('<b>New</b>', '');
-    expect(html).not.toContain('<b>New</b>"');
-  });
-});
-
 // ── tierIconHTML ──────────────────────────────────────────────────────────────
-// Inline from app.js. Distinct from tierGrowthHTML (the full 5-tier ladder
-// used only by the celebration screen) — this renders just the ONE icon for
-// the word's current tier, for the compact inline result-screen indicator.
+// Inline from app.js. Renders just the ONE icon for the word's current tier,
+// for the compact inline result-screen indicator.
 
 function tierIconHTML(tier, prevTier) {
   if (!tier) return '';

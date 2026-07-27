@@ -9,36 +9,10 @@ const TIERS = [
   { key: '85-100', label: 'Mastered',   i18nKey: 'tier.mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700', icon: '🌸' },
 ];
 
-// Builds the full 5-tier growth-icon ladder HTML for a tier/prevTier pair
-// (server-sent tier label strings, e.g. "Struggling"/"Practicing"). Pure —
-// testable in isolation. Used only by the celebration interstitial
-// (train.js's showCelebrationScreen), which is the one place a "before →
-// after" ladder view makes sense.
-function tierGrowthHTML(tier, prevTier) {
-  if (!tier) return '';
-  return TIERS.map(entry => {
-    const active = entry.label === tier;
-    const changed = active && !!prevTier && prevTier !== tier;
-    const classes = [
-      'tier-growth-icon',
-      active ? 'tier-growth-active' : 'tier-growth-inactive',
-      changed ? 'tier-growth-changed' : '',
-    ].filter(Boolean).join(' ');
-    return `<span class="${classes}" title="${escHtml(entry.label)}">${entry.icon}</span>`;
-  }).join('');
-}
-
-// Renders the growth-icon ladder into a container element. Caller is
-// responsible for show()/hide()'ing the element based on whether a tier is
-// present.
-function renderTierGrowth(el, tier, prevTier) {
-  if (!el) return;
-  el.innerHTML = tierGrowthHTML(tier, prevTier);
-}
-
 // Builds a single icon for the word's current tier — the compact inline
-// indicator shown on every result screen (vocab word, HMM, component),
-// distinct from tierGrowthHTML's full ladder. Pure — testable in isolation.
+// indicator shown on every result screen (vocab word, HMM, component).
+// Pure — testable in isolation. The celebration screen builds its own
+// old/new icon pair directly (via TIERS) since it crossfades between them.
 function tierIconHTML(tier, prevTier) {
   if (!tier) return '';
   const entry = TIERS.find(e => e.label === tier);
