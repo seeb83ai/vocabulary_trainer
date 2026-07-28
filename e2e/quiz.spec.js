@@ -995,6 +995,107 @@ test.describe('Quiz – green result box title (issue #246)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Group: Auto-play sound toggle (issue: auto-play-sound)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – auto-play sound toggle', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  async function useTranslToZhMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('auto-play toggle is visible and off by default', async ({ page }) => {
+    await page.goto('/train');
+    await expect(page.locator('#autoplay-toggle-btn')).toBeVisible();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('clicking the toggle arms auto-play and updates aria-pressed', async ({ page }) => {
+    await page.goto('/train');
+    const btn = page.locator('#autoplay-toggle-btn');
+    await btn.click();
+    await expect(btn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('enabling auto-play triggers an audio request when the next zh_to_transl card loads', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    // No audio yet — enabling the toggle must not play the already-shown card.
+    expect(audioRequests.length).toBe(0);
+
+    // Answer to advance to the next card, which should auto-play.
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+
+    await expect.poll(() => audioRequests.length, { timeout: 5_000 }).toBeGreaterThan(0);
+  });
+
+  test('auto-play never fires in transl_to_zh mode, even when enabled', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    await useTranslToZhMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+
+    // Give any (incorrect) auto-play a moment to fire before asserting silence.
+    await page.waitForTimeout(500);
+    expect(audioRequests.length).toBe(0);
+  });
+
+  test('auto-play toggle resets to off after a page reload', async ({ page }) => {
+    await page.goto('/train');
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.reload();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Group: Bucket-change growth indicator + celebration interstitial
 //
 // Mocks the /api/quiz/answer response to inject a tier change (Learning →

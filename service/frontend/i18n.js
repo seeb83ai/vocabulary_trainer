@@ -439,6 +439,10 @@ const I18N = {
     'issue.errCategory': 'Please choose a type.',
     'issue.errTitle': 'Please enter a title.',
     'issue.errDescription': 'Please enter a description.',
+
+    // Auto-play sound toggle (train page)
+    'train.autoPlay.onTitle': 'Auto-play sound: on',
+    'train.autoPlay.offTitle': 'Auto-play sound: off',
   },
 
   zh: {
@@ -877,6 +881,10 @@ const I18N = {
     'issue.errCategory': '请选择类型。',
     'issue.errTitle': '请输入标题。',
     'issue.errDescription': '请输入描述。',
+
+    // Auto-play sound toggle (train page)
+    'train.autoPlay.onTitle': '自动播放声音：开',
+    'train.autoPlay.offTitle': '自动播放声音：关',
   },
 };
 

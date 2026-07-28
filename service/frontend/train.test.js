@@ -474,6 +474,52 @@ describe('isTransCorrect', () => {
   });
 });
 
+// ── shouldAutoPlay ──────────────────────────────────────────────────────────────
+// Mirrors the pure eligibility check in train.js that decides whether a newly
+// shown card should trigger auto-play audio (when the user has the auto-play
+// toggle enabled). Must never fire for transl_to_zh (would reveal the answer)
+// or hmm cards (no audio exists).
+
+function shouldAutoPlay(currentCard) {
+  if (!currentCard) return false;
+  if (currentCard.mode === 'new_word') return true;
+  if (currentCard.card_type === 'component') return true;
+  if (currentCard.card_type === 'hmm') return false;
+  return currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
+}
+
+describe('shouldAutoPlay', () => {
+  it('returns true for zh_to_transl mode', () => {
+    expect(shouldAutoPlay({ mode: 'zh_to_transl' })).toBe(true);
+  });
+
+  it('returns true for zh_pinyin_to_transl mode', () => {
+    expect(shouldAutoPlay({ mode: 'zh_pinyin_to_transl' })).toBe(true);
+  });
+
+  it('returns false for transl_to_zh mode (would reveal the answer)', () => {
+    expect(shouldAutoPlay({ mode: 'transl_to_zh' })).toBe(false);
+  });
+
+  it('returns true for the new-word introduction screen', () => {
+    expect(shouldAutoPlay({ mode: 'new_word' })).toBe(true);
+  });
+
+  it('returns true for a component card (including new-component introduction)', () => {
+    expect(shouldAutoPlay({ card_type: 'component', is_new: true })).toBe(true);
+    expect(shouldAutoPlay({ card_type: 'component', is_new: false })).toBe(true);
+  });
+
+  it('returns false for hmm cards (no audio exists)', () => {
+    expect(shouldAutoPlay({ card_type: 'hmm' })).toBe(false);
+  });
+
+  it('returns false when there is no current card', () => {
+    expect(shouldAutoPlay(null)).toBe(false);
+    expect(shouldAutoPlay(undefined)).toBe(false);
+  });
+});
+
 // ── levenshtein distance ───────────────────────────────────────────────────────
 // Standard DP edit-distance; inlined per project convention (tests are self-contained).
 
