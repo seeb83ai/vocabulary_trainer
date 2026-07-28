@@ -518,6 +518,42 @@ describe('shouldAutoPlay', () => {
     expect(shouldAutoPlay(null)).toBe(false);
     expect(shouldAutoPlay(undefined)).toBe(false);
   });
+
+  it('returns false for the Chinese (no sound) mode', () => {
+    expect(shouldAutoPlay({ mode: 'zh_to_transl_no_sound' })).toBe(false);
+  });
+});
+
+// ── isZhPromptWithSound ────────────────────────────────────────────────────────
+// Mirrors the pure play-button-visibility check in train.js's showCard(): the
+// button is only shown for the two modes where the Chinese prompt has audio.
+// zh_to_transl_no_sound deliberately behaves like a Chinese prompt for every
+// other purpose but is excluded here on purpose, not by accidental omission.
+
+function isZhPromptWithSound(mode) {
+  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl';
+}
+
+describe('isZhPromptWithSound', () => {
+  it('returns true for zh_to_transl', () => {
+    expect(isZhPromptWithSound('zh_to_transl')).toBe(true);
+  });
+
+  it('returns true for zh_pinyin_to_transl', () => {
+    expect(isZhPromptWithSound('zh_pinyin_to_transl')).toBe(true);
+  });
+
+  it('returns false for zh_to_transl_no_sound', () => {
+    expect(isZhPromptWithSound('zh_to_transl_no_sound')).toBe(false);
+  });
+
+  it('returns false for transl_to_zh', () => {
+    expect(isZhPromptWithSound('transl_to_zh')).toBe(false);
+  });
+
+  it('returns false for an unknown mode', () => {
+    expect(isZhPromptWithSound('cycle')).toBe(false);
+  });
 });
 
 // ── levenshtein distance ───────────────────────────────────────────────────────

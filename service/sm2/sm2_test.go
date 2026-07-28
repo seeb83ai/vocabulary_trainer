@@ -573,9 +573,10 @@ func TestCheckHMMAnswer_Wrong(t *testing.T) {
 
 func TestSelectMode_ValidMode(t *testing.T) {
 	validModes := map[string]bool{
-		models.ModeTranslToZh:       true,
-		models.ModeZhToTransl:       true,
-		models.ModeZhPinyinToTransl: true,
+		models.ModeTranslToZh:        true,
+		models.ModeZhToTransl:        true,
+		models.ModeZhPinyinToTransl:  true,
+		models.ModeZhToTranslNoSound: true,
 	}
 	for i := 0; i < 50; i++ {
 		m := SelectMode()
@@ -590,7 +591,7 @@ func TestSelectMode_AllModesReachable(t *testing.T) {
 	for i := 0; i < 300; i++ {
 		seen[SelectMode()] = true
 	}
-	for _, m := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl} {
+	for _, m := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound} {
 		if !seen[m] {
 			t.Errorf("mode %q was never returned in 300 calls", m)
 		}
@@ -651,9 +652,10 @@ func TestSelectProgressiveMode_HighAccuracyEnoughAttempts(t *testing.T) {
 func TestSelectProgressiveMode_Mastered(t *testing.T) {
 	// accuracy >= 85% and attempts >= 10 → random valid mode
 	validModes := map[string]bool{
-		models.ModeTranslToZh:       true,
-		models.ModeZhToTransl:       true,
-		models.ModeZhPinyinToTransl: true,
+		models.ModeTranslToZh:        true,
+		models.ModeZhToTransl:        true,
+		models.ModeZhPinyinToTransl:  true,
+		models.ModeZhToTranslNoSound: true,
 	}
 	for i := 0; i < 50; i++ {
 		m := SelectProgressiveMode(9, 10, 0, DefaultProgressiveModeConfig()) // 90%, 10 attempts
@@ -867,9 +869,10 @@ func TestMaskPinyin_SingleRune(t *testing.T) {
 func TestSelectProgressiveMode_Exactly85Pct(t *testing.T) {
 	// 85/100 = exactly 85% with 100 attempts → random mode (mastered)
 	validModes := map[string]bool{
-		models.ModeTranslToZh:       true,
-		models.ModeZhToTransl:       true,
-		models.ModeZhPinyinToTransl: true,
+		models.ModeTranslToZh:        true,
+		models.ModeZhToTransl:        true,
+		models.ModeZhPinyinToTransl:  true,
+		models.ModeZhToTranslNoSound: true,
 	}
 	seen := map[string]bool{}
 	for i := 0; i < 100; i++ {

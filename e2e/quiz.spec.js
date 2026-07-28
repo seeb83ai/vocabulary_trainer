@@ -1096,6 +1096,111 @@ test.describe('Quiz – auto-play sound toggle', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Group: Chinese (no sound) → Translation mode
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – Chinese (no sound) mode', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  async function useNoSoundMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl_no_sound', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl_no_sound');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('shows the Chinese prompt with the play button hidden', async ({ page }) => {
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl_no_sound&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+    expect(card.mode).toBe('zh_to_transl_no_sound');
+    expect(['你好', '谢谢', '再见']).toContain(card.prompt);
+
+    await useNoSoundMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+    await expect(page.locator('#play-btn')).not.toBeVisible();
+  });
+
+  test('auto-play never fires in this mode, even when the toggle is enabled', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    await useNoSoundMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+
+    await page.waitForTimeout(500);
+    expect(audioRequests.length).toBe(0);
+  });
+
+  test('result screen play button still works after answering (no-sound only applies to the prompt phase)', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    await useNoSoundMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    const playBtn = page.locator('#word-breakdown .result-inline-play');
+    await expect(playBtn).toBeVisible();
+    await playBtn.click();
+    await page.waitForTimeout(300);
+    expect(audioRequests.length).toBeGreaterThan(0);
+  });
+
+  test('flat mode button on the training page selects the mode and persists it', async ({ page }) => {
+    await page.goto('/train');
+    await page.locator('.mode-btn[data-mode="zh_to_transl_no_sound"]').click();
+
+    await expect.poll(() =>
+      page.evaluate(() => localStorage.getItem('quizMode'))
+    ).toBe('zh_to_transl_no_sound');
+
+    await page.reload();
+    await expect(page.locator('.mode-btn[data-mode="zh_to_transl_no_sound"]')).toHaveClass(/bg-blue-600/);
+  });
+
+  test('answering correctly grades the same as zh_to_transl', async ({ page }) => {
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl_no_sound&langs=en');
+    const card = await cardRes.json();
+    const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+    expect(correctAnswer).toBeTruthy();
+
+    await useNoSoundMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+    await page.locator('#answer-input').fill(correctAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Group: Bucket-change growth indicator + celebration interstitial
 //
 // Mocks the /api/quiz/answer response to inject a tier change (Learning →
