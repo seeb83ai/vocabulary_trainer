@@ -1,39 +1,47 @@
 # 词汇训练 · Vocabulary Trainer
 
-A self-hosted Chinese–English vocabulary trainer with spaced repetition (SM-2).
+This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 spaced repetition algorithm.
 
 ## Features
 
-- Add vocabulary with Chinese characters, pinyin, and one or more English translations
-- N:N word relationships — the same English or Chinese word can be shared across entries
-- **Six quiz modes** chosen at random or fixed by user: English → Chinese, Chinese → English, **Chinese (no sound) → English** (identical to Chinese → English but the 🔊 play button is hidden and auto-play never fires — for drilling pure visual hanzi recognition without an audio cue), Chinese + Pinyin → English, **Progressive** (auto-selects direction based on learning progress), and **Cycle** (rotates through a user-configured sequence of directions per word). "Chinese (no sound)" can be selected per proficiency tier and new-word step in Settings → Training Mode, as a Cycle Mode step, directly via the training-page mode selector, or via Random
-- [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method) — words you get wrong appear more often; correct answers are scheduled further into the future
-- **Daily new-word cap** — limits how many brand-new words are introduced per day (default: 5, configurable via `MAX_NEW_WORDS`); once the cap is reached only already-seen cards are served for the rest of the day; the training page shows a "New today: X / Y" counter in the stats bar
-- **Difficult-words drill** — once everything due is reviewed, the "All done for today!" screen offers a "Drill my hardest words" option: tick it and pick an amount to flag that many of your hardest words (about half by lowest accuracy, half by lowest ease factor). Those flagged words are served on demand — regardless of their due date — until each is answered correctly, which clears its flag. A temporary "Difficult words" pill in the filter bar shows the drill is active and how many remain; click it to exit early
-- Flexible answer matching: parenthesised segments are optional (`(das) Essen` accepts `Essen`); slash- or comma-separated alternatives are each valid (`Essen / Gericht` accepts `Essen` or `Gericht`; `topic, item` accepts `topic` or `item`)
-- On a wrong answer: see what you typed alongside the correct Chinese + pinyin + translations, and optionally add your answer as an accepted translation with one click; in *Translation → Chinese* mode, pinyin is also shown beside your typed Chinese answer so you can see how it was pronounced; if you have two active learning languages (primary + secondary), a language picker lets you choose which language the new translation belongs to, defaulting to your primary language
-- **Accept as correct** — if a wrong answer was a typo, click "Accept as correct" to restore your pre-answer SM-2 progress and count the attempt as correct without penalty. Configurable in Settings: never / on 1-character typos (default) / always
-- **Training stats** — daily progress tracking: attempts, mistakes, accuracy, words known, new words learned, and best correct streak; view a Chart.js bar/line chart of the full history and a detailed table of the last 14 days on the `/stats` page
-- **Word-level statistics** — real-time aggregate stats for all seen words on the `/stats` page: correctness milestones (1+/3+/5+/10+ correct), accuracy distribution (doughnut chart), avg/median/P95 of correct answers, attempts, accuracy, and ease factor; tables of the 5 hardest and 5 most-practiced words with translations; includes an info box explaining SM-2 ease factor and all metrics
-- **Due date distribution** — bar chart on the `/stats` page showing how many words are due on each day over the next 30 days; includes tag filter chips to narrow the view to specific word groups
-- **Confusion tracking** — if your wrong answer is a valid translation of a *different* known word, it is recorded as a confusion pair (works in all quiz modes); a yellow hint box shows immediately on the result screen, and the full history is visible on the `/mismatches` page
-- 🔊 Read-aloud button on every Chinese word — plays a cached MP3 (Microsoft Edge neural TTS, built into the binary), falls back silently to the browser's Web Speech API
-- **Auto-play sound** — floating 🔇/🔊 toggle button on the training page (bottom-left of the report-issue button), off by default; when enabled, automatically plays the Chinese pronunciation whenever a new word or component prompt (or a new-word/new-component introduction) is shown, never in *Translation → Chinese* mode since that would reveal the answer. The setting is not persisted — it resets to off on page reload
-- **Blur pinyin** — optional setting (Settings → Training Mode → Quiz Display) that blurs the pinyin hint on quiz cards so you can't read it at a glance; tap or click it to reveal, re-blurring on the next card
-- **Bucket growth indicator** — the result screen shows a single growth icon (🌰🌱🌿🌳🌸) marking which accuracy tier (New/Struggling/Learning/Practicing/Mastered) a word, HMM entity, or component is currently in, on both correct and wrong answers. **Celebrate bucket changes** (optional setting, off by default, Settings → Training Mode → Quiz Display) shows a full-screen "Level up!" interstitial — with the old tier's icon dissolving into the new one — right after a correct answer advances the tier, before the correct/wrong result screen appears
-- **Tags** — assign tags to vocabulary words (e.g. "HSK1", "food", "travel"); filter by tag on both the vocabulary list and training page (OR logic when multiple tags selected); tags are created on-the-fly via an autocomplete input and cleaned up automatically when no longer used
-- **Auto-translate** — when a DeepL API key is configured, an auto-translate button appears in the Add/Edit Word form; enter Chinese to get the translation + pinyin filled in automatically, or enter the translation to get Chinese + pinyin back (pinyin generated locally via [go-pinyin](https://github.com/mozillazg/go-pinyin))
-- Vocabulary management: add, edit, delete, search, paginate, sort by any column; SM-2 progress shown per word
-- Due-date and correct-answer scheduling include a small random jitter to shuffle cards and avoid repetitive review patterns
-- Bulk import from a structured text file (see `service/cmd/import`)
-- **Character breakdown** — on the training screen, a collapsible "Character breakdown" block appears below each Chinese character; click to reveal radical, definition, etymology hint, and component parts with their meanings (data from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported via `service/cmd/import-hanzi`)
-- **Hanzi Movie Method mnemonics** — for single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorise characters by mapping pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`; compose scenes in the vocabulary edit form; saved scenes appear automatically during training (expanded on wrong answers, collapsed on correct). Choices are remembered globally — set an actor for "b" once and it pre-fills everywhere. Mnemonic scenes can also be written for **component characters** (radicals/sub-parts) via the component edit tab on the `/vocab` page; scenes are shown on component quiz result cards the same way as word scenes
-- **Pinyin listening training** — dedicated `/pinyin` page for tone and sound discrimination; hear a pinyin syllable and identify it via multiple choice (learning phase) or typed answer e.g. `ba1` (review phase); SM-2 spaced repetition tracks progress per sound; ~1,600 syllable/tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection; filter by consonant group (b/p/m/f, zh/ch/sh/r, etc.); confusion tracking for commonly mixed-up sounds
-- HSK vocabulary import (HSK 1–6) fetched directly from mandarinbean.com, with automatic `hsk-N` tagging (see `service/cmd/import-hsk`)
-- Optional single-user password protection (set `AUTH_USER` / `AUTH_PASSWORD` in `.env`)
-- SQLite database stored on the host filesystem
-- Runs in Docker or natively; static frontend is embedded in the Go binary — no Python or external tools required
-- Deploy to Raspberry Pi with `make release` (cross-compiles for `linux/arm64`, rsyncs via SSH)
+- Add vocabulary with Chinese characters, pinyin, and one or more English translations.
+- The app supports N:N word relationships. The same English or Chinese word can appear in more than one entry.
+- The app has six quiz modes. You can pick a mode, or let the app pick one at random.
+  - **English → Chinese**
+  - **Chinese → English**
+  - **Chinese (no sound) → English**. This mode is the same as Chinese → English, but it hides the 🔊 play button and never auto-plays audio. Use this mode to drill visual hanzi recognition without an audio cue.
+  - **Chinese + Pinyin → English**
+  - **Progressive**. This mode picks the quiz direction based on your learning progress.
+  - **Cycle**. This mode rotates through a sequence of directions that you configure for each word.
+  - You can select Chinese (no sound) mode in four places: in Settings → Training Mode for a proficiency tier or new-word step, as a step in Cycle Mode, directly on the training-page mode selector, or through Random.
+- The app uses [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method). Words you get wrong appear more often. The app schedules correct answers further into the future.
+- **Daily new-word cap.** This setting limits how many new words the app introduces per day. The default is 5 words, and you can configure it with `MAX_NEW_WORDS`. Once you reach the cap, the app serves only already-seen cards for the rest of the day. The training page shows a "New today: X / Y" counter in the stats bar.
+- **Difficult-words drill.** Once you review everything due, the "All done for today!" screen offers a "Drill my hardest words" option. Tick the option and pick an amount to flag that many of your hardest words. The app picks about half by lowest accuracy and half by lowest ease factor. The app serves flagged words on demand, regardless of their due date, until you answer each one correctly. A correct answer clears the flag. A temporary "Difficult words" pill in the filter bar shows that the drill is active and shows how many words remain. Click the pill to exit the drill early.
+- **Flexible answer matching.** Parenthesized segments are optional: `(das) Essen` accepts `Essen`. Slash- or comma-separated alternatives are each valid: `Essen / Gericht` accepts `Essen` or `Gericht`, and `topic, item` accepts `topic` or `item`.
+- **Wrong-answer review.** On a wrong answer, the app shows what you typed next to the correct Chinese text, pinyin, and translations. You can add your answer as an accepted translation with one click. In *Translation → Chinese* mode, the app also shows pinyin beside your typed Chinese answer, so you can see how it is pronounced. If you have two active learning languages (primary and secondary), a language picker lets you choose which language the new translation belongs to. The picker defaults to your primary language.
+- **Accept as correct.** If a wrong answer was a typo, click "Accept as correct" to restore your pre-answer SM-2 progress. The app then counts the attempt as correct, with no penalty. You can configure this behavior in Settings: never, on 1-character typos (the default), or always.
+- **Training stats.** The app tracks daily progress: attempts, mistakes, accuracy, words known, new words learned, and your best correct streak. The `/stats` page shows a Chart.js bar or line chart of your full history, and a table of the last 14 days.
+- **Word-level statistics.** The `/stats` page shows real-time stats for all words you have seen: correctness milestones (1+, 3+, 5+, 10+ correct answers), an accuracy distribution doughnut chart, and the average, median, and P95 of correct answers, attempts, accuracy, and ease factor. The page also shows tables of your 5 hardest and 5 most-practiced words, with translations, and an info box that explains the SM-2 ease factor and all other metrics.
+- **Due date distribution.** The `/stats` page shows a bar chart of how many words are due on each day over the next 30 days. Tag filter chips let you narrow the view to specific word groups.
+- **Confusion tracking.** If your wrong answer is a valid translation of a different, known word, the app records it as a confusion pair. This works in all quiz modes. A yellow hint box shows on the result screen right away, and you can see the full history on the `/mismatches` page.
+- Every Chinese word has a 🔊 read-aloud button. The button plays a cached MP3 file, generated with Microsoft Edge neural TTS, which is built into the binary. If this fails, the button falls back silently to the browser's Web Speech API.
+- **Auto-play sound.** A floating 🔇/🔊 toggle button sits at the bottom-left of the training page, near the report-issue button. This setting is off by default. When you turn it on, the app automatically plays the Chinese pronunciation whenever it shows a new word, component prompt, or introduction. The app never auto-plays audio in *Translation → Chinese* mode, because that would reveal the answer. The setting does not persist. It resets to off when you reload the page.
+- **Blur pinyin.** This optional setting is in Settings → Training Mode → Quiz Display. It blurs the pinyin hint on quiz cards, so you cannot read it at a glance. Tap or click the hint to reveal it. The hint blurs again on the next card.
+- **Bucket growth indicator.** The result screen shows one growth icon (🌰🌱🌿🌳🌸) for each accuracy tier: New, Struggling, Learning, Practicing, or Mastered. The icon marks the current tier of a word, HMM entity, or component, on both correct and wrong answers.
+  - **Celebrate bucket changes** is an optional setting, off by default, in Settings → Training Mode → Quiz Display. When a correct answer advances a word's tier, this setting shows a full-screen "Level up!" interstitial before the result screen. The old tier's icon dissolves into the new one.
+- **Tags.** You can assign tags to vocabulary words, for example "HSK1", "food", or "travel". You can filter by tag on the vocabulary list and the training page. When you select multiple tags, the app applies OR logic. An autocomplete input creates tags on the fly, and the app removes unused tags automatically.
+- **Auto-translate.** When you configure a DeepL API key, an auto-translate button appears in the Add/Edit Word form. The button detects direction automatically: enter Chinese to get the translation and pinyin filled in, or enter the translation to get Chinese and pinyin back. The app generates pinyin locally with [go-pinyin](https://github.com/mozillazg/go-pinyin).
+- Vocabulary management: add, edit, delete, search, paginate, and sort by any column. The app shows SM-2 progress per word.
+- Due-date and correct-answer scheduling include a small random jitter. This shuffles cards and avoids repetitive review patterns.
+- You can bulk-import vocabulary from a structured text file. See `service/cmd/import`.
+- **Character breakdown.** On the training screen, a collapsible "Character breakdown" block appears below each Chinese character. Click it to reveal the radical, definition, etymology hint, and component parts with their meanings. This data comes from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported with `service/cmd/import-hanzi`.
+- **Hanzi Movie Method mnemonics.** For single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorize characters. It maps pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`, and compose scenes in the vocabulary edit form. Saved scenes appear automatically during training: expanded on wrong answers, and collapsed on correct answers. The app remembers your choices globally, so setting an actor for "b" once pre-fills it everywhere. You can also write mnemonic scenes for component characters (radicals and sub-parts) on the component edit tab of the `/vocab` page. Component quiz result cards show these scenes the same way as word scenes.
+- **Pinyin listening training.** The `/pinyin` page trains tone and sound discrimination. You hear a pinyin syllable and identify it: by multiple choice in the learning phase, or by typing an answer, for example `ba1`, in the review phase. SM-2 spaced repetition tracks your progress per sound, across about 1,600 syllable and tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. You can filter by consonant group, for example b/p/m/f or zh/ch/sh/r. The page also tracks confusion between commonly mixed-up sounds.
+- HSK vocabulary import (HSK 1-6) fetches vocabulary directly from mandarinbean.com and applies `hsk-N` tags automatically. See `service/cmd/import-hsk`.
+- Optional single-user password protection. Set `AUTH_USER` and `AUTH_PASSWORD` in `.env`.
+- The app stores its SQLite database on the host filesystem.
+- The app runs in Docker or natively. The static frontend is embedded in the Go binary, so the app needs no Python or other external tools.
+- Deploy to a Raspberry Pi with `make release`. This target cross-compiles for `linux/arm64` and rsyncs the binary over SSH.
 
 ## Screenshots
 
@@ -63,9 +71,9 @@ Then open [http://localhost:8080](http://localhost:8080).
 
 1. Go to **Vocabulary** (`/vocab`) and add some words.
 2. Return to **Train** (`/`) to start a quiz session.
-3. Check **Mismatches** (`/mismatches`) to review words you've confused with each other.
+3. Check **Mismatches** (`/mismatches`) to review words you confused with each other.
 
-The SQLite database is stored in `./data/vocab.db` on your host.
+The app stores the SQLite database in `./data/vocab.db` on your host.
 
 ## Authentication
 
@@ -76,20 +84,22 @@ AUTH_USER=admin
 AUTH_PASSWORD=yourpassword
 ```
 
-When enabled, all pages and API endpoints require a valid session. Unauthenticated page requests are redirected to `/login`; unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours.
+When you enable authentication, all pages and API endpoints require a valid session. The app redirects unauthenticated page requests to `/login`. Unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours.
 
 ### Production hardening
 
-For any deployment that is not your local dev box, set:
+For any deployment that is not your local dev box, set these values:
 
 ```bash
 APP_ENV=production            # default; refuses startup if SESSION_SECRET is missing
 SESSION_SECRET=<64 hex chars>  # `openssl rand -hex 32`
 ```
 
-`APP_ENV=dev` is the explicit opt-out for local development — it tolerates a missing `SESSION_SECRET` (random key regenerated each restart), lets `/api/register` auto-verify accounts when SMTP is not configured, and omits the `Secure` flag on session cookies so they work over plain HTTP. In production (the default) session cookies are marked `Secure`, so the app must be served over HTTPS (terminate TLS at the reverse proxy). **Never set `APP_ENV=dev` on a public deployment**: doing so means anyone can register without owning the email, and session cookies would be sent over unencrypted HTTP.
+`APP_ENV=dev` is the explicit opt-out for local development. In this mode, the app tolerates a missing `SESSION_SECRET` and regenerates a random key on each restart. It also lets `/api/register` auto-verify accounts when SMTP is not configured, and it omits the `Secure` flag on session cookies, so they work over plain HTTP. In production, which is the default, the app marks session cookies `Secure`, so you must serve the app over HTTPS. Terminate TLS at the reverse proxy.
 
-Other security-relevant tunables:
+**Never set `APP_ENV=dev` on a public deployment.** In dev mode, anyone can register without owning the email address, and session cookies travel over unencrypted HTTP.
+
+Other security-relevant settings:
 
 ```bash
 RATE_LIMIT_AUTH_PER_MIN=10        # IP-budget for /api/login, /api/register, /api/verify-email
@@ -100,39 +110,37 @@ CSV_MAX_UPLOAD_MB=8               # max CSV upload body size; oversized uploads 
 CSV_MAX_ROWS=5000                 # max data rows per CSV upload; over-cap uploads are rejected (400)
 ```
 
-The CSV import endpoint (`POST /api/words/upload-csv`) is also covered by the
-expensive-request rate limiter, and its per-row text-to-speech generation runs
-in a bounded background worker pool so a large import can't exhaust resources.
+The CSV import endpoint (`POST /api/words/upload-csv`) also uses the expensive-request rate limiter. Its per-row text-to-speech generation runs in a bounded background worker pool, so a large import cannot exhaust resources.
 
-A failed-login lockout (five wrong passwords ⇒ account locked for 15 minutes) is built in; the lockout is cleared on the next successful login.
+The app has a built-in lockout for failed logins: five wrong passwords lock the account for 15 minutes. The next successful login clears the lockout.
 
-JSON request bodies on `/api` routes are capped (default 1 MiB) so an unbounded upload cannot exhaust memory — oversized bodies are rejected with `400`:
+The app caps JSON request bodies on `/api` routes, at 1 MiB by default, so an unbounded upload cannot exhaust memory. Oversized bodies get a `400` response.
 
 ```bash
 MAX_BODY_BYTES=1048576   # max /api request body in bytes (default 1 MiB)
 ```
 
-The HTTP server runs with read/write/idle timeouts so a slow or stalled client cannot tie up the single SQLite connection, and it shuts down gracefully on `SIGINT`/`SIGTERM`, draining in-flight requests (up to 30 s) before exiting. This makes systemd auto-restarts (see `deploy/vocab-trainer.service`) drop fewer in-flight requests.
+The HTTP server runs with read, write, and idle timeouts, so a slow or stalled client cannot tie up the single SQLite connection. It also shuts down gracefully on `SIGINT` and `SIGTERM`, draining in-flight requests for up to 30 seconds before it exits. This lets systemd auto-restarts (see `deploy/vocab-trainer.service`) drop fewer in-flight requests.
 
-The application sets a strict `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()` on every response. Configure HTTPS at the reverse proxy (see `deploy/nginx.conf`) — the sample config also sets `Strict-Transport-Security`.
+The app sets a strict `Content-Security-Policy` header on every response, along with `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()`. Configure HTTPS at the reverse proxy — see `deploy/nginx.conf`, which also sets `Strict-Transport-Security`.
 
-Always deploy behind a reverse proxy (e.g. nginx) that sets `X-Real-IP` to the real client address; rate limiting derives the client IP from that header. Do not expose the binary directly to the internet — the spoofable `X-Forwarded-For` header is deliberately never trusted, so a directly-exposed binary would rate-limit on `RemoteAddr` only.
+Always deploy behind a reverse proxy, for example nginx, that sets `X-Real-IP` to the real client address. Rate limiting reads the client IP from that header. Do not expose the binary directly to the internet. The app deliberately never trusts the spoofable `X-Forwarded-For` header, so a directly-exposed binary would rate-limit on `RemoteAddr` only.
 
 ## Daily new-word cap
 
-Each user sets their own daily new-word limit in **Settings → Daily Learning** (default: 5). The server-wide `MAX_NEW_WORDS` env var sets the default for new accounts only — users can freely change it higher or lower in their settings.
+Each user sets their own daily new-word limit, in **Settings → Daily Learning**. The default is 5 words. The server-wide `MAX_NEW_WORDS` environment variable sets the default for new accounts only. Users can change it higher or lower in their own settings.
 
 ```bash
 MAX_NEW_WORDS=5   # default for new accounts
 ```
 
-A *new word* is one that has never appeared as a quiz card before (tracked by a `first_seen_date` column in the database). Once the daily cap is reached, only cards you have already seen at least once will be served — reviews and retry cards are always available regardless of the cap. The counter resets at midnight (server-local date).
+A *new word* is one that has never appeared as a quiz card before. The app tracks this with a `first_seen_date` column in the database. Once you reach the daily cap, the app serves only cards you have already seen at least once. Reviews and retry cards are always available, regardless of the cap. The counter resets at midnight, server-local date.
 
-The training page stats bar shows **New today: X / Y** so you can see how many new words you have left for the day.
+The training page stats bar shows **New today: X / Y**, so you can see how many new words you have left for the day.
 
 ### Baseline gates
 
-In **Settings → Daily Learning**, each user can enable optional gates that pause new-word introductions when the review load is high. Each gate is independently enabled with its own numeric threshold; **all** active gates must pass before a new word is shown.
+In **Settings → Daily Learning**, each user can enable optional gates. These gates pause new-word introductions when the review load is high. You enable each gate independently, with its own numeric threshold. All active gates must pass before the app shows a new word.
 
 | Gate | Blocks new words when… |
 |---|---|
@@ -142,45 +150,46 @@ In **Settings → Daily Learning**, each user can enable optional gates that pau
 
 ### Cooldown between new words
 
-In **Settings → Daily Learning**, the **Cooldown between new words** field (default: 1 minute) sets the minimum time that must pass after introducing a new word before another one appears. During the cooldown window the trainer serves only review cards. Set to **0** to disable the cooldown and allow new words back-to-back.
+In **Settings → Daily Learning**, the **Cooldown between new words** field sets the minimum time between new-word introductions. The default is 1 minute. During the cooldown window, the app serves only review cards. Set the value to **0** to disable the cooldown and allow new words back-to-back.
 
 ### Skip button for new words
 
-By default a **Skip** button appears during the new-word introduction screen, letting you defer a word for 7 days. In **Settings → Daily Learning** you can hide this button; when hidden, new words cannot be skipped and must be reviewed.
+By default, a **Skip** button appears on the new-word introduction screen. It lets you defer a word for 7 days. In **Settings → Daily Learning**, you can hide this button. When you hide it, you cannot skip new words, and you must review them.
 
 ### Session extension (avoid immediate repetition)
 
-Near the end of a session, if the only review card left due today is the one you just answered, the trainer serves a not-yet-due word instead of immediately repeating it — the **Due today** counter on the training page accounts for this so the number you see always matches what you'll actually be asked. In **Settings → Daily Learning**, the **Add extra words at the end of a session to avoid repetition** toggle (default: on) controls this behaviour; turn it off to only ever be served genuinely due-today words, even if that means occasionally repeating one right away.
+Near the end of a session, if the only review card left due today is the one you just answered, the app serves a not-yet-due word instead of repeating it right away. The **Due today** counter on the training page accounts for this, so the number you see always matches what the app will actually ask. In **Settings → Daily Learning**, the **Add extra words at the end of a session to avoid repetition** toggle controls this behavior. It is on by default. Turn it off to receive only genuinely due-today words, even if that means the app occasionally repeats one right away.
 
 ## Progressive mode
 
-The **Progressive** quiz mode introduces new words gently and gradually increases difficulty based on your accuracy (correct answers ÷ total attempts). The default behaviour is:
+The **Progressive** quiz mode introduces new words gently and increases difficulty gradually, based on your accuracy (correct answers divided by total attempts). By default, the app behaves as follows:
 
 | Condition | What happens |
 |---|---|
 | Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. |
-| **Learning phase** (`learning_new_word = true`) | Word is in the **New** bucket. Short retry intervals (minutes, not days) so you can drill it in one session. Get **3 correct in a row** to graduate. Wrong answers reset the streak. |
-| `total_attempts < 3` | **Translation → Chinese** — not enough data yet; stay at the easiest direction |
-| Accuracy < 50% | **Translation → Chinese** — still struggling |
-| Accuracy < 70% **or** `total_attempts < 10` | **Chinese + Pinyin → Translation** — making progress |
-| Accuracy < 85% (and `total_attempts ≥ 10`) | **Chinese → Translation** — reliable; see Chinese only |
+| **Learning phase** (`learning_new_word = true`) | The word is in the **New** bucket. Short retry intervals (minutes, not days) let you drill it in one session. Three correct answers in a row graduate the word. A wrong answer resets the streak. |
+| `total_attempts < 3` | **Translation → Chinese** — not enough data yet, so the app uses the easiest direction |
+| Accuracy < 50% | **Translation → Chinese** — you are still struggling |
+| Accuracy < 70% **or** `total_attempts < 10` | **Chinese + Pinyin → Translation** — you are making progress |
+| Accuracy < 85% (and `total_attempts ≥ 10`) | **Chinese → Translation** — reliable; you see Chinese only |
 | Accuracy ≥ 85% and `total_attempts ≥ 10` | **Random** — any of the three quiz directions |
 
-You can customise the quiz format for each tier (and for each step of the new-word learning phase) in the **Settings → Training Mode** panel. The available formats are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, *Translation → Chinese (pinyin hint)*, and *Random*.
+You can customize the quiz format for each tier, and for each step of the new-word learning phase, in **Settings → Training Mode**. The available formats are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, *Translation → Chinese (pinyin hint)*, and *Random*.
 
 **Learning phase ("New" bucket):**
 
-When you acknowledge a new word ("Got it"), it enters the learning phase. During this phase:
-- Short intervals (1–5 minutes) are used instead of day-scale SM-2 intervals
-- You need **3 consecutive correct answers** to graduate
-- Wrong answers reset the streak counter back to 0
-- On graduation: SM-2 progress is reset to a clean baseline (accuracy starts at 100%, total_attempts = 3) and the word moves to the regular review queue with a 1-day interval
+When you acknowledge a new word by clicking "Got it," it enters the learning phase. During this phase:
+
+- The app uses short intervals (1-5 minutes) instead of day-scale SM-2 intervals.
+- You need **3 consecutive correct answers** to graduate.
+- A wrong answer resets the streak counter to 0.
+- On graduation, the app resets SM-2 progress to a clean baseline. Accuracy starts at 100%, `total_attempts` is set to 3, and the word moves to the regular review queue with a 1-day interval.
 
 The training page and vocabulary list show a **New** tier badge for words still in the learning phase. You can filter by the "New" bucket to drill only recently introduced words.
 
 **Accuracy tiers:**
 
-Tier assignment uses **effective accuracy** = `(total_correct + streak_bonus) / total_attempts`. The `streak_bonus` accelerates recovery from initial mistakes — see "Streak bonus" below.
+Tier assignment uses **effective accuracy**, calculated as `(total_correct + streak_bonus) / total_attempts`. The `streak_bonus` speeds up recovery from initial mistakes. See "Streak bonus" below.
 
 | Tier | Criteria |
 |---|---|
@@ -192,26 +201,27 @@ Tier assignment uses **effective accuracy** = `(total_correct + streak_bonus) / 
 
 **Streak bonus:**
 
-When you answer a word correctly multiple times in a row, the system grants a `streak_bonus` that boosts effective accuracy to match the bucket for your current streak length:
+When you answer a word correctly several times in a row, the app grants a `streak_bonus`. This bonus boosts effective accuracy to match the bucket for your current streak length.
 
 | Consecutive correct (streak) | Target bucket | Min effective accuracy |
 |---|---|---|
 | < 3 | _(no boost)_ | — |
-| 3–5 | Learning | 50% |
-| 6–8 | Practicing | 70% |
+| 3-5 | Learning | 50% |
+| 6-8 | Practicing | 70% |
 | ≥ 9 | Mastered | 85% |
 
-The bonus is calculated as the minimum value needed to reach the target accuracy threshold. It **never decreases** — once earned, it persists even if the streak later breaks. However, wrong answers naturally dilute the bonus over time because `total_attempts` grows while `streak_bonus` stays fixed. The training page shows effective accuracy with a "(+N streak bonus)" indicator when a bonus is active.
+The app calculates the bonus as the minimum value needed to reach the target accuracy threshold. The bonus never decreases. Once you earn it, it persists even if the streak later breaks. However, wrong answers dilute the bonus over time, because `total_attempts` grows while `streak_bonus` stays fixed. The training page shows effective accuracy with a "(+N streak bonus)" indicator when a bonus is active.
 
 **Skip vs Got it:**
-- **Got it** marks the word as introduced, enters the learning phase, and makes it immediately available for quizzing (EN → ZH). Counts toward the daily new-word cap.
-- **Skip** defers the word by 7 days. Does *not* count as seen — the word remains "new" and will be shown as an introduction again when it comes due.
 
-**Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day without recording an attempt. Useful when you want to clear a stuck card from today's queue but try again tomorrow.
+- **Got it** marks the word as introduced, starts the learning phase, and makes the word available for quizzing right away (EN → ZH). This counts toward the daily new-word cap.
+- **Skip** defers the word by 7 days. This does *not* count as seen. The word remains "new," and the app shows it as an introduction again when it comes due.
+
+**Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day, without recording an attempt. Use this to clear a stuck card from today's queue and try again tomorrow.
 
 ## Cycle mode
 
-The **Cycle** quiz mode rotates through a fixed sequence of quiz directions. By default the position advances on every attempt (correct or wrong), so the counter is `total_attempts`. Users can switch to **advance on success only** in Settings → Cycle Mode, which uses `total_correct` as the counter instead — the step stays the same until you answer correctly.
+The **Cycle** quiz mode rotates through a fixed sequence of quiz directions. By default, the position advances on every attempt, correct or wrong, so the counter is `total_attempts`. In Settings → Cycle Mode, you can switch to **advance on success only**. This mode uses `total_correct` as the counter instead, so the step stays the same until you answer correctly.
 
 Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation → Chinese → Translation**
 
@@ -222,39 +232,39 @@ Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation
 | 3 | 2 | Chinese → Translation |
 | 4 | 0 (wraps) | Chinese + Pinyin → Translation |
 
-You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel has an **Advance only on success** toggle that switches the counter from `total_attempts` to `total_correct`.
+You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel has an **Advance only on success** toggle. This toggle switches the counter from `total_attempts` to `total_correct`.
 
 ## User settings
 
-Each user has a personal settings page (`/settings`) with:
+Each user has a personal settings page (`/settings`) with these sections:
 
-- **Language preferences** — Choose a primary and secondary language. The primary language is shown first in the vocabulary list and used as the default quiz language. Both languages are accepted as quiz answers.
-- **Training mode** — Customise the quiz format per proficiency tier (for progressive mode) and per step in the new-word introduction phase. Includes "Blur pinyin until tapped" and "Celebrate bucket changes" (shows a level-up interstitial when a word's accuracy tier advances) under Quiz Display.
-- **Cycle mode** — Configure the 3-step direction sequence used by the Cycle quiz mode, and choose whether the cycle advances on every attempt (default) or only after a correct answer.
-- **Daily Learning** — Set the number of new words per day, set a cooldown (minimum minutes between new-word introductions), toggle the skip button for new words, toggle session extension (serving an extra not-yet-due word at the end of a session instead of immediately repeating one), and configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
-- **Gamification** — Enable a word-matching mini-game that appears during training when you have confused at least 3 word pairs in the last 7 days. Configure how often (in minutes) the game may interrupt training. When triggered, three confused pairs are shown in two shuffled columns; click a Chinese word then its English translation to match them; correct pairs turn green, wrong pairs flash red. If a word shares its translation text with another still-unmatched word, claiming that word's box is not accepted outright — it flashes yellow instead, so it can't be silently claimed out from under the word it actually belongs to. The game updates SM-2 progress for each matched word.
-- **API keys** — Store a personal DeepL API key and LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). Keys are encrypted with a key derived from your login password via PBKDF2-SHA256 + AES-GCM and are only accessible while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without needing a plus account. A user-supplied local LLM URL must be a public `http(s)` address — internal/loopback/link-local targets are rejected (and blocked at connect time) to prevent server-side request forgery. Operators who run a trusted local model on loopback should configure it via the server-side `LOCAL_LLM_URL` env var instead.
+- **Language preferences.** Choose a primary and a secondary language. The app shows the primary language first in the vocabulary list, and uses it as the default quiz language. Both languages are accepted as quiz answers.
+- **Training mode.** Customize the quiz format for each proficiency tier, for progressive mode, and for each step in the new-word introduction phase. This section includes "Blur pinyin until tapped" and "Celebrate bucket changes" (a level-up interstitial when a word's accuracy tier advances) under Quiz Display.
+- **Cycle mode.** Configure the 3-step direction sequence used by the Cycle quiz mode. Choose whether the cycle advances on every attempt (the default) or only after a correct answer.
+- **Daily Learning.** Set the number of new words per day, set a cooldown between new-word introductions, toggle the skip button for new words, and toggle session extension (which serves an extra not-yet-due word at the end of a session instead of repeating one right away). You can also configure baseline gates (due-today, struggling, learning) that pause introductions when the review load is high.
+- **Gamification.** Enable a word-matching mini-game that appears during training after you confuse at least 3 word pairs in the last 7 days. Configure how often, in minutes, the game may interrupt training. When the game triggers, it shows three confused pairs in two shuffled columns. Click a Chinese word, then its English translation, to match them. Correct pairs turn green, and wrong pairs flash red. If a word shares its translation text with another still-unmatched word, claiming that word's box alone does not complete the match. Instead, the box flashes yellow, so you cannot claim it out from under the word it actually belongs to. The game updates SM-2 progress for each matched word.
+- **API keys.** Store a personal DeepL API key and an LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). The app encrypts these keys with a key derived from your login password, using PBKDF2-SHA256 and AES-GCM, and makes them accessible only while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without a plus account. A user-supplied local LLM URL must be a public `http(s)` address. The app rejects and blocks internal, loopback, and link-local targets, to prevent server-side request forgery. If you run a trusted local model on loopback, configure it with the server-side `LOCAL_LLM_URL` environment variable instead.
 
 ## Auto-translate (DeepL)
 
-Set `DEEPL_API_KEY` in your `.env` to enable the auto-translate button on the vocabulary page:
+Set `DEEPL_API_KEY` in your `.env` file to enable the auto-translate button on the vocabulary page:
 
 ```bash
 DEEPL_API_KEY=your-deepl-api-key
 DEEPL_TARGET_LANGUAGE=de   # any DeepL language code; default: en
 ```
 
-When enabled, an **Auto-translate** button appears in the Add/Edit Word form. It auto-detects direction based on which fields are filled:
+When you enable this feature, an **Auto-translate** button appears in the Add/Edit Word form. The button detects direction automatically, based on which fields are filled:
 
-- **Chinese filled, translation empty** → translates Chinese to the target language and generates pinyin. The backend uses DeepL's `custom_instructions` to request up to 3 distinct meanings; each meaning populates a separate translation field automatically.
-- **Translation filled, Chinese empty** → translates to Chinese and generates pinyin
-- **Both filled** → generates pinyin only
+- **Chinese filled, translation empty** → the app translates Chinese to the target language and generates pinyin. The backend uses DeepL's `custom_instructions` to request up to 3 distinct meanings, and each meaning fills a separate translation field automatically.
+- **Translation filled, Chinese empty** → the app translates to Chinese and generates pinyin.
+- **Both filled** → the app generates pinyin only.
 
-Both free-tier (`:fx` keys) and pro API keys are supported automatically. Pinyin is generated server-side using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser — all DeepL calls are proxied through the backend.
+The app supports both free-tier (`:fx`) and pro API keys automatically. It generates pinyin server-side, using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser. The backend proxies all DeepL calls.
 
 ## In-app issue reporting (GitHub)
 
-When configured, a floating **report** button appears on every authenticated page. Clicking it captures the current page (URL, a screenshot, and non-sensitive client context: user agent, viewport, locale, timestamp), lets the user pick a type (**bug / idea / question / misc**) and write a title and description, and on submit creates a GitHub issue server-side.
+When you configure this feature, a floating **report** button appears on every authenticated page. When a user clicks the button, the app captures the current page: the URL, a screenshot, and non-sensitive client context (user agent, viewport, locale, timestamp). The user picks a type — **bug**, **idea**, **question**, or **misc** — and writes a title and description. On submit, the app creates a GitHub issue server-side.
 
 ```bash
 GITHUB_TOKEN=github_pat_...      # fine-grained PAT; required to enable the feature
@@ -265,9 +275,9 @@ GITHUB_API_BASE_URL=             # override the GitHub API base (tests/GitHub En
 GITHUB_ISSUE_MAX_BODY_MB=6       # max request body for issue submission (screenshots are several MB)
 ```
 
-The feature is optional: if `GITHUB_TOKEN` or `GITHUB_ISSUE_REPO` is unset, the report button stays hidden and `POST /api/github/issues` returns `503`. Submission is open to any authenticated user and is rate-limited **per user and per IP** (`RATE_LIMIT_GITHUB_ISSUE_PER_MIN`, default 5/min).
+This feature is optional. If `GITHUB_TOKEN` or `GITHUB_ISSUE_REPO` is unset, the report button stays hidden, and `POST /api/github/issues` returns `503`. Any authenticated user can submit a report. The app rate-limits submissions **per user and per IP**, using `RATE_LIMIT_GITHUB_ISSUE_PER_MIN`, with a default of 5 per minute.
 
-The token must be a fine-grained PAT scoped to the single target repo with **Issues: write** and **Contents: write**. The token never reaches the browser. GitHub's Issues API cannot attach images, so screenshots are uploaded via the Contents API to `GITHUB_ASSETS_BRANCH` (auto-created from the default branch if missing) and embedded in the issue body by URL — they accumulate as blobs on that branch (never on the default branch) and can be pruned periodically. Each report carries a random UUID embedded in the issue body; the UUID→user mapping is recorded only in the private audit log, so no email or internal account id appears in the (potentially public) issue.
+The token must be a fine-grained PAT, scoped to the single target repository, with **Issues: write** and **Contents: write** permissions. The token never reaches the browser. GitHub's Issues API cannot attach images, so the app uploads screenshots through the Contents API to `GITHUB_ASSETS_BRANCH`, which it creates automatically from the default branch if the branch is missing. The app embeds these screenshots in the issue body by URL. They accumulate as blobs on that branch, never on the default branch, and you can prune them periodically. Each report carries a random UUID embedded in the issue body. The app records the UUID-to-user mapping only in the private audit log, so no email address or internal account ID appears in the, potentially public, issue.
 
 ## LLM scene generation
 
@@ -283,7 +293,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=AI...
 ```
 
-**Local / private model** (takes priority over cloud keys when set):
+**Local / private model** (this takes priority over cloud keys when set):
 
 ```bash
 LOCAL_LLM_URL=http://localhost:11434   # base URL of your local server
@@ -291,9 +301,9 @@ LOCAL_LLM_MODEL=llama3.1               # model name as known to that server
 LOCAL_LLM_API_KEY=                     # optional bearer token (e.g. LM Studio)
 ```
 
-`LOCAL_LLM_URL` and `LOCAL_LLM_MODEL` must both be set to activate the local provider. The server must expose an OpenAI-compatible chat completions endpoint at `POST /v1/chat/completions`. This works with [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), [LocalAI](https://localai.io), vLLM, and any other OpenAI-compatible server.
+You must set both `LOCAL_LLM_URL` and `LOCAL_LLM_MODEL` to activate the local provider. The server must expose an OpenAI-compatible chat completions endpoint at `POST /v1/chat/completions`. This works with [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), [LocalAI](https://localai.io), vLLM, and any other OpenAI-compatible server.
 
-When a local model is configured it takes precedence over any cloud API keys that may also be present. If the local server is unreachable or returns an error when a scene is requested, the next configured provider is tried automatically — no restart required.
+When you configure a local model, it takes precedence over any cloud API keys that are also present. If the local server is unreachable, or returns an error when the app requests a scene, the app tries the next configured provider automatically. No restart is required.
 
 ## Makefile targets
 
@@ -306,7 +316,7 @@ When a local model is configured it takes precedence over any cloud API keys tha
 | `make dev` | Run locally without Docker (requires Go 1.24+) |
 | `make tidy` | Tidy Go module dependencies |
 | `make import` | Import vocabulary from a text file (see below) |
-| `make import-hsk` | Fetch and import HSK 1–6 vocabulary from mandarinbean.com (see below) |
+| `make import-hsk` | Fetch and import HSK 1-6 vocabulary from mandarinbean.com (see below) |
 | `make import-pinyin` | Import pinyin audio files for listening training (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
 | `make test` | Run all Go and JS tests |
@@ -314,7 +324,7 @@ When a local model is configured it takes precedence over any cloud API keys tha
 
 ## Bulk import
 
-Vocabulary can be imported from a plain-text file in the following format (3 lines per entry, blank lines ignored):
+You can import vocabulary from a plain-text file, in this format (3 lines per entry, blank lines ignored):
 
 ```
 pinyin / 汉字
@@ -333,11 +343,11 @@ make import FILE=my_vocab.txt DB=data/vocab.db
 go run ./service/cmd/import -db data/vocab.db -file voc.txt -dry-run
 ```
 
-Duplicate detection prevents re-inserting entries where both the Chinese text/pinyin and the English translation already exist.
+Duplicate detection prevents the app from re-inserting entries where both the Chinese text or pinyin and the English translation already exist.
 
 ## HSK vocabulary import
 
-Fetches vocabulary directly from [mandarinbean.com](https://mandarinbean.com) and inserts it into the database. Each word is tagged `hsk-1` through `hsk-6`. If a word already exists its tag is still applied; if the exact Chinese+English pair already exists the row is skipped.
+This tool fetches vocabulary directly from [mandarinbean.com](https://mandarinbean.com) and inserts it into the database. It tags each word `hsk-1` through `hsk-6`. If a word already exists, the tool still applies the tag. If the exact Chinese-English pair already exists, the tool skips the row.
 
 ```bash
 # Import all HSK levels (1-6)
@@ -368,18 +378,13 @@ Flags:
 | `-lang` | `en` | DeepL target language code (e.g. `de`, `fr`, `es`); requires `DEEPL_API_KEY` env var |
 | `-dry-run` | false | Parse and check duplicates without writing |
 
-When `-lang` is set to anything other than `en`, each English translation from the source
-table is translated via the [DeepL API](https://www.deepl.com/en/products/api) before
-being stored. Translations are always stored as `language='en'` rows so the existing quiz
-logic works unchanged. If `DEEPL_API_KEY` is not set, the original English text is used
-and a warning is printed.
+When you set `-lang` to anything other than `en`, the tool translates each English translation from the source table with the [DeepL API](https://www.deepl.com/en/products/api) before storing it. The tool always stores translations as `language='en'` rows, so the existing quiz logic works unchanged. If `DEEPL_API_KEY` is not set, the tool uses the original English text and prints a warning.
 
 ### Character decomposition import (makemeahanzi)
 
-Import character decomposition data from the [makemeahanzi](https://github.com/skishore/makemeahanzi)
-project's `dictionary.txt` file. This enables the "Character breakdown" feature on the training screen.
+This tool imports character decomposition data from the [makemeahanzi](https://github.com/skishore/makemeahanzi) project's `dictionary.txt` file. It enables the "Character breakdown" feature on the training screen.
 
-1. Download `dictionary.txt` from the makemeahanzi repository into the project root
+1. Download `dictionary.txt` from the makemeahanzi repository into the project root.
 2. Run the import:
 
 ```bash
@@ -401,7 +406,7 @@ cd service && go run ./cmd/import-hanzi -db ../data/vocab.db -file ../dictionary
 
 ### Pinyin audio import
 
-Import pinyin pronunciation audio files from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. This enables the `/pinyin` listening training page.
+This tool imports pinyin pronunciation audio files from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. It enables the `/pinyin` listening training page.
 
 1. Clone the audio repository:
 ```bash
@@ -425,32 +430,32 @@ cd service && go run ./cmd/import-pinyin -source ../mp3-chinese-pinyin-sound/mp3
 | `-audio-dir` | `data/pinyin-audio` | Destination directory for audio files |
 | `-dry-run` | false | Parse files without writing to DB or copying |
 
-Audio files are stored in `PINYIN_AUDIO_DIR` (default: `data/pinyin-audio/`). Set this environment variable to override the default location.
+The app stores audio files in `PINYIN_AUDIO_DIR` (default: `data/pinyin-audio/`). Set this environment variable to override the default location.
 
 ## Deploy to Raspberry Pi
 
 ### Initial setup
 
-locally copy `.env.example` to `.env` and set `RSYNC_DEST` to configure the deployment target:
-(only `.env.example` will be synced with make release, not `.env`)
+Locally, copy `.env.example` to `.env` and set `RSYNC_DEST` to configure the deployment target. Note that `make release` syncs only `.env.example`, not `.env`.
+
 ```bash
 cp .env.example .env
 # edit: RSYNC_DEST=pi@raspberrypi.local:/opt/vocab-trainer
 ```
 
-run `make release` to copy all needed files
+Run `make release` to copy all needed files.
 
-This cross-compiles for `linux/arm64` and rsyncs the binary plus `deploy/nginx.conf` and `deploy/vocab-trainer.service` to the Pi. Follow the printed instructions to install the systemd service (auto-restarts when the binary is updated) and the nginx reverse proxy.
+This target cross-compiles for `linux/arm64` and rsyncs the binary, plus `deploy/nginx.conf` and `deploy/vocab-trainer.service`, to the Pi. Follow the printed instructions to install the systemd service, which auto-restarts when the binary updates, and the nginx reverse proxy.
 
 > If your Pi runs a 32-bit OS, change `GOARCH=arm64` to `GOARCH=arm GOARM=7` in the Makefile.
 
-Copy the .env.example file and adjust the settings
+Copy the `.env.example` file and adjust the settings:
 
 ```
 cp <deploy-dir>/.env.example <deploy-dir>/.env
 ```
 
-Then cp or move the service files and eventually edit them to fix the path and port settings
+Then copy or move the service files, and edit them if needed to fix the path and port settings:
 
 ```
 sudo cp <deploy-dir>/vocab-trainer.service /etc/systemd/system/
@@ -463,7 +468,7 @@ sudo systemctl start --now vocab-trainer
 sudo systemctl start --now vocab-trainer-watcher.path vocab-trainer-watcher.service
 ```
 
-To install nginx config:
+To install the nginx config:
 
 ```
 sudo cp <deploy-dir>/nginx.conf /etc/nginx/sites-available/vocab-trainer
@@ -473,12 +478,11 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ### Release changes
 
-just running `make release` is good enough now to build the binary, deploy it and restart the service
+Running `make release` is enough to build the binary, deploy it, and restart the service.
 
 ### Backups
 
-The database is a single SQLite file, so backups are simple. A scheduled nightly
-backup with retention is provided:
+The database is a single SQLite file, so backups are simple. The project provides a scheduled nightly backup with retention:
 
 ```bash
 sudo cp deploy/backup.sh /opt/vocab-trainer/backup.sh
@@ -488,13 +492,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now vocab-backup.timer
 ```
 
-`deploy/backup.sh` uses the SQLite online-backup API (`sqlite3 .backup`), which
-takes a consistent snapshot while the server is running (safe with WAL mode). It
-writes timestamped copies to `BACKUP_DIR` (default `data/backups/`) and prunes
-files older than `RETAIN_DAYS` (default 14). The `vocab-backup.timer` runs it
-nightly.
+`deploy/backup.sh` uses the SQLite online-backup API (`sqlite3 .backup`), which takes a consistent snapshot while the server runs and is safe with WAL mode. It writes timestamped copies to `BACKUP_DIR` (default `data/backups/`) and prunes files older than `RETAIN_DAYS` (default 14 days). The `vocab-backup.timer` runs it nightly.
 
-**Restore** — stop the server, copy a backup over the live DB, and restart:
+**Restore.** Stop the server, copy a backup over the live database, and restart:
 
 ```bash
 sudo systemctl stop vocab-trainer
@@ -502,14 +502,13 @@ make restore FROM=data/backups/vocab-2026-06-15_033000.sq3   # or: cp <backup> d
 sudo systemctl start vocab-trainer
 ```
 
-The backup/restore round-trip is covered by a unit test
-(`TestBackupRestore_RoundTrip`) that exercises the same online-backup primitive.
+A unit test (`TestBackupRestore_RoundTrip`) covers the backup and restore round-trip, using the same online-backup primitive.
 
 ## Text-to-speech (TTS)
 
-Audio is generated using the Microsoft Edge neural TTS WebSocket API (`zh-CN-XiaoxiaoNeural` voice) — implemented directly in Go with no Python dependency or API key required. MP3 files are cached in `AUDIO_DIR` (default: `data/audio/`) and served by the Go server.
+The app generates audio with the Microsoft Edge neural TTS WebSocket API, using the `zh-CN-XiaoxiaoNeural` voice. This is implemented directly in Go, with no Python dependency or API key required. The app caches MP3 files in `AUDIO_DIR` (default: `data/audio/`) and serves them from the Go server.
 
-TTS is always enabled. Set `AUDIO_DIR` to control where cached MP3s are stored:
+TTS is always enabled. Set `AUDIO_DIR` to control where the app stores cached MP3 files:
 
 ```bash
 AUDIO_DIR=/data/audio  # default when using Docker
@@ -517,7 +516,7 @@ AUDIO_DIR=/data/audio  # default when using Docker
 
 ## Running without Docker
 
-Requires Go 1.24 or later.
+This requires Go 1.24 or later.
 
 ```bash
 make dev
@@ -577,7 +576,7 @@ vocabulary_trainer/
 
 ## Usage tracking
 
-Every request is recorded internally in the `usage_events` table (`user_id`, `name`, `count`, `last_seen`), so admins can see which pages/endpoints are actually used. `name` is the HTTP method + matched route (e.g. `GET /train`, `POST /api/quiz/answer`); hits for the same user and route aggregate into one row with an incrementing `count` and a refreshed `last_seen`. Anonymous requests are recorded with `user_id = 0`. Static asset requests and audio-streaming routes (`/api/audio/*`, `/api/pinyin-quiz/audio/*`) are excluded as noise. There is currently no UI or API endpoint for viewing this data — it must be queried directly from the database.
+The app records every request internally, in the `usage_events` table (`user_id`, `name`, `count`, `last_seen`). This lets admins see which pages and endpoints are actually used. The `name` field holds the HTTP method plus the matched route, for example `GET /train` or `POST /api/quiz/answer`. Hits for the same user and route aggregate into one row, with an incrementing `count` and a refreshed `last_seen`. The app records anonymous requests with `user_id = 0`. It excludes static asset requests and audio-streaming routes (`/api/audio/*`, `/api/pinyin-quiz/audio/*`) as noise. There is currently no UI or API endpoint for viewing this data. You must query the database directly.
 
 ## API
 
