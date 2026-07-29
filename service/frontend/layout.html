@@ -34,6 +34,16 @@
 
   {{block "content" .}}{{end}}
 
+  {{if eq .ActiveNav "train"}}
+  <!-- Floating auto-play toggle. Train-page only. Off by default and never
+       persisted — resets on reload (train.js). -->
+  <button id="autoplay-toggle-btn" type="button" aria-pressed="false"
+    class="fixed bottom-5 right-20 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition" style="z-index:60"
+    aria-label="Auto-play sound" title="Auto-play sound" data-i18n-title="train.autoPlay.offTitle">
+    <span aria-hidden="true">🔇</span>
+  </button>
+  {{end}}
+
   <!-- Floating issue-report button + modal. Hidden until app.js confirms the
        GitHub issue-reporting feature is enabled (GET /api/github/config). -->
   <button id="issue-report-btn" type="button"

@@ -396,12 +396,13 @@ func SelectNewWordMode(totalCorrect int, cfg NewWordModeConfig) string {
 	}
 }
 
-// SelectMode randomly picks one of the three quiz modes with equal probability.
+// SelectMode randomly picks one of the four quiz modes with equal probability.
 func SelectMode() string {
 	modes := []string{
 		models.ModeTranslToZh,
 		models.ModeZhToTransl,
 		models.ModeZhPinyinToTransl,
+		models.ModeZhToTranslNoSound,
 	}
 	return modes[rand.Intn(len(modes))]
 }

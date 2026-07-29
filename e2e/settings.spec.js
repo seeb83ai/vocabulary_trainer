@@ -146,3 +146,61 @@ test.describe('Settings – Blur pinyin (issue #201)', () => {
     await expect(page.locator('#mode-success')).toBeVisible();
   });
 });
+
+// "Chinese (no sound) → Translation" mode: selectable per proficiency tier,
+// per new-word step, and as a cycle-mode step, alongside the existing modes.
+test.describe('Settings – Chinese (no sound) mode', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('is offered as an option in the progressive tier and new-word-step dropdowns', async ({ page }) => {
+    await page.goto('/settings');
+    for (const id of ['mode-prog-new', 'mode-prog-struggling', 'mode-prog-learning', 'mode-prog-practicing', 'mode-prog-mastered', 'mode-new-0', 'mode-new-1', 'mode-new-2']) {
+      const options = await page.locator(`#${id} option`).allTextContents();
+      const values = await page.locator(`#${id} option`).evaluateAll(els => els.map(el => el.value));
+      expect(values, `#${id} should offer zh_to_transl_no_sound`).toContain('zh_to_transl_no_sound');
+      expect(options.join('')).not.toBe('');
+    }
+  });
+
+  test('is offered as an option in the cycle-step dropdowns', async ({ page }) => {
+    await page.goto('/settings');
+    for (const id of ['cycle-step-0', 'cycle-step-1', 'cycle-step-2']) {
+      const values = await page.locator(`#${id} option`).evaluateAll(els => els.map(el => el.value));
+      expect(values, `#${id} should offer zh_to_transl_no_sound`).toContain('zh_to_transl_no_sound');
+    }
+  });
+
+  test('selecting it for the Learning tier saves and persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+    await page.locator('#mode-prog-learning').selectOption('zh_to_transl_no_sound');
+    await page.locator('#mode-save-btn').click();
+    await expect(page.locator('#mode-success')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#mode-prog-learning')).toHaveValue('zh_to_transl_no_sound');
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.prog_tier_learning).toBe('zh_to_transl_no_sound');
+
+    // Reset to default.
+    await page.locator('#mode-prog-learning').selectOption('zh_pinyin_to_transl');
+    await page.locator('#mode-save-btn').click();
+    await expect(page.locator('#mode-success')).toBeVisible();
+  });
+
+  test('selecting it for a cycle step saves and persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+    await page.locator('#cycle-step-0').selectOption('zh_to_transl_no_sound');
+    await page.locator('#cycle-save-btn').click();
+    await expect(page.locator('#cycle-success')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#cycle-step-0')).toHaveValue('zh_to_transl_no_sound');
+
+    // Reset to default.
+    await page.locator('#cycle-step-0').selectOption('zh_pinyin_to_transl');
+    await page.locator('#cycle-save-btn').click();
+    await expect(page.locator('#cycle-success')).toBeVisible();
+  });
+});

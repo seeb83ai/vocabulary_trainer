@@ -29,11 +29,13 @@ const I18N = {
     'mode.cycle': 'Cycle',
     'mode.transl_to_zh': 'To Chinese',
     'mode.zh_to_transl': 'Chinese',
+    'mode.zh_to_transl_no_sound': 'Chinese (no sound)',
     'mode.zh_pinyin_to_transl': 'Chinese + Pinyin',
 
     // Mode labels (result display)
     'modeLabel.transl_to_zh': 'To Chinese',
     'modeLabel.zh_to_transl': 'Chinese',
+    'modeLabel.zh_to_transl_no_sound': 'Chinese (no sound)',
     'modeLabel.zh_pinyin_to_transl': 'Chinese + Pinyin',
     'modeLabel.new_word': 'New Word',
 
@@ -439,6 +441,10 @@ const I18N = {
     'issue.errCategory': 'Please choose a type.',
     'issue.errTitle': 'Please enter a title.',
     'issue.errDescription': 'Please enter a description.',
+
+    // Auto-play sound toggle (train page)
+    'train.autoPlay.onTitle': 'Auto-play sound: on',
+    'train.autoPlay.offTitle': 'Auto-play sound: off',
   },
 
   zh: {
@@ -469,11 +475,13 @@ const I18N = {
     'mode.cycle': '循环',
     'mode.transl_to_zh': '译中文',
     'mode.zh_to_transl': '中文',
+    'mode.zh_to_transl_no_sound': '中文（无声）',
     'mode.zh_pinyin_to_transl': '中文＋拼音',
 
     // Mode labels (result display)
     'modeLabel.transl_to_zh': '译中文',
     'modeLabel.zh_to_transl': '中文',
+    'modeLabel.zh_to_transl_no_sound': '中文（无声）',
     'modeLabel.zh_pinyin_to_transl': '中文＋拼音',
     'modeLabel.new_word': '新词',
 
@@ -877,6 +885,10 @@ const I18N = {
     'issue.errCategory': '请选择类型。',
     'issue.errTitle': '请输入标题。',
     'issue.errDescription': '请输入描述。',
+
+    // Auto-play sound toggle (train page)
+    'train.autoPlay.onTitle': '自动播放声音：开',
+    'train.autoPlay.offTitle': '自动播放声音：关',
   },
 };
 

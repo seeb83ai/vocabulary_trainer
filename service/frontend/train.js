@@ -215,6 +215,42 @@ let includeMnemonics = localStorage.getItem('quizMnemonics') !== 'false';
 let includeComponents = localStorage.getItem('quizComponents') !== 'false';
 let latestStats = null;
 
+// Auto-play toggle: in-memory only, never persisted — always resets to off
+// on page load/reload so it doesn't surprise the user across sessions.
+let autoPlayEnabled = false;
+let currentAutoPlayAudio = null;
+
+// shouldAutoPlay decides whether a newly shown card should trigger auto-play
+// audio. Never fires for transl_to_zh (would reveal the answer), hmm cards
+// (no audio exists), or zh_to_transl_no_sound (deliberately excluded below).
+function shouldAutoPlay(currentCard) {
+  if (!currentCard) return false;
+  if (currentCard.mode === 'new_word') return true;
+  if (currentCard.card_type === 'component') return true;
+  if (currentCard.card_type === 'hmm') return false;
+  return isZhPromptWithSound(currentCard.mode);
+}
+
+// isZhPromptWithSound decides whether the Chinese prompt for this mode has
+// audio available (play button + eligible for auto-play). zh_to_transl_no_sound
+// is deliberately excluded — it's the whole point of that mode.
+function isZhPromptWithSound(mode) {
+  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl';
+}
+
+// autoPlayCard plays audio for the current card when the auto-play toggle is
+// on and the card is eligible, cutting off any still-playing previous clip.
+function autoPlayCard(currentCard) {
+  if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
+  if (currentAutoPlayAudio) {
+    currentAutoPlayAudio.pause();
+    currentAutoPlayAudio = null;
+  }
+  currentAutoPlayAudio = currentCard.card_type === 'component'
+    ? playComponentAudio(currentCard.prompt)
+    : playAudio(currentCard.word_id, currentCard.prompt);
+}
+
 let _saveFiltersTimer = null;
 function scheduleFilterSave() {
   clearTimeout(_saveFiltersTimer);
@@ -541,6 +577,7 @@ async function loadNextCard(trackCurrent = false) {
     }
     $('new-word-en').innerHTML = transLines.join('<br>') || '—';
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+    autoPlayCard(currentCard);
     if (!currentCard.pinyin) hide('new-word-pinyin');
     $('new-word-zh-input').value = '';
     $('new-word-trans-input').value = '';
@@ -575,6 +612,7 @@ async function loadNextCard(trackCurrent = false) {
     show('new-component-area');
     setText('new-component-char', currentCard.prompt);
     $('new-component-play-btn').onclick = () => playComponentAudio(currentCard.prompt);
+    autoPlayCard(currentCard);
     const compPinyin = currentCard.pinyin || null;
     setText('new-component-pinyin', compPinyin || '');
     compPinyin ? show('new-component-pinyin-row') : hide('new-component-pinyin-row');
@@ -657,11 +695,11 @@ function showCard() {
     setText('mode-label', getModeLabel(currentCard.mode));
     setText('prompt-word', currentCard.prompt);
 
-    // Show play button only when Chinese is the prompt — never for transl_to_zh
-    // because hearing the Chinese audio would reveal the answer.
-    const isZhPrompt = currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
+    // Show play button only when Chinese is the prompt and has sound — never
+    // for transl_to_zh (would reveal the answer) or zh_to_transl_no_sound
+    // (the point of that mode is to drill without an audio cue).
     const playBtn = $('play-btn');
-    if (isZhPrompt) {
+    if (isZhPromptWithSound(currentCard.mode)) {
       playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
       show('play-btn');
     } else {
@@ -691,6 +729,7 @@ function showCard() {
   }
 
   applyPinyinBlur();
+  autoPlayCard(currentCard);
   $('answer-input').focus();
 }
 
@@ -1591,6 +1630,27 @@ document.addEventListener('DOMContentLoaded', () => {
   if (componentsPill) componentsPill.addEventListener('click', toggleComponents);
   const overlayComponentsPill = $('overlay-components-pill');
   if (overlayComponentsPill) overlayComponentsPill.addEventListener('click', toggleComponents);
+
+  function applyAutoPlayButton() {
+    const btn = $('autoplay-toggle-btn');
+    if (!btn) return;
+    btn.setAttribute('aria-pressed', autoPlayEnabled ? 'true' : 'false');
+    btn.classList.toggle('bg-blue-600', autoPlayEnabled);
+    btn.classList.toggle('bg-gray-800', !autoPlayEnabled);
+    btn.innerHTML = autoPlayEnabled
+      ? '<span aria-hidden="true">🔊</span>'
+      : '<span aria-hidden="true">🔇</span>';
+    const label = t(autoPlayEnabled ? 'train.autoPlay.onTitle' : 'train.autoPlay.offTitle');
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+  }
+  const autoPlayBtn = $('autoplay-toggle-btn');
+  if (autoPlayBtn) {
+    autoPlayBtn.addEventListener('click', () => {
+      autoPlayEnabled = !autoPlayEnabled;
+      applyAutoPlayButton();
+    });
+  }
 
   document.querySelectorAll('.tier-pill').forEach(btn => {
     btn.addEventListener('click', () => {

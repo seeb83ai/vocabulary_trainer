@@ -143,6 +143,7 @@ function setText(id, text) {
 
 // playAudio plays the server-cached MP3 for wordId.
 // Falls back silently to the Web Speech API if the MP3 is unavailable.
+// Returns the Audio element so callers can track/stop it (e.g. auto-play).
 function playAudio(wordId, zhText) {
   const audio = new Audio(`/api/audio/${wordId}`);
   audio.play().catch(() => {
@@ -152,11 +153,13 @@ function playAudio(wordId, zhText) {
       speechSynthesis.speak(u);
     }
   });
+  return audio;
 }
 
 // playComponentAudio plays TTS audio for a single component character.
 // Uses a dedicated endpoint (/api/audio/component/{char}) whose cached files
 // are named c_{hex}.mp3, distinct from word audio files ({word_id}.mp3).
+// Returns the Audio element so callers can track/stop it (e.g. auto-play).
 function playComponentAudio(char) {
   const audio = new Audio(`/api/audio/component/${encodeURIComponent(char)}`);
   audio.play().catch(() => {
@@ -166,6 +169,7 @@ function playComponentAudio(char) {
       speechSynthesis.speak(u);
     }
   });
+  return audio;
 }
 
 function escHtml(s) {
