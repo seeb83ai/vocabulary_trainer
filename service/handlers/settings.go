@@ -197,13 +197,14 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 }
 
 var validTrainModes = map[string]bool{
-	"progressive":         true,
-	"random":              true,
-	"cycle":               true,
-	"transl_to_zh":        true,
-	"zh_to_transl":        true,
-	"zh_pinyin_to_transl": true,
-	"":                    true,
+	"progressive":           true,
+	"random":                true,
+	"cycle":                 true,
+	"transl_to_zh":          true,
+	"zh_to_transl":          true,
+	"zh_pinyin_to_transl":   true,
+	"zh_to_transl_no_sound": true,
+	"":                      true,
 }
 
 // PatchTrainingFilters handles PATCH /api/training-filters — persists the
@@ -351,11 +352,12 @@ func (h *SettingsHandler) populateMaskedKeys(st *models.UserSettings, salt, deep
 }
 
 var validQuizModes = map[string]bool{
-	models.ModeTranslToZh:       true,
-	models.ModeZhToTransl:       true,
-	models.ModeZhPinyinToTransl: true,
-	models.ModeMaskPinyin:       true,
-	"random":                    true,
+	models.ModeTranslToZh:        true,
+	models.ModeZhToTransl:        true,
+	models.ModeZhPinyinToTransl:  true,
+	models.ModeMaskPinyin:        true,
+	models.ModeZhToTranslNoSound: true,
+	"random":                     true,
 }
 
 func isValidQuizMode(m string) bool {
@@ -363,10 +365,11 @@ func isValidQuizMode(m string) bool {
 }
 
 var validCycleModes = map[string]bool{
-	models.ModeTranslToZh:       true,
-	models.ModeZhToTransl:       true,
-	models.ModeZhPinyinToTransl: true,
-	models.ModeMaskPinyin:       true,
+	models.ModeTranslToZh:        true,
+	models.ModeZhToTransl:        true,
+	models.ModeZhPinyinToTransl:  true,
+	models.ModeMaskPinyin:        true,
+	models.ModeZhToTranslNoSound: true,
 }
 
 func isValidCycleMode(m string) bool {

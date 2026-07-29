@@ -354,7 +354,7 @@ func TestQuizNext_ModeParam(t *testing.T) {
 
 	r := newRouter(s)
 
-	for _, mode := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl} {
+	for _, mode := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound} {
 		rec := do(t, r, "GET", "/api/quiz/next?mode="+mode, nil)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("mode=%s: want 200, got %d: %s", mode, rec.Code, rec.Body)
@@ -373,9 +373,50 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true}
+	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true, models.ModeZhToTranslNoSound: true}
 	if !validModes[card.Mode] {
 		t.Errorf("invalid mode param: got unexpected mode %s", card.Mode)
+	}
+}
+
+// TestQuizNext_ZhToTranslNoSound_SameShapeAsZhToTransl verifies the new mode's
+// card is identical in shape to zh_to_transl (Chinese prompt, no pinyin, no
+// translations in the response) — it only differs in client-side sound
+// availability, never in what's asked.
+func TestQuizNext_ZhToTranslNoSound_SameShapeAsZhToTransl(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode="+models.ModeZhToTranslNoSound, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeZhToTranslNoSound {
+		t.Errorf("want card.Mode=%s, got %s", models.ModeZhToTranslNoSound, card.Mode)
+	}
+	if card.Prompt != "你好" {
+		t.Errorf("want prompt=你好, got %q", card.Prompt)
+	}
+	if card.Pinyin != nil {
+		t.Errorf("want no pinyin hint, got %q", *card.Pinyin)
+	}
+	if len(card.Translations) != 0 {
+		t.Errorf("want no translations in response, got %v", card.Translations)
 	}
 }
 
@@ -642,6 +683,29 @@ func TestQuizAnswer_ZhToTransl_NoUserAnswerPinyin(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if resp.UserAnswerPinyin != nil {
 		t.Errorf("user_answer_pinyin should be absent for zh_to_transl, got %q", *resp.UserAnswerPinyin)
+	}
+}
+
+// TestQuizAnswer_ZhToTranslNoSound_GradesLikeZhToTransl verifies the new mode
+// is graded identically to zh_to_transl (the typed answer is checked against
+// the word's translations) — it only affects sound availability, not grading.
+func TestQuizAnswer_ZhToTranslNoSound_GradesLikeZhToTransl(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeZhToTranslNoSound,
+		Answer: "hello",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("want correct=true for a matching translation")
 	}
 }
 
@@ -1358,9 +1422,10 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 	// accuracy >= 85% and attempts >= 10: random (any valid mode)
 	setProgress(9, 10) // also sets LearningNewWord=false
 	validModes := map[string]bool{
-		models.ModeTranslToZh:       true,
-		models.ModeZhToTransl:       true,
-		models.ModeZhPinyinToTransl: true,
+		models.ModeTranslToZh:        true,
+		models.ModeZhToTransl:        true,
+		models.ModeZhPinyinToTransl:  true,
+		models.ModeZhToTranslNoSound: true,
 	}
 	for i := 0; i < 30; i++ {
 		p, _ := s.GetSM2Progress(ctx, id)
@@ -4687,6 +4752,27 @@ func TestPatchTrainingFilters_Valid(t *testing.T) {
 	}
 }
 
+func TestPatchTrainingFilters_ZhToTranslNoSoundAccepted(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]any{
+		"mode":  "zh_to_transl_no_sound",
+		"langs": []string{"en"},
+	}
+	rec := do(t, r, http.MethodPatch, "/api/training-filters", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.TrainMode != "zh_to_transl_no_sound" {
+		t.Errorf("want train_mode=zh_to_transl_no_sound, got %q", st.TrainMode)
+	}
+}
+
 func TestPatchTrainingFilters_InvalidMode(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
@@ -4732,6 +4818,38 @@ func TestPatchSettings_NewWordRequire(t *testing.T) {
 	}
 	if !st.NewWordRequireTrans {
 		t.Error("want new_word_require_trans=true after patch")
+	}
+}
+
+func TestPatchSettings_ZhToTranslNoSoundAccepted(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]interface{}{
+		"primary_lang":         "en",
+		"secondary_lang":       "de",
+		"prog_new":             "transl_to_zh",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_to_transl_no_sound",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "transl_to_zh",
+		"new_word_mode_1":      "transl_to_zh",
+		"new_word_mode_2":      "zh_to_transl_no_sound",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.ProgTierLearning != "zh_to_transl_no_sound" {
+		t.Errorf("want prog_tier_learning=zh_to_transl_no_sound, got %q", st.ProgTierLearning)
+	}
+	if st.NewWordMode2 != "zh_to_transl_no_sound" {
+		t.Errorf("want new_word_mode_2=zh_to_transl_no_sound, got %q", st.NewWordMode2)
 	}
 }
 

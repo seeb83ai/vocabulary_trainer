@@ -29,11 +29,13 @@ const I18N = {
     'mode.cycle': 'Cycle',
     'mode.transl_to_zh': 'To Chinese',
     'mode.zh_to_transl': 'Chinese',
+    'mode.zh_to_transl_no_sound': 'Chinese (no sound)',
     'mode.zh_pinyin_to_transl': 'Chinese + Pinyin',
 
     // Mode labels (result display)
     'modeLabel.transl_to_zh': 'To Chinese',
     'modeLabel.zh_to_transl': 'Chinese',
+    'modeLabel.zh_to_transl_no_sound': 'Chinese (no sound)',
     'modeLabel.zh_pinyin_to_transl': 'Chinese + Pinyin',
     'modeLabel.new_word': 'New Word',
 
@@ -473,11 +475,13 @@ const I18N = {
     'mode.cycle': '循环',
     'mode.transl_to_zh': '译中文',
     'mode.zh_to_transl': '中文',
+    'mode.zh_to_transl_no_sound': '中文（无声）',
     'mode.zh_pinyin_to_transl': '中文＋拼音',
 
     // Mode labels (result display)
     'modeLabel.transl_to_zh': '译中文',
     'modeLabel.zh_to_transl': '中文',
+    'modeLabel.zh_to_transl_no_sound': '中文（无声）',
     'modeLabel.zh_pinyin_to_transl': '中文＋拼音',
     'modeLabel.new_word': '新词',
 

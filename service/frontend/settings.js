@@ -26,6 +26,7 @@ async function isPasswordPwned(password) {
 const MODE_OPTIONS = [
   { value: 'transl_to_zh',       label: 'Translation → Chinese' },
   { value: 'zh_to_transl',       label: 'Chinese → Translation' },
+  { value: 'zh_to_transl_no_sound', label: 'Chinese (no sound) → Translation' },
   { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
   { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
   { value: 'random',             label: 'Random' },
@@ -35,6 +36,7 @@ const CYCLE_STEP_OPTIONS = [
   { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
   { value: 'transl_to_zh',       label: 'Translation → Chinese' },
   { value: 'zh_to_transl',       label: 'Chinese → Translation' },
+  { value: 'zh_to_transl_no_sound', label: 'Chinese (no sound) → Translation' },
   { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
 ];
 

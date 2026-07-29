@@ -221,14 +221,21 @@ let autoPlayEnabled = false;
 let currentAutoPlayAudio = null;
 
 // shouldAutoPlay decides whether a newly shown card should trigger auto-play
-// audio. Never fires for transl_to_zh (would reveal the answer) or hmm cards
-// (no audio exists).
+// audio. Never fires for transl_to_zh (would reveal the answer), hmm cards
+// (no audio exists), or zh_to_transl_no_sound (deliberately excluded below).
 function shouldAutoPlay(currentCard) {
   if (!currentCard) return false;
   if (currentCard.mode === 'new_word') return true;
   if (currentCard.card_type === 'component') return true;
   if (currentCard.card_type === 'hmm') return false;
-  return currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
+  return isZhPromptWithSound(currentCard.mode);
+}
+
+// isZhPromptWithSound decides whether the Chinese prompt for this mode has
+// audio available (play button + eligible for auto-play). zh_to_transl_no_sound
+// is deliberately excluded — it's the whole point of that mode.
+function isZhPromptWithSound(mode) {
+  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl';
 }
 
 // autoPlayCard plays audio for the current card when the auto-play toggle is
@@ -688,11 +695,11 @@ function showCard() {
     setText('mode-label', getModeLabel(currentCard.mode));
     setText('prompt-word', currentCard.prompt);
 
-    // Show play button only when Chinese is the prompt — never for transl_to_zh
-    // because hearing the Chinese audio would reveal the answer.
-    const isZhPrompt = currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
+    // Show play button only when Chinese is the prompt and has sound — never
+    // for transl_to_zh (would reveal the answer) or zh_to_transl_no_sound
+    // (the point of that mode is to drill without an audio cue).
     const playBtn = $('play-btn');
-    if (isZhPrompt) {
+    if (isZhPromptWithSound(currentCard.mode)) {
       playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
       show('play-btn');
     } else {
