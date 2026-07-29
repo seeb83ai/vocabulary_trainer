@@ -42,6 +42,11 @@ const CYCLE_STEP_OPTIONS = [
 
 function populateCycleSelect(el, value) {
   el.innerHTML = '';
+  const empty = document.createElement('option');
+  empty.value = '';
+  empty.textContent = '— (disabled)';
+  if (value === '') empty.selected = true;
+  el.appendChild(empty);
   for (const opt of CYCLE_STEP_OPTIONS) {
     const o = document.createElement('option');
     o.value = opt.value;
@@ -141,9 +146,10 @@ async function loadSettings() {
     // Cycle step selects
     const defaultSeq = 'zh_pinyin_to_transl,transl_to_zh,zh_to_transl';
     const cycleSteps = (st.cycle_sequence || defaultSeq).split(',');
-    populateCycleSelect(document.getElementById('cycle-step-0'), cycleSteps[0] || 'zh_pinyin_to_transl');
-    populateCycleSelect(document.getElementById('cycle-step-1'), cycleSteps[1] || 'transl_to_zh');
-    populateCycleSelect(document.getElementById('cycle-step-2'), cycleSteps[2] || 'zh_to_transl');
+    for (let i = 0; i < 5; i++) {
+      const el = document.getElementById('cycle-step-' + i);
+      if (el) populateCycleSelect(el, cycleSteps[i] || '');
+    }
     const advanceEl = document.getElementById('cycle-advance-on-success-only');
     if (advanceEl) advanceEl.checked = !!st.cycle_advance_on_success_only;
 
@@ -206,7 +212,7 @@ for (const id of ['mode-prog-new','mode-prog-struggling','mode-prog-learning','m
   const el = document.getElementById(id);
   if (el) populateModeSelect(el, '');
 }
-for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2']) {
+for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2','cycle-step-3','cycle-step-4']) {
   const el = document.getElementById(id);
   if (el) populateCycleSelect(el, '');
 }
@@ -245,11 +251,11 @@ document.getElementById('lang-save-btn')?.addEventListener('click', async () => 
 // ── Training mode ──────────────────────────────────────────────────────────────
 
 function buildCycleSequence() {
-  const steps = [
-    document.getElementById('cycle-step-0')?.value || 'zh_pinyin_to_transl',
-    document.getElementById('cycle-step-1')?.value || 'transl_to_zh',
-    document.getElementById('cycle-step-2')?.value || 'zh_to_transl',
-  ];
+  const steps = [];
+  for (let i = 0; i < 5; i++) {
+    const v = document.getElementById('cycle-step-' + i)?.value;
+    if (v) steps.push(v);
+  }
   return steps.join(',');
 }
 
