@@ -203,6 +203,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/component/seen", componentH.Seen)
 	r.Post("/api/component/skip", componentH.Skip)
 	r.Get("/api/component/stats", componentH.Stats)
+	r.Get("/api/component/due-date-distribution", componentH.DueDateDistribution)
 	r.Post("/api/components/{char}/review", componentH.Review)
 	r.Put("/api/components/{char}/translation", componentH.UpdateTranslation)
 	r.Get("/api/components/{char}/translations", componentH.GetTranslations)
@@ -4185,6 +4186,68 @@ func TestComponentStats_ReturnsEmptyDays(t *testing.T) {
 	}
 	if days == nil {
 		t.Fatal("want non-nil days")
+	}
+}
+
+// ── GET /api/component/due-date-distribution ─────────────────────────────────
+
+func TestComponentDueDateDistribution_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodGet, "/api/component/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Dates) != 0 {
+		t.Errorf("expected empty dates, got %d", len(resp.Dates))
+	}
+}
+
+func TestComponentDueDateDistribution_AfterSeen(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	s.SetComponentSeenForTest(ctx, int64(2), "女")
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/component/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	total := 0
+	for _, d := range resp.Dates {
+		total += d.Count
+	}
+	if total != 1 {
+		t.Errorf("expected total count 1, got %d", total)
+	}
+}
+
+func TestComponentDueDateDistribution_ExcludesUnseen(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past) // unseen: first_seen_date IS NULL
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/component/due-date-distribution", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var resp models.DueDateDistributionResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Dates) != 0 {
+		t.Errorf("expected unseen component excluded, got %d dates", len(resp.Dates))
 	}
 }
 

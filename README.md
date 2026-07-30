@@ -598,6 +598,7 @@ The app records every request internally, in the `usage_events` table (`user_id`
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
 | `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
 | `GET` | `/api/quiz/due-date-distribution` | Get word counts grouped by due date for the next 30 days (`tags` query param) |
+| `GET` | `/api/component/due-date-distribution` | Get seen hanzi component counts grouped by due date for the next 30 days |
 | `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |
 | `POST` | `/api/words` | Create a vocabulary entry |
 | `POST` | `/api/words/upload-csv` | Bulk import from a CSV file (multipart: `file`, `tags`, `start_training_count`) |

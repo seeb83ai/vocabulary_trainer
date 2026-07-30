@@ -861,6 +861,38 @@ func (s *Store) GetComponentPinyin(ctx context.Context, character string) string
 	return joinPinyinJSON(raw.String)
 }
 
+// GetComponentCountByDueDate returns the number of seen components grouped by
+// due date, covering overdue (grouped as today), today, and the next 30 days.
+// Unseen components (first_seen_date IS NULL) are excluded.
+func (s *Store) GetComponentCountByDueDate(ctx context.Context, userID int64) ([]models.DueDateCount, error) {
+	query := `SELECT
+		CASE
+			WHEN date(cp.due_date) <= date('now') THEN date('now')
+			ELSE date(cp.due_date)
+		END AS bucket_date,
+		COUNT(*) AS cnt
+	FROM component_progress cp
+	WHERE cp.user_id = ?
+	  AND cp.first_seen_date IS NOT NULL
+	  AND date(cp.due_date) <= date('now', '+30 days')
+	GROUP BY bucket_date
+	ORDER BY bucket_date`
+	rows, err := s.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get component count by due date: %w", err)
+	}
+	defer rows.Close()
+	var result []models.DueDateCount
+	for rows.Next() {
+		var d models.DueDateCount
+		if err := rows.Scan(&d.Date, &d.Count); err != nil {
+			return nil, fmt.Errorf("scan component due date count: %w", err)
+		}
+		result = append(result, d)
+	}
+	return result, rows.Err()
+}
+
 // GetComponentCounts returns the number of components due today and the total
 // number of components in training for the given user. dueToday is filtered
 // to components with a translation in one of langs (defaulting to EN when
