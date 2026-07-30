@@ -485,7 +485,7 @@ function shouldAutoPlay(currentCard) {
   if (currentCard.mode === 'new_word') return true;
   if (currentCard.card_type === 'component') return true;
   if (currentCard.card_type === 'hmm') return false;
-  return currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
+  return currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl' || currentCard.mode === 'voice_to_transl';
 }
 
 describe('shouldAutoPlay', () => {
@@ -521,6 +521,10 @@ describe('shouldAutoPlay', () => {
 
   it('returns false for the Chinese (no sound) mode', () => {
     expect(shouldAutoPlay({ mode: 'zh_to_transl_no_sound' })).toBe(false);
+  });
+
+  it('returns true for voice_to_transl mode', () => {
+    expect(shouldAutoPlay({ mode: 'voice_to_transl' })).toBe(true);
   });
 });
 
@@ -565,7 +569,7 @@ describe('shouldAutoPlayResult', () => {
 // other purpose but is excluded here on purpose, not by accidental omission.
 
 function isZhPromptWithSound(mode) {
-  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl';
+  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl' || mode === 'voice_to_transl';
 }
 
 describe('isZhPromptWithSound', () => {
@@ -575,6 +579,10 @@ describe('isZhPromptWithSound', () => {
 
   it('returns true for zh_pinyin_to_transl', () => {
     expect(isZhPromptWithSound('zh_pinyin_to_transl')).toBe(true);
+  });
+
+  it('returns true for voice_to_transl', () => {
+    expect(isZhPromptWithSound('voice_to_transl')).toBe(true);
   });
 
   it('returns false for zh_to_transl_no_sound', () => {

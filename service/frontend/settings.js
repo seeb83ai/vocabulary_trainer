@@ -28,6 +28,7 @@ const MODE_OPTIONS = [
   { value: 'zh_to_transl',       label: 'Chinese → Translation' },
   { value: 'zh_to_transl_no_sound', label: 'Chinese (no sound) → Translation' },
   { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
+  { value: 'voice_to_transl',    label: 'Voice → Translation' },
   { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
   { value: 'random',             label: 'Random' },
 ];
@@ -37,6 +38,7 @@ const CYCLE_STEP_OPTIONS = [
   { value: 'transl_to_zh',       label: 'Translation → Chinese' },
   { value: 'zh_to_transl',       label: 'Chinese → Translation' },
   { value: 'zh_to_transl_no_sound', label: 'Chinese (no sound) → Translation' },
+  { value: 'voice_to_transl',    label: 'Voice → Translation' },
   { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
 ];
 
@@ -170,6 +172,8 @@ async function loadSettings() {
     if (noAutoVoiceOnBlurEl) noAutoVoiceOnBlurEl.checked = !!st.no_auto_voice_on_blur;
     const celebrateBucketChangeEl = document.getElementById('celebrate-bucket-change');
     if (celebrateBucketChangeEl) celebrateBucketChangeEl.checked = !!st.celebrate_bucket_change;
+    const voiceUnavailableEl = document.getElementById('voice-unavailable');
+    if (voiceUnavailableEl) voiceUnavailableEl.checked = !!st.voice_unavailable;
 
     // Daily learning
     const maxNewEl = document.getElementById('max-new-words');
@@ -278,6 +282,7 @@ function buildModePayload() {
     blur_pinyin:            !!(document.getElementById('blur-pinyin')?.checked),
     no_auto_voice_on_blur:  !!(document.getElementById('no-auto-voice-on-blur')?.checked),
     celebrate_bucket_change: !!(document.getElementById('celebrate-bucket-change')?.checked),
+    voice_unavailable:      !!(document.getElementById('voice-unavailable')?.checked),
   };
 }
 

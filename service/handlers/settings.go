@@ -66,6 +66,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BlurPinyin                  bool   `json:"blur_pinyin"`
 		NoAutoVoiceOnBlur           bool   `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange       bool   `json:"celebrate_bucket_change"`
+		VoiceUnavailable            bool   `json:"voice_unavailable"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -199,6 +200,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BlurPinyin:                  req.BlurPinyin,
 		NoAutoVoiceOnBlur:           req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:       req.CelebrateBucketChange,
+		VoiceUnavailable:            req.VoiceUnavailable,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -368,6 +370,7 @@ var validQuizModes = map[string]bool{
 	models.ModeZhPinyinToTransl:  true,
 	models.ModeMaskPinyin:        true,
 	models.ModeZhToTranslNoSound: true,
+	models.ModeVoiceToTransl:     true,
 	"random":                     true,
 }
 
@@ -381,6 +384,7 @@ var validCycleModes = map[string]bool{
 	models.ModeZhPinyinToTransl:  true,
 	models.ModeMaskPinyin:        true,
 	models.ModeZhToTranslNoSound: true,
+	models.ModeVoiceToTransl:     true,
 }
 
 func isValidCycleMode(m string) bool {

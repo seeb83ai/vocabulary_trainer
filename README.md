@@ -6,14 +6,14 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
 - The app supports N:N word relationships. The same English or Chinese word can appear in more than one entry.
-- The app has six quiz modes. You can pick a mode, or let the app pick one at random.
+- The app has seven quiz modes. You can pick a mode, or let the app pick one at random.
   - **English → Chinese**
   - **Chinese → English**
   - **Chinese (no sound) → English**. This mode is the same as Chinese → English, but it hides the 🔊 play button and never auto-plays audio. Use this mode to drill visual hanzi recognition without an audio cue.
   - **Chinese + Pinyin → English**
+  - **Voice → Translation**. The Chinese character is hidden; only the audio plays. You must type the translation from memory. Audio always plays automatically when a card appears. If your device has no speaker, enable "Voice not available" in Settings to fall back to showing the Chinese text (equivalent to Chinese → English).
   - **Progressive**. This mode picks the quiz direction based on your learning progress.
   - **Cycle**. This mode rotates through a sequence of directions that you configure for each word.
-  - You can select Chinese (no sound) mode in four places: in Settings → Training Mode for a proficiency tier or new-word step, as a step in Cycle Mode, directly on the training-page mode selector, or through Random.
 - The app uses [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method). Words you get wrong appear more often. The app schedules correct answers further into the future.
 - **Daily new-word cap.** This setting limits how many new words the app introduces per day. The default is 5 words, and you can configure it with `MAX_NEW_WORDS`. Once you reach the cap, the app serves only already-seen cards for the rest of the day. The training page shows a "New today: X / Y" counter in the stats bar.
 - **Difficult-words drill.** Once you review everything due, the "All done for today!" screen offers a "Drill my hardest words" option. Tick the option and pick an amount to flag that many of your hardest words. The app picks about half by lowest accuracy and half by lowest ease factor. The app serves flagged words on demand, regardless of their due date, until you answer each one correctly. A correct answer clears the flag. A temporary "Difficult words" pill in the filter bar shows that the drill is active and shows how many words remain. Click the pill to exit the drill early.

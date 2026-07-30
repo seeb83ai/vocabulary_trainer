@@ -8,6 +8,7 @@ let skipNewWordsVisible = true;
 let blurPinyin = false;
 let noAutoVoiceOnBlur = false;
 let celebrateBucketChange = false;
+let voiceUnavailable = false;
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
@@ -19,6 +20,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   blurPinyin = !!st?.blur_pinyin;
   noAutoVoiceOnBlur = !!st?.no_auto_voice_on_blur;
   celebrateBucketChange = !!st?.celebrate_bucket_change;
+  voiceUnavailable = !!st?.voice_unavailable;
   _gamificationEnabled = !!st?.gamification_enabled;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   const btn = document.getElementById('new-word-skip-btn');
@@ -233,18 +235,29 @@ function shouldAutoPlay(currentCard) {
   return isZhPromptWithSound(currentCard.mode);
 }
 
+// isVoiceOnlyMode returns true for voice_to_transl when the user hasn't
+// disabled it, meaning the Chinese prompt text should be hidden.
+function isVoiceOnlyMode(mode) {
+  return mode === 'voice_to_transl' && !voiceUnavailable;
+}
+
 // isZhPromptWithSound decides whether the Chinese prompt for this mode has
 // audio available (play button + eligible for auto-play). zh_to_transl_no_sound
 // is deliberately excluded — it's the whole point of that mode.
 function isZhPromptWithSound(mode) {
-  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl';
+  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl' || mode === 'voice_to_transl';
 }
 
 // autoPlayCard plays audio for the current card when the auto-play toggle is
 // on and the card is eligible, cutting off any still-playing previous clip.
+// voice_to_transl always auto-plays regardless of the toggle — the audio IS
+// the prompt, so there's no other way for the user to know what to translate.
 function autoPlayCard(currentCard) {
-  if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
-  if (noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin)) return;
+  const forcePlay = isVoiceOnlyMode(currentCard?.mode);
+  if (!forcePlay) {
+    if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
+    if (noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin)) return;
+  }
   if (currentAutoPlayAudio) {
     currentAutoPlayAudio.pause();
     currentAutoPlayAudio = null;
@@ -718,7 +731,15 @@ function showCard() {
     hide('hmm-actor-hint');
 
     setText('mode-label', getModeLabel(currentCard.mode));
-    setText('prompt-word', currentCard.prompt);
+
+    // voice_to_transl: hide the Chinese text — the audio IS the prompt.
+    // If the user has voice_unavailable set, fall back to showing the text.
+    if (isVoiceOnlyMode(currentCard.mode)) {
+      hide('prompt-word');
+    } else {
+      setText('prompt-word', currentCard.prompt);
+      show('prompt-word');
+    }
 
     // Show play button only when Chinese is the prompt and has sound — never
     // for transl_to_zh (would reveal the answer) or zh_to_transl_no_sound

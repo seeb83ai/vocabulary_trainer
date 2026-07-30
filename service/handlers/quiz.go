@@ -260,7 +260,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	var mode string
 	switch requestedMode {
-	case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeZhToTranslNoSound:
+	case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
 		mode = requestedMode
 	case models.ModeProgressive:
 		if progress.LearningNewWord {
@@ -345,7 +345,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	case models.ModeZhToTransl, models.ModeZhToTranslNoSound:
+	case models.ModeZhToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
 		card.Prompt = word.Text
 	case models.ModeZhPinyinToTransl:
 		card.Prompt = word.Text
@@ -372,6 +372,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		models.ModeZhToTransl:        true,
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
+		models.ModeVoiceToTransl:     true,
 	}
 	if !validModes[req.Mode] {
 		writeError(w, http.StatusBadRequest, "invalid mode")
@@ -401,7 +402,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	switch req.Mode {
 	case models.ModeTranslToZh:
 		correctTexts = []string{zhWord.ZhText}
-	case models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound:
+	case models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
 		for _, lang := range langs {
 			transWords, err := h.Store.GetTranslationsForWord(r.Context(), req.WordID, lang)
 			if err != nil {

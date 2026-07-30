@@ -31,12 +31,14 @@ const I18N = {
     'mode.zh_to_transl': 'Chinese',
     'mode.zh_to_transl_no_sound': 'Chinese (no sound)',
     'mode.zh_pinyin_to_transl': 'Chinese + Pinyin',
+    'mode.voice_to_transl': 'Voice',
 
     // Mode labels (result display)
     'modeLabel.transl_to_zh': 'To Chinese',
     'modeLabel.zh_to_transl': 'Chinese',
     'modeLabel.zh_to_transl_no_sound': 'Chinese (no sound)',
     'modeLabel.zh_pinyin_to_transl': 'Chinese + Pinyin',
+    'modeLabel.voice_to_transl': 'Voice',
     'modeLabel.new_word': 'New Word',
 
     // Tier/Level labels
@@ -478,12 +480,14 @@ const I18N = {
     'mode.zh_to_transl': '中文',
     'mode.zh_to_transl_no_sound': '中文（无声）',
     'mode.zh_pinyin_to_transl': '中文＋拼音',
+    'mode.voice_to_transl': '语音',
 
     // Mode labels (result display)
     'modeLabel.transl_to_zh': '译中文',
     'modeLabel.zh_to_transl': '中文',
     'modeLabel.zh_to_transl_no_sound': '中文（无声）',
     'modeLabel.zh_pinyin_to_transl': '中文＋拼音',
+    'modeLabel.voice_to_transl': '语音',
     'modeLabel.new_word': '新词',
 
     // Tier/Level labels
