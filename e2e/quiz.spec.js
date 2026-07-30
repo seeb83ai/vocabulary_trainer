@@ -1060,7 +1060,29 @@ test.describe('Quiz – auto-play sound toggle', () => {
     await expect.poll(() => audioRequests.length, { timeout: 5_000 }).toBeGreaterThan(0);
   });
 
-  test('auto-play never fires in transl_to_zh mode, even when enabled', async ({ page }) => {
+  test('auto-play never fires for the transl_to_zh prompt, even when enabled (would reveal the answer)', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    await useTranslToZhMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    // Give any (incorrect) auto-play a moment to fire before asserting silence.
+    await page.waitForTimeout(500);
+    expect(audioRequests.length).toBe(0);
+  });
+
+  // issue #259: transl_to_zh never auto-plays the prompt (would reveal the
+  // answer), but once the card is solved the result screen shows the Chinese
+  // answer anyway — so with auto-play on, it should be read out there.
+  test('auto-play reads out the Chinese answer on the transl_to_zh result screen after answering (issue #259)', async ({ page }) => {
     const audioRequests = [];
     await page.route('**/api/audio/**', (route) => {
       audioRequests.push(route.request().url());
@@ -1077,12 +1099,32 @@ test.describe('Quiz – auto-play sound toggle', () => {
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
-    await page.locator('#next-btn').click();
-    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
 
-    // Give any (incorrect) auto-play a moment to fire before asserting silence.
-    await page.waitForTimeout(500);
-    expect(audioRequests.length).toBe(0);
+    await expect.poll(() => audioRequests.length, { timeout: 5_000 }).toBeGreaterThan(0);
+  });
+
+  test('auto-play does not reveal the answer while a transl_to_zh result is still ambiguous', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    await useTranslToZhMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    if (await page.locator('#disambig-form').isVisible().catch(() => false)) {
+      await page.waitForTimeout(500);
+      expect(audioRequests.length).toBe(0);
+    }
   });
 
   test('auto-play toggle resets to off after a page reload', async ({ page }) => {
