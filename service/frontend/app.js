@@ -221,7 +221,9 @@ function loadHtml2Canvas() {
 
 // captureScreenshot renders the page to a PNG data URL, hiding the report UI so
 // it does not appear in the capture. Returns '' on failure (best-effort).
-async function captureScreenshot() {
+// fullPage=false (default) captures only the visible viewport; fullPage=true
+// renders the entire scrollable body.
+async function captureScreenshot(fullPage) {
   const h2c = await loadHtml2Canvas();
   if (!h2c) return '';
   const btn = $('issue-report-btn');
@@ -231,7 +233,16 @@ async function captureScreenshot() {
   if (btn) btn.classList.add('hidden');
   if (modal) modal.classList.add('hidden');
   try {
-    const canvas = await h2c(document.body, { logging: false, useCORS: true, scale: 1 });
+    const opts = { logging: false, useCORS: true, scale: 1 };
+    if (!fullPage) {
+      opts.x = window.scrollX;
+      opts.y = window.scrollY;
+      opts.width = window.innerWidth;
+      opts.height = window.innerHeight;
+      opts.windowWidth = window.innerWidth;
+      opts.windowHeight = window.innerHeight;
+    }
+    const canvas = await h2c(document.body, opts);
     return canvas.toDataURL('image/png');
   } finally {
     if (btn && !btnWasHidden) btn.classList.remove('hidden');
@@ -255,14 +266,28 @@ async function initIssueReporter() {
 
   let screenshotDataUrl = '';
 
+  function updateScreenshotTypeVisibility() {
+    const include = $('issue-include-screenshot');
+    const typeLabel = $('issue-screenshot-type-label');
+    if (!typeLabel) return;
+    if (include && include.checked) {
+      typeLabel.classList.remove('hidden');
+    } else {
+      typeLabel.classList.add('hidden');
+    }
+  }
+
   async function refreshScreenshot() {
     const preview = $('issue-screenshot-preview');
     const include = $('issue-include-screenshot');
+    const typeSelect = $('issue-screenshot-type');
     screenshotDataUrl = '';
     preview.classList.add('hidden');
+    updateScreenshotTypeVisibility();
     if (!include || !include.checked) return;
+    const fullPage = typeSelect ? typeSelect.value === 'full' : false;
     try {
-      screenshotDataUrl = await captureScreenshot();
+      screenshotDataUrl = await captureScreenshot(fullPage);
       if (screenshotDataUrl) {
         preview.src = screenshotDataUrl;
         preview.classList.remove('hidden');
@@ -279,6 +304,8 @@ async function initIssueReporter() {
   $('issue-cancel').addEventListener('click', () => hide('issue-modal'));
   modal.addEventListener('click', e => { if (e.target === modal) hide('issue-modal'); });
   $('issue-include-screenshot').addEventListener('change', refreshScreenshot);
+  const screenshotTypeEl = $('issue-screenshot-type');
+  if (screenshotTypeEl) screenshotTypeEl.addEventListener('change', refreshScreenshot);
 
   $('issue-submit').addEventListener('click', async () => {
     const form = {

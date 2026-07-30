@@ -266,6 +266,8 @@ The app supports both free-tier (`:fx`) and pro API keys automatically. It gener
 
 When you configure this feature, a floating **report** button appears on every authenticated page. When a user clicks the button, the app captures the current page: the URL, a screenshot, and non-sensitive client context (user agent, viewport, locale, timestamp). The user picks a type — **bug**, **idea**, **question**, or **misc** — and writes a title and description. On submit, the app creates a GitHub issue server-side.
 
+The screenshot checkbox is on by default. A **Screenshot area** selector lets the user choose between **Visible area** (default — captures only the currently visible viewport) and **Whole page** (renders the entire scrollable body). The selector is hidden when the screenshot checkbox is unchecked.
+
 ```bash
 GITHUB_TOKEN=github_pat_...      # fine-grained PAT; required to enable the feature
 GITHUB_ISSUE_REPO=owner/repo     # target repository; required to enable the feature

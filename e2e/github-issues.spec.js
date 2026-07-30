@@ -38,4 +38,48 @@ test.describe('In-app GitHub issue reporting', () => {
     const status = page.locator('#issue-status');
     await expect(status).toBeHidden({ timeout: 10_000 });
   });
+
+  test('screenshot type selector is visible when screenshot is enabled', async ({ page }) => {
+    await page.goto('/train');
+
+    const btn = page.locator('#issue-report-btn');
+    await expect(btn).toBeVisible({ timeout: 10_000 });
+    await btn.click();
+
+    await expect(page.locator('#issue-modal')).toBeVisible({ timeout: 10_000 });
+
+    const typeSelect = page.locator('#issue-screenshot-type');
+    const includeCheckbox = page.locator('#issue-include-screenshot');
+
+    // Selector is visible when screenshot is enabled (default).
+    await includeCheckbox.check();
+    await expect(typeSelect).toBeVisible();
+
+    // Selector is hidden when screenshot is disabled.
+    await includeCheckbox.uncheck();
+    await expect(typeSelect).toBeHidden();
+
+    // Re-enabling shows the selector again.
+    await includeCheckbox.check();
+    await expect(typeSelect).toBeVisible();
+  });
+
+  test('screenshot type selector defaults to visible area and accepts full page', async ({ page }) => {
+    await page.goto('/train');
+
+    const btn = page.locator('#issue-report-btn');
+    await expect(btn).toBeVisible({ timeout: 10_000 });
+    await btn.click();
+
+    await expect(page.locator('#issue-modal')).toBeVisible({ timeout: 10_000 });
+
+    const typeSelect = page.locator('#issue-screenshot-type');
+
+    // Default value is "visible" (visible area).
+    await expect(typeSelect).toHaveValue('visible');
+
+    // User can switch to full-page screenshot.
+    await typeSelect.selectOption('full');
+    await expect(typeSelect).toHaveValue('full');
+  });
 });
