@@ -219,9 +219,16 @@ function loadHtml2Canvas() {
   return _html2canvasPromise;
 }
 
+// screenshotOptions returns html2canvas options for full-page or visible-only capture.
+function screenshotOptions(fullPage, win) {
+  const base = { logging: false, useCORS: true, scale: 1 };
+  if (fullPage) return base;
+  return { ...base, height: win.innerHeight, y: win.scrollY };
+}
+
 // captureScreenshot renders the page to a PNG data URL, hiding the report UI so
 // it does not appear in the capture. Returns '' on failure (best-effort).
-async function captureScreenshot() {
+async function captureScreenshot(fullPage) {
   const h2c = await loadHtml2Canvas();
   if (!h2c) return '';
   const btn = $('issue-report-btn');
@@ -231,7 +238,7 @@ async function captureScreenshot() {
   if (btn) btn.classList.add('hidden');
   if (modal) modal.classList.add('hidden');
   try {
-    const canvas = await h2c(document.body, { logging: false, useCORS: true, scale: 1 });
+    const canvas = await h2c(document.body, screenshotOptions(fullPage, window));
     return canvas.toDataURL('image/png');
   } finally {
     if (btn && !btnWasHidden) btn.classList.remove('hidden');
@@ -258,11 +265,12 @@ async function initIssueReporter() {
   async function refreshScreenshot() {
     const preview = $('issue-screenshot-preview');
     const include = $('issue-include-screenshot');
+    const fullPageCb = $('issue-fullpage-screenshot');
     screenshotDataUrl = '';
     preview.classList.add('hidden');
     if (!include || !include.checked) return;
     try {
-      screenshotDataUrl = await captureScreenshot();
+      screenshotDataUrl = await captureScreenshot(fullPageCb && fullPageCb.checked);
       if (screenshotDataUrl) {
         preview.src = screenshotDataUrl;
         preview.classList.remove('hidden');
@@ -270,15 +278,32 @@ async function initIssueReporter() {
     } catch (_) { /* screenshot is best-effort */ }
   }
 
+  function syncFullPageVisibility() {
+    const include = $('issue-include-screenshot');
+    const label = $('issue-fullpage-label');
+    if (!label) return;
+    if (include && include.checked) {
+      label.classList.remove('hidden');
+    } else {
+      label.classList.add('hidden');
+    }
+  }
+
   btn.addEventListener('click', async () => {
     setText('issue-status', '');
+    syncFullPageVisibility();
     await refreshScreenshot();
     show('issue-modal');
   });
 
   $('issue-cancel').addEventListener('click', () => hide('issue-modal'));
   modal.addEventListener('click', e => { if (e.target === modal) hide('issue-modal'); });
-  $('issue-include-screenshot').addEventListener('change', refreshScreenshot);
+  $('issue-include-screenshot').addEventListener('change', () => {
+    syncFullPageVisibility();
+    refreshScreenshot();
+  });
+  const fullPageCbInit = $('issue-fullpage-screenshot');
+  if (fullPageCbInit) fullPageCbInit.addEventListener('change', refreshScreenshot);
 
   $('issue-submit').addEventListener('click', async () => {
     const form = {
