@@ -96,7 +96,16 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	if cycleSeq == "" {
 		cycleSeq = sm2.DefaultCycleSequence
 	} else {
-		for _, step := range strings.Split(cycleSeq, ",") {
+		steps := strings.Split(cycleSeq, ",")
+		if len(steps) < 2 {
+			writeError(w, http.StatusBadRequest, "cycle_sequence must have at least 2 steps")
+			return
+		}
+		if len(steps) > 5 {
+			writeError(w, http.StatusBadRequest, "cycle_sequence must have at most 5 steps")
+			return
+		}
+		for _, step := range steps {
 			if !isValidCycleMode(strings.TrimSpace(step)) {
 				writeError(w, http.StatusBadRequest, "invalid cycle mode: "+step)
 				return

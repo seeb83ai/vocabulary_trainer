@@ -5776,6 +5776,71 @@ func TestSettingsCycleSequence_InvalidMode(t *testing.T) {
 	}
 }
 
+func TestSettingsCycleSequence_TooFewSteps(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]string{
+		"primary_lang":   "en",
+		"secondary_lang": "",
+		"prog_new":       "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered": "random",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
+		"cycle_sequence": "transl_to_zh",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for cycle_sequence with only 1 step, got %d", rec.Code)
+	}
+}
+
+func TestSettingsCycleSequence_TooManySteps(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]string{
+		"primary_lang":   "en",
+		"secondary_lang": "",
+		"prog_new":       "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered": "random",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
+		"cycle_sequence": "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,transl_to_zh,zh_to_transl",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for cycle_sequence with 6 steps, got %d", rec.Code)
+	}
+}
+
+func TestSettingsCycleSequence_FiveSteps(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	fiveStep := "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,transl_to_zh"
+	payload := map[string]string{
+		"primary_lang":   "en",
+		"secondary_lang": "",
+		"prog_new":       "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered": "random",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
+		"cycle_sequence": fiveStep,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 for 5-step cycle_sequence, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.CycleSequence != fiveStep {
+		t.Errorf("after PATCH 5-step cycle_sequence: want %q, got %q", fiveStep, st.CycleSequence)
+	}
+}
+
 func TestQuizNext_CycleMode(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
