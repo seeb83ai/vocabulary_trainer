@@ -60,3 +60,31 @@ describe('validateIssueForm', () => {
     expect(validateIssueForm({ category: 'question', title: 'x' })).toBe('issue.errDescription');
   });
 });
+
+// screenshotOptions is defined in app.js; inlined here for unit testing.
+function screenshotOptions(fullPage, win) {
+  const base = { logging: false, useCORS: true, scale: 1 };
+  if (fullPage) return base;
+  return { ...base, height: win.innerHeight, y: win.scrollY };
+}
+
+describe('screenshotOptions', () => {
+  it('returns base options only for full page', () => {
+    const opts = screenshotOptions(true, { innerHeight: 768, scrollY: 100 });
+    expect(opts).toEqual({ logging: false, useCORS: true, scale: 1 });
+  });
+
+  it('clips to viewport for visible page (default)', () => {
+    const opts = screenshotOptions(false, { innerHeight: 768, scrollY: 200 });
+    expect(opts.height).toBe(768);
+    expect(opts.y).toBe(200);
+    expect(opts.logging).toBe(false);
+    expect(opts.useCORS).toBe(true);
+  });
+
+  it('visible page with zero scroll offset', () => {
+    const opts = screenshotOptions(false, { innerHeight: 1080, scrollY: 0 });
+    expect(opts.height).toBe(1080);
+    expect(opts.y).toBe(0);
+  });
+});
