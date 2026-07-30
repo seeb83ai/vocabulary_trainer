@@ -6,6 +6,7 @@ let userSecondaryLang = '';
 let acceptCorrectMode = 'typo';
 let skipNewWordsVisible = true;
 let blurPinyin = false;
+let noAutoVoiceOnBlur = false;
 let celebrateBucketChange = false;
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
@@ -16,6 +17,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
   skipNewWordsVisible = st?.skip_new_words_visible !== false;
   blurPinyin = !!st?.blur_pinyin;
+  noAutoVoiceOnBlur = !!st?.no_auto_voice_on_blur;
   celebrateBucketChange = !!st?.celebrate_bucket_change;
   _gamificationEnabled = !!st?.gamification_enabled;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
@@ -242,6 +244,7 @@ function isZhPromptWithSound(mode) {
 // on and the card is eligible, cutting off any still-playing previous clip.
 function autoPlayCard(currentCard) {
   if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
+  if (noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin)) return;
   if (currentAutoPlayAudio) {
     currentAutoPlayAudio.pause();
     currentAutoPlayAudio = null;

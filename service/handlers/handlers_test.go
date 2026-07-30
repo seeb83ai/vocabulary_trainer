@@ -7159,6 +7159,30 @@ func TestSettingsPatch_BlurPinyin(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_NoAutoVoiceOnBlur(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["no_auto_voice_on_blur"] != false {
+		t.Errorf("no_auto_voice_on_blur: want false by default, got %v", st["no_auto_voice_on_blur"])
+	}
+
+	body := baseSettingsPatch()
+	body["no_auto_voice_on_blur"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["no_auto_voice_on_blur"] != true {
+		t.Errorf("no_auto_voice_on_blur: want true after update, got %v", st["no_auto_voice_on_blur"])
+	}
+}
+
 func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

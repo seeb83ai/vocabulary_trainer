@@ -56,6 +56,7 @@ type UserSettings struct {
 	TrainComponents             bool     `json:"train_components"`
 	TrainTags                   []string `json:"train_tags"`
 	BlurPinyin                  bool     `json:"blur_pinyin"`
+	NoAutoVoiceOnBlur           bool     `json:"no_auto_voice_on_blur"`
 	CelebrateBucketChange       bool     `json:"celebrate_bucket_change"`
 }
 
