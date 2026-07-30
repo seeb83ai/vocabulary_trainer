@@ -21,11 +21,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTabs();
 
   // Load all tabs in parallel
-  const [wordsResult, pinyinResult, compResult, hmmResult] = await Promise.allSettled([
+  const [wordsResult, pinyinResult, compResult, hmmResult, compDueDateResult] = await Promise.allSettled([
     apiFetch('/api/quiz/daily-stats'),
     apiFetch('/api/pinyin-quiz/daily-stats'),
     apiFetch('/api/component/stats'),
     apiFetch('/api/hmm/breakdown'),
+    apiFetch('/api/component/due-date-distribution'),
   ]);
 
   // --- Words tab ---
@@ -73,6 +74,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderCompChart(cdays);
       renderCompTable(cdays);
     }
+  }
+
+  if (compDueDateResult.status === 'fulfilled') {
+    const cdates = compDueDateResult.value.dates || [];
+    const canvas = $('comp-due-date-chart');
+    if (cdates.length === 0) {
+      canvas.style.display = 'none';
+      show('comp-due-chart-empty');
+    } else {
+      canvas.style.display = '';
+      hide('comp-due-chart-empty');
+      renderCompDueDateChart(cdates);
+    }
+  } else {
+    $('comp-due-date-chart').style.display = 'none';
+    show('comp-due-chart-empty');
   }
 
   // --- Mnemonics tab ---
@@ -652,6 +669,47 @@ function renderCompTable(days) {
       <td class="py-2 text-right text-violet-600">${d.components_total || 0}</td>
     </tr>`;
   }).join('');
+}
+
+let compDueChart = null;
+
+function renderCompDueDateChart(dates) {
+  const today = new Date().toISOString().slice(0, 10);
+  const labels = dates.map(d => d.date === today ? t('stats.today') : formatDateLabel(d.date));
+  const colors = dates.map(d => {
+    if (d.date <= today) return 'rgba(239, 68, 68, 0.7)';   // overdue/today = red
+    return 'rgba(59, 130, 246, 0.7)';                        // future = blue
+  });
+  const ctx = $('comp-due-date-chart').getContext('2d');
+  if (compDueChart) compDueChart.destroy();
+  compDueChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Components',
+        data: dates.map(d => d.count),
+        backgroundColor: colors,
+      }],
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
+        y: { beginAtZero: true, title: { display: true, text: 'Components' }, ticks: { precision: 0 } },
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            title(items) {
+              const idx = items[0].dataIndex;
+              return dates[idx].date;
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
 // --- Mnemonics tab ---

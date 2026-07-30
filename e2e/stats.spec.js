@@ -13,4 +13,12 @@ test.describe('Stats page', () => {
     // The default words panel is shown.
     await expect(page.locator('#panel-words')).toBeVisible();
   });
+
+  test('shows a components by due date chart on the components tab', async ({ page }) => {
+    await page.goto('/stats');
+    await page.locator('#tab-components').click();
+    await expect(page.locator('#panel-components')).toBeVisible();
+    await expect(page.locator('#panel-components h2', { hasText: 'Components by Due Date' })).toBeVisible();
+    await expect(page.locator('#comp-due-date-chart')).toBeAttached();
+  });
 });

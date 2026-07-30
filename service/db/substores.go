@@ -150,6 +150,7 @@ type ComponentStore interface {
 	GetComponentList(ctx context.Context, userID int64, search string, page, perPage int, reviewOnly bool) ([]ComponentListItem, int, error)
 	GetComponentPinyin(ctx context.Context, character string) string
 	GetComponentCounts(ctx context.Context, userID int64, langs []string) (dueToday, total int, err error)
+	GetComponentCountByDueDate(ctx context.Context, userID int64) ([]models.DueDateCount, error)
 	GetHanziDecomposition(ctx context.Context, chars []rune) ([]models.HanziDecomposition, error)
 	AnnotateComponentDefinitions(ctx context.Context, userID int64, results []models.HanziDecomposition, langs []string) error
 	AnnotateNewComponents(ctx context.Context, userID int64, results []models.HanziDecomposition) error

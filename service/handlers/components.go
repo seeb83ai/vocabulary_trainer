@@ -380,6 +380,19 @@ func (h *ComponentHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"days": stats})
 }
 
+// DueDateDistribution returns component counts grouped by due date.
+func (h *ComponentHandler) DueDateDistribution(w http.ResponseWriter, r *http.Request) {
+	dates, err := h.Store.GetComponentCountByDueDate(r.Context(), UserIDFromContext(r.Context()))
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if dates == nil {
+		dates = []models.DueDateCount{}
+	}
+	writeJSON(w, http.StatusOK, models.DueDateDistributionResponse{Dates: dates})
+}
+
 // Review flags a component for review by setting needs_review = 1.
 func (h *ComponentHandler) Review(w http.ResponseWriter, r *http.Request) {
 	char := chi.URLParam(r, "char")

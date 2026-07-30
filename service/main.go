@@ -336,6 +336,7 @@ func main() {
 		r.Post("/component/seen", componentH.Seen)
 		r.Post("/component/skip", componentH.Skip)
 		r.Get("/component/stats", componentH.Stats)
+		r.Get("/component/due-date-distribution", componentH.DueDateDistribution)
 		r.Post("/components/{char}/review", componentH.Review)
 		r.Put("/components/{char}/translation", componentH.UpdateTranslation)
 		r.Get("/components/{char}/translations", componentH.GetTranslations)
