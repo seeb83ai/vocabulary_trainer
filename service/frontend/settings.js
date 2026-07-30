@@ -166,6 +166,8 @@ async function loadSettings() {
     if (requireTransEl) requireTransEl.checked = st.new_word_require_trans !== false;
     const blurPinyinEl = document.getElementById('blur-pinyin');
     if (blurPinyinEl) blurPinyinEl.checked = !!st.blur_pinyin;
+    const noAutoVoiceOnBlurEl = document.getElementById('no-auto-voice-on-blur');
+    if (noAutoVoiceOnBlurEl) noAutoVoiceOnBlurEl.checked = !!st.no_auto_voice_on_blur;
     const celebrateBucketChangeEl = document.getElementById('celebrate-bucket-change');
     if (celebrateBucketChangeEl) celebrateBucketChangeEl.checked = !!st.celebrate_bucket_change;
 
@@ -274,6 +276,7 @@ function buildModePayload() {
     new_word_require_zh:            !!(document.getElementById('require-zh')?.checked),
     new_word_require_trans: !!(document.getElementById('require-trans')?.checked),
     blur_pinyin:            !!(document.getElementById('blur-pinyin')?.checked),
+    no_auto_voice_on_blur:  !!(document.getElementById('no-auto-voice-on-blur')?.checked),
     celebrate_bucket_change: !!(document.getElementById('celebrate-bucket-change')?.checked),
   };
 }
