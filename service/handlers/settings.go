@@ -64,6 +64,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GamificationEnabled         bool   `json:"gamification_enabled"`
 		GamificationFrequency       *int   `json:"gamification_frequency"`
 		BlurPinyin                  bool   `json:"blur_pinyin"`
+		NoAutoplayIfPinyinHidden    bool   `json:"no_autoplay_if_pinyin_hidden"`
 		CelebrateBucketChange       bool   `json:"celebrate_bucket_change"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -196,6 +197,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GamificationEnabled:         req.GamificationEnabled,
 		GamificationFrequency:       resolvedFrequency,
 		BlurPinyin:                  req.BlurPinyin,
+		NoAutoplayIfPinyinHidden:    req.NoAutoplayIfPinyinHidden,
 		CelebrateBucketChange:       req.CelebrateBucketChange,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {

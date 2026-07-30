@@ -6,6 +6,7 @@ let userSecondaryLang = '';
 let acceptCorrectMode = 'typo';
 let skipNewWordsVisible = true;
 let blurPinyin = false;
+let noAutoplayIfPinyinHidden = false;
 let celebrateBucketChange = false;
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
@@ -16,6 +17,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
   skipNewWordsVisible = st?.skip_new_words_visible !== false;
   blurPinyin = !!st?.blur_pinyin;
+  noAutoplayIfPinyinHidden = !!st?.no_autoplay_if_pinyin_hidden;
   celebrateBucketChange = !!st?.celebrate_bucket_change;
   _gamificationEnabled = !!st?.gamification_enabled;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
@@ -223,11 +225,14 @@ let currentAutoPlayAudio = null;
 // shouldAutoPlay decides whether a newly shown card should trigger auto-play
 // audio. Never fires for transl_to_zh (would reveal the answer), hmm cards
 // (no audio exists), or zh_to_transl_no_sound (deliberately excluded below).
-function shouldAutoPlay(currentCard) {
+// noAutoplayIfPinyinHidden and blurPinyin are passed explicitly so the
+// function is unit-testable as a pure function.
+function shouldAutoPlay(currentCard, noAutoplayIfPinyinHidden, blurPinyin) {
   if (!currentCard) return false;
   if (currentCard.mode === 'new_word') return true;
   if (currentCard.card_type === 'component') return true;
   if (currentCard.card_type === 'hmm') return false;
+  if (noAutoplayIfPinyinHidden && (!currentCard.pinyin || blurPinyin)) return false;
   return isZhPromptWithSound(currentCard.mode);
 }
 
@@ -241,7 +246,7 @@ function isZhPromptWithSound(mode) {
 // autoPlayCard plays audio for the current card when the auto-play toggle is
 // on and the card is eligible, cutting off any still-playing previous clip.
 function autoPlayCard(currentCard) {
-  if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
+  if (!autoPlayEnabled || !shouldAutoPlay(currentCard, noAutoplayIfPinyinHidden, blurPinyin)) return;
   if (currentAutoPlayAudio) {
     currentAutoPlayAudio.pause();
     currentAutoPlayAudio = null;

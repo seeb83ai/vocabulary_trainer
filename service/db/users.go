@@ -232,6 +232,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(train_components, 1),
 		       COALESCE(train_tags, '[]'),
 		       COALESCE(blur_pinyin, 0),
+		       COALESCE(no_autoplay_if_pinyin_hidden, 0),
 		       COALESCE(celebrate_bucket_change, 0)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
@@ -262,6 +263,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&trainComponentsInt,
 		&trainTagsJSON,
 		&st.BlurPinyin,
+		&st.NoAutoplayIfPinyinHidden,
 		&st.CelebrateBucketChange,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
@@ -361,6 +363,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			gamification_enabled            = ?,
 			gamification_frequency          = ?,
 			blur_pinyin                     = ?,
+			no_autoplay_if_pinyin_hidden    = ?,
 			celebrate_bucket_change         = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
@@ -384,6 +387,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.GamificationEnabled,
 		st.GamificationFrequency,
 		st.BlurPinyin,
+		st.NoAutoplayIfPinyinHidden,
 		st.CelebrateBucketChange,
 		userID,
 	)

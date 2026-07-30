@@ -480,11 +480,12 @@ describe('isTransCorrect', () => {
 // toggle enabled). Must never fire for transl_to_zh (would reveal the answer)
 // or hmm cards (no audio exists).
 
-function shouldAutoPlay(currentCard) {
+function shouldAutoPlay(currentCard, noAutoplayIfPinyinHidden, blurPinyin) {
   if (!currentCard) return false;
   if (currentCard.mode === 'new_word') return true;
   if (currentCard.card_type === 'component') return true;
   if (currentCard.card_type === 'hmm') return false;
+  if (noAutoplayIfPinyinHidden && (!currentCard.pinyin || blurPinyin)) return false;
   return currentCard.mode === 'zh_to_transl' || currentCard.mode === 'zh_pinyin_to_transl';
 }
 
@@ -521,6 +522,32 @@ describe('shouldAutoPlay', () => {
 
   it('returns false for the Chinese (no sound) mode', () => {
     expect(shouldAutoPlay({ mode: 'zh_to_transl_no_sound' })).toBe(false);
+  });
+});
+
+describe('shouldAutoPlay with noAutoplayIfPinyinHidden', () => {
+  it('suppresses auto-play when setting is on and pinyin is missing', () => {
+    expect(shouldAutoPlay({ mode: 'zh_to_transl', pinyin: '' }, true, false)).toBe(false);
+  });
+
+  it('suppresses auto-play when setting is on and blur-pinyin is active', () => {
+    expect(shouldAutoPlay({ mode: 'zh_to_transl', pinyin: 'nǐ hǎo' }, true, true)).toBe(false);
+  });
+
+  it('does not suppress when setting is off', () => {
+    expect(shouldAutoPlay({ mode: 'zh_to_transl', pinyin: '' }, false, false)).toBe(true);
+  });
+
+  it('does not suppress for new-word mode even when pinyin is missing and setting is on', () => {
+    expect(shouldAutoPlay({ mode: 'new_word', pinyin: '' }, true, false)).toBe(true);
+  });
+
+  it('does not suppress for component cards even with setting on', () => {
+    expect(shouldAutoPlay({ card_type: 'component', pinyin: '' }, true, true)).toBe(true);
+  });
+
+  it('does not suppress when pinyin is present and blur is off', () => {
+    expect(shouldAutoPlay({ mode: 'zh_to_transl', pinyin: 'nǐ hǎo' }, true, false)).toBe(true);
   });
 });
 

@@ -4092,6 +4092,9 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.BlurPinyin {
 		t.Error("want blur_pinyin=false by default")
 	}
+	if st.NoAutoplayIfPinyinHidden {
+		t.Error("want no_autoplay_if_pinyin_hidden=false by default")
+	}
 	if st.CelebrateBucketChange {
 		t.Error("want celebrate_bucket_change=false by default")
 	}
@@ -4117,6 +4120,7 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 		NewWordRequireTrans:         true,
 		ExtendSessionWithExtraWords: false,
 		BlurPinyin:                  true,
+		NoAutoplayIfPinyinHidden:    true,
 		CelebrateBucketChange:       true,
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
@@ -4146,6 +4150,9 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if !out.BlurPinyin {
 		t.Error("blur_pinyin: want true after update")
+	}
+	if !out.NoAutoplayIfPinyinHidden {
+		t.Error("no_autoplay_if_pinyin_hidden: want true after update")
 	}
 	if !out.CelebrateBucketChange {
 		t.Error("celebrate_bucket_change: want true after update")

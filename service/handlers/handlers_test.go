@@ -7120,6 +7120,30 @@ func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_NoAutoplayIfPinyinHidden(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["no_autoplay_if_pinyin_hidden"] != false {
+		t.Errorf("no_autoplay_if_pinyin_hidden: want false by default, got %v", st["no_autoplay_if_pinyin_hidden"])
+	}
+
+	body := baseSettingsPatch()
+	body["no_autoplay_if_pinyin_hidden"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["no_autoplay_if_pinyin_hidden"] != true {
+		t.Errorf("no_autoplay_if_pinyin_hidden: want true after update, got %v", st["no_autoplay_if_pinyin_hidden"])
+	}
+}
+
 // ── GET /api/audio/component/{char} ──────────────────────────────────────────
 
 func TestServeComponentAudio_ServesPreCachedFile(t *testing.T) {
