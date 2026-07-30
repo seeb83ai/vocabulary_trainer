@@ -172,8 +172,6 @@ async function loadSettings() {
     if (noAutoVoiceOnBlurEl) noAutoVoiceOnBlurEl.checked = !!st.no_auto_voice_on_blur;
     const celebrateBucketChangeEl = document.getElementById('celebrate-bucket-change');
     if (celebrateBucketChangeEl) celebrateBucketChangeEl.checked = !!st.celebrate_bucket_change;
-    const voiceUnavailableEl = document.getElementById('voice-unavailable');
-    if (voiceUnavailableEl) voiceUnavailableEl.checked = !!st.voice_unavailable;
 
     // Daily learning
     const maxNewEl = document.getElementById('max-new-words');
@@ -282,7 +280,6 @@ function buildModePayload() {
     blur_pinyin:            !!(document.getElementById('blur-pinyin')?.checked),
     no_auto_voice_on_blur:  !!(document.getElementById('no-auto-voice-on-blur')?.checked),
     celebrate_bucket_change: !!(document.getElementById('celebrate-bucket-change')?.checked),
-    voice_unavailable:      !!(document.getElementById('voice-unavailable')?.checked),
   };
 }
 

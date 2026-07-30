@@ -8,7 +8,7 @@ let skipNewWordsVisible = true;
 let blurPinyin = false;
 let noAutoVoiceOnBlur = false;
 let celebrateBucketChange = false;
-let voiceUnavailable = false;
+let voiceUnavailable = false; // session-only flag, set when user skips a voice card and opts out
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
@@ -20,7 +20,6 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   blurPinyin = !!st?.blur_pinyin;
   noAutoVoiceOnBlur = !!st?.no_auto_voice_on_blur;
   celebrateBucketChange = !!st?.celebrate_bucket_change;
-  voiceUnavailable = !!st?.voice_unavailable;
   _gamificationEnabled = !!st?.gamification_enabled;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   const btn = document.getElementById('new-word-skip-btn');
@@ -250,12 +249,9 @@ function isZhPromptWithSound(mode) {
 
 // autoPlayCard plays audio for the current card when the auto-play toggle is
 // on and the card is eligible, cutting off any still-playing previous clip.
-// voice_to_transl always auto-plays regardless of the toggle — the audio IS
-// the prompt, so there's no other way for the user to know what to translate.
 function autoPlayCard(currentCard) {
-  const forcePlay = isVoiceOnlyMode(currentCard?.mode);
-  if (!forcePlay) {
-    if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
+  if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
+  if (!isVoiceOnlyMode(currentCard?.mode)) {
     if (noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin)) return;
   }
   if (currentAutoPlayAudio) {
@@ -1792,6 +1788,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Skip current card for today (advance due_date by 1 day).
   $('skip-today-btn').addEventListener('click', async () => {
     if (isSubmitted || !currentCard) return;
+
+    // If skipping a voice card, ask whether to disable voice for this session.
+    if (currentCard.mode === 'voice_to_transl' && !voiceUnavailable) {
+      if (confirm('Voice not available? Switch to Chinese → Translation for the rest of this session?')) {
+        voiceUnavailable = true;
+        selectedMode = 'zh_to_transl';
+        applyModeButtons();
+        localStorage.setItem('quizMode', selectedMode);
+      }
+    }
+
     let url, body;
     if (currentCard.card_type === 'hmm') {
       url = '/api/hmm-quiz/skip';

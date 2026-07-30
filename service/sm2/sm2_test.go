@@ -577,6 +577,7 @@ func TestSelectMode_ValidMode(t *testing.T) {
 		models.ModeZhToTransl:        true,
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
+		models.ModeVoiceToTransl:     true,
 	}
 	for i := 0; i < 50; i++ {
 		m := SelectMode()
@@ -591,7 +592,7 @@ func TestSelectMode_AllModesReachable(t *testing.T) {
 	for i := 0; i < 300; i++ {
 		seen[SelectMode()] = true
 	}
-	for _, m := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound} {
+	for _, m := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl} {
 		if !seen[m] {
 			t.Errorf("mode %q was never returned in 300 calls", m)
 		}
@@ -656,6 +657,7 @@ func TestSelectProgressiveMode_Mastered(t *testing.T) {
 		models.ModeZhToTransl:        true,
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
+		models.ModeVoiceToTransl:     true,
 	}
 	for i := 0; i < 50; i++ {
 		m := SelectProgressiveMode(9, 10, 0, DefaultProgressiveModeConfig()) // 90%, 10 attempts
@@ -873,6 +875,7 @@ func TestSelectProgressiveMode_Exactly85Pct(t *testing.T) {
 		models.ModeZhToTransl:        true,
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
+		models.ModeVoiceToTransl:     true,
 	}
 	seen := map[string]bool{}
 	for i := 0; i < 100; i++ {

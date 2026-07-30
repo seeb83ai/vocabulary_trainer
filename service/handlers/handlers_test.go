@@ -374,7 +374,7 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true, models.ModeZhToTranslNoSound: true}
+	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true, models.ModeZhToTranslNoSound: true, models.ModeVoiceToTransl: true}
 	if !validModes[card.Mode] {
 		t.Errorf("invalid mode param: got unexpected mode %s", card.Mode)
 	}
@@ -1427,6 +1427,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		models.ModeZhToTransl:        true,
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
+		models.ModeVoiceToTransl:     true,
 	}
 	for i := 0; i < 30; i++ {
 		p, _ := s.GetSM2Progress(ctx, id)
