@@ -251,6 +251,28 @@ function autoPlayCard(currentCard) {
     : playAudio(currentCard.word_id, currentCard.prompt);
 }
 
+// shouldAutoPlayResult decides whether the result screen should read out the
+// Chinese answer. Only fires for transl_to_zh: that's the one mode where the
+// prompt itself is never auto-played (it would reveal the answer), so once
+// the card is solved and the answer is shown, auto-play reads it out there
+// instead (issue #259).
+function shouldAutoPlayResult(currentCard, autoPlayEnabled) {
+  if (!autoPlayEnabled || !currentCard) return false;
+  return currentCard.mode === 'transl_to_zh';
+}
+
+// autoPlayResultAudio plays the solved word's Chinese audio on the result
+// screen when eligible (see shouldAutoPlayResult), cutting off any
+// still-playing previous clip.
+function autoPlayResultAudio(currentCard, result) {
+  if (!shouldAutoPlayResult(currentCard, autoPlayEnabled)) return;
+  if (currentAutoPlayAudio) {
+    currentAutoPlayAudio.pause();
+    currentAutoPlayAudio = null;
+  }
+  currentAutoPlayAudio = playAudio(currentCard.word_id, result.zh_text);
+}
+
 let _saveFiltersTimer = null;
 function scheduleFilterSave() {
   clearTimeout(_saveFiltersTimer);
@@ -957,6 +979,7 @@ function renderWordAnswerResult(result, answer) {
       }
 
       loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+      autoPlayResultAudio(currentCard, result);
     };
 
     if (result.ambiguous) {
@@ -1022,6 +1045,7 @@ function renderWordAnswerResult(result, answer) {
             if (disambigInlinePlay) disambigInlinePlay.addEventListener('click', () => playAudio(currentCard.word_id, result.zh_text));
             show('word-breakdown');
             loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
+            autoPlayResultAudio(currentCard, result);
           } catch (err) {
             disambigFeedback.textContent = 'Error: ' + err.message;
             disambigFeedback.className = 'mt-1 text-sm text-red-600';
@@ -1049,6 +1073,7 @@ function renderWordAnswerResult(result, answer) {
     hide('add-translation-row');
     hide('add-translation-lang-select');
     hide('accept-correct-btn');
+    autoPlayResultAudio(currentCard, result);
 
     if (!result.learning_new_word && result.repetitions > 1) {
       $('streak-info').textContent = t('result.streak', { n: result.repetitions });

@@ -524,6 +524,40 @@ describe('shouldAutoPlay', () => {
   });
 });
 
+// ── shouldAutoPlayResult ────────────────────────────────────────────────────────
+// Mirrors the pure eligibility check in train.js that decides whether the
+// result screen should read out the Chinese answer. Only fires for
+// transl_to_zh: that's the one mode where the prompt itself is never
+// auto-played (it would reveal the answer), so once the card is solved and
+// the answer is shown, auto-play should read it out there instead (issue #259).
+
+function shouldAutoPlayResult(currentCard, autoPlayEnabled) {
+  if (!autoPlayEnabled || !currentCard) return false;
+  return currentCard.mode === 'transl_to_zh';
+}
+
+describe('shouldAutoPlayResult', () => {
+  it('returns true for transl_to_zh when auto-play is enabled', () => {
+    expect(shouldAutoPlayResult({ mode: 'transl_to_zh' }, true)).toBe(true);
+  });
+
+  it('returns false for transl_to_zh when auto-play is disabled', () => {
+    expect(shouldAutoPlayResult({ mode: 'transl_to_zh' }, false)).toBe(false);
+  });
+
+  it('returns false for other modes even when auto-play is enabled', () => {
+    expect(shouldAutoPlayResult({ mode: 'zh_to_transl' }, true)).toBe(false);
+    expect(shouldAutoPlayResult({ mode: 'zh_pinyin_to_transl' }, true)).toBe(false);
+    expect(shouldAutoPlayResult({ mode: 'zh_to_transl_no_sound' }, true)).toBe(false);
+    expect(shouldAutoPlayResult({ mode: 'new_word' }, true)).toBe(false);
+  });
+
+  it('returns false when there is no current card', () => {
+    expect(shouldAutoPlayResult(null, true)).toBe(false);
+    expect(shouldAutoPlayResult(undefined, true)).toBe(false);
+  });
+});
+
 // ── isZhPromptWithSound ────────────────────────────────────────────────────────
 // Mirrors the pure play-button-visibility check in train.js's showCard(): the
 // button is only shown for the two modes where the Chinese prompt has audio.
