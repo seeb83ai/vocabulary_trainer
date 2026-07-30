@@ -73,6 +73,14 @@ restore:
 
 ## release: cross-compile for Raspberry Pi (arm64) and rsync to RSYNC_DEST
 release:
+	@branch=$$(git rev-parse --abbrev-ref HEAD); \
+	default=$$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'); \
+	default=$${default:-main}; \
+	if [ "$$branch" != "$$default" ]; then \
+		printf "WARNING: You are on branch '$$branch', not '$$default'. Release anyway? [y/N] "; \
+		read answer; \
+		[ "$$answer" = "y" ] || [ "$$answer" = "Y" ] || (echo "Aborted." && exit 1); \
+	fi
 	@test -n "$(RSYNC_DEST)" || (echo "RSYNC_DEST is not set. Copy .env.example to .env and fill it in." && exit 1)
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../vocab-trainer .
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-hsk ./cmd/import-hsk
