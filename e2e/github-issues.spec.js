@@ -38,4 +38,34 @@ test.describe('In-app GitHub issue reporting', () => {
     const status = page.locator('#issue-status');
     await expect(status).toBeHidden({ timeout: 10_000 });
   });
+
+  test('screenshot scope selector appears when screenshot is enabled and hides when disabled', async ({ page }) => {
+    await page.goto('/train');
+
+    const btn = page.locator('#issue-report-btn');
+    await expect(btn).toBeVisible({ timeout: 10_000 });
+    await btn.click();
+    await expect(page.locator('#issue-modal')).toBeVisible({ timeout: 10_000 });
+
+    const includeScreenshot = page.locator('#issue-include-screenshot');
+    const scopeRow = page.locator('#issue-screenshot-scope-row');
+    const scopeSelect = page.locator('#issue-screenshot-scope');
+
+    // When screenshot checkbox is checked, scope row is visible with 'visible' default.
+    await includeScreenshot.check();
+    await expect(scopeRow).toBeVisible({ timeout: 5_000 });
+    await expect(scopeSelect).toHaveValue('visible');
+
+    // The 'full' option is available.
+    await scopeSelect.selectOption('full');
+    await expect(scopeSelect).toHaveValue('full');
+
+    // Unchecking screenshot hides the scope row.
+    await includeScreenshot.uncheck();
+    await expect(scopeRow).toBeHidden({ timeout: 5_000 });
+
+    // Re-checking restores the scope row.
+    await includeScreenshot.check();
+    await expect(scopeRow).toBeVisible({ timeout: 5_000 });
+  });
 });

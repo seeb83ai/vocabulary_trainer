@@ -85,6 +85,13 @@
         <input id="issue-include-screenshot" type="checkbox" checked class="rounded border-gray-300">
         <span data-i18n="issue.includeScreenshot">Include a screenshot of this page</span>
       </label>
+      <div id="issue-screenshot-scope-row" class="hidden flex items-center gap-2 text-sm text-gray-700 pl-6">
+        <label for="issue-screenshot-scope" class="shrink-0" data-i18n="issue.screenshotScope">Scope:</label>
+        <select id="issue-screenshot-scope" class="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="visible" data-i18n="issue.scope.visible">Visible page (default)</option>
+          <option value="full" data-i18n="issue.scope.full">Full page</option>
+        </select>
+      </div>
       <img id="issue-screenshot-preview" alt="screenshot preview" class="hidden w-full rounded-lg border border-gray-200">
 
       <p id="issue-status" class="text-sm text-gray-600 min-h-[1.25rem]" role="status" aria-live="polite"></p>
