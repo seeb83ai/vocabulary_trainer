@@ -12,6 +12,7 @@ const (
 	ModeMaskPinyin        = "mask_pinyin" // transl_to_zh with pinyin hint forced on
 	ModeCycle             = "cycle"
 	ModeZhToTranslNoSound = "zh_to_transl_no_sound" // zh_to_transl with no play button / no auto-play
+	ModeVoiceToTransl     = "voice_to_transl"       // audio-only prompt; user types translation
 )
 
 // UserSettings holds per-user configuration stored in user_settings.
@@ -58,6 +59,7 @@ type UserSettings struct {
 	BlurPinyin                  bool     `json:"blur_pinyin"`
 	NoAutoVoiceOnBlur           bool     `json:"no_auto_voice_on_blur"`
 	CelebrateBucketChange       bool     `json:"celebrate_bucket_change"`
+	VoiceUnavailable            bool     `json:"voice_unavailable"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.

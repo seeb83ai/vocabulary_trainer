@@ -374,7 +374,7 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true, models.ModeZhToTranslNoSound: true}
+	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true, models.ModeZhToTranslNoSound: true, models.ModeVoiceToTransl: true}
 	if !validModes[card.Mode] {
 		t.Errorf("invalid mode param: got unexpected mode %s", card.Mode)
 	}
@@ -1427,6 +1427,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		models.ModeZhToTransl:        true,
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
+		models.ModeVoiceToTransl:     true,
 	}
 	for i := 0; i < 30; i++ {
 		p, _ := s.GetSM2Progress(ctx, id)
@@ -7204,6 +7205,81 @@ func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	decodeJSON(t, rec2, &st)
 	if st["celebrate_bucket_change"] != true {
 		t.Errorf("celebrate_bucket_change: want true after update, got %v", st["celebrate_bucket_change"])
+	}
+}
+
+func TestSettingsPatch_VoiceUnavailable(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["voice_unavailable"] != false {
+		t.Errorf("voice_unavailable: want false by default, got %v", st["voice_unavailable"])
+	}
+
+	body := baseSettingsPatch()
+	body["voice_unavailable"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["voice_unavailable"] != true {
+		t.Errorf("voice_unavailable: want true after update, got %v", st["voice_unavailable"])
+	}
+}
+
+func TestQuizNext_VoiceToTransl_SameShapeAsZhToTransl(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode="+models.ModeVoiceToTransl, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeVoiceToTransl {
+		t.Errorf("want card.Mode=%s, got %s", models.ModeVoiceToTransl, card.Mode)
+	}
+	if card.Prompt != "你好" {
+		t.Errorf("want prompt=你好, got %q", card.Prompt)
+	}
+}
+
+func TestQuizAnswer_VoiceToTransl_GradesLikeZhToTransl(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeVoiceToTransl,
+		Answer: "hello",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("want correct=true for a matching translation")
 	}
 }
 

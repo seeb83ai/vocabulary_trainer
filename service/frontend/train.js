@@ -8,6 +8,7 @@ let skipNewWordsVisible = true;
 let blurPinyin = false;
 let noAutoVoiceOnBlur = false;
 let celebrateBucketChange = false;
+let voiceUnavailable = false; // session-only flag, set when user skips a voice card and opts out
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
@@ -233,18 +234,26 @@ function shouldAutoPlay(currentCard) {
   return isZhPromptWithSound(currentCard.mode);
 }
 
+// isVoiceOnlyMode returns true for voice_to_transl when the user hasn't
+// disabled it, meaning the Chinese prompt text should be hidden.
+function isVoiceOnlyMode(mode) {
+  return mode === 'voice_to_transl' && !voiceUnavailable;
+}
+
 // isZhPromptWithSound decides whether the Chinese prompt for this mode has
 // audio available (play button + eligible for auto-play). zh_to_transl_no_sound
 // is deliberately excluded — it's the whole point of that mode.
 function isZhPromptWithSound(mode) {
-  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl';
+  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl' || mode === 'voice_to_transl';
 }
 
 // autoPlayCard plays audio for the current card when the auto-play toggle is
 // on and the card is eligible, cutting off any still-playing previous clip.
 function autoPlayCard(currentCard) {
   if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
-  if (noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin)) return;
+  if (!isVoiceOnlyMode(currentCard?.mode)) {
+    if (noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin)) return;
+  }
   if (currentAutoPlayAudio) {
     currentAutoPlayAudio.pause();
     currentAutoPlayAudio = null;
@@ -718,7 +727,15 @@ function showCard() {
     hide('hmm-actor-hint');
 
     setText('mode-label', getModeLabel(currentCard.mode));
-    setText('prompt-word', currentCard.prompt);
+
+    // voice_to_transl: hide the Chinese text — the audio IS the prompt.
+    // If the user has voice_unavailable set, fall back to showing the text.
+    if (isVoiceOnlyMode(currentCard.mode)) {
+      hide('prompt-word');
+    } else {
+      setText('prompt-word', currentCard.prompt);
+      show('prompt-word');
+    }
 
     // Show play button only when Chinese is the prompt and has sound — never
     // for transl_to_zh (would reveal the answer) or zh_to_transl_no_sound
@@ -1771,6 +1788,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Skip current card for today (advance due_date by 1 day).
   $('skip-today-btn').addEventListener('click', async () => {
     if (isSubmitted || !currentCard) return;
+
+    // If skipping a voice card, ask whether to disable voice for this session.
+    if (currentCard.mode === 'voice_to_transl' && !voiceUnavailable) {
+      if (confirm('Voice not available? Switch to Chinese → Translation for the rest of this session?')) {
+        voiceUnavailable = true;
+        selectedMode = 'zh_to_transl';
+        applyModeButtons();
+        localStorage.setItem('quizMode', selectedMode);
+      }
+    }
+
     let url, body;
     if (currentCard.card_type === 'hmm') {
       url = '/api/hmm-quiz/skip';
