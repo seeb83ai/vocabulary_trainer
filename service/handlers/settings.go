@@ -61,6 +61,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineStrugglingValue     int    `json:"baseline_struggling_value"`
 		BaselineLearningEnabled     bool   `json:"baseline_learning_enabled"`
 		BaselineLearningValue       int    `json:"baseline_learning_value"`
+		BaselineNewBucketEnabled    bool   `json:"baseline_new_bucket_enabled"`
+		BaselineNewBucketValue      int    `json:"baseline_new_bucket_value"`
 		GamificationEnabled         bool   `json:"gamification_enabled"`
 		GamificationFrequency       *int   `json:"gamification_frequency"`
 		BlurPinyin                  bool   `json:"blur_pinyin"`
@@ -151,6 +153,10 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "baseline_learning_value must be >= 0")
 		return
 	}
+	if req.BaselineNewBucketValue < 0 {
+		writeError(w, http.StatusBadRequest, "baseline_new_bucket_value must be >= 0")
+		return
+	}
 
 	resolvedFrequency := 5
 	if req.GamificationFrequency == nil {
@@ -195,6 +201,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineStrugglingValue:     req.BaselineStrugglingValue,
 		BaselineLearningEnabled:     req.BaselineLearningEnabled,
 		BaselineLearningValue:       req.BaselineLearningValue,
+		BaselineNewBucketEnabled:    req.BaselineNewBucketEnabled,
+		BaselineNewBucketValue:      req.BaselineNewBucketValue,
 		GamificationEnabled:         req.GamificationEnabled,
 		GamificationFrequency:       resolvedFrequency,
 		BlurPinyin:                  req.BlurPinyin,

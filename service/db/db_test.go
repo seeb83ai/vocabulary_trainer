@@ -1152,6 +1152,87 @@ func TestGetNextCard_BaselineDueToday_BlocksNewWords(t *testing.T) {
 	}
 }
 
+func TestGetNextCard_BaselineNewBucket_BlocksNewWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Create and acknowledge a word so it lands in the New bucket:
+	// learning_new_word=1, first_seen_at IS NOT NULL.
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, wordID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an unseen word (first_seen_at IS NULL).
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// New-bucket count is 1; threshold is 1 → block new words.
+	baselines := &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 1}
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a word, got nil")
+	}
+	if w.Text == "火" {
+		t.Error("baseline new-bucket should have blocked the unseen word 火")
+	}
+}
+
+func TestGetNextCard_BaselineNewBucket_BelowThreshold_StillShowsNewWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Create and acknowledge a word so it lands in the New bucket, then push its
+	// due_date into the future so it doesn't compete as the "most overdue" card
+	// (see the learningDue check in GetNextCard) — only its bucket membership matters here.
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, wordID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = datetime('now', '+30 days') WHERE word_id = ?`, wordID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// New-bucket count is 1; threshold is 3 → new word still introducible.
+	baselines := &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 3}
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a word, got nil")
+	}
+	if w.Text != "火" {
+		t.Errorf("expected unseen word 火 to still be introducible below threshold, got %s", w.Text)
+	}
+}
+
 func TestGetNextCard_Baselines_AllDisabled_StillShowsNewWord(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
