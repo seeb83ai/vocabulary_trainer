@@ -530,35 +530,58 @@ describe('shouldAutoPlay', () => {
 
 // ── shouldAutoPlayResult ────────────────────────────────────────────────────────
 // Mirrors the pure eligibility check in train.js that decides whether the
-// result screen should read out the Chinese answer. Only fires for
-// transl_to_zh: that's the one mode where the prompt itself is never
-// auto-played (it would reveal the answer), so once the card is solved and
-// the answer is shown, auto-play should read it out there instead (issue #259).
+// result screen should read out the Chinese answer. Fires whenever auto-play
+// is on and the answer wasn't already read out on the question screen (either
+// because the mode never plays audio there, e.g. transl_to_zh, or because the
+// question-screen play was skipped for some other reason, e.g. the blur guard
+// in autoPlayCard) — except for card types/modes that must always stay silent
+// (hmm cards have no audio; zh_to_transl_no_sound is deliberately silent) (issue #272).
 
-function shouldAutoPlayResult(currentCard, autoPlayEnabled) {
+function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   if (!autoPlayEnabled || !currentCard) return false;
-  return currentCard.mode === 'transl_to_zh';
+  if (currentCard.card_type === 'hmm') return false;
+  if (currentCard.mode === 'zh_to_transl_no_sound') return false;
+  return !alreadyPlayed;
 }
 
 describe('shouldAutoPlayResult', () => {
-  it('returns true for transl_to_zh when auto-play is enabled', () => {
-    expect(shouldAutoPlayResult({ mode: 'transl_to_zh' }, true)).toBe(true);
+  it('returns true for transl_to_zh when auto-play is enabled and not already played', () => {
+    expect(shouldAutoPlayResult({ mode: 'transl_to_zh' }, true, false)).toBe(true);
   });
 
   it('returns false for transl_to_zh when auto-play is disabled', () => {
-    expect(shouldAutoPlayResult({ mode: 'transl_to_zh' }, false)).toBe(false);
+    expect(shouldAutoPlayResult({ mode: 'transl_to_zh' }, false, false)).toBe(false);
   });
 
-  it('returns false for other modes even when auto-play is enabled', () => {
-    expect(shouldAutoPlayResult({ mode: 'zh_to_transl' }, true)).toBe(false);
-    expect(shouldAutoPlayResult({ mode: 'zh_pinyin_to_transl' }, true)).toBe(false);
-    expect(shouldAutoPlayResult({ mode: 'zh_to_transl_no_sound' }, true)).toBe(false);
-    expect(shouldAutoPlayResult({ mode: 'new_word' }, true)).toBe(false);
+  it('returns true for other modes when not already played on the question screen', () => {
+    expect(shouldAutoPlayResult({ mode: 'zh_to_transl' }, true, false)).toBe(true);
+    expect(shouldAutoPlayResult({ mode: 'zh_pinyin_to_transl' }, true, false)).toBe(true);
+  });
+
+  it('returns false when already played on the question screen', () => {
+    expect(shouldAutoPlayResult({ mode: 'zh_to_transl' }, true, true)).toBe(false);
+  });
+
+  it('returns false for zh_to_transl_no_sound regardless of whether it was already played', () => {
+    expect(shouldAutoPlayResult({ mode: 'zh_to_transl_no_sound' }, true, false)).toBe(false);
+    expect(shouldAutoPlayResult({ mode: 'zh_to_transl_no_sound' }, true, true)).toBe(false);
+  });
+
+  it('returns false for hmm cards (no audio exists)', () => {
+    expect(shouldAutoPlayResult({ card_type: 'hmm' }, true, false)).toBe(false);
+  });
+
+  it('returns true for component cards when not already played', () => {
+    expect(shouldAutoPlayResult({ card_type: 'component', mode: undefined }, true, false)).toBe(true);
+  });
+
+  it('returns false for new_word when already marked as played (no result screen is shown for it in practice)', () => {
+    expect(shouldAutoPlayResult({ mode: 'new_word' }, true, true)).toBe(false);
   });
 
   it('returns false when there is no current card', () => {
-    expect(shouldAutoPlayResult(null, true)).toBe(false);
-    expect(shouldAutoPlayResult(undefined, true)).toBe(false);
+    expect(shouldAutoPlayResult(null, true, false)).toBe(false);
+    expect(shouldAutoPlayResult(undefined, true, false)).toBe(false);
   });
 });
 
