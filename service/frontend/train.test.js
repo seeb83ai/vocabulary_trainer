@@ -598,6 +598,54 @@ describe('isZhPromptWithSound', () => {
   });
 });
 
+// ── isAutoPlayBlockedByBlur ───────────────────────────────────────────────────
+// Mirrors the noAutoVoiceOnBlur guard inside autoPlayCard(). Intro screens
+// (new_word, new-component) never blur their pinyin display (see train.js's
+// setText('new-word-pinyin', ...) / setText('new-component-pinyin', ...),
+// which never route through applyPinyinBlur()), so the guard must not apply
+// to them — regression for issue #273 ("Sound missing" on the new-word screen).
+
+function isVoiceOnlyMode(mode) {
+  return mode === 'voice_to_transl';
+}
+
+function isAutoPlayBlockedByBlur(currentCard, noAutoVoiceOnBlur, blurPinyin) {
+  const isIntroScreen = currentCard.mode === 'new_word' ||
+    (currentCard.card_type === 'component' && currentCard.is_new);
+  if (isIntroScreen || isVoiceOnlyMode(currentCard.mode)) return false;
+  return noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin);
+}
+
+describe('isAutoPlayBlockedByBlur', () => {
+  it('does not block a new_word intro with blur and no-auto-voice-on-blur both on', () => {
+    expect(isAutoPlayBlockedByBlur({ mode: 'new_word', pinyin: 'bīngxiāng' }, true, true)).toBe(false);
+  });
+
+  it('does not block a new_word intro with no pinyin at all', () => {
+    expect(isAutoPlayBlockedByBlur({ mode: 'new_word', pinyin: undefined }, true, false)).toBe(false);
+  });
+
+  it('does not block a new-component intro with blur and no-auto-voice-on-blur both on', () => {
+    expect(isAutoPlayBlockedByBlur({ card_type: 'component', is_new: true, pinyin: 'bīng' }, true, true)).toBe(false);
+  });
+
+  it('still blocks a regular (already-reviewed) component with blur and no-auto-voice-on-blur both on', () => {
+    expect(isAutoPlayBlockedByBlur({ card_type: 'component', is_new: false, pinyin: 'bīng' }, true, true)).toBe(true);
+  });
+
+  it('still blocks a regular zh_to_transl card with blur and no-auto-voice-on-blur both on', () => {
+    expect(isAutoPlayBlockedByBlur({ mode: 'zh_to_transl', pinyin: 'nǐhǎo' }, true, true)).toBe(true);
+  });
+
+  it('does not block a regular zh_to_transl card when no-auto-voice-on-blur is off', () => {
+    expect(isAutoPlayBlockedByBlur({ mode: 'zh_to_transl', pinyin: 'nǐhǎo' }, false, true)).toBe(false);
+  });
+
+  it('does not block voice_to_transl (already exempt as voice-only mode)', () => {
+    expect(isAutoPlayBlockedByBlur({ mode: 'voice_to_transl', pinyin: 'nǐhǎo' }, true, true)).toBe(false);
+  });
+});
+
 // ── levenshtein distance ───────────────────────────────────────────────────────
 // Standard DP edit-distance; inlined per project convention (tests are self-contained).
 
