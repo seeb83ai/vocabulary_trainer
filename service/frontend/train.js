@@ -247,13 +247,23 @@ function isZhPromptWithSound(mode) {
   return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl' || mode === 'voice_to_transl';
 }
 
+// isAutoPlayBlockedByBlur decides whether the noAutoVoiceOnBlur guard should
+// suppress auto-play for this card. Intro screens (new_word, new-component)
+// render their pinyin via plain setText() calls that never route through
+// applyPinyinBlur() — nothing is ever actually blurred there — so the guard,
+// whose whole purpose is to avoid spoiling a blurred answer, doesn't apply.
+function isAutoPlayBlockedByBlur(currentCard, noAutoVoiceOnBlur, blurPinyin) {
+  const isIntroScreen = currentCard.mode === 'new_word' ||
+    (currentCard.card_type === 'component' && currentCard.is_new);
+  if (isIntroScreen || isVoiceOnlyMode(currentCard.mode)) return false;
+  return noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin);
+}
+
 // autoPlayCard plays audio for the current card when the auto-play toggle is
 // on and the card is eligible, cutting off any still-playing previous clip.
 function autoPlayCard(currentCard) {
   if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
-  if (!isVoiceOnlyMode(currentCard?.mode)) {
-    if (noAutoVoiceOnBlur && (blurPinyin || !currentCard.pinyin)) return;
-  }
+  if (isAutoPlayBlockedByBlur(currentCard, noAutoVoiceOnBlur, blurPinyin)) return;
   if (currentAutoPlayAudio) {
     currentAutoPlayAudio.pause();
     currentAutoPlayAudio = null;
