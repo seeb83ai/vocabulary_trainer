@@ -490,6 +490,33 @@ func TestGetNextCard_BlocksUnseenWhenLearningWordsExist(t *testing.T) {
 	}
 }
 
+func TestGetNextCard_LearningWordOutsideTagFilterDoesNotBlockUnseen(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// A learning-phase word tagged "other" — outside the active tag filter.
+	idOther := seedWordWithTags(t, s, "一", "", []string{"one"}, []string{"other"})
+	s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_at = date('now'), learning_new_word = 1 WHERE word_id = ?`,
+		idOther)
+
+	// An unseen word tagged "active" — matches the session tag filter.
+	idActive := seedWordWithTags(t, s, "二", "", []string{"two"}, []string{"active"})
+
+	// With the "active" tag filter, the learning word (tagged "other") must not
+	// block the unseen word from being returned.
+	w, _, _, err := s.GetNextCard(ctx, int64(2), []string{"active"}, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected the unseen active-tagged word to be returned")
+	}
+	if w.ID != idActive {
+		t.Errorf("expected unseen word (id=%d), got id=%d — learning word outside tag filter should not block new introductions", idActive, w.ID)
+	}
+}
+
 // ── UpdateSM2Progress ─────────────────────────────────────────────────────────
 
 func TestUpdateSM2Progress_Persists(t *testing.T) {
