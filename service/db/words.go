@@ -694,6 +694,8 @@ type NewWordBaselines struct {
 	StrugglingValue   int // max allowed struggling count
 	LearningEnabled   bool
 	LearningValue     int // max allowed learning count
+	NewBucketEnabled  bool
+	NewBucketValue    int // max allowed New-bucket count
 	CooldownMinutes   int // minutes that must pass since last new word (0 = disabled)
 }
 
@@ -806,6 +808,22 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				newWordsBlocked = true
 			}
 		}
+		if newWordFilter == "" && baselines.NewBucketEnabled {
+			var newBucket int
+			if err := s.db.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM sm2_progress p
+				 JOIN words w ON w.id = p.word_id
+				 WHERE w.language = 'zh' AND w.user_id = ?
+				   AND p.learning_new_word = 1
+				   AND p.first_seen_at IS NOT NULL`,
+				userID).Scan(&newBucket); err != nil {
+				return nil, nil, false, fmt.Errorf("count new bucket: %w", err)
+			}
+			if newBucket >= baselines.NewBucketValue {
+				newWordFilter = " AND p.first_seen_at IS NOT NULL"
+				newWordsBlocked = true
+			}
+		}
 	}
 
 	// Only quiz on zh words — they are the canonical unit; en words are just
@@ -855,14 +873,15 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 	// shift), so ORDER BY due_date alone would pick them ahead of unseen words.
 	if !newWordsBlocked {
 		var learningDue int
+		learningDueArgs := append([]any{userID}, tagArgs...)
 		if err := s.db.QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM sm2_progress p
 			 JOIN words w ON w.id = p.word_id
 			 WHERE w.language = 'zh' AND w.user_id = ?
 			   AND p.learning_new_word = 1
 			   AND p.first_seen_at IS NOT NULL
-			   AND p.due_date <= CURRENT_TIMESTAMP`,
-			userID).Scan(&learningDue); err != nil {
+			   AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter,
+			learningDueArgs...).Scan(&learningDue); err != nil {
 			return nil, nil, false, fmt.Errorf("count learning due: %w", err)
 		}
 		if learningDue == 0 {

@@ -82,6 +82,23 @@ test.describe('Settings – Daily Learning', () => {
     await page.locator('#daily-save-btn').click();
   });
 
+  test('baseline new-bucket can be enabled with a threshold', async ({ page }) => {
+    await page.goto('/settings');
+
+    await page.locator('#baseline-new-bucket-enabled').check();
+    await page.locator('#baseline-new-bucket-value').fill('3');
+    await page.locator('#daily-save-btn').click();
+    await expect(page.locator('#daily-success')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#baseline-new-bucket-enabled')).toBeChecked();
+    await expect(page.locator('#baseline-new-bucket-value')).toHaveValue('3');
+
+    // Disable and reset
+    await page.locator('#baseline-new-bucket-enabled').uncheck();
+    await page.locator('#daily-save-btn').click();
+  });
+
   test('extend-session toggle is visible and defaults to checked', async ({ page }) => {
     await page.goto('/settings');
     const toggle = page.locator('#extend-session-extra-words');

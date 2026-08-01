@@ -6630,6 +6630,12 @@ func TestGetSettings_DailyLearningDefaults(t *testing.T) {
 	if st.BaselineLearningValue <= 0 {
 		t.Errorf("want BaselineLearningValue > 0, got %d", st.BaselineLearningValue)
 	}
+	if st.BaselineNewBucketEnabled {
+		t.Error("want BaselineNewBucketEnabled=false by default")
+	}
+	if st.BaselineNewBucketValue <= 0 {
+		t.Errorf("want BaselineNewBucketValue > 0, got %d", st.BaselineNewBucketValue)
+	}
 }
 
 func TestPatchSettings_DailyLearning(t *testing.T) {
@@ -6656,6 +6662,8 @@ func TestPatchSettings_DailyLearning(t *testing.T) {
 		BaselineStrugglingValue   int    `json:"baseline_struggling_value"`
 		BaselineLearningEnabled   bool   `json:"baseline_learning_enabled"`
 		BaselineLearningValue     int    `json:"baseline_learning_value"`
+		BaselineNewBucketEnabled  bool   `json:"baseline_new_bucket_enabled"`
+		BaselineNewBucketValue    int    `json:"baseline_new_bucket_value"`
 	}
 	req := dailyPayload{
 		PrimaryLang:               payload["primary_lang"],
@@ -6676,6 +6684,8 @@ func TestPatchSettings_DailyLearning(t *testing.T) {
 		BaselineStrugglingValue:   8,
 		BaselineLearningEnabled:   false,
 		BaselineLearningValue:     20,
+		BaselineNewBucketEnabled:  true,
+		BaselineNewBucketValue:    3,
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", req)
 	if rec.Code != http.StatusOK {
@@ -6706,6 +6716,48 @@ func TestPatchSettings_DailyLearning(t *testing.T) {
 	}
 	if st.BaselineLearningEnabled {
 		t.Error("want BaselineLearningEnabled=false after patch")
+	}
+	if !st.BaselineNewBucketEnabled {
+		t.Error("want BaselineNewBucketEnabled=true after patch")
+	}
+	if st.BaselineNewBucketValue != 3 {
+		t.Errorf("want BaselineNewBucketValue=3, got %d", st.BaselineNewBucketValue)
+	}
+}
+
+func TestPatchSettings_BaselineNewBucketValue_Invalid(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	payload := validSettingsPayload()
+	type dailyPayload struct {
+		PrimaryLang            string `json:"primary_lang"`
+		SecondaryLang          string `json:"secondary_lang"`
+		ProgNew                string `json:"prog_new"`
+		ProgTierStruggling     string `json:"prog_tier_struggling"`
+		ProgTierLearning       string `json:"prog_tier_learning"`
+		ProgTierPracticing     string `json:"prog_tier_practicing"`
+		ProgTierMastered       string `json:"prog_tier_mastered"`
+		NewWordMode0           string `json:"new_word_mode_0"`
+		NewWordMode1           string `json:"new_word_mode_1"`
+		NewWordMode2           string `json:"new_word_mode_2"`
+		BaselineNewBucketValue int    `json:"baseline_new_bucket_value"`
+	}
+	req := dailyPayload{
+		PrimaryLang:            payload["primary_lang"],
+		SecondaryLang:          payload["secondary_lang"],
+		ProgNew:                payload["prog_new"],
+		ProgTierStruggling:     payload["prog_tier_struggling"],
+		ProgTierLearning:       payload["prog_tier_learning"],
+		ProgTierPracticing:     payload["prog_tier_practicing"],
+		ProgTierMastered:       payload["prog_tier_mastered"],
+		NewWordMode0:           payload["new_word_mode_0"],
+		NewWordMode1:           payload["new_word_mode_1"],
+		NewWordMode2:           payload["new_word_mode_2"],
+		BaselineNewBucketValue: -1,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for negative baseline_new_bucket_value, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
