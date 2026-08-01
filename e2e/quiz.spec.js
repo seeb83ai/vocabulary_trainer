@@ -1127,6 +1127,73 @@ test.describe('Quiz – auto-play sound toggle', () => {
     }
   });
 
+  // issue #272: when question-screen autoplay is suppressed (blur guard fires
+  // for a component card with no pinyin + no_auto_voice_on_blur setting), the
+  // result screen must pick up the audio instead.
+  test('auto-play fires on the component result screen when question-screen audio was suppressed (issue #272)', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    // Component card with no pinyin → blur guard suppresses question-screen autoplay
+    // when no_auto_voice_on_blur is enabled.
+    await page.route('**/api/quiz/next*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          card_type: 'component',
+          prompt: '木',
+          pinyin: null,
+          is_new: false,
+          is_also_word: false,
+          definitions: { en: 'wood, tree' },
+        }),
+      });
+    });
+    await page.route('**/api/component/answer', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          correct: false,
+          correct_answers: { en: 'wood, tree' },
+          interval_days: 1,
+          total_correct: 0,
+          total_attempts: 1,
+        }),
+      });
+    });
+
+    // Enable blur suppression so autoPlayCard returns early without setting questionAutoPlayed.
+    await page.request.patch('/api/settings', { data: { no_auto_voice_on_blur: true } });
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    // Question screen: no audio should fire (blur guard suppressed it).
+    await page.waitForTimeout(400);
+    expect(audioRequests.length).toBe(0);
+
+    // Submit a wrong answer to get to the result screen.
+    await page.locator('#answer-input').fill('xxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+
+    // Result screen should now fire the audio that was skipped on the question screen.
+    await expect.poll(() => audioRequests.length, { timeout: 5_000 }).toBeGreaterThan(0);
+    expect(audioRequests[0]).toContain('/api/audio/component/');
+
+    // Restore default setting.
+    await page.request.patch('/api/settings', { data: { no_auto_voice_on_blur: false } });
+  });
+
   test('auto-play toggle resets to off after a page reload', async ({ page }) => {
     await page.goto('/train');
     await page.locator('#autoplay-toggle-btn').click();
@@ -1167,7 +1234,29 @@ test.describe('Quiz – Chinese (no sound) mode', () => {
     await expect(page.locator('#play-btn')).not.toBeVisible();
   });
 
-  test('auto-play never fires in this mode, even when the toggle is enabled', async ({ page }) => {
+  test('auto-play never fires on the question screen in this mode, even when the toggle is enabled', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    await useNoSoundMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    // Question screen must stay silent — no audio before the answer is submitted.
+    await page.waitForTimeout(400);
+    expect(audioRequests.length).toBe(0);
+  });
+
+  // issue #272: the "no sound" applies only to the question screen (hiding the
+  // prompt audio). Once the answer is revealed on the result screen, autoplay
+  // should fire just like any other mode.
+  test('auto-play fires on the result screen for zh_to_transl_no_sound (issue #272)', async ({ page }) => {
     const audioRequests = [];
     await page.route('**/api/audio/**', (route) => {
       audioRequests.push(route.request().url());
@@ -1184,11 +1273,8 @@ test.describe('Quiz – Chinese (no sound) mode', () => {
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
-    await page.locator('#next-btn').click();
-    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
 
-    await page.waitForTimeout(500);
-    expect(audioRequests.length).toBe(0);
+    await expect.poll(() => audioRequests.length, { timeout: 5_000 }).toBeGreaterThan(0);
   });
 
   test('result screen play button still works after answering (no-sound only applies to the prompt phase)', async ({ page }) => {

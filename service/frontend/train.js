@@ -222,6 +222,10 @@ let latestStats = null;
 // on page load/reload so it doesn't surprise the user across sessions.
 let autoPlayEnabled = false;
 let currentAutoPlayAudio = null;
+// Tracks whether audio actually started playing for the current card via
+// autoPlayCard, so the result screen knows whether to play it there instead
+// (issue #272). Reset whenever loadNextCard replaces currentCard.
+let questionAutoPlayed = false;
 
 // shouldAutoPlay decides whether a newly shown card should trigger auto-play
 // audio. Never fires for transl_to_zh (would reveal the answer), hmm cards
@@ -268,31 +272,38 @@ function autoPlayCard(currentCard) {
     currentAutoPlayAudio.pause();
     currentAutoPlayAudio = null;
   }
+  questionAutoPlayed = true;
   currentAutoPlayAudio = currentCard.card_type === 'component'
     ? playComponentAudio(currentCard.prompt)
     : playAudio(currentCard.word_id, currentCard.prompt);
 }
 
 // shouldAutoPlayResult decides whether the result screen should read out the
-// Chinese answer. Only fires for transl_to_zh: that's the one mode where the
-// prompt itself is never auto-played (it would reveal the answer), so once
-// the card is solved and the answer is shown, auto-play reads it out there
-// instead (issue #259).
-function shouldAutoPlayResult(currentCard, autoPlayEnabled) {
+// Chinese answer. Fires whenever auto-play is on and the answer wasn't
+// already read out on the question screen (either because the mode never
+// plays audio there, e.g. transl_to_zh, or because the question-screen play
+// was skipped for some other reason, e.g. the blur guard in autoPlayCard) —
+// except for card types/modes that must always stay silent (hmm cards have
+// no audio; zh_to_transl_no_sound is deliberately silent) (issue #272).
+function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   if (!autoPlayEnabled || !currentCard) return false;
-  return currentCard.mode === 'transl_to_zh';
+  if (currentCard.card_type === 'hmm') return false;
+  return !alreadyPlayed;
 }
 
-// autoPlayResultAudio plays the solved word's Chinese audio on the result
-// screen when eligible (see shouldAutoPlayResult), cutting off any
-// still-playing previous clip.
+// autoPlayResultAudio plays the solved word's/component's Chinese audio on
+// the result screen when eligible (see shouldAutoPlayResult), cutting off
+// any still-playing previous clip.
 function autoPlayResultAudio(currentCard, result) {
-  if (!shouldAutoPlayResult(currentCard, autoPlayEnabled)) return;
+  if (!shouldAutoPlayResult(currentCard, autoPlayEnabled, questionAutoPlayed)) return;
   if (currentAutoPlayAudio) {
     currentAutoPlayAudio.pause();
     currentAutoPlayAudio = null;
   }
-  currentAutoPlayAudio = playAudio(currentCard.word_id, result.zh_text);
+  questionAutoPlayed = true; // avoid double-firing if called again for the same card
+  currentAutoPlayAudio = currentCard.card_type === 'component'
+    ? playComponentAudio(currentCard.prompt)
+    : playAudio(currentCard.word_id, result.zh_text);
 }
 
 let _saveFiltersTimer = null;
@@ -568,6 +579,7 @@ async function loadNextCard(trackCurrent = false) {
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
+    questionAutoPlayed = false;
     // The served card was pulled in from beyond today's due-date bound solely
     // to avoid repeating a just-answered word — it isn't reflected in
     // latestStats.due_today, so bump the displayed count by 1 to match.
@@ -1343,6 +1355,7 @@ function showComponentResult(resp) {
   show('word-breakdown');
   const inlinePlay = $('word-breakdown').querySelector('.component-inline-play');
   if (inlinePlay) inlinePlay.addEventListener('click', () => playComponentAudio(currentCard.prompt));
+  autoPlayResultAudio(currentCard, resp);
 
   hide('add-translation-row');
   hide('add-translation-lang-select');
