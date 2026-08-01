@@ -278,7 +278,6 @@ function autoPlayCard(currentCard) {
 function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   if (!autoPlayEnabled || !currentCard) return false;
   if (currentCard.card_type === 'hmm') return false;
-  if (currentCard.mode === 'zh_to_transl_no_sound') return false;
   return !alreadyPlayed;
 }
 

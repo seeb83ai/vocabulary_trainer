@@ -532,15 +532,14 @@ describe('shouldAutoPlay', () => {
 // Mirrors the pure eligibility check in train.js that decides whether the
 // result screen should read out the Chinese answer. Fires whenever auto-play
 // is on and the answer wasn't already read out on the question screen (either
-// because the mode never plays audio there, e.g. transl_to_zh, or because the
-// question-screen play was skipped for some other reason, e.g. the blur guard
-// in autoPlayCard) — except for card types/modes that must always stay silent
-// (hmm cards have no audio; zh_to_transl_no_sound is deliberately silent) (issue #272).
+// because the mode never plays audio there, e.g. transl_to_zh or
+// zh_to_transl_no_sound, or because the question-screen play was skipped for
+// some other reason, e.g. the blur guard in autoPlayCard) — except for hmm
+// cards which have no audio at all (issue #272).
 
 function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   if (!autoPlayEnabled || !currentCard) return false;
   if (currentCard.card_type === 'hmm') return false;
-  if (currentCard.mode === 'zh_to_transl_no_sound') return false;
   return !alreadyPlayed;
 }
 
@@ -562,9 +561,8 @@ describe('shouldAutoPlayResult', () => {
     expect(shouldAutoPlayResult({ mode: 'zh_to_transl' }, true, true)).toBe(false);
   });
 
-  it('returns false for zh_to_transl_no_sound regardless of whether it was already played', () => {
-    expect(shouldAutoPlayResult({ mode: 'zh_to_transl_no_sound' }, true, false)).toBe(false);
-    expect(shouldAutoPlayResult({ mode: 'zh_to_transl_no_sound' }, true, true)).toBe(false);
+  it('returns true for zh_to_transl_no_sound on result screen (question screen was silent, result reveals the answer)', () => {
+    expect(shouldAutoPlayResult({ mode: 'zh_to_transl_no_sound' }, true, false)).toBe(true);
   });
 
   it('returns false for hmm cards (no audio exists)', () => {
