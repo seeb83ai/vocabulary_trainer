@@ -535,7 +535,7 @@ func (s *Store) resolveConfusionEntity(ctx context.Context, userID, wordID int64
 	if wordID != 0 {
 		var t string
 		var p sql.NullString
-		err = s.db.QueryRowContext(ctx, `SELECT text, pinyin FROM words WHERE id = ?`, wordID).Scan(&t, &p)
+		err = s.db.QueryRowContext(ctx, `SELECT text, pinyin FROM words WHERE id = ? AND user_id = ?`, wordID, userID).Scan(&t, &p)
 		if err == sql.ErrNoRows {
 			return "", "", nil, nil, false, nil
 		}

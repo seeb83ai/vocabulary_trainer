@@ -1832,6 +1832,49 @@ func TestGetConfusions_PopulatesEnTexts(t *testing.T) {
 	}
 }
 
+// TestResolveConfusionEntity_WordOwnedByDifferentUser_NotFound is a regression
+// test for the defense-in-depth user_id guard on resolveConfusionEntity's word
+// branch (PR #281 review round 1, finding #3): even though every real caller
+// only ever passes a wordID sourced from a confusion_pairs row already
+// filtered by user_id, the helper itself must refuse to resolve (and thus
+// leak text/pinyin for) a word owned by a different user.
+func TestResolveConfusionEntity_WordOwnedByDifferentUser_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	otherUsersWordID := seedWord(t, s, "秘密", "mìmì", []string{"secret"}) // owned by user 2
+
+	_, _, _, _, ok, err := s.resolveConfusionEntity(ctx, int64(1), otherUsersWordID, "", []string{"en"})
+	if err != nil {
+		t.Fatalf("resolveConfusionEntity: %v", err)
+	}
+	if ok {
+		t.Error("resolveConfusionEntity resolved a word owned by a different user; want ok=false")
+	}
+}
+
+// TestGetConfusions_DropsRowReferencingAnotherUsersWord verifies the same
+// guard end-to-end through GetConfusions: a confusion_pairs row for user 1
+// that (incorrectly) references words owned by user 2 must be silently
+// skipped rather than leaking user 2's word text into user 1's response.
+func TestGetConfusions_DropsRowReferencingAnotherUsersWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	idA := seedWord(t, s, "秘密", "mìmì", []string{"secret"})   // owned by user 2
+	idB := seedWord(t, s, "危险", "wēixiǎn", []string{"danger"}) // owned by user 2
+
+	if err := s.upsertConfusion(ctx, int64(1), idA, "", idB, "", "zh_to_transl"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.GetConfusions(ctx, int64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Errorf("want the cross-user row silently dropped, got %d items: %+v", len(items), items)
+	}
+}
+
 func TestGetConfusionDetail_ReturnsRow(t *testing.T) {
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})

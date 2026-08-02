@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
 	"vocabulary_trainer/models"
@@ -28,6 +29,7 @@ func newRouterForUser(s *db.Store, userID int64) http.Handler {
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
 	hmmH := &handlers.HMMHandler{Store: s}
 	mismatchH := &handlers.MismatchesHandler{Store: s}
+	componentH := &handlers.ComponentHandler{Store: s}
 
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(userID))
@@ -40,6 +42,10 @@ func newRouterForUser(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
+	r.Get("/api/quiz/match-game", quizH.MatchGame)
+	r.Post("/api/quiz/match-answer", quizH.MatchAnswer)
+
+	r.Post("/api/component/answer", componentH.Answer)
 
 	r.Route("/api/words", func(r chi.Router) {
 		r.Get("/", wordsH.List)
@@ -752,6 +758,134 @@ func TestIsolation_Mismatches_OnlyOwnConfusions(t *testing.T) {
 	decodeJSON(t, rec, &items2)
 	if len(items2) != 0 {
 		t.Errorf("user2 mismatches: want 0, got %d", len(items2))
+	}
+}
+
+// ── Component confusion: cross-user isolation ─────────────────────────────────
+
+// TestIsolation_ComponentConfusion_OnlyOwnEntities covers issue #280's new
+// component-confusion Store methods (DetectComponentConfusion,
+// UpsertComponentConfusion, GetComponentConfusionDetail), exercised end-to-end
+// through POST /api/component/answer. Both users train the same shared
+// component character "扑", but only user 1 owns a zh word ("去" / "to go")
+// that the wrong answer could be confused with. User 2 submitting the exact
+// same wrong answer must not be told about (or contaminate) user 1's word.
+func TestIsolation_ComponentConfusion_OnlyOwnEntities(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if err := s.SeedHanziDecompositionForTest(ctx, "扑", "to rap, to tap; script; to let go"); err != nil {
+		t.Fatalf("seed component definition: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, 1, "扑", time.Now().Add(-time.Hour))
+	s.InsertComponentProgressForTest(ctx, 2, "扑", time.Now().Add(-time.Hour))
+
+	// Only user 1 owns a word whose translation matches the wrong answer below.
+	wordID := seedWordForUser(t, s, 1, "去", "qù", []string{"to go"})
+
+	r1 := newRouterForUser(s, 1)
+	r2 := newRouterForUser(s, 2)
+
+	// User 1 answers wrong with "To go" — must be reported as confused with their own word.
+	rec := do(t, r1, "POST", "/api/component/answer", map[string]string{
+		"character": "扑",
+		"answer":    "To go",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user1 component answer: %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp1 models.ComponentAnswerResponse
+	decodeJSON(t, rec, &resp1)
+	if resp1.ConfusedWith == nil {
+		t.Fatal("user1: want confused_with to be populated")
+	}
+	if resp1.ConfusedWith.ConfusedWithKind != models.ConfusionKindWord || resp1.ConfusedWith.ConfusedWithID != wordID {
+		t.Errorf("user1 confused_with: got kind=%s id=%d, want word id=%d", resp1.ConfusedWith.ConfusedWithKind, resp1.ConfusedWith.ConfusedWithID, wordID)
+	}
+
+	// User 2 answers the exact same wrong answer — they don't own any word
+	// with that translation, so no confusion must be detected or leaked.
+	rec = do(t, r2, "POST", "/api/component/answer", map[string]string{
+		"character": "扑",
+		"answer":    "To go",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user2 component answer: %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp2 models.ComponentAnswerResponse
+	decodeJSON(t, rec, &resp2)
+	if resp2.ConfusedWith != nil {
+		t.Errorf("user2: want no confused_with (owns no matching word), got %+v", resp2.ConfusedWith)
+	}
+
+	// User 2's /api/mismatches must not show user 1's component confusion.
+	rec = do(t, r2, "GET", "/api/mismatches", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user2 mismatches: %d", rec.Code)
+	}
+	var items2 []models.ConfusionDetail
+	decodeJSON(t, rec, &items2)
+	if len(items2) != 0 {
+		t.Errorf("user2 mismatches: want 0, got %d", len(items2))
+	}
+
+	// User 1's mismatches must contain exactly the one component confusion just recorded.
+	rec = do(t, r1, "GET", "/api/mismatches", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user1 mismatches: %d", rec.Code)
+	}
+	var items1 []models.ConfusionDetail
+	decodeJSON(t, rec, &items1)
+	if len(items1) != 1 {
+		t.Fatalf("user1 mismatches: want 1, got %d", len(items1))
+	}
+	if items1[0].ZhKind != models.ConfusionKindComponent || items1[0].ZhComponent != "扑" {
+		t.Errorf("user1 mismatch entry: got kind=%s component=%q", items1[0].ZhKind, items1[0].ZhComponent)
+	}
+}
+
+// TestIsolation_MatchAnswer_ComponentBranch_CannotAffectOtherUsersProgress
+// covers the new component branch of POST /api/quiz/match-answer (used by the
+// match-game result screen): user 2 has no component_progress row for a
+// character only user 1 trains, so submitting a match-answer for it as user 2
+// must fail rather than silently creating or mutating user 1's row.
+func TestIsolation_MatchAnswer_ComponentBranch_CannotAffectOtherUsersProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if err := s.SeedHanziDecompositionForTest(ctx, "扑", "to rap, to tap; script; to let go"); err != nil {
+		t.Fatalf("seed component definition: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, 1, "扑", time.Now().Add(-time.Hour))
+	before, _, err := s.GetComponentProgressForTest(ctx, 1, "扑")
+	if err != nil {
+		t.Fatalf("read user1 component progress before: %v", err)
+	}
+
+	r2 := newRouterForUser(s, 2)
+	rec := do(t, r2, "POST", "/api/quiz/match-answer", map[string]any{
+		"kind":      models.ConfusionKindComponent,
+		"character": "扑",
+		"correct":   true,
+	})
+	if rec.Code == http.StatusOK {
+		t.Fatalf("user2 match-answer for a component only user1 trains: want error, got 200: %s", rec.Body.String())
+	}
+
+	after, _, err := s.GetComponentProgressForTest(ctx, 1, "扑")
+	if err != nil {
+		t.Fatalf("read user1 component progress after: %v", err)
+	}
+	if after.TotalAttempts != before.TotalAttempts || after.TotalCorrect != before.TotalCorrect {
+		t.Errorf("user1 component progress changed by user2's match-answer: before=%+v after=%+v", before, after)
+	}
+
+	progress2, err := s.GetComponentProgress(ctx, 2, "扑")
+	if err != nil {
+		t.Fatalf("get user2 component progress: %v", err)
+	}
+	if progress2 != nil {
+		t.Errorf("user2 gained a component_progress row for a character they never trained: %+v", progress2)
 	}
 }
 
