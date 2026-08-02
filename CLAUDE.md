@@ -219,6 +219,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
+| `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
 
 ### Deployment

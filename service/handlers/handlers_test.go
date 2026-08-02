@@ -3974,6 +3974,82 @@ func TestComponentAnswer_WrongAnswer(t *testing.T) {
 	}
 }
 
+// TestComponentAnswer_WrongAnswer_TriggersMismatch covers issue #280: a wrong
+// component answer that happens to be the translation of a different word
+// must be reported as a mismatch (confused_with), not just marked wrong.
+func TestComponentAnswer_WrongAnswer_TriggersMismatch(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "扑", "to rap, to tap; script; to let go"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "扑", time.Now().Add(-time.Hour))
+	wordID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText: "去", Pinyin: "qù", Translations: map[string][]string{"en": {"to go"}},
+	})
+	if err != nil {
+		t.Fatalf("seed word: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "扑",
+		"answer":    "To go",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.ComponentAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Fatal("want correct=false")
+	}
+	if resp.ConfusedWith == nil {
+		t.Fatal("want confused_with to be populated")
+	}
+	if resp.ConfusedWith.ZhKind != models.ConfusionKindComponent || resp.ConfusedWith.ZhComponent != "扑" {
+		t.Errorf("zh side: got kind=%s component=%q", resp.ConfusedWith.ZhKind, resp.ConfusedWith.ZhComponent)
+	}
+	if resp.ConfusedWith.ConfusedWithKind != models.ConfusionKindWord || resp.ConfusedWith.ConfusedWithID != wordID {
+		t.Errorf("confused_with side: got kind=%s id=%d (want word id=%d)", resp.ConfusedWith.ConfusedWithKind, resp.ConfusedWith.ConfusedWithID, wordID)
+	}
+	if resp.ConfusedWith.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("mode: want %s, got %s", models.ModeZhPinyinToTransl, resp.ConfusedWith.Mode)
+	}
+
+	// The pair must also now show up on the mismatches page.
+	items, err := s.GetConfusions(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 tracked confusion, got %d", len(items))
+	}
+}
+
+func TestComponentAnswer_WrongAnswer_NoMismatchWhenUnrelated(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman; female"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+		"character": "女",
+		"answer":    "completely unrelated",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.ComponentAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.ConfusedWith != nil {
+		t.Errorf("want confused_with nil, got %+v", resp.ConfusedWith)
+	}
+}
+
 func TestComponentAnswer_WrongAnswer_IncludesTier(t *testing.T) {
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman"); err != nil {
@@ -7002,7 +7078,7 @@ func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	// Only 1 confusion pair — game should not trigger
-	if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
+	if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen) VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
 		t.Fatal(err)
 	}
 	r := newRouter(s)
@@ -7026,7 +7102,7 @@ func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
 	id4 := seedWord(t, s, "对不起", "duì bu qǐ", []string{"sorry"})
 	// 2 distinct pairs → 4 unique words
 	for _, pair := range [][2]int64{{id1, id2}, {id3, id4}} {
-		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen) VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -7050,7 +7126,7 @@ func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
 	// Pair (1→2) and (2→3): word id2 appears in both, so only 3 unique words
 	for _, pair := range [][2]int64{{id1, id2}, {id2, id3}} {
-		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen) VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -7074,7 +7150,7 @@ func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
 	id4 := seedWord(t, s, "对不起", "duì bu qǐ", []string{"sorry"})
 	for _, pair := range [][2]int64{{id1, id2}, {id3, id4}} {
-		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen) VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen) VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -7097,7 +7173,86 @@ func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
 	}
 }
 
+// TestMatchGame_IncludesComponentPairs covers issue #280: component-vs-word
+// confusion pairs (created by a wrong component answer) must feed into the
+// match game the same way word-vs-word pairs already do.
+func TestMatchGame_IncludesComponentPairs(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	if err := s.UpsertComponentConfusion(ctx, int64(2), "扑", 0, "去", "zh_pinyin_to_transl"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen) VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
+		t.Fatal(err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 4 {
+		t.Fatalf("expected 4 words (2 words + 2 components), got %d: %+v", len(resp.Words), resp.Words)
+	}
+	var sawComponent bool
+	for _, w := range resp.Words {
+		if w.Kind == models.ConfusionKindComponent {
+			sawComponent = true
+			if w.Character == "" {
+				t.Errorf("component word missing character: %+v", w)
+			}
+		} else if w.Kind != models.ConfusionKindWord {
+			t.Errorf("unexpected kind %q", w.Kind)
+		}
+	}
+	if !sawComponent {
+		t.Error("expected at least one component-kind word in the match game")
+	}
+}
+
 // ── POST /api/quiz/match-answer ───────────────────────────────────────────────
+
+func TestMatchAnswer_ComponentKind_RecordsComponentProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	s.InsertComponentProgressForTest(ctx, int64(2), "扑", time.Now())
+
+	r := newRouter(s)
+	body := map[string]any{"kind": "component", "character": "扑", "correct": true}
+	rec := do(t, r, "POST", "/api/quiz/match-answer", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("expected correct=true")
+	}
+	if resp.TotalAttempts != 1 || resp.TotalCorrect != 1 {
+		t.Errorf("expected 1 attempt/1 correct, got attempts=%d correct=%d", resp.TotalAttempts, resp.TotalCorrect)
+	}
+
+	progress, err := s.GetComponentProgress(ctx, int64(2), "扑")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress == nil || progress.TotalAttempts != 1 {
+		t.Errorf("expected component_progress to be updated, got %+v", progress)
+	}
+}
+
+func TestMatchAnswer_ComponentKind_MissingCharacter(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"kind": "component", "correct": true})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
 
 func TestMatchAnswer_Correct(t *testing.T) {
 	s := openTestDB(t)

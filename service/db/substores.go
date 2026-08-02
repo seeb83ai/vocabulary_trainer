@@ -51,11 +51,11 @@ type QuizStore interface {
 	CountLearningNewWords(ctx context.Context, userID int64, tags []string) (int, error)
 	GetWordCountByDueDate(ctx context.Context, userID int64, tags []string) ([]models.DueDateCount, error)
 	DetectConfusion(ctx context.Context, userID, zhWordID int64, answer, mode string, langs []string) (int64, bool, error)
-	UpsertConfusion(ctx context.Context, zhWordID, confusedWithID int64, mode string) error
-	GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error)
+	UpsertConfusion(ctx context.Context, userID, zhWordID, confusedWithID int64, mode string) error
+	GetConfusionDetail(ctx context.Context, userID, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error)
 	GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error)
 	GetRecentMismatches(ctx context.Context, userID int64, since time.Time, limit int) ([]models.ConfusionDetail, error)
-	MarkConfusionsShownInGame(ctx context.Context, pairs [][2]int64) error
+	MarkConfusionsShownInGame(ctx context.Context, pairs []ConfusionPairKey) error
 	SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2Progress) error
 	GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2Progress, error)
 	ClearSM2PrevState(ctx context.Context, wordID int64) error
@@ -137,6 +137,9 @@ type ComponentStore interface {
 	GetComponentProgress(ctx context.Context, userID int64, character string) (*models.ComponentProgress, error)
 	RecordComponentAnswer(ctx context.Context, userID int64, character string, correct bool) (models.ComponentProgress, time.Time, error)
 	RecordComponentStat(ctx context.Context, userID int64, correct bool) error
+	DetectComponentConfusion(ctx context.Context, userID int64, character, answer string, langs []string) (confusedWordID int64, confusedComponent string, found bool, err error)
+	UpsertComponentConfusion(ctx context.Context, userID int64, zhComponent string, confusedWithID int64, confusedWithComponent, mode string) error
+	GetComponentConfusionDetail(ctx context.Context, userID int64, zhComponent string, confusedWithID int64, confusedWithComponent, mode string, langs []string) (*models.ConfusionDetail, error)
 	GetComponentStatsHistory(ctx context.Context, userID int64) ([]models.ComponentDailyStat, error)
 	GetComponentHMMSceneText(ctx context.Context, userID int64, character string) (string, error)
 	UpsertComponentHMMScene(ctx context.Context, userID int64, character, sceneText string) error

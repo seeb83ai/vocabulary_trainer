@@ -494,10 +494,11 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !correct {
-		confusedWithID, found, err := h.Store.DetectConfusion(r.Context(), UserIDFromContext(r.Context()), req.WordID, req.Answer, req.Mode, langs)
+		userID := UserIDFromContext(r.Context())
+		confusedWithID, found, err := h.Store.DetectConfusion(r.Context(), userID, req.WordID, req.Answer, req.Mode, langs)
 		if err == nil && found {
-			_ = h.Store.UpsertConfusion(r.Context(), req.WordID, confusedWithID, req.Mode)
-			confusions, err := h.Store.GetConfusionDetail(r.Context(), req.WordID, confusedWithID, req.Mode, langs)
+			_ = h.Store.UpsertConfusion(r.Context(), userID, req.WordID, confusedWithID, req.Mode)
+			confusions, err := h.Store.GetConfusionDetail(r.Context(), userID, req.WordID, confusedWithID, req.Mode, langs)
 			if err == nil {
 				resp.ConfusedWith = confusions
 			}
@@ -943,22 +944,28 @@ func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 		return *s
 	}
 
-	// Collect unique words from both zh_word and confused_with sides of each pair.
-	seen := map[int64]bool{}
+	// Collect unique entities from both zh and confused_with sides of each pair.
+	// Keyed by kind+id+character since every component shares the placeholder
+	// word id 0 — an id-only key would wrongly collapse them into one entry.
+	seen := map[string]bool{}
 	var words []models.MatchGameWord
 	for _, p := range pairs {
 		for _, candidate := range []struct {
-			id           int64
-			text, pinyin string
-			translations map[string][]string
+			kind, character string
+			id              int64
+			text, pinyin    string
+			translations    map[string][]string
 		}{
-			{p.ZhWordID, p.ZhText, ptrStr(p.ZhPinyin), p.ZhTranslations},
-			{p.ConfusedWithID, p.ConfusedWithText, ptrStr(p.ConfusedWithPinyin), p.ConfusedWithTranslations},
+			{p.ZhKind, p.ZhComponent, p.ZhWordID, p.ZhText, ptrStr(p.ZhPinyin), p.ZhTranslations},
+			{p.ConfusedWithKind, p.ConfusedWithComponent, p.ConfusedWithID, p.ConfusedWithText, ptrStr(p.ConfusedWithPinyin), p.ConfusedWithTranslations},
 		} {
-			if !seen[candidate.id] {
-				seen[candidate.id] = true
+			key := candidate.kind + ":" + strconv.FormatInt(candidate.id, 10) + ":" + candidate.character
+			if !seen[key] {
+				seen[key] = true
 				words = append(words, models.MatchGameWord{
+					Kind:         candidate.kind,
 					ZhWordID:     candidate.id,
+					Character:    candidate.character,
 					ZhText:       candidate.text,
 					Pinyin:       candidate.pinyin,
 					Translations: candidate.translations,
@@ -968,9 +975,12 @@ func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mark the source pairs as shown so they are suppressed until re-confused.
-	pairKeys := make([][2]int64, len(pairs))
+	pairKeys := make([]db.ConfusionPairKey, len(pairs))
 	for i, p := range pairs {
-		pairKeys[i] = [2]int64{p.ZhWordID, p.ConfusedWithID}
+		pairKeys[i] = db.ConfusionPairKey{
+			ZhWordID: p.ZhWordID, ZhComponent: p.ZhComponent,
+			ConfusedWithID: p.ConfusedWithID, ConfusedWithComponent: p.ConfusedWithComponent,
+		}
 	}
 	_ = h.Store.MarkConfusionsShownInGame(r.Context(), pairKeys)
 
@@ -978,19 +988,45 @@ func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 }
 
 // MatchAnswer handles POST /api/quiz/match-answer.
-// Updates SM-2 progress for a word after a match-game interaction.
+// Updates SM-2 (word) or component-progress state after a match-game interaction.
 func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
 	var req models.MatchAnswerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+
+	userID := UserIDFromContext(r.Context())
+
+	if req.Kind == models.ConfusionKindComponent {
+		if req.Character == "" {
+			writeError(w, http.StatusBadRequest, "character is required")
+			return
+		}
+		progress, _, err := h.Store.RecordComponentAnswer(r.Context(), userID, req.Character, req.Correct)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		if err := h.Store.RecordComponentStat(r.Context(), userID, req.Correct); err != nil {
+			internalError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, models.AnswerResponse{
+			Correct:       req.Correct,
+			ZhText:        req.Character,
+			TotalCorrect:  progress.TotalCorrect,
+			TotalAttempts: progress.TotalAttempts,
+			Tier:          componentTier(progress),
+		})
+		return
+	}
+
 	if req.ZhWordID <= 0 {
 		writeError(w, http.StatusBadRequest, "zh_word_id is required")
 		return
 	}
 
-	userID := UserIDFromContext(r.Context())
 	zhWord, err := h.Store.GetWordByID(r.Context(), userID, req.ZhWordID)
 	if err != nil {
 		internalError(w, err)

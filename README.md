@@ -23,7 +23,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - **Training stats.** The app tracks daily progress: attempts, mistakes, accuracy, words known, new words learned, and your best correct streak. The `/stats` page shows a Chart.js bar or line chart of your full history, and a table of the last 14 days.
 - **Word-level statistics.** The `/stats` page shows real-time stats for all words you have seen: correctness milestones (1+, 3+, 5+, 10+ correct answers), an accuracy distribution doughnut chart, and the average, median, and P95 of correct answers, attempts, accuracy, and ease factor. The page also shows tables of your 5 hardest and 5 most-practiced words, with translations, and an info box that explains the SM-2 ease factor and all other metrics.
 - **Due date distribution.** The `/stats` page shows a bar chart of how many words are due on each day over the next 30 days. Tag filter chips let you narrow the view to specific word groups.
-- **Confusion tracking.** If your wrong answer is a valid translation of a different, known word, the app records it as a confusion pair. This works in all quiz modes. A yellow hint box shows on the result screen right away, and you can see the full history on the `/mismatches` page.
+- **Confusion tracking.** If your wrong answer is a valid translation of a different, known word or hanzi component, the app records it as a confusion pair. This works in all quiz modes, including component quizzes. A yellow hint box shows on the result screen right away, and you can see the full history on the `/mismatches` page.
 - Every Chinese word has a 🔊 read-aloud button. The button plays a cached MP3 file, generated with Microsoft Edge neural TTS, which is built into the binary. If this fails, the button falls back silently to the browser's Web Speech API.
 - **Auto-play sound.** A floating 🔇/🔊 toggle button sits at the bottom-left of the training page, near the report-issue button. This setting is off by default. When you turn it on, the app automatically plays the Chinese pronunciation whenever it shows a new word, component prompt, or introduction. The app never auto-plays the prompt in *Translation → Chinese* mode, because that would reveal the answer before you've answered — and it never auto-plays *Chinese (no sound) → English* prompts, for the same reason that mode hides the play button. Once you submit an answer, if the pronunciation wasn't already auto-played on the question screen (e.g. because it was withheld to avoid revealing the answer, or skipped due to the pinyin-blur setting), the app reads it out on the result screen instead — for both word and component cards. The setting does not persist. It resets to off when you reload the page.
 - **Blur pinyin.** This optional setting is in Settings → Training Mode → Quiz Display. It blurs the pinyin hint on quiz cards, so you cannot read it at a glance. Tap or click the hint to reveal it. The hint blurs again on the next card.
@@ -585,8 +585,8 @@ The app records every request internally, in the `usage_events` table (`user_id`
 |---|---|---|
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
 | `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag) |
-| `GET` | `/api/quiz/match-game` | Get up to 3 recent confusion pairs for the match mini-game (empty if < 3 pairs in last 7 days) |
-| `POST` | `/api/quiz/match-answer` | Submit a match-game result (`zh_word_id`, `correct`) — updates SM-2 progress |
+| `GET` | `/api/quiz/match-game` | Get up to 3 recent confusion pairs for the match mini-game (empty if < 3 pairs in last 7 days); tiles may be words or hanzi components |
+| `POST` | `/api/quiz/match-answer` | Submit a match-game result — `{zh_word_id, correct}` for a word tile, or `{kind: "component", character, correct}` for a component tile — updates SM-2 or component progress |
 | `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress |
 | `GET` | `/api/quiz/langs` | List the distinct translation languages available |
 | `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7) |
@@ -616,7 +616,7 @@ The app records every request internally, in the `usage_events` table (`user_id`
 | `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
 | `GET` | `/api/github/config` | Whether in-app issue reporting is enabled (`{"enabled":bool}`) |
 | `POST` | `/api/github/issues` | Create a GitHub issue from an in-app report (only available when `GITHUB_TOKEN` + `GITHUB_ISSUE_REPO` are set; rate-limited per user and per IP) |
-| `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word) |
+| `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word or hanzi component) |
 | `GET` | `/api/hanzi/decompose` | Decompose Chinese characters into radicals and components (`chars` query param, max 20) |
 | `GET` | `/api/hmm/actors` | List all HMM actor mappings (pinyin initial → person) |
 | `PUT` | `/api/hmm/actors/{initial}` | Update actor name for an initial |

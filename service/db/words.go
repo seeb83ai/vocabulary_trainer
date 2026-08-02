@@ -576,6 +576,9 @@ func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, la
 }
 
 // DeleteWord deletes a word by ID. Cascades to translations and sm2_progress.
+// confusion_pairs is cleaned up explicitly (its zh_word_id/confused_with_id
+// columns dropped their FK when components joined the table, see the
+// generalize_confusion_pairs migration).
 func (s *Store) DeleteWord(ctx context.Context, userID, id int64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM words WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {
@@ -584,6 +587,11 @@ func (s *Store) DeleteWord(ctx context.Context, userID, id int64) error {
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM confusion_pairs WHERE user_id = ? AND (zh_word_id = ? OR confused_with_id = ?)`,
+		userID, id, id); err != nil {
+		return fmt.Errorf("delete word: clean confusion_pairs: %w", err)
 	}
 	return s.cleanOrphanTags(ctx)
 }

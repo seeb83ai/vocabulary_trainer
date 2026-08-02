@@ -725,7 +725,7 @@ func TestIsolation_Mismatches_OnlyOwnConfusions(t *testing.T) {
 	// User 1 has two words with a confusion pair between them.
 	id1A := seedWordForUser(t, s, 1, "鞋", "xié", []string{"shoe"})
 	id1B := seedWordForUser(t, s, 1, "书", "shū", []string{"book"})
-	if err := s.UpsertConfusion(ctx, id1A, id1B, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(ctx, 1, id1A, id1B, "zh_to_transl"); err != nil {
 		t.Fatalf("UpsertConfusion: %v", err)
 	}
 

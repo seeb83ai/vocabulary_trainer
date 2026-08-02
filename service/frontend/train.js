@@ -1340,9 +1340,24 @@ function showComponentResult(resp) {
     ? `<span class="text-gray-400 text-base ml-2">${escHtml(currentCard.pinyin)}</span>`
     : '';
 
+  // "Belongs to" mismatch box (issue #280) — mirrors renderWordAnswerResult's
+  // confusedHtml, adapted for a component result where the confused-with
+  // entity may itself be a word or another component.
+  const cw = resp.confused_with;
+  const confusedHtml = (!resp.correct && cw) ? `
+      <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
+        <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
+        <div class="flex items-center gap-2">
+          <div class="text-base font-semibold text-gray-800 min-w-0 overflow-hidden">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
+          <button class="btn-confused-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
+        </div>
+        <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
+      </div>` : '';
+
   $('word-breakdown').innerHTML = `
     <div class="mt-4 space-y-2 text-left">
       ${yourAnswerHtml}
+      ${confusedHtml}
       <div class="p-3 bg-green-50 border border-green-200 rounded-xl">
         <div class="text-xs text-green-500 uppercase tracking-wide mb-1">${escHtml(currentCard.is_also_word ? t('component.modeLabelAlsoWord') : t('component.modeLabel'))}</div>
         <div class="flex items-center gap-2 mb-1">
@@ -1353,6 +1368,16 @@ function showComponentResult(resp) {
       </div>
     </div>`;
   show('word-breakdown');
+  const confusedPlayBtn = $('word-breakdown').querySelector('.btn-confused-play');
+  if (confusedPlayBtn) {
+    confusedPlayBtn.addEventListener('click', () => {
+      if (cw.confused_with_kind === 'component') {
+        playComponentAudio(cw.confused_with_component);
+      } else {
+        playAudio(cw.confused_with_id, cw.confused_with_text);
+      }
+    });
+  }
   const inlinePlay = $('word-breakdown').querySelector('.component-inline-play');
   if (inlinePlay) inlinePlay.addEventListener('click', () => playComponentAudio(currentCard.prompt));
   autoPlayResultAudio(currentCard, resp);
@@ -2260,12 +2285,19 @@ function showMatchGame(words) {
     overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
 
     // Build left items (Chinese) and right items (first EN translation), indexed by position.
+    // kind/character distinguish a component tile from a word tile (issue #280)
+    // so the match-answer POST updates the right progress table.
     const leftItems = words.map((w, i) => ({
       idx: i,
+      kind: w.kind,
       zh_word_id: w.zh_word_id,
+      character: w.character,
       text: w.zh_text,
       pinyin: w.pinyin,
     }));
+    const matchAnswerBody = (item, correct) => item.kind === 'component'
+      ? { kind: 'component', character: item.character, correct }
+      : { zh_word_id: item.zh_word_id, correct };
     const rightItems = words.map((w, i) => ({
       idx: i,   // idx matches leftItems position — used to identify the correct pair
       text: Object.values(w.translations || {})[0]?.[0] || w.zh_text,
@@ -2330,7 +2362,7 @@ function showMatchGame(words) {
           try {
             await apiFetch('/api/quiz/match-answer', {
               method: 'POST',
-              body: JSON.stringify({ zh_word_id: leftItems[lIdx].zh_word_id, correct: true }),
+              body: JSON.stringify(matchAnswerBody(leftItems[lIdx], true)),
             });
           } catch { /* best effort */ }
           if (matched.size === words.length) {
@@ -2358,11 +2390,11 @@ function showMatchGame(words) {
           try {
             await apiFetch('/api/quiz/match-answer', {
               method: 'POST',
-              body: JSON.stringify({ zh_word_id: leftItems[lIdx].zh_word_id, correct: false }),
+              body: JSON.stringify(matchAnswerBody(leftItems[lIdx], false)),
             });
             await apiFetch('/api/quiz/match-answer', {
               method: 'POST',
-              body: JSON.stringify({ zh_word_id: leftItems[rightIdx].zh_word_id, correct: false }),
+              body: JSON.stringify(matchAnswerBody(leftItems[rightIdx], false)),
             });
           } catch { /* best effort */ }
         }
