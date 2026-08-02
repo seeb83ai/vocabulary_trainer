@@ -675,12 +675,17 @@ func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since tim
 }
 
 // ConfusionPairKey identifies one side-pair of a confusion_pairs row (each
-// side being either a word id or a component character).
+// side being either a word id or a component character). UserID is required
+// directly (rather than inferred by joining through words) because component
+// characters, unlike word ids, are not inherently scoped to one user — the
+// same character can be trained, and independently confused, by many users.
 type ConfusionPairKey struct {
+	UserID                int64
 	ZhWordID              int64
 	ZhComponent           string
 	ConfusedWithID        int64
 	ConfusedWithComponent string
+	Mode                  string
 }
 
 // MarkConfusionsShownInGame stamps the given pairs with the current time so
@@ -691,8 +696,8 @@ func (s *Store) MarkConfusionsShownInGame(ctx context.Context, pairs []Confusion
 	for _, p := range pairs {
 		if _, err := s.db.ExecContext(ctx,
 			`UPDATE confusion_pairs SET last_shown_in_game = ?
-			 WHERE zh_word_id = ? AND zh_component = ? AND confused_with_id = ? AND confused_with_component = ?`,
-			now, p.ZhWordID, p.ZhComponent, p.ConfusedWithID, p.ConfusedWithComponent,
+			 WHERE user_id = ? AND zh_word_id = ? AND zh_component = ? AND confused_with_id = ? AND confused_with_component = ? AND mode = ?`,
+			now, p.UserID, p.ZhWordID, p.ZhComponent, p.ConfusedWithID, p.ConfusedWithComponent, p.Mode,
 		); err != nil {
 			return fmt.Errorf("mark confusion shown: %w", err)
 		}

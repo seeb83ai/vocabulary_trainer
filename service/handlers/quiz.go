@@ -978,6 +978,7 @@ func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 	pairKeys := make([]db.ConfusionPairKey, len(pairs))
 	for i, p := range pairs {
 		pairKeys[i] = db.ConfusionPairKey{
+			UserID:   userID,
 			ZhWordID: p.ZhWordID, ZhComponent: p.ZhComponent,
 			ConfusedWithID: p.ConfusedWithID, ConfusedWithComponent: p.ConfusedWithComponent,
 		}

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -5505,7 +5506,7 @@ func TestMarkConfusionsShownInGame_FiltersSubsequentCalls(t *testing.T) {
 	}
 
 	// Mark as shown
-	if err := s.MarkConfusionsShownInGame(ctx, []ConfusionPairKey{{ZhWordID: id1, ConfusedWithID: id2}}); err != nil {
+	if err := s.MarkConfusionsShownInGame(ctx, []ConfusionPairKey{{UserID: 2, ZhWordID: id1, ConfusedWithID: id2, Mode: "zh_to_transl"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5563,6 +5564,98 @@ func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
 	}
 	if len(items2) != 1 {
 		t.Errorf("after re-confusion: expected 1 item, got %d", len(items2))
+	}
+}
+
+// TestMarkConfusionsShownInGame_DoesNotAffectOtherUsersRow is a regression test
+// for PR #281 review round 2, finding #1: MarkConfusionsShownInGame's UPDATE
+// previously had no user_id predicate. zh_component/confused_with_component
+// are shared reference-data strings (hanzi characters), not per-user entities
+// like word ids, so two different users can independently confuse the exact
+// same component pair and end up with two distinct confusion_pairs rows
+// (correctly distinguished only by user_id). Marking user 1's row as shown
+// must not stamp last_shown_in_game on user 2's row for the same pair.
+func TestMarkConfusionsShownInGame_DoesNotAffectOtherUsersRow(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Both users independently confuse the same component pair 扑 vs 打.
+	if err := s.UpsertComponentConfusion(ctx, int64(1), "扑", 0, "打", models.ModeZhPinyinToTransl); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertComponentConfusion(ctx, int64(2), "扑", 0, "打", models.ModeZhPinyinToTransl); err != nil {
+		t.Fatal(err)
+	}
+
+	// User 1's match-game session marks the pair as shown.
+	if err := s.MarkConfusionsShownInGame(ctx, []ConfusionPairKey{
+		{UserID: 1, ZhComponent: "扑", ConfusedWithComponent: "打", Mode: models.ModeZhPinyinToTransl},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var user1Shown, user2Shown sql.NullString
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT last_shown_in_game FROM confusion_pairs WHERE user_id = 1 AND zh_component = '扑' AND confused_with_component = '打'`,
+	).Scan(&user1Shown); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT last_shown_in_game FROM confusion_pairs WHERE user_id = 2 AND zh_component = '扑' AND confused_with_component = '打'`,
+	).Scan(&user2Shown); err != nil {
+		t.Fatal(err)
+	}
+	if !user1Shown.Valid {
+		t.Error("expected user 1's row to have last_shown_in_game set")
+	}
+	if user2Shown.Valid {
+		t.Errorf("user 2's row was marked shown by user 1's match-game call; want last_shown_in_game still NULL, got %q", user2Shown.String)
+	}
+}
+
+// TestMarkConfusionsShownInGame_DoesNotAffectOtherModesRow is a regression
+// test for PR #281 review round 2, finding #2 (nit): MarkConfusionsShownInGame
+// previously had no mode predicate, so marking a pair shown for one mode also
+// marked any other-mode row referencing the same word ids as shown. Verifies
+// that marking a pair shown under one mode leaves a same-user, same-word-pair
+// row under a different mode untouched.
+func TestMarkConfusionsShownInGame_DoesNotAffectOtherModesRow(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+
+	if err := s.UpsertConfusion(ctx, int64(2), id1, id2, "zh_to_transl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertConfusion(ctx, int64(2), id1, id2, "transl_to_zh"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.MarkConfusionsShownInGame(ctx, []ConfusionPairKey{
+		{UserID: 2, ZhWordID: id1, ConfusedWithID: id2, Mode: "zh_to_transl"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var shownZhToTransl, shownTranslToZh sql.NullString
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT last_shown_in_game FROM confusion_pairs WHERE user_id = 2 AND zh_word_id = ? AND confused_with_id = ? AND mode = 'zh_to_transl'`,
+		id1, id2,
+	).Scan(&shownZhToTransl); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT last_shown_in_game FROM confusion_pairs WHERE user_id = 2 AND zh_word_id = ? AND confused_with_id = ? AND mode = 'transl_to_zh'`,
+		id1, id2,
+	).Scan(&shownTranslToZh); err != nil {
+		t.Fatal(err)
+	}
+	if !shownZhToTransl.Valid {
+		t.Error("expected zh_to_transl row to have last_shown_in_game set")
+	}
+	if shownTranslToZh.Valid {
+		t.Errorf("transl_to_zh row was marked shown by a zh_to_transl-only call; want last_shown_in_game still NULL, got %q", shownTranslToZh.String)
 	}
 }
 
