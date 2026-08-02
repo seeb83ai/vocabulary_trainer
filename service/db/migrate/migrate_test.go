@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -170,6 +171,91 @@ func TestMigrate_FromMidHistorySnapshot(t *testing.T) {
 	}
 	if count < 1 {
 		t.Errorf("seeded word did not survive table-recreation migrations: count=%d", count)
+	}
+}
+
+// TestMigrate_ConfusionPairsGeneralizationPreservesData is a regression test
+// for v20260802103000_generalize_confusion_pairs.go (PR #281 review round 1,
+// finding #2): that migration recreates confusion_pairs (drop FK, rebuild via
+// CREATE .../INSERT ... SELECT/DROP/RENAME) to add zh_component/
+// confused_with_component/user_id. This freezes a DB at v64 (the last version
+// before the generalization), seeds an old-schema confusion_pairs row —
+// exactly the shape that existed before this PR — then runs the full chain
+// and asserts the row survives the rebuild with its original
+// user_id/zh_word_id/confused_with_id/mode/count/last_seen values intact.
+func TestMigrate_ConfusionPairsGeneralizationPreservesData(t *testing.T) {
+	db := openRawDB(t)
+	migrateUpTo(t, db, 64)
+
+	if got := appliedVersion(t, db); got != 64 {
+		t.Fatalf("snapshot max applied version = %d, want 64", got)
+	}
+
+	// words.user_id (added in v21) is NOT NULL; TestMain's ADMIN_EMAIL/USER_EMAIL
+	// env vars make v20's fn seed user_id=2 as the personal user, so seed the
+	// pre-migration confusion_pairs row's words under that real user.
+	if _, err := db.Exec(`INSERT INTO words (text, language, user_id) VALUES ('你好', 'zh', 2)`); err != nil {
+		t.Fatalf("seed zh word: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO words (text, language, user_id) VALUES ('您好', 'zh', 2)`); err != nil {
+		t.Fatalf("seed confused-with word: %v", err)
+	}
+	var zhID, confusedID int64
+	if err := db.QueryRow(`SELECT id FROM words WHERE text = '你好'`).Scan(&zhID); err != nil {
+		t.Fatalf("lookup zh word id: %v", err)
+	}
+	if err := db.QueryRow(`SELECT id FROM words WHERE text = '您好'`).Scan(&confusedID); err != nil {
+		t.Fatalf("lookup confused-with word id: %v", err)
+	}
+
+	if _, err := db.Exec(
+		`INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
+		 VALUES (?, ?, 'zh_to_transl', 3, '2026-07-01 12:00:00')`,
+		zhID, confusedID); err != nil {
+		t.Fatalf("seed old-schema confusion_pairs row: %v", err)
+	}
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate from v64 snapshot: %v", err)
+	}
+	if got, want := appliedVersion(t, db), maxRegisteredVersion(); got != want {
+		t.Fatalf("max applied version after upgrade = %d, want %d", got, want)
+	}
+
+	var userID, count int64
+	var mode, lastSeen string
+	err := db.QueryRow(
+		`SELECT user_id, mode, count, last_seen FROM confusion_pairs
+		 WHERE zh_word_id = ? AND zh_component = '' AND confused_with_id = ? AND confused_with_component = ''`,
+		zhID, confusedID).Scan(&userID, &mode, &count, &lastSeen)
+	if err != nil {
+		t.Fatalf("read migrated confusion_pairs row: %v", err)
+	}
+	if userID != 2 {
+		t.Errorf("user_id = %d, want 2", userID)
+	}
+	if mode != "zh_to_transl" {
+		t.Errorf("mode = %q, want zh_to_transl", mode)
+	}
+	if count != 3 {
+		t.Errorf("count = %d, want 3", count)
+	}
+	// The sqlite driver reformats DATETIME-typed columns on scan (e.g. to
+	// RFC3339), so compare parsed layouts rather than the raw string — mirrors
+	// how the db package itself always reads datetime columns via parseDateTime.
+	wantLastSeen, err := time.Parse("2006-01-02 15:04:05", "2026-07-01 12:00:00")
+	if err != nil {
+		t.Fatalf("parse want last_seen: %v", err)
+	}
+	gotLastSeen, err := time.Parse(time.RFC3339, lastSeen)
+	if err != nil {
+		gotLastSeen, err = time.Parse("2006-01-02 15:04:05", lastSeen)
+		if err != nil {
+			t.Fatalf("parse got last_seen %q: %v", lastSeen, err)
+		}
+	}
+	if !gotLastSeen.Equal(wantLastSeen) {
+		t.Errorf("last_seen = %q (parsed %v), want %v", lastSeen, gotLastSeen, wantLastSeen)
 	}
 }
 

@@ -1610,10 +1610,10 @@ func TestUpsertConfusion_IncrementsCount(t *testing.T) {
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(context.Background(), int64(2), idA, idB, "zh_to_transl"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(context.Background(), int64(2), idA, idB, "zh_to_transl"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1635,7 +1635,7 @@ func TestGetConfusions_LastSeenUpdated(t *testing.T) {
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
 
 	before := time.Now().UTC().Add(-time.Second)
-	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(context.Background(), int64(2), idA, idB, "zh_to_transl"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1843,7 +1843,7 @@ func TestGetConfusions_PopulatesEnTexts(t *testing.T) {
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(context.Background(), int64(2), idA, idB, "zh_to_transl"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1863,16 +1863,59 @@ func TestGetConfusions_PopulatesEnTexts(t *testing.T) {
 	}
 }
 
+// TestResolveConfusionEntity_WordOwnedByDifferentUser_NotFound is a regression
+// test for the defense-in-depth user_id guard on resolveConfusionEntity's word
+// branch (PR #281 review round 1, finding #3): even though every real caller
+// only ever passes a wordID sourced from a confusion_pairs row already
+// filtered by user_id, the helper itself must refuse to resolve (and thus
+// leak text/pinyin for) a word owned by a different user.
+func TestResolveConfusionEntity_WordOwnedByDifferentUser_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	otherUsersWordID := seedWord(t, s, "秘密", "mìmì", []string{"secret"}) // owned by user 2
+
+	_, _, _, _, ok, err := s.resolveConfusionEntity(ctx, int64(1), otherUsersWordID, "", []string{"en"})
+	if err != nil {
+		t.Fatalf("resolveConfusionEntity: %v", err)
+	}
+	if ok {
+		t.Error("resolveConfusionEntity resolved a word owned by a different user; want ok=false")
+	}
+}
+
+// TestGetConfusions_DropsRowReferencingAnotherUsersWord verifies the same
+// guard end-to-end through GetConfusions: a confusion_pairs row for user 1
+// that (incorrectly) references words owned by user 2 must be silently
+// skipped rather than leaking user 2's word text into user 1's response.
+func TestGetConfusions_DropsRowReferencingAnotherUsersWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	idA := seedWord(t, s, "秘密", "mìmì", []string{"secret"})    // owned by user 2
+	idB := seedWord(t, s, "危险", "wēixiǎn", []string{"danger"}) // owned by user 2
+
+	if err := s.upsertConfusion(ctx, int64(1), idA, "", idB, "", "zh_to_transl"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.GetConfusions(ctx, int64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Errorf("want the cross-user row silently dropped, got %d items: %+v", len(items), items)
+	}
+}
+
 func TestGetConfusionDetail_ReturnsRow(t *testing.T) {
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(context.Background(), int64(2), idA, idB, "zh_to_transl"); err != nil {
 		t.Fatal(err)
 	}
 
-	d, err := s.GetConfusionDetail(context.Background(), idA, idB, "zh_to_transl", []string{"en"})
+	d, err := s.GetConfusionDetail(context.Background(), int64(2), idA, idB, "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1895,7 +1938,7 @@ func TestGetConfusionDetail_MissingReturnsNil(t *testing.T) {
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	d, err := s.GetConfusionDetail(context.Background(), idA, idB, "zh_to_transl", []string{"en"})
+	d, err := s.GetConfusionDetail(context.Background(), int64(2), idA, idB, "zh_to_transl", []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1924,11 +1967,11 @@ func TestGetConfusionDetail_ReturnsTranslationsForSelectedLangs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertConfusion(ctx, idA, idB, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(ctx, int64(2), idA, idB, "zh_to_transl"); err != nil {
 		t.Fatal(err)
 	}
 
-	d, err := s.GetConfusionDetail(ctx, idA, idB, "zh_to_transl", []string{"en", "de"})
+	d, err := s.GetConfusionDetail(ctx, int64(2), idA, idB, "zh_to_transl", []string{"en", "de"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1953,10 +1996,10 @@ func TestUpsertConfusion_DifferentModesSeparateRows(t *testing.T) {
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(context.Background(), int64(2), idA, idB, "zh_to_transl"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_pinyin_to_transl"); err != nil {
+	if err := s.UpsertConfusion(context.Background(), int64(2), idA, idB, "zh_pinyin_to_transl"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1974,7 +2017,7 @@ func TestDeleteWord_CascadesToConfusionPairs(t *testing.T) {
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	idB := seedWord(t, s, "书", "shū", []string{"Buch"})
 
-	if err := s.UpsertConfusion(context.Background(), idA, idB, "zh_to_transl"); err != nil {
+	if err := s.UpsertConfusion(context.Background(), int64(2), idA, idB, "zh_to_transl"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -4253,6 +4296,155 @@ func TestGetNextComponentCard_DoesNotServeFutureComponent(t *testing.T) {
 	}
 }
 
+// ── DetectComponentConfusion / UpsertComponentConfusion / GetComponentConfusionDetail (issue #280) ────
+
+func TestDetectComponentConfusion_MatchesOtherComponent(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "扑", "to rap, to tap; script; to let go")
+	seedHanziDef(t, s, "去", "to go")
+	s.InsertComponentProgressForTest(ctx, int64(2), "扑", time.Now())
+	s.InsertComponentProgressForTest(ctx, int64(2), "去", time.Now())
+
+	wordID, comp, found, err := s.DetectComponentConfusion(ctx, int64(2), "扑", "to go", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected a confusion to be found")
+	}
+	if wordID != 0 {
+		t.Errorf("wordID: want 0, got %d", wordID)
+	}
+	if comp != "去" {
+		t.Errorf("component: want 去, got %q", comp)
+	}
+}
+
+func TestDetectComponentConfusion_MatchesWordTranslation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "扑", "to rap, to tap; script; to let go")
+	s.InsertComponentProgressForTest(ctx, int64(2), "扑", time.Now())
+	wordID := seedWord(t, s, "去", "qù", []string{"to go"})
+
+	confusedWordID, comp, found, err := s.DetectComponentConfusion(ctx, int64(2), "扑", "to go", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("expected a confusion to be found")
+	}
+	if confusedWordID != wordID {
+		t.Errorf("confusedWordID: want %d, got %d", wordID, confusedWordID)
+	}
+	if comp != "" {
+		t.Errorf("component: want empty, got %q", comp)
+	}
+}
+
+func TestDetectComponentConfusion_NoMatch(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "扑", "to rap, to tap; script; to let go")
+	s.InsertComponentProgressForTest(ctx, int64(2), "扑", time.Now())
+
+	_, _, found, err := s.DetectComponentConfusion(ctx, int64(2), "扑", "completely unrelated", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("expected no confusion to be found")
+	}
+}
+
+// TestDetectComponentConfusion_ExcludesOwnWordCounterpart ensures that when a
+// component character is also a standalone zh word for the user (is_also_word),
+// its own translation is never reported as a "confusion" with itself.
+func TestDetectComponentConfusion_ExcludesOwnWordCounterpart(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "去", "to go")
+	s.InsertComponentProgressForTest(ctx, int64(2), "去", time.Now())
+	seedWord(t, s, "去", "qù", []string{"to go"})
+
+	_, _, found, err := s.DetectComponentConfusion(ctx, int64(2), "去", "to go", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("should not report a component's own word counterpart as a confusion")
+	}
+}
+
+func TestUpsertComponentConfusion_IncrementsCount(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if err := s.UpsertComponentConfusion(ctx, int64(2), "扑", 0, "去", "zh_pinyin_to_transl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertComponentConfusion(ctx, int64(2), "扑", 0, "去", "zh_pinyin_to_transl"); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.GetConfusions(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("want 1 confusion, got %d", len(items))
+	}
+	if items[0].Count != 2 {
+		t.Errorf("count: want 2, got %d", items[0].Count)
+	}
+	if items[0].ZhKind != models.ConfusionKindComponent || items[0].ZhComponent != "扑" {
+		t.Errorf("zh side: want component 扑, got kind=%s component=%q", items[0].ZhKind, items[0].ZhComponent)
+	}
+	if items[0].ConfusedWithKind != models.ConfusionKindComponent || items[0].ConfusedWithComponent != "去" {
+		t.Errorf("confused_with side: want component 去, got kind=%s component=%q", items[0].ConfusedWithKind, items[0].ConfusedWithComponent)
+	}
+}
+
+func TestGetComponentConfusionDetail_ReturnsRow_ComponentVsWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "扑", "to rap, to tap; script; to let go")
+	wordID := seedWord(t, s, "去", "qù", []string{"to go"})
+
+	if err := s.UpsertComponentConfusion(ctx, int64(2), "扑", wordID, "", "zh_pinyin_to_transl"); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := s.GetComponentConfusionDetail(ctx, int64(2), "扑", wordID, "", "zh_pinyin_to_transl", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d == nil {
+		t.Fatal("expected a row, got nil")
+	}
+	if d.ZhKind != models.ConfusionKindComponent || d.ZhComponent != "扑" || d.ZhText != "扑" {
+		t.Errorf("zh side: got kind=%s component=%q text=%q", d.ZhKind, d.ZhComponent, d.ZhText)
+	}
+	if d.ConfusedWithKind != models.ConfusionKindWord || d.ConfusedWithID != wordID || d.ConfusedWithText != "去" {
+		t.Errorf("confused_with side: got kind=%s id=%d text=%q", d.ConfusedWithKind, d.ConfusedWithID, d.ConfusedWithText)
+	}
+	if len(d.ConfusedWithTranslations["en"]) == 0 || d.ConfusedWithTranslations["en"][0] != "to go" {
+		t.Errorf("expected confused_with translations to include 'to go', got %v", d.ConfusedWithTranslations)
+	}
+}
+
+func TestGetComponentConfusionDetail_MissingReturnsNil(t *testing.T) {
+	s := openTestDB(t)
+	d, err := s.GetComponentConfusionDetail(context.Background(), int64(2), "扑", 99999, "", "zh_pinyin_to_transl", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d != nil {
+		t.Errorf("expected nil for missing row, got %+v", d)
+	}
+}
+
 func TestGetComponentList_BasicAndSearch(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
@@ -5355,14 +5547,14 @@ func TestGetRecentMismatches_ReturnsOnlyRecent(t *testing.T) {
 
 	// recent confusion (1 day ago)
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
-		VALUES (?, ?, 'zh_to_transl', 1, datetime('now', '-1 day'))`, id1, id2); err != nil {
+		INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now', '-1 day'))`, id1, id2); err != nil {
 		t.Fatal(err)
 	}
 	// old confusion (10 days ago — outside 7-day window)
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
-		VALUES (?, ?, 'transl_to_zh', 1, datetime('now', '-10 days'))`, id2, id1); err != nil {
+		INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (2, ?, ?, 'transl_to_zh', 1, datetime('now', '-10 days'))`, id2, id1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5388,8 +5580,8 @@ func TestGetRecentMismatches_Limit(t *testing.T) {
 
 	for _, pair := range [][2]int64{{id1, id2}, {id2, id3}, {id3, id1}} {
 		if _, err := s.db.ExecContext(ctx, `
-			INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
-			VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen)
+			VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -5411,8 +5603,8 @@ func TestGetRecentMismatches_HydratesTranslations(t *testing.T) {
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
-		VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
+		INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5439,8 +5631,8 @@ func TestMarkConfusionsShownInGame_FiltersSubsequentCalls(t *testing.T) {
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
-		VALUES (?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
+		INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, id1, id2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5456,7 +5648,7 @@ func TestMarkConfusionsShownInGame_FiltersSubsequentCalls(t *testing.T) {
 	}
 
 	// Mark as shown
-	if err := s.MarkConfusionsShownInGame(ctx, [][2]int64{{id1, id2}}); err != nil {
+	if err := s.MarkConfusionsShownInGame(ctx, []ConfusionPairKey{{UserID: 2, ZhWordID: id1, ConfusedWithID: id2, Mode: "zh_to_transl"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5477,8 +5669,8 @@ func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
-		VALUES (?, ?, 'zh_to_transl', 1, datetime('now', '-1 hour'))`, id1, id2); err != nil {
+		INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now', '-1 hour'))`, id1, id2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5514,6 +5706,98 @@ func TestMarkConfusionsShownInGame_ReappearsAfterNewConfusion(t *testing.T) {
 	}
 	if len(items2) != 1 {
 		t.Errorf("after re-confusion: expected 1 item, got %d", len(items2))
+	}
+}
+
+// TestMarkConfusionsShownInGame_DoesNotAffectOtherUsersRow is a regression test
+// for PR #281 review round 2, finding #1: MarkConfusionsShownInGame's UPDATE
+// previously had no user_id predicate. zh_component/confused_with_component
+// are shared reference-data strings (hanzi characters), not per-user entities
+// like word ids, so two different users can independently confuse the exact
+// same component pair and end up with two distinct confusion_pairs rows
+// (correctly distinguished only by user_id). Marking user 1's row as shown
+// must not stamp last_shown_in_game on user 2's row for the same pair.
+func TestMarkConfusionsShownInGame_DoesNotAffectOtherUsersRow(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Both users independently confuse the same component pair 扑 vs 打.
+	if err := s.UpsertComponentConfusion(ctx, int64(1), "扑", 0, "打", models.ModeZhPinyinToTransl); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertComponentConfusion(ctx, int64(2), "扑", 0, "打", models.ModeZhPinyinToTransl); err != nil {
+		t.Fatal(err)
+	}
+
+	// User 1's match-game session marks the pair as shown.
+	if err := s.MarkConfusionsShownInGame(ctx, []ConfusionPairKey{
+		{UserID: 1, ZhComponent: "扑", ConfusedWithComponent: "打", Mode: models.ModeZhPinyinToTransl},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var user1Shown, user2Shown sql.NullString
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT last_shown_in_game FROM confusion_pairs WHERE user_id = 1 AND zh_component = '扑' AND confused_with_component = '打'`,
+	).Scan(&user1Shown); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT last_shown_in_game FROM confusion_pairs WHERE user_id = 2 AND zh_component = '扑' AND confused_with_component = '打'`,
+	).Scan(&user2Shown); err != nil {
+		t.Fatal(err)
+	}
+	if !user1Shown.Valid {
+		t.Error("expected user 1's row to have last_shown_in_game set")
+	}
+	if user2Shown.Valid {
+		t.Errorf("user 2's row was marked shown by user 1's match-game call; want last_shown_in_game still NULL, got %q", user2Shown.String)
+	}
+}
+
+// TestMarkConfusionsShownInGame_DoesNotAffectOtherModesRow is a regression
+// test for PR #281 review round 2, finding #2 (nit): MarkConfusionsShownInGame
+// previously had no mode predicate, so marking a pair shown for one mode also
+// marked any other-mode row referencing the same word ids as shown. Verifies
+// that marking a pair shown under one mode leaves a same-user, same-word-pair
+// row under a different mode untouched.
+func TestMarkConfusionsShownInGame_DoesNotAffectOtherModesRow(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+
+	if err := s.UpsertConfusion(ctx, int64(2), id1, id2, "zh_to_transl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertConfusion(ctx, int64(2), id1, id2, "transl_to_zh"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.MarkConfusionsShownInGame(ctx, []ConfusionPairKey{
+		{UserID: 2, ZhWordID: id1, ConfusedWithID: id2, Mode: "zh_to_transl"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var shownZhToTransl, shownTranslToZh sql.NullString
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT last_shown_in_game FROM confusion_pairs WHERE user_id = 2 AND zh_word_id = ? AND confused_with_id = ? AND mode = 'zh_to_transl'`,
+		id1, id2,
+	).Scan(&shownZhToTransl); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT last_shown_in_game FROM confusion_pairs WHERE user_id = 2 AND zh_word_id = ? AND confused_with_id = ? AND mode = 'transl_to_zh'`,
+		id1, id2,
+	).Scan(&shownTranslToZh); err != nil {
+		t.Fatal(err)
+	}
+	if !shownZhToTransl.Valid {
+		t.Error("expected zh_to_transl row to have last_shown_in_game set")
+	}
+	if shownTranslToZh.Valid {
+		t.Errorf("transl_to_zh row was marked shown by a zh_to_transl-only call; want last_shown_in_game still NULL, got %q", shownTranslToZh.String)
 	}
 }
 

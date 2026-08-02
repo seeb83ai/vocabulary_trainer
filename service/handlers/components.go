@@ -212,6 +212,21 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	if prevTier != "" && prevTier != resp.Tier {
 		resp.PrevTier = prevTier
 	}
+
+	if !correct {
+		// Component quizzes have no mode of their own; tracked as
+		// zh_pinyin_to_transl since the card presents Chinese + pinyin and
+		// expects a translation, mirroring that word quiz mode (issue #280).
+		const componentConfusionMode = models.ModeZhPinyinToTransl
+		confusedWordID, confusedComponent, found, cErr := h.Store.DetectComponentConfusion(r.Context(), userID, req.Character, req.Answer, langs)
+		if cErr == nil && found {
+			_ = h.Store.UpsertComponentConfusion(r.Context(), userID, req.Character, confusedWordID, confusedComponent, componentConfusionMode)
+			if confusion, dErr := h.Store.GetComponentConfusionDetail(r.Context(), userID, req.Character, confusedWordID, confusedComponent, componentConfusionMode, langs); dErr == nil {
+				resp.ConfusedWith = confusion
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 

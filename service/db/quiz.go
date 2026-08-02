@@ -462,22 +462,33 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 	}
 }
 
-// UpsertConfusion records or increments a confusion pair.
-func (s *Store) UpsertConfusion(ctx context.Context, zhWordID, confusedWithID int64, mode string) error {
+// upsertConfusion records or increments a confusion pair. Exactly one of
+// zhWordID/zhComponent and one of confusedWithID/confusedWithComponent should
+// be set (the other left at its zero value) on each side, per the caller's
+// detection result. userID is required directly (rather than inferred by
+// joining through words) because component characters, unlike word ids, are
+// not inherently scoped to one user.
+func (s *Store) upsertConfusion(ctx context.Context, userID, zhWordID int64, zhComponent string, confusedWithID int64, confusedWithComponent, mode string) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO confusion_pairs (zh_word_id, confused_with_id, mode, count, last_seen)
-		VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
-		ON CONFLICT(zh_word_id, confused_with_id, mode)
+		INSERT INTO confusion_pairs (user_id, zh_word_id, zh_component, confused_with_id, confused_with_component, mode, count, last_seen)
+		VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+		ON CONFLICT(user_id, zh_word_id, zh_component, confused_with_id, confused_with_component, mode)
 		DO UPDATE SET count = count + 1, last_seen = CURRENT_TIMESTAMP`,
-		zhWordID, confusedWithID, mode)
+		userID, zhWordID, zhComponent, confusedWithID, confusedWithComponent, mode)
 	if err != nil {
 		return fmt.Errorf("upsert confusion: %w", err)
 	}
 	return nil
 }
 
-// GetConfusionDetail returns a single ConfusionDetail for use in the answer response.
-func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error) {
+// UpsertConfusion records or increments a word-vs-word confusion pair.
+func (s *Store) UpsertConfusion(ctx context.Context, userID, zhWordID, confusedWithID int64, mode string) error {
+	return s.upsertConfusion(ctx, userID, zhWordID, "", confusedWithID, "", mode)
+}
+
+// GetConfusionDetail returns a single word-vs-word ConfusionDetail for use in
+// the vocabulary-word answer response.
+func (s *Store) GetConfusionDetail(ctx context.Context, userID, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error) {
 	var d models.ConfusionDetail
 	var lastSeen string
 	err := s.db.QueryRowContext(ctx, `
@@ -487,8 +498,8 @@ func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID
 		FROM confusion_pairs cp
 		JOIN words wz ON wz.id = cp.zh_word_id
 		JOIN words wc ON wc.id = cp.confused_with_id
-		WHERE cp.zh_word_id = ? AND cp.confused_with_id = ? AND cp.mode = ?`,
-		zhWordID, confusedWithID, mode).Scan(
+		WHERE cp.user_id = ? AND cp.zh_word_id = ? AND cp.confused_with_id = ? AND cp.mode = ?`,
+		userID, zhWordID, confusedWithID, mode).Scan(
 		&d.ZhWordID, &d.ZhText, &d.ZhPinyin,
 		&d.ConfusedWithID, &d.ConfusedWithText, &d.ConfusedWithPinyin,
 		&d.Mode, &d.Count, &lastSeen,
@@ -499,6 +510,8 @@ func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID
 	if err != nil {
 		return nil, fmt.Errorf("get confusion detail: %w", err)
 	}
+	d.ZhKind = models.ConfusionKindWord
+	d.ConfusedWithKind = models.ConfusionKindWord
 	d.LastSeen = parseDateTime(lastSeen)
 	if len(langs) == 0 {
 		langs = []string{"en"}
@@ -524,64 +537,118 @@ func (s *Store) GetConfusionDetail(ctx context.Context, zhWordID, confusedWithID
 	return &d, nil
 }
 
-// GetConfusions returns all confusion pairs for the given user, ordered by last_seen DESC.
-func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT cp.zh_word_id, wz.text, wz.pinyin,
-		       cp.confused_with_id, wc.text, wc.pinyin,
-		       cp.mode, cp.count, cp.last_seen
-		FROM confusion_pairs cp
-		JOIN words wz ON wz.id = cp.zh_word_id
-		JOIN words wc ON wc.id = cp.confused_with_id
-		WHERE wz.user_id = ?
-		ORDER BY cp.last_seen DESC`, userID)
-	if err != nil {
-		return nil, fmt.Errorf("get confusions: %w", err)
-	}
-	defer rows.Close()
+// rawConfusionRow is the shape of a confusion_pairs row before its word/component
+// sides have been resolved to display data.
+type rawConfusionRow struct {
+	zhWordID, confusedWithID           int64
+	zhComponent, confusedWithComponent string
+	mode                               string
+	count                              int
+	lastSeen                           string
+}
 
-	var items []models.ConfusionDetail
-	for rows.Next() {
-		var d models.ConfusionDetail
-		var lastSeen string
-		if err := rows.Scan(
-			&d.ZhWordID, &d.ZhText, &d.ZhPinyin,
-			&d.ConfusedWithID, &d.ConfusedWithText, &d.ConfusedWithPinyin,
-			&d.Mode, &d.Count, &lastSeen,
-		); err != nil {
-			return nil, fmt.Errorf("scan confusion: %w", err)
+// resolveConfusionEntity resolves one side of a confusion pair (word if wordID
+// != 0, otherwise component) into display data. ok=false means the referenced
+// word no longer exists (e.g. a pre-cleanup dangling row) and the row should
+// be skipped, matching the old behaviour of silently dropping such rows via
+// an INNER JOIN.
+func (s *Store) resolveConfusionEntity(ctx context.Context, userID, wordID int64, component string, langs []string) (kind, text string, pinyin *string, translations map[string][]string, ok bool, err error) {
+	translations = map[string][]string{}
+	if wordID != 0 {
+		var t string
+		var p sql.NullString
+		err = s.db.QueryRowContext(ctx, `SELECT text, pinyin FROM words WHERE id = ? AND user_id = ?`, wordID, userID).Scan(&t, &p)
+		if err == sql.ErrNoRows {
+			return "", "", nil, nil, false, nil
 		}
-		d.LastSeen = parseDateTime(lastSeen)
-		items = append(items, d)
+		if err != nil {
+			return "", "", nil, nil, false, fmt.Errorf("resolve confusion word %d: %w", wordID, err)
+		}
+		if p.Valid {
+			pinyin = &p.String
+		}
+		for _, lang := range langs {
+			texts, ferr := s.getTranslationTextsForZhWord(ctx, wordID, lang)
+			if ferr != nil {
+				return "", "", nil, nil, false, ferr
+			}
+			if len(texts) > 0 {
+				translations[lang] = texts
+			}
+		}
+		return models.ConfusionKindWord, t, pinyin, translations, true, nil
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	rows.Close() // release before per-row queries
 
+	// Component side.
+	if py := s.GetComponentPinyin(ctx, component); py != "" {
+		pinyin = &py
+	}
+	defs, dErr := s.GetComponentDefinitions(ctx, userID, component, langs)
+	if dErr != nil {
+		return "", "", nil, nil, false, dErr
+	}
+	for lang, def := range defs {
+		translations[lang] = []string{def}
+	}
+	return models.ConfusionKindComponent, component, pinyin, translations, true, nil
+}
+
+func (s *Store) hydrateConfusionRows(ctx context.Context, userID int64, raws []rawConfusionRow) ([]models.ConfusionDetail, error) {
 	allLangs, err := s.GetTranslationLanguages(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range items {
-		items[i].ZhTranslations = map[string][]string{}
-		items[i].ConfusedWithTranslations = map[string][]string{}
-		for _, lang := range allLangs {
-			texts, ferr := s.getTranslationTextsForZhWord(ctx, items[i].ZhWordID, lang)
-			if ferr != nil {
-				return nil, ferr
-			}
-			if len(texts) > 0 {
-				items[i].ZhTranslations[lang] = texts
-			}
-			texts, ferr = s.getTranslationTextsForZhWord(ctx, items[i].ConfusedWithID, lang)
-			if ferr != nil {
-				return nil, ferr
-			}
-			if len(texts) > 0 {
-				items[i].ConfusedWithTranslations[lang] = texts
-			}
+	items := make([]models.ConfusionDetail, 0, len(raws))
+	for _, r := range raws {
+		d := models.ConfusionDetail{Mode: r.mode, Count: r.count, LastSeen: parseDateTime(r.lastSeen)}
+		var zhOK, cwOK bool
+		d.ZhKind, d.ZhText, d.ZhPinyin, d.ZhTranslations, zhOK, err = s.resolveConfusionEntity(ctx, userID, r.zhWordID, r.zhComponent, allLangs)
+		if err != nil {
+			return nil, err
 		}
+		d.ConfusedWithKind, d.ConfusedWithText, d.ConfusedWithPinyin, d.ConfusedWithTranslations, cwOK, err =
+			s.resolveConfusionEntity(ctx, userID, r.confusedWithID, r.confusedWithComponent, allLangs)
+		if err != nil {
+			return nil, err
+		}
+		if !zhOK || !cwOK {
+			continue
+		}
+		d.ZhWordID, d.ZhComponent = r.zhWordID, r.zhComponent
+		d.ConfusedWithID, d.ConfusedWithComponent = r.confusedWithID, r.confusedWithComponent
+		items = append(items, d)
+	}
+	return items, nil
+}
+
+// GetConfusions returns all confusion pairs for the given user, ordered by last_seen DESC.
+func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT zh_word_id, zh_component, confused_with_id, confused_with_component, mode, count, last_seen
+		FROM confusion_pairs
+		WHERE user_id = ?
+		ORDER BY last_seen DESC`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get confusions: %w", err)
+	}
+	var raws []rawConfusionRow
+	for rows.Next() {
+		var r rawConfusionRow
+		if err := rows.Scan(&r.zhWordID, &r.zhComponent, &r.confusedWithID, &r.confusedWithComponent, &r.mode, &r.count, &r.lastSeen); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan confusion: %w", err)
+		}
+		raws = append(raws, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	items, err := s.hydrateConfusionRows(ctx, userID, raws)
+	if err != nil {
+		return nil, err
 	}
 	if items == nil {
 		items = []models.ConfusionDetail{}
@@ -593,65 +660,35 @@ func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.Confu
 // not yet been shown in a game (or have been re-confused since last shown), up to limit rows.
 func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since time.Time, limit int) ([]models.ConfusionDetail, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT cp.zh_word_id, wz.text, wz.pinyin,
-		       cp.confused_with_id, wc.text, wc.pinyin,
-		       cp.mode, cp.count, cp.last_seen
-		FROM confusion_pairs cp
-		JOIN words wz ON wz.id = cp.zh_word_id
-		JOIN words wc ON wc.id = cp.confused_with_id
-		WHERE wz.user_id = ?
-		  AND cp.last_seen >= ?
-		  AND (cp.last_shown_in_game IS NULL OR cp.last_seen > cp.last_shown_in_game)
-		ORDER BY cp.last_seen DESC
+		SELECT zh_word_id, zh_component, confused_with_id, confused_with_component, mode, count, last_seen
+		FROM confusion_pairs
+		WHERE user_id = ?
+		  AND last_seen >= ?
+		  AND (last_shown_in_game IS NULL OR last_seen > last_shown_in_game)
+		ORDER BY last_seen DESC
 		LIMIT ?`,
 		userID, since.UTC().Format("2006-01-02 15:04:05"), limit)
 	if err != nil {
 		return nil, fmt.Errorf("get recent mismatches: %w", err)
 	}
-	defer rows.Close()
-
-	var items []models.ConfusionDetail
+	var raws []rawConfusionRow
 	for rows.Next() {
-		var d models.ConfusionDetail
-		var lastSeen string
-		if err := rows.Scan(
-			&d.ZhWordID, &d.ZhText, &d.ZhPinyin,
-			&d.ConfusedWithID, &d.ConfusedWithText, &d.ConfusedWithPinyin,
-			&d.Mode, &d.Count, &lastSeen,
-		); err != nil {
+		var r rawConfusionRow
+		if err := rows.Scan(&r.zhWordID, &r.zhComponent, &r.confusedWithID, &r.confusedWithComponent, &r.mode, &r.count, &r.lastSeen); err != nil {
+			rows.Close()
 			return nil, fmt.Errorf("scan recent mismatch: %w", err)
 		}
-		d.LastSeen = parseDateTime(lastSeen)
-		items = append(items, d)
+		raws = append(raws, r)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, err
 	}
 	rows.Close()
 
-	allLangs, err := s.GetTranslationLanguages(ctx)
+	items, err := s.hydrateConfusionRows(ctx, userID, raws)
 	if err != nil {
 		return nil, err
-	}
-	for i := range items {
-		items[i].ZhTranslations = map[string][]string{}
-		items[i].ConfusedWithTranslations = map[string][]string{}
-		for _, lang := range allLangs {
-			texts, ferr := s.getTranslationTextsForZhWord(ctx, items[i].ZhWordID, lang)
-			if ferr != nil {
-				return nil, ferr
-			}
-			if len(texts) > 0 {
-				items[i].ZhTranslations[lang] = texts
-			}
-			texts, ferr = s.getTranslationTextsForZhWord(ctx, items[i].ConfusedWithID, lang)
-			if ferr != nil {
-				return nil, ferr
-			}
-			if len(texts) > 0 {
-				items[i].ConfusedWithTranslations[lang] = texts
-			}
-		}
 	}
 	if items == nil {
 		items = []models.ConfusionDetail{}
@@ -659,15 +696,30 @@ func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since tim
 	return items, nil
 }
 
-// MarkConfusionsShownInGame stamps the given (zh_word_id, confused_with_id) pairs
-// with the current time so they are excluded from future match-game sessions unless
-// the user confuses them again after this timestamp.
-func (s *Store) MarkConfusionsShownInGame(ctx context.Context, pairs [][2]int64) error {
+// ConfusionPairKey identifies one side-pair of a confusion_pairs row (each
+// side being either a word id or a component character). UserID is required
+// directly (rather than inferred by joining through words) because component
+// characters, unlike word ids, are not inherently scoped to one user — the
+// same character can be trained, and independently confused, by many users.
+type ConfusionPairKey struct {
+	UserID                int64
+	ZhWordID              int64
+	ZhComponent           string
+	ConfusedWithID        int64
+	ConfusedWithComponent string
+	Mode                  string
+}
+
+// MarkConfusionsShownInGame stamps the given pairs with the current time so
+// they are excluded from future match-game sessions unless the user confuses
+// them again after this timestamp.
+func (s *Store) MarkConfusionsShownInGame(ctx context.Context, pairs []ConfusionPairKey) error {
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	for _, p := range pairs {
 		if _, err := s.db.ExecContext(ctx,
-			`UPDATE confusion_pairs SET last_shown_in_game = ? WHERE zh_word_id = ? AND confused_with_id = ?`,
-			now, p[0], p[1],
+			`UPDATE confusion_pairs SET last_shown_in_game = ?
+			 WHERE user_id = ? AND zh_word_id = ? AND zh_component = ? AND confused_with_id = ? AND confused_with_component = ? AND mode = ?`,
+			now, p.UserID, p.ZhWordID, p.ZhComponent, p.ConfusedWithID, p.ConfusedWithComponent, p.Mode,
 		); err != nil {
 			return fmt.Errorf("mark confusion shown: %w", err)
 		}

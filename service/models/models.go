@@ -242,12 +242,23 @@ type WordDetail struct {
 	SceneText       string              `json:"scene_text,omitempty"`
 }
 
+// ConfusionKindWord / ConfusionKindComponent identify which side of a
+// ConfusionDetail a given entity is — a vocabulary word or a hanzi component.
+const (
+	ConfusionKindWord      = "word"
+	ConfusionKindComponent = "component"
+)
+
 type ConfusionDetail struct {
-	ZhWordID                 int64               `json:"zh_word_id"`
+	ZhKind                   string              `json:"zh_kind"`
+	ZhWordID                 int64               `json:"zh_word_id,omitempty"`
+	ZhComponent              string              `json:"zh_component,omitempty"`
 	ZhText                   string              `json:"zh_text"`
 	ZhPinyin                 *string             `json:"zh_pinyin"`
 	ZhTranslations           map[string][]string `json:"zh_translations"`
-	ConfusedWithID           int64               `json:"confused_with_id"`
+	ConfusedWithKind         string              `json:"confused_with_kind"`
+	ConfusedWithID           int64               `json:"confused_with_id,omitempty"`
+	ConfusedWithComponent    string              `json:"confused_with_component,omitempty"`
 	ConfusedWithText         string              `json:"confused_with_text"`
 	ConfusedWithPinyin       *string             `json:"confused_with_pinyin"`
 	ConfusedWithTranslations map[string][]string `json:"confused_with_translations"`
@@ -410,6 +421,7 @@ type ComponentAnswerResponse struct {
 	SceneText      string            `json:"scene_text,omitempty"`
 	Tier           string            `json:"tier,omitempty"`
 	PrevTier       string            `json:"prev_tier,omitempty"`
+	ConfusedWith   *ConfusionDetail  `json:"confused_with,omitempty"`
 }
 
 type HanziDecomposition struct {
@@ -625,7 +637,9 @@ type PinyinToneVariant struct {
 }
 
 type MatchGameWord struct {
-	ZhWordID     int64               `json:"zh_word_id"`
+	Kind         string              `json:"kind"` // ConfusionKindWord | ConfusionKindComponent
+	ZhWordID     int64               `json:"zh_word_id,omitempty"`
+	Character    string              `json:"character,omitempty"`
 	ZhText       string              `json:"zh_text"`
 	Pinyin       string              `json:"pinyin"`
 	Translations map[string][]string `json:"translations"`
@@ -636,8 +650,10 @@ type MatchGameResponse struct {
 }
 
 type MatchAnswerRequest struct {
-	ZhWordID int64 `json:"zh_word_id"`
-	Correct  bool  `json:"correct"`
+	Kind      string `json:"kind"` // ConfusionKindWord | ConfusionKindComponent; empty defaults to word
+	ZhWordID  int64  `json:"zh_word_id"`
+	Character string `json:"character"`
+	Correct   bool   `json:"correct"`
 }
 
 type PinyinConfusionDetail struct {
