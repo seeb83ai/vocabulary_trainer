@@ -1859,7 +1859,7 @@ func TestResolveConfusionEntity_WordOwnedByDifferentUser_NotFound(t *testing.T) 
 func TestGetConfusions_DropsRowReferencingAnotherUsersWord(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	idA := seedWord(t, s, "秘密", "mìmì", []string{"secret"})   // owned by user 2
+	idA := seedWord(t, s, "秘密", "mìmì", []string{"secret"})    // owned by user 2
 	idB := seedWord(t, s, "危险", "wēixiǎn", []string{"danger"}) // owned by user 2
 
 	if err := s.upsertConfusion(ctx, int64(1), idA, "", idB, "", "zh_to_transl"); err != nil {
