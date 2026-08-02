@@ -296,8 +296,10 @@ function openEditForm(word) {
   if (word.total_attempts === 0) {
     show('start-training-row');
     $('form-start-training').checked = false;
+    hide('form-reset-btn');
   } else {
     hide('start-training-row');
+    show('form-reset-btn');
   }
 
   // HMM scene builder
@@ -386,6 +388,7 @@ function resetForm() {
   $('form-zh').value = '';
   $('form-pinyin').value = '';
   hide('form-cancel-btn');
+  hide('form-reset-btn');
   hide('hanziway-link');
   const compSection = $('components-edit-section');
   if (compSection) { compSection.innerHTML = ''; compSection.classList.add('hidden'); }
@@ -487,6 +490,18 @@ async function deleteWord(id) {
     loadWords();
   } catch (e) {
     alert('Failed to delete: ' + e.message);
+  }
+}
+
+async function resetWordProgress() {
+  if (!editingWordId) return;
+  if (!confirm(t('vocab.resetWordConfirm'))) return;
+  try {
+    const word = await apiFetch(`/api/words/${editingWordId}/reset`, { method: 'POST' });
+    openEditForm(word);
+    loadWords();
+  } catch (e) {
+    alert('Failed to reset: ' + e.message);
   }
 }
 
@@ -1669,6 +1684,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('form-cancel-btn').addEventListener('click', () => {
     resetForm();
+  });
+
+  $('form-reset-btn').addEventListener('click', () => {
+    resetWordProgress();
   });
 
   document.querySelectorAll('th[data-sort]').forEach(th => {

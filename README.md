@@ -32,6 +32,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - **Tags.** You can assign tags to vocabulary words, for example "HSK1", "food", or "travel". You can filter by tag on the vocabulary list and the training page. When you select multiple tags, the app applies OR logic. An autocomplete input creates tags on the fly, and the app removes unused tags automatically.
 - **Auto-translate.** When you configure a DeepL API key, an auto-translate button appears in the Add/Edit Word form. The button detects direction automatically: enter Chinese to get the translation and pinyin filled in, or enter the translation to get Chinese and pinyin back. The app generates pinyin locally with [go-pinyin](https://github.com/mozillazg/go-pinyin).
 - Vocabulary management: add, edit, delete, search, paginate, and sort by any column. The app shows SM-2 progress per word.
+- **Reset a word.** In the Edit Word form, a **Reset** button appears for any word you've already started training. It clears the word's SM-2 progress back to unseen — removing it from every bucket — so it is reintroduced as a brand-new word.
 - Due-date and correct-answer scheduling include a small random jitter. This shuffles cards and avoids repetitive review patterns.
 - You can bulk-import vocabulary from a structured text file. See `service/cmd/import`.
 - **Character breakdown.** On the training screen, a collapsible "Character breakdown" block appears below each Chinese character. Click it to reveal the radical, definition, etymology hint, and component parts with their meanings. This data comes from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported with `service/cmd/import-hanzi`.
@@ -140,7 +141,7 @@ The training page stats bar shows **New today: X / Y**, so you can see how many 
 
 ### Baseline gates
 
-In **Settings → Daily Learning**, each user can enable optional gates. These gates pause new-word introductions when the review load is high. You enable each gate independently, with its own numeric threshold. All active gates must pass before the app shows a new word.
+In **Settings → Daily Learning**, each user can enable optional gates. These gates pause new-word introductions when the review load is high. You enable each gate independently, with its own numeric threshold. All active gates must pass before the app shows a new word. When you train a specific tag filter, each gate's count only includes words matching that filter — words tagged outside your current session (for example, an untrained HSK level) never count against the threshold.
 
 | Gate | Blocks new words when… |
 |---|---|
@@ -608,6 +609,7 @@ The app records every request internally, in the `usage_events` table (`user_id`
 | `DELETE` | `/api/words/{id}` | Delete a word |
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 | `POST` | `/api/words/{id}/review` | Flag a word for review |
+| `POST` | `/api/words/{id}/reset` | Reset a word's SM-2 progress to unseen — removes it from every bucket and reintroduces it as new |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
 | `GET` | `/api/audio/component/{char}` | Serve cached MP3 for a single component character (generated on demand); files stored as `c_{hex}.mp3` |
 | `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |

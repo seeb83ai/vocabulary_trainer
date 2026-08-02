@@ -50,6 +50,7 @@ func newRouterForUser(s *db.Store, userID int64) http.Handler {
 			r.Put("/", wordsH.Update)
 			r.Delete("/", wordsH.Delete)
 			r.Post("/review", wordsH.MarkReview)
+			r.Post("/reset", wordsH.ResetProgress)
 			r.Put("/hmm", hmmH.SaveScene)
 			r.Delete("/hmm", hmmH.DeleteScene)
 		})
@@ -205,6 +206,19 @@ func TestIsolation_MarkReview_CannotMarkOtherUsersWord(t *testing.T) {
 	rec := do(t, r2, "POST", fmt.Sprintf("/api/words/%d/review", idA), nil)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("user2 mark user1 word for review: want 404, got %d", rec.Code)
+	}
+}
+
+// ── Words: ResetProgress isolation ────────────────────────────────────────────
+
+func TestIsolation_ResetProgress_CannotResetOtherUsersWord(t *testing.T) {
+	s := openTestDB(t)
+	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
+
+	r2 := newRouterForUser(s, 2)
+	rec := do(t, r2, "POST", fmt.Sprintf("/api/words/%d/reset", idA), nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("user2 reset user1 word: want 404, got %d", rec.Code)
 	}
 }
 

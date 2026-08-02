@@ -113,6 +113,28 @@ func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error
 	return nil
 }
 
+// ResetWordProgress restores a zh word's SM-2 progress to the unseen state
+// (matching a freshly created word) so it is removed from every bucket and
+// reintroduced as new.
+func (s *Store) ResetWordProgress(ctx context.Context, userID, id int64) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress
+		 SET repetitions = 0, easiness = 2.5, interval_days = 1, due_date = CURRENT_TIMESTAMP,
+		     total_correct = 0, total_attempts = 0, streak_bonus = 0, learning_new_word = 1,
+		     first_seen_at = NULL
+		 WHERE word_id = ? AND word_id IN (
+		     SELECT id FROM words WHERE id = ? AND language = 'zh' AND user_id = ?)`,
+		id, id, userID)
+	if err != nil {
+		return fmt.Errorf("reset word progress: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // AcknowledgeRandomWords marks up to n random unseen zh words as due now so they
 // appear immediately in the quiz without going through the new-word introduction flow.
 // Also initialises component_progress rows for each acknowledged word.
