@@ -80,6 +80,28 @@ test.describe('Vocabulary Management', () => {
     expect(searchBox.y).toBeGreaterThan(toggleBox.y + toggleBox.height - 5);
   });
 
+  test('reset a trained word restores it to unseen state', async ({ page }) => {
+    await page.goto('/vocab');
+    await expect(page.locator('#words-tbody tr').first()).toBeVisible({ timeout: 10_000 });
+
+    // The seeded word (你好) is trained (start_training=true in global-setup),
+    // so editing it should show the Reset button, not the "start training" row.
+    const row = page.locator('#words-tbody tr', { hasText: '你好' }).first();
+    await row.locator('.btn-edit').click();
+
+    const resetBtn = page.locator('#form-reset-btn');
+    await expect(resetBtn).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#start-training-row')).toBeHidden();
+
+    page.on('dialog', dialog => dialog.accept());
+    await resetBtn.click();
+
+    // After reset the word is unseen again: the Reset button hides and the
+    // "start training" row reappears, showing it left the New bucket.
+    await expect(resetBtn).toBeHidden({ timeout: 8_000 });
+    await expect(page.locator('#start-training-row')).toBeVisible();
+  });
+
   test('delete a word removes it from the list', async ({ page }) => {
     await page.goto('/vocab');
 

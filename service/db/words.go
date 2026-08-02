@@ -810,13 +810,14 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 		}
 		if newWordFilter == "" && baselines.NewBucketEnabled {
 			var newBucket int
+			newBucketArgs := append([]any{userID}, tagArgs...)
 			if err := s.db.QueryRowContext(ctx,
 				`SELECT COUNT(*) FROM sm2_progress p
 				 JOIN words w ON w.id = p.word_id
 				 WHERE w.language = 'zh' AND w.user_id = ?
 				   AND p.learning_new_word = 1
-				   AND p.first_seen_at IS NOT NULL`,
-				userID).Scan(&newBucket); err != nil {
+				   AND p.first_seen_at IS NOT NULL`+tagFilter,
+				newBucketArgs...).Scan(&newBucket); err != nil {
 				return nil, nil, false, fmt.Errorf("count new bucket: %w", err)
 			}
 			if newBucket >= baselines.NewBucketValue {

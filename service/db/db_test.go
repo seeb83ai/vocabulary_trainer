@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -514,6 +515,36 @@ func TestGetNextCard_LearningWordOutsideTagFilterDoesNotBlockUnseen(t *testing.T
 	}
 	if w.ID != idActive {
 		t.Errorf("expected unseen word (id=%d), got id=%d — learning word outside tag filter should not block new introductions", idActive, w.ID)
+	}
+}
+
+func TestGetNextCard_BaselineNewBucket_OutsideTagFilterDoesNotBlockUnseen(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// A word in the New bucket (learning_new_word=1, first_seen_at set) tagged
+	// "hsk4" — a tag the user is not currently training.
+	idHSK4 := seedWordWithTags(t, s, "水", "", []string{"water"}, []string{"hsk4"})
+	if err := s.AcknowledgeWord(ctx, int64(2), idHSK4); err != nil {
+		t.Fatal(err)
+	}
+
+	// An unseen word tagged "active" — matches the session tag filter.
+	idActive := seedWordWithTags(t, s, "火", "", []string{"fire"}, []string{"active"})
+
+	// The New-bucket baseline threshold is 1. The only New-bucket word is
+	// tagged "hsk4", outside the "active" tag filter, so it must not count
+	// against this session's cap.
+	baselines := &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 1}
+	w, _, _, err := s.GetNextCard(ctx, int64(2), []string{"active"}, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected the unseen active-tagged word to be returned")
+	}
+	if w.ID != idActive {
+		t.Errorf("expected unseen word (id=%d), got id=%d — new-bucket word outside tag filter should not block new introductions", idActive, w.ID)
 	}
 }
 
@@ -2009,6 +2040,118 @@ func TestUpdateWord_ClearsReviewFlag(t *testing.T) {
 	}
 	if wd.NeedsReview {
 		t.Error("expected NeedsReview = false after update")
+	}
+}
+
+// ── ResetWordProgress ─────────────────────────────────────────────────────────
+
+func TestResetWordProgress_RestoresUnseenState(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "水", "shuǐ", []string{"water"})
+
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.Repetitions = 4
+	p.Easiness = 2.1
+	p.IntervalDays = 20
+	p.TotalCorrect = 5
+	p.TotalAttempts = 6
+	p.StreakBonus = 2
+	p.LearningNewWord = false
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ResetWordProgress(ctx, int64(2), id); err != nil {
+		t.Fatalf("ResetWordProgress: %v", err)
+	}
+
+	got, err := s.GetSM2Progress(ctx, id)
+	if err != nil || got == nil {
+		t.Fatalf("GetSM2Progress after reset: %v / %v", err, got)
+	}
+	if got.Repetitions != 0 {
+		t.Errorf("repetitions: want 0, got %d", got.Repetitions)
+	}
+	if got.Easiness != 2.5 {
+		t.Errorf("easiness: want 2.5, got %v", got.Easiness)
+	}
+	if got.IntervalDays != 1 {
+		t.Errorf("interval_days: want 1, got %d", got.IntervalDays)
+	}
+	if got.TotalCorrect != 0 || got.TotalAttempts != 0 {
+		t.Errorf("attempts/correct: want 0/0, got %d/%d", got.TotalCorrect, got.TotalAttempts)
+	}
+	if got.StreakBonus != 0 {
+		t.Errorf("streak_bonus: want 0, got %d", got.StreakBonus)
+	}
+	if !got.LearningNewWord {
+		t.Error("learning_new_word: want true after reset")
+	}
+
+	var firstSeenAt sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT first_seen_at FROM sm2_progress WHERE word_id = ?`, id).Scan(&firstSeenAt); err != nil {
+		t.Fatal(err)
+	}
+	if firstSeenAt.Valid {
+		t.Errorf("first_seen_at: want NULL after reset, got %q", firstSeenAt.String)
+	}
+}
+
+func TestResetWordProgress_RemovesFromNewBucketCount(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "水", "shuǐ", []string{"water"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ResetWordProgress(ctx, int64(2), id); err != nil {
+		t.Fatalf("ResetWordProgress: %v", err)
+	}
+
+	// A reset word must not be selected as a "New bucket" or "due" card —
+	// it should behave exactly like a freshly created unseen word.
+	baselines := &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 0}
+	w, _, _, err := s.GetNextCard(ctx, int64(2), nil, 0, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil {
+		t.Errorf("expected no card returned (new words blocked, no seen words remain), got %+v", w)
+	}
+}
+
+func TestResetWordProgress_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	err := s.ResetWordProgress(context.Background(), int64(2), 9999)
+	if err == nil {
+		t.Error("expected error for missing word, got nil")
+	}
+}
+
+func TestResetWordProgress_OtherUsersWordNotFound(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, int64(1), id); err != nil {
+		t.Fatal(err)
+	}
+
+	err = s.ResetWordProgress(ctx, int64(2), id)
+	if err == nil {
+		t.Error("expected error resetting another user's word, got nil")
 	}
 }
 

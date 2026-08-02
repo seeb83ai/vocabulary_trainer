@@ -45,6 +45,7 @@ type QuizStore interface {
 	IsLearningNewWord(ctx context.Context, userID, wordID int64) (bool, error)
 	SkipWord(ctx context.Context, userID, wordID int64, days int) error
 	AcknowledgeWord(ctx context.Context, userID, wordID int64) error
+	ResetWordProgress(ctx context.Context, userID, id int64) error
 	AcknowledgeRandomWords(ctx context.Context, userID int64, n int) (int, error)
 	GetStats(ctx context.Context, userID int64, tags []string, bucket string) (dueToday, total, newToday int, err error)
 	CountUnseenZhWords(ctx context.Context, userID int64, tags []string) (int, error)

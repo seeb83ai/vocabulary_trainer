@@ -183,6 +183,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 			r.Delete("/", wordsH.Delete)
 			r.Post("/translations", wordsH.AddTranslation)
 			r.Post("/review", wordsH.MarkReview)
+			r.Post("/reset", wordsH.ResetProgress)
 		})
 	})
 	uploadCSVH := &handlers.UploadCSVHandler{Store: s}
@@ -1718,6 +1719,41 @@ func TestMarkReview_ClearedOnUpdate(t *testing.T) {
 	decodeJSON(t, rec, &wd)
 	if wd.NeedsReview {
 		t.Error("expected needs_review = false after PUT update")
+	}
+}
+
+func TestResetProgress_RestoresUnseenState(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "水", "shuǐ", []string{"water"})
+	r := newRouter(s)
+
+	if err := s.AcknowledgeWord(context.Background(), 2, id); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "POST", fmt.Sprintf("/api/words/%d/reset", id), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var wd models.WordDetail
+	decodeJSON(t, rec, &wd)
+	if wd.TotalAttempts != 0 {
+		t.Errorf("expected total_attempts = 0 after reset, got %d", wd.TotalAttempts)
+	}
+
+	rec2 := do(t, r, "GET", fmt.Sprintf("/api/words/%d", id), nil)
+	var wd2 models.WordDetail
+	decodeJSON(t, rec2, &wd2)
+	if wd2.TotalAttempts != 0 {
+		t.Errorf("expected total_attempts = 0 on refetch after reset, got %d", wd2.TotalAttempts)
+	}
+}
+
+func TestResetProgress_NotFound(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/words/9999/reset", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
 	}
 }
 

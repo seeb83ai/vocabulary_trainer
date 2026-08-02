@@ -287,6 +287,28 @@ func (h *WordsHandler) MarkReview(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *WordsHandler) ResetProgress(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.Store.ResetWordProgress(r.Context(), UserIDFromContext(r.Context()), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "word not found")
+			return
+		}
+		internalError(w, err)
+		return
+	}
+	wd, err := h.Store.GetWordByID(r.Context(), UserIDFromContext(r.Context()), id)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, wd)
+}
+
 func (h *WordsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)
 	if err != nil {
