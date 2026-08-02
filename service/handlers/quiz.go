@@ -981,6 +981,7 @@ func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 			UserID:   userID,
 			ZhWordID: p.ZhWordID, ZhComponent: p.ZhComponent,
 			ConfusedWithID: p.ConfusedWithID, ConfusedWithComponent: p.ConfusedWithComponent,
+			Mode: p.Mode,
 		}
 	}
 	_ = h.Store.MarkConfusionsShownInGame(r.Context(), pairKeys)
