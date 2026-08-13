@@ -4885,6 +4885,182 @@ func TestPatchSettings_ExtendSessionWithExtraWords_RoundTrip(t *testing.T) {
 	}
 }
 
+// ── PATCH /api/settings — random-mode-range (per-bucket mode eligibility) ────
+
+func TestPatchSettings_RandomModeRange_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "new,50-69"
+	payload["random_mode_range_zh_to_transl"] = "off"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "new,70-84"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "50-69,85-100"
+	payload["random_mode_range_voice_to_transl"] = "70-84,85-100"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.RandomModeRangeTranslToZh != "new,50-69" {
+		t.Errorf("random_mode_range_transl_to_zh: want %q, got %q", "new,50-69", st.RandomModeRangeTranslToZh)
+	}
+	if st.RandomModeRangeZhToTransl != "off" {
+		t.Errorf("random_mode_range_zh_to_transl: want %q, got %q", "off", st.RandomModeRangeZhToTransl)
+	}
+	if st.RandomModeRangeZhPinyinToTransl != "new,70-84" {
+		t.Errorf("random_mode_range_zh_pinyin_to_transl: want %q, got %q", "new,70-84", st.RandomModeRangeZhPinyinToTransl)
+	}
+	if st.RandomModeRangeZhToTranslNoSound != "50-69,85-100" {
+		t.Errorf("random_mode_range_zh_to_transl_no_sound: want %q, got %q", "50-69,85-100", st.RandomModeRangeZhToTranslNoSound)
+	}
+	if st.RandomModeRangeVoiceToTransl != "70-84,85-100" {
+		t.Errorf("random_mode_range_voice_to_transl: want %q, got %q", "70-84,85-100", st.RandomModeRangeVoiceToTransl)
+	}
+}
+
+func TestPatchSettings_RandomModeRange_InvalidFormatRejected(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "bogus"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for malformed random_mode_range_transl_to_zh, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Turning every mode "off" leaves every bucket with zero eligible modes —
+// the save must be rejected (400) and nothing must be persisted.
+func TestPatchSettings_RandomModeRange_UncoveredBucketRejected(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Confirm the pre-existing (default) value before the rejected attempt.
+	before := do(t, r, http.MethodGet, "/api/settings", nil)
+	var beforeSt models.UserSettings
+	decodeJSON(t, before, &beforeSt)
+
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "off"
+	payload["random_mode_range_zh_to_transl"] = "off"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
+	payload["random_mode_range_voice_to_transl"] = "off"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 when every bucket is left uncovered, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify nothing was persisted.
+	after := do(t, r, http.MethodGet, "/api/settings", nil)
+	var afterSt models.UserSettings
+	decodeJSON(t, after, &afterSt)
+	if afterSt.RandomModeRangeTranslToZh != beforeSt.RandomModeRangeTranslToZh {
+		t.Errorf("rejected PATCH must not persist: random_mode_range_transl_to_zh changed from %q to %q",
+			beforeSt.RandomModeRangeTranslToZh, afterSt.RandomModeRangeTranslToZh)
+	}
+}
+
+// A narrow but non-empty per-bucket coverage (a partial ladder that still
+// covers every bucket) must be accepted.
+func TestPatchSettings_RandomModeRange_PartialCoverageAccepted(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	// Single mode spanning the full ladder covers every bucket on its own.
+	payload["random_mode_range_transl_to_zh"] = "new,85-100"
+	payload["random_mode_range_zh_to_transl"] = "off"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
+	payload["random_mode_range_voice_to_transl"] = "off"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for a config that still covers every bucket, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── GET /api/quiz/next — random/cycle mode respects per-bucket restrictions ──
+
+func TestQuizNext_RandomMode_RespectsBucketRestriction(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	// Restrict the "new" bucket to zh_to_transl only.
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "off"
+	payload["random_mode_range_zh_to_transl"] = "new,85-100"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
+	payload["random_mode_range_voice_to_transl"] = "off"
+	if rec := do(t, r, http.MethodPatch, "/api/settings", payload); rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	// Word is now in the "new" bucket (learning_new_word=true).
+
+	for i := 0; i < 20; i++ {
+		rec := do(t, r, "GET", "/api/quiz/next?mode=random", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.Mode != models.ModeZhToTransl {
+			t.Fatalf("random mode with restrictive config: want %s, got %s", models.ModeZhToTransl, card.Mode)
+		}
+	}
+}
+
+func TestQuizNext_CycleMode_RespectsBucketRestriction(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	// Restrict the "new" bucket to zh_to_transl only, and configure a cycle
+	// sequence that does not include zh_to_transl at all — forcing the
+	// bucket-restricted fallback path.
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "off"
+	payload["random_mode_range_zh_to_transl"] = "new,85-100"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
+	payload["random_mode_range_voice_to_transl"] = "off"
+	payload["cycle_sequence"] = "transl_to_zh,zh_pinyin_to_transl"
+	if rec := do(t, r, http.MethodPatch, "/api/settings", payload); rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeZhToTransl {
+		t.Errorf("cycle mode with no bucket-eligible configured step: want fallback %s, got %s", models.ModeZhToTransl, card.Mode)
+	}
+}
+
 // ── PATCH /api/training-filters ──────────────────────────────────────────────
 
 func TestPatchTrainingFilters_Valid(t *testing.T) {
@@ -6076,7 +6252,11 @@ func TestQuizCycleWraps(t *testing.T) {
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	// Set total_attempts=4 directly so position=(4-1)%3=0 → back to step 0.
+	// Set total_attempts=4 so position=(4-1)%3=0 in the raw 3-step default
+	// sequence. The word stays in the "new" bucket (learning_new_word=true),
+	// and the default random-mode-range ladder makes zh_to_transl ineligible
+	// there, so the cycle sequence is filtered down to [zh_pinyin_to_transl,
+	// transl_to_zh] before indexing — position (4-1)%2=1 → transl_to_zh.
 	// AcknowledgeWord first to set first_seen_date (required for GetNextCard).
 	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
@@ -6100,9 +6280,9 @@ func TestQuizCycleWraps(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	// total_attempts=4 → (4-1)%3=0 → zh_pinyin_to_transl (wrapped back to step 0)
-	if card.Mode != models.ModeZhPinyinToTransl {
-		t.Errorf("cycle wrapped: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	// total_attempts=4 → bucket-filtered 2-step sequence → (4-1)%2=1 → transl_to_zh
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("cycle wrapped (bucket-filtered): want %s, got %s", models.ModeTranslToZh, card.Mode)
 	}
 }
 

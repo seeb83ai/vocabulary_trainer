@@ -221,3 +221,61 @@ test.describe('Settings – Chinese (no sound) mode', () => {
     await expect(page.locator('#cycle-success')).toBeVisible();
   });
 });
+
+// Issue #287: per-bucket eligibility for Random/Cycle mode selection.
+test.describe('Settings – Random/Cycle Mode by Bucket (issue #287)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('shows a from/to bucket range for each of the 5 modes, defaulting to the built-in ladder', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.locator('#random-mode-transl_to_zh-from')).toBeVisible();
+    await expect(page.locator('#random-mode-transl_to_zh-to')).toBeVisible();
+    await expect(page.locator('#random-mode-transl_to_zh-from')).toHaveValue('new');
+    await expect(page.locator('#random-mode-transl_to_zh-to')).toHaveValue('50-69');
+    await expect(page.locator('#random-mode-voice_to_transl-from')).toHaveValue('70-84');
+    await expect(page.locator('#random-mode-voice_to_transl-to')).toHaveValue('85-100');
+  });
+
+  test('changing a range and saving persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+
+    await page.locator('#random-mode-zh_to_transl-from').selectOption('50-69');
+    await page.locator('#random-mode-zh_to_transl-to').selectOption('70-84');
+    await page.locator('#random-mode-save-btn').click();
+    await expect(page.locator('#random-mode-success')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#random-mode-zh_to_transl-from')).toHaveValue('50-69');
+    await expect(page.locator('#random-mode-zh_to_transl-to')).toHaveValue('70-84');
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.random_mode_range_zh_to_transl).toBe('50-69,70-84');
+
+    // Reset to default.
+    await page.locator('#random-mode-zh_to_transl-from').selectOption('0-49');
+    await page.locator('#random-mode-zh_to_transl-to').selectOption('85-100');
+    await page.locator('#random-mode-save-btn').click();
+    await expect(page.locator('#random-mode-success')).toBeVisible();
+  });
+
+  test('turning off every mode is rejected with an inline error and not persisted', async ({ page }) => {
+    await page.goto('/settings');
+
+    const before = await page.request.get('/api/settings');
+    const beforeSettings = await before.json();
+
+    for (const mode of ['transl_to_zh', 'zh_pinyin_to_transl', 'zh_to_transl', 'zh_to_transl_no_sound', 'voice_to_transl']) {
+      await page.locator(`#random-mode-${mode}-off`).check();
+    }
+    await page.locator('#random-mode-save-btn').click();
+    await expect(page.locator('#random-mode-error')).toBeVisible();
+
+    const after = await page.request.get('/api/settings');
+    const afterSettings = await after.json();
+    expect(afterSettings.random_mode_range_transl_to_zh).toBe(beforeSettings.random_mode_range_transl_to_zh);
+
+    // Restore the UI (uncheck the boxes) so subsequent tests start clean.
+    await page.reload();
+  });
+});
