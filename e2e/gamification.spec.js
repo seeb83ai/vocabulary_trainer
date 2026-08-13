@@ -49,6 +49,10 @@ test.describe('Gamification — match game', () => {
         extend_session_with_extra_words: true,
         gamification_enabled: false,
         gamification_frequency: 5,
+        game_mode_mismatch: true,
+        game_mode_newest: true,
+        game_mode_hardest: true,
+        game_mode_last_mistakes: true,
       },
       headers: { 'Content-Type': 'application/json' },
     });
@@ -73,6 +77,10 @@ test.describe('Gamification — match game', () => {
         extend_session_with_extra_words: true,
         gamification_enabled: true,
         gamification_frequency: 1,
+        game_mode_mismatch: true,
+        game_mode_newest: true,
+        game_mode_hardest: true,
+        game_mode_last_mistakes: true,
       },
     });
     expect(patch.status()).toBe(200);
@@ -118,6 +126,44 @@ test.describe('Gamification — match game', () => {
     await expect(page.getByText('Gamification')).toBeVisible();
     await expect(page.locator('#gamification-enabled')).toBeVisible();
     await expect(page.locator('#gamification-frequency')).toBeVisible();
+  });
+
+  // Issue #288: 4 individual game-mode toggles (mismatch/newest/hardest/last
+  // mistakes), all on by default, alongside the existing gamification toggle.
+  test('settings page shows and saves the 4 game-mode toggles', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings`);
+    const mismatch = page.locator('#game-mode-mismatch');
+    const newest = page.locator('#game-mode-newest');
+    const hardest = page.locator('#game-mode-hardest');
+    const lastMistakes = page.locator('#game-mode-last-mistakes');
+
+    await expect(mismatch).toBeVisible();
+    await expect(newest).toBeVisible();
+    await expect(hardest).toBeVisible();
+    await expect(lastMistakes).toBeVisible();
+
+    // All 4 default to enabled.
+    await expect(mismatch).toBeChecked();
+    await expect(newest).toBeChecked();
+    await expect(hardest).toBeChecked();
+    await expect(lastMistakes).toBeChecked();
+
+    await newest.uncheck();
+    await lastMistakes.uncheck();
+    await page.locator('#gamification-save-btn').click();
+    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+
+    await page.reload();
+    await expect(mismatch).toBeChecked();
+    await expect(newest).not.toBeChecked();
+    await expect(hardest).toBeChecked();
+    await expect(lastMistakes).not.toBeChecked();
+
+    // Restore defaults so later specs in this file see the standard state.
+    await newest.check();
+    await lastMistakes.check();
+    await page.locator('#gamification-save-btn').click();
+    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
   });
 
   test('shared-translation claim is blocked (yellow) instead of stealing the true owner\'s box (issue #215)', async ({ page, request }) => {

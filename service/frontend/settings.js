@@ -191,6 +191,14 @@ async function loadSettings() {
     if (gamEnabledEl) gamEnabledEl.checked = !!st.gamification_enabled;
     const gamFreqEl = document.getElementById('gamification-frequency');
     if (gamFreqEl) gamFreqEl.value = st.gamification_frequency ?? 5;
+    const gameModeMismatchEl = document.getElementById('game-mode-mismatch');
+    if (gameModeMismatchEl) gameModeMismatchEl.checked = st.game_mode_mismatch !== false;
+    const gameModeNewestEl = document.getElementById('game-mode-newest');
+    if (gameModeNewestEl) gameModeNewestEl.checked = st.game_mode_newest !== false;
+    const gameModeHardestEl = document.getElementById('game-mode-hardest');
+    if (gameModeHardestEl) gameModeHardestEl.checked = st.game_mode_hardest !== false;
+    const gameModeLastMistakesEl = document.getElementById('game-mode-last-mistakes');
+    if (gameModeLastMistakesEl) gameModeLastMistakesEl.checked = st.game_mode_last_mistakes !== false;
 
     // API key status
     if (st.deepl_key_masked) {
@@ -580,6 +588,10 @@ document.getElementById('gamification-save-btn')?.addEventListener('click', asyn
     ...buildDailyPayload(),
     gamification_enabled:   !!(document.getElementById('gamification-enabled')?.checked),
     gamification_frequency: freq,
+    game_mode_mismatch:      !!(document.getElementById('game-mode-mismatch')?.checked),
+    game_mode_newest:        !!(document.getElementById('game-mode-newest')?.checked),
+    game_mode_hardest:       !!(document.getElementById('game-mode-hardest')?.checked),
+    game_mode_last_mistakes: !!(document.getElementById('game-mode-last-mistakes')?.checked),
   };
   try {
     const res = await fetch('/api/settings', {

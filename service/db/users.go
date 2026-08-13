@@ -236,7 +236,11 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(blur_pinyin, 0),
 		       COALESCE(no_auto_voice_on_blur, 0),
 		       COALESCE(celebrate_bucket_change, 0),
-		       COALESCE(voice_unavailable, 0)
+		       COALESCE(voice_unavailable, 0),
+		       COALESCE(game_mode_mismatch, 1),
+		       COALESCE(game_mode_newest, 1),
+		       COALESCE(game_mode_hardest, 1),
+		       COALESCE(game_mode_last_mistakes, 1)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -271,6 +275,10 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.NoAutoVoiceOnBlur,
 		&st.CelebrateBucketChange,
 		&st.VoiceUnavailable,
+		&st.GameModeMismatch,
+		&st.GameModeNewest,
+		&st.GameModeHardest,
+		&st.GameModeLastMistakes,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
@@ -373,7 +381,11 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			blur_pinyin                     = ?,
 			no_auto_voice_on_blur           = ?,
 			celebrate_bucket_change         = ?,
-			voice_unavailable               = ?
+			voice_unavailable               = ?,
+			game_mode_mismatch              = ?,
+			game_mode_newest                = ?,
+			game_mode_hardest               = ?,
+			game_mode_last_mistakes         = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -401,6 +413,10 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.NoAutoVoiceOnBlur,
 		st.CelebrateBucketChange,
 		st.VoiceUnavailable,
+		st.GameModeMismatch,
+		st.GameModeNewest,
+		st.GameModeHardest,
+		st.GameModeLastMistakes,
 		userID,
 	)
 	if err == nil {
