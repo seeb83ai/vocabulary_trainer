@@ -741,9 +741,16 @@ func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// WordStats returns aggregate per-word statistics for all seen words.
+// WordStats returns aggregate per-word statistics for all seen words. The
+// optional "tags" query param (comma-separated) restricts the accuracy-bucket
+// breakdown to words carrying at least one of the given tags; other sections
+// (hardest, most-practiced) still cover all of the user's words.
 func (h *QuizHandler) WordStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.Store.GetWordStats(r.Context(), UserIDFromContext(r.Context()))
+	var tags []string
+	if t := r.URL.Query().Get("tags"); t != "" {
+		tags = strings.Split(t, ",")
+	}
+	stats, err := h.Store.GetWordStats(r.Context(), UserIDFromContext(r.Context()), tags)
 	if err != nil {
 		internalError(w, err)
 		return

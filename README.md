@@ -598,7 +598,7 @@ The app records every request internally, in the `usage_events` table (`user_id`
 | `POST` | `/api/quiz/difficult/clear` | End the difficult-words drill by clearing all drill flags |
 | `GET` | `/api/quiz/stats` | Get due-today and total card counts (`tags` query param); includes `difficult_remaining` (flagged drill words still to answer) |
 | `GET` | `/api/quiz/daily-stats` | Get daily training stats history (attempts, mistakes, words known, new words, streak) |
-| `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
+| `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words. The `tags` query param (comma-separated) restricts the accuracy-bucket breakdown to words carrying at least one of the given tags — hardest/most-practiced and other sections still cover all words |
 | `GET` | `/api/quiz/due-date-distribution` | Get word counts grouped by due date for the next 30 days (`tags` query param) |
 | `GET` | `/api/component/due-date-distribution` | Get seen hanzi component counts grouped by due date for the next 30 days |
 | `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |
