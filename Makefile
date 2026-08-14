@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup restore release test test-go test-js test-e2e test-all
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk import-pinyin fill-translations backup restore release test test-go test-js test-e2e test-all
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -43,6 +43,16 @@ import:
 import-hanzi:
 	mkdir -p data
 	cd service && go run ./cmd/import-hanzi -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../dictionary.txt)
+
+## import-cedict: import CC-CEDICT for zh word segmentation + free EN dictionary lookups (FILE=cedict_ts.u8 DB=data/vocab.db)
+import-cedict:
+	mkdir -p data
+	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../cedict_ts.u8) -lang en
+
+## import-handedict: import HanDeDict for free DE dictionary lookups (FILE=handedict.u8 DB=data/vocab.db)
+import-handedict:
+	mkdir -p data
+	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../handedict.u8) -lang de
 
 ## import-hsk: fetch and import HSK vocabulary from mandarinbean.com (LEVELS=1,2,3,4,5,6 DB=data/vocab.db)
 import-hsk:

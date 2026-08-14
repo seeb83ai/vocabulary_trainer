@@ -30,12 +30,14 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - **Bucket growth indicator.** The result screen shows one growth icon (🌰🌱🌿🌳🌸) for each accuracy tier: New, Struggling, Learning, Practicing, or Mastered. The icon marks the current tier of a word, HMM entity, or component, on both correct and wrong answers.
   - **Celebrate bucket changes** is an optional setting, off by default, in Settings → Training Mode → Quiz Display. When a correct answer advances a word's tier, this setting shows a full-screen "Level up!" interstitial before the result screen. The old tier's icon dissolves into the new one.
 - **Tags.** You can assign tags to vocabulary words, for example "HSK1", "food", or "travel". You can filter by tag on the vocabulary list and the training page. When you select multiple tags, the app applies OR logic. An autocomplete input creates tags on the fly, and the app removes unused tags automatically.
-- **Auto-translate.** When you configure a DeepL API key, an auto-translate button appears in the Add/Edit Word form. The button detects direction automatically: enter Chinese to get the translation and pinyin filled in, or enter the translation to get Chinese and pinyin back. The app generates pinyin locally with [go-pinyin](https://github.com/mozillazg/go-pinyin).
+- **Auto-translate.** A "Translate" button in the Add/Edit Word form detects direction automatically: enter Chinese to get the translation and pinyin filled in, or enter the translation to get Chinese and pinyin back. It first tries a free local dictionary lookup (see "Free dictionary lookup" below); for the Chinese→translation direction, if that finds nothing it falls back to DeepL when configured (plus/admin accounts or a personal DeepL key). The reverse direction (translation→Chinese) is DeepL-only. The app generates pinyin locally with [go-pinyin](https://github.com/mozillazg/go-pinyin).
 - Vocabulary management: add, edit, delete, search, paginate, and sort by any column. The app shows SM-2 progress per word.
 - **Reset a word.** In the Edit Word form, a **Reset** button appears for any word you've already started training. It clears the word's SM-2 progress back to unseen — removing it from every bucket — so it is reintroduced as a brand-new word.
 - Due-date and correct-answer scheduling include a small random jitter. This shuffles cards and avoids repetitive review patterns.
 - You can bulk-import vocabulary from a structured text file. See `service/cmd/import`.
 - **Character breakdown.** On the training screen, a collapsible "Character breakdown" block appears below each Chinese character. Click it to reveal the radical, definition, etymology hint, and component parts with their meanings. This data comes from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported with `service/cmd/import-hanzi`.
+- **Sub-word detection.** When you add a multi-character word (for example 踢足球, "to play football"), the app segments it against an imported CC-CEDICT/HanDeDict dictionary (`service/cmd/import-cedict`) using forward maximum-match. Characters not absorbed into a recognized sub-word (e.g. 踢, "to kick") are trained as components automatically, alongside their radicals. Recognized multi-character sub-words (e.g. 足球, "football") are automatically created as new, inert vocabulary words — never force-acknowledged, so they queue into the same daily new-word cap as any manually-added word. Auto-created sub-words are tagged with every one of the parent word's tags suffixed `-sub` (e.g. `HSK1` → `HSK1-sub`), or the single tag `sub` if the parent has none — filter by that tag on `/vocab` to find them.
+- **Free dictionary lookup.** The "Translate" button in the Add/Edit Word form first tries a free, ungated exact-match lookup against the imported CC-CEDICT/HanDeDict data before falling back to DeepL — so it now works for every user, not just plus/admin accounts or a personal DeepL key.
 - **Hanzi Movie Method mnemonics.** For single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorize characters. It maps pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`, and compose scenes in the vocabulary edit form. Saved scenes appear automatically during training: expanded on wrong answers, and collapsed on correct answers. The app remembers your choices globally, so setting an actor for "b" once pre-fills it everywhere. You can also write mnemonic scenes for component characters (radicals and sub-parts) on the component edit tab of the `/vocab` page. Component quiz result cards show these scenes the same way as word scenes.
 - **Pinyin listening training.** The `/pinyin` page trains tone and sound discrimination. You hear a pinyin syllable and identify it: by multiple choice in the learning phase, or by typing an answer, for example `ba1`, in the review phase. SM-2 spaced repetition tracks your progress per sound, across about 1,600 syllable and tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. You can filter by consonant group, for example b/p/m/f or zh/ch/sh/r. The page also tracks confusion between commonly mixed-up sounds.
 - HSK vocabulary import (HSK 1-6) fetches vocabulary directly from mandarinbean.com and applies `hsk-N` tags automatically. See `service/cmd/import-hsk`.
@@ -247,20 +249,20 @@ Each user has a personal settings page (`/settings`) with these sections:
 - **Gamification.** Enable a word-matching mini-game that appears during training after you confuse at least 3 word pairs in the last 7 days. Configure how often, in minutes, the game may interrupt training. When the game triggers, it shows three confused pairs in two shuffled columns. Click a Chinese word, then its English translation, to match them. Correct pairs turn green, and wrong pairs flash red. If a word shares its translation text with another still-unmatched word, claiming that word's box alone does not complete the match. Instead, the box flashes yellow, so you cannot claim it out from under the word it actually belongs to. The game updates SM-2 progress for each matched word.
 - **API keys.** Store a personal DeepL API key and an LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). The app encrypts these keys with a key derived from your login password, using PBKDF2-SHA256 and AES-GCM, and makes them accessible only while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without a plus account. A user-supplied local LLM URL must be a public `http(s)` address. The app rejects and blocks internal, loopback, and link-local targets, to prevent server-side request forgery. If you run a trusted local model on loopback, configure it with the server-side `LOCAL_LLM_URL` environment variable instead.
 
-## Auto-translate (DeepL)
+## Auto-translate (free dictionary lookup + DeepL)
 
-Set `DEEPL_API_KEY` in your `.env` file to enable the auto-translate button on the vocabulary page:
+The **Translate** button in the Add/Edit Word form is always available — it detects direction automatically, based on which fields are filled:
+
+- **Chinese filled, translation empty** → the app first tries a free, ungated exact-match lookup against the imported CC-CEDICT/HanDeDict data (see "Bilingual dictionary import" below); if nothing matches, and `DEEPL_API_KEY` is set (or the user has a personal DeepL key), it falls back to DeepL. The backend uses DeepL's `custom_instructions` to request up to 3 distinct meanings, and each meaning fills a separate translation field automatically. Either source generates pinyin.
+- **Translation filled, Chinese empty** → DeepL only (no local reverse-lookup source), translates to Chinese and generates pinyin. Requires `DEEPL_API_KEY` (or a personal key).
+- **Both filled** → the app generates pinyin only.
+
+Set `DEEPL_API_KEY` in your `.env` file to enable the DeepL fallback:
 
 ```bash
 DEEPL_API_KEY=your-deepl-api-key
 DEEPL_TARGET_LANGUAGE=de   # any DeepL language code; default: en
 ```
-
-When you enable this feature, an **Auto-translate** button appears in the Add/Edit Word form. The button detects direction automatically, based on which fields are filled:
-
-- **Chinese filled, translation empty** → the app translates Chinese to the target language and generates pinyin. The backend uses DeepL's `custom_instructions` to request up to 3 distinct meanings, and each meaning fills a separate translation field automatically.
-- **Translation filled, Chinese empty** → the app translates to Chinese and generates pinyin.
-- **Both filled** → the app generates pinyin only.
 
 The app supports both free-tier (`:fx`) and pro API keys automatically. It generates pinyin server-side, using [go-pinyin](https://github.com/mozillazg/go-pinyin). The API key never reaches the browser. The backend proxies all DeepL calls.
 
@@ -406,6 +408,36 @@ cd service && go run ./cmd/import-hanzi -db ../data/vocab.db -file ../dictionary
 | `-file` | *(required)* | Path to makemeahanzi `dictionary.txt` |
 | `-dry-run` | false | Parse and validate without writing |
 
+### Bilingual dictionary import (CC-CEDICT / HanDeDict)
+
+This tool imports a CEDICT-format dictionary — [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict) (Chinese→English) or [HanDeDict](https://handedict.zydeo.net/en/) (Chinese→German, distributed in the same line format) — for two features: segmenting multi-character vocabulary words into their constituent sub-words (single-character parts become trainable components automatically; multi-character parts are auto-created as new, tagged vocabulary words — see "Sub-word detection" below), and a free, ungated dictionary lookup tried before DeepL in the word add/edit "Translate" flow.
+
+1. Download `cedict_ts.u8` from [MDBG](https://www.mdbg.net/chinese/dictionary?page=cedict) (CC BY-SA 4.0) and/or a HanDeDict data file from [handedict.zydeo.net](https://handedict.zydeo.net/en/) (CC BY-SA 2.0 DE) into the project root.
+2. Run the import for each dictionary you have:
+
+```bash
+make import-cedict                              # EN, uses cedict_ts.u8 in project root
+make import-cedict FILE=/path/to/cedict_ts.u8    # custom path
+make import-handedict                            # DE, uses handedict.u8 in project root
+make import-handedict FILE=/path/to/handedict.u8 # custom path
+```
+
+Or directly:
+
+```bash
+cd service && go run ./cmd/import-cedict -db ../data/vocab.db -file ../cedict_ts.u8 -lang en
+cd service && go run ./cmd/import-cedict -db ../data/vocab.db -file ../handedict.u8 -lang de
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-file` | *(required)* | Path to a CEDICT-format dictionary file |
+| `-lang` | *(required)* | `en` (CC-CEDICT) or `de` (HanDeDict) |
+| `-dry-run` | false | Parse and validate without writing |
+
+Like `import-hanzi`, this is a manual, one-time (or re-run-on-update) operational step against `data/vocab.db` — it is not run automatically at startup.
+
 ### Pinyin audio import
 
 This tool imports pinyin pronunciation audio files from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. It enables the `/pinyin` listening training page.
@@ -550,10 +582,12 @@ vocabulary_trainer/
 │   ├── db/
 │   │   ├── migrate.go       # Version-based schema migrations
 │   │   ├── db.go            # Data access layer (Store) — vocabulary
+│   │   ├── cedict.go        # CC-CEDICT/HanDeDict segmentation, sub-word auto-creation, dictionary lookup
 │   │   └── pinyin.go        # Data access layer — pinyin listening
 │   ├── cmd/import/main.go   # Standalone vocabulary import tool (text file)
 │   ├── cmd/import-hsk/main.go # HSK vocabulary import from mandarinbean.com
 │   ├── cmd/import-hanzi/main.go # makemeahanzi character decomposition import
+│   ├── cmd/import-cedict/main.go # CC-CEDICT/HanDeDict bilingual dictionary import
 │   ├── cmd/import-pinyin/main.go # Pinyin audio import tool
 │   └── frontend/
 │       ├── index.html       # Training page
@@ -615,7 +649,7 @@ The app records every request internally, in the `usage_events` table (`user_id`
 | `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
-| `POST` | `/api/translate` | Translate text via DeepL + generate pinyin (only available when `DEEPL_API_KEY` is set) |
+| `POST` | `/api/translate` | Translate text: free local CC-CEDICT/HanDeDict lookup first (zh→translation direction only), then DeepL fallback + generate pinyin (DeepL only available when `DEEPL_API_KEY` is set) |
 | `GET` | `/api/github/config` | Whether in-app issue reporting is enabled (`{"enabled":bool}`) |
 | `POST` | `/api/github/issues` | Create a GitHub issue from an in-app report (only available when `GITHUB_TOKEN` + `GITHUB_ISSUE_REPO` are set; rate-limited per user and per IP) |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word or hanzi component) |

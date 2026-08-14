@@ -5524,6 +5524,249 @@ func TestCreateWord_NoStartTraining(t *testing.T) {
 	}
 }
 
+// ── Sub-word auto-creation + top-level-character components (issue #293) ──────
+
+func wordTagsForText(t *testing.T, s *Store, userID int64, text string) []string {
+	t.Helper()
+	rows, err := s.db.Query(`
+		SELECT tg.name FROM words w
+		JOIN word_tags wt ON wt.word_id = w.id
+		JOIN tags tg ON tg.id = wt.tag_id
+		WHERE w.user_id = ? AND w.text = ? AND w.language = 'zh'
+		ORDER BY tg.name`, userID, text)
+	if err != nil {
+		t.Fatalf("query word tags: %v", err)
+	}
+	defer rows.Close()
+	var tags []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			t.Fatalf("scan tag: %v", err)
+		}
+		tags = append(tags, tag)
+	}
+	return tags
+}
+
+func enTranslationForText(t *testing.T, s *Store, userID int64, text string) string {
+	t.Helper()
+	var en string
+	err := s.db.QueryRow(`
+		SELECT ew.text FROM words w
+		JOIN translations t ON t.zh_word_id = w.id
+		JOIN words ew ON ew.id = t.translation_word_id AND ew.language = 'en'
+		WHERE w.user_id = ? AND w.text = ? AND w.language = 'zh'`, userID, text).Scan(&en)
+	if err != nil && err != sql.ErrNoRows {
+		t.Fatalf("query en translation: %v", err)
+	}
+	return en
+}
+
+func TestCreateWord_StartTraining_MultiCharWord_AddsTopLevelCharAndSubword(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "踢", "to kick")
+	if err := s.SeedCedictEntryForTest(ctx, "足球", "en", "zú qiú", "football"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "踢足球",
+		Translations:  map[string][]string{"en": {"play football"}},
+		Tags:          []string{"HSK1"},
+		StartTraining: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	var compCount int
+	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM component_progress WHERE user_id = 2 AND character = '踢'`).Scan(&compCount)
+	if compCount != 1 {
+		t.Errorf("want a component_progress row for 踢, got count=%d", compCount)
+	}
+
+	exists, err := s.IsZhWordForUser(ctx, 2, "足球")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("want 足球 auto-created as a zh word")
+	}
+	if got := wordTagsForText(t, s, 2, "足球"); len(got) != 1 || got[0] != "HSK1-sub" {
+		t.Errorf("want 足球 tagged [HSK1-sub], got %v", got)
+	}
+	if got := enTranslationForText(t, s, 2, "足球"); got != "football" {
+		t.Errorf("want 足球's EN translation \"football\", got %q", got)
+	}
+
+	var firstSeen *string
+	s.db.QueryRowContext(ctx, `
+		SELECT p.first_seen_at FROM sm2_progress p
+		JOIN words w ON w.id = p.word_id
+		WHERE w.user_id = 2 AND w.text = '足球' AND w.language = 'zh'`).Scan(&firstSeen)
+	if firstSeen != nil {
+		t.Errorf("auto-created subword must stay inert (unacknowledged), got first_seen_at=%q", *firstSeen)
+	}
+}
+
+func TestCreateWord_StartTraining_Subword_MultipleParentTags(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "踢", "to kick")
+	if err := s.SeedCedictEntryForTest(ctx, "足球", "en", "zú qiú", "football"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "踢足球",
+		Translations:  map[string][]string{"en": {"play football"}},
+		Tags:          []string{"HSK1", "sports"},
+		StartTraining: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	got := wordTagsForText(t, s, 2, "足球")
+	want := map[string]bool{"HSK1-sub": true, "sports-sub": true}
+	if len(got) != 2 || !want[got[0]] || !want[got[1]] {
+		t.Errorf("want 足球 tagged [HSK1-sub sports-sub], got %v", got)
+	}
+}
+
+func TestCreateWord_StartTraining_Subword_NoParentTags_GetsGenericSubTag(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "踢", "to kick")
+	if err := s.SeedCedictEntryForTest(ctx, "足球", "en", "zú qiú", "football"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "踢足球",
+		Translations:  map[string][]string{"en": {"play football"}},
+		StartTraining: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	if got := wordTagsForText(t, s, 2, "足球"); len(got) != 1 || got[0] != "sub" {
+		t.Errorf("want 足球 tagged [sub], got %v", got)
+	}
+}
+
+func TestCreateWord_StartTraining_Subword_SkippedWhenAlreadyOwnWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "踢", "to kick")
+	if err := s.SeedCedictEntryForTest(ctx, "足球", "en", "zú qiú", "football"); err != nil {
+		t.Fatal(err)
+	}
+
+	// User already tracks 足球 under a tag unrelated to any -sub convention.
+	if _, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "足球",
+		Translations:  map[string][]string{"en": {"soccer"}},
+		Tags:          []string{"favourites"},
+		StartTraining: false,
+	}); err != nil {
+		t.Fatalf("seed existing 足球: %v", err)
+	}
+
+	if _, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "踢足球",
+		Translations:  map[string][]string{"en": {"play football"}},
+		Tags:          []string{"HSK1"},
+		StartTraining: true,
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	var count int
+	s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM words WHERE user_id = 2 AND text = '足球' AND language = 'zh'`).Scan(&count)
+	if count != 1 {
+		t.Errorf("want exactly 1 zh word for 足球 (no duplicate created), got %d", count)
+	}
+	if got := wordTagsForText(t, s, 2, "足球"); len(got) != 1 || got[0] != "favourites" {
+		t.Errorf("existing 足球's tags must be untouched, got %v", got)
+	}
+}
+
+func TestCreateWord_StartTraining_NoCedictData_TopLevelCharsBecomeComponents(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDecomp(t, s, "明", "⿰日月")
+	seedHanziDef(t, s, "明", "bright")
+	seedHanziDef(t, s, "日", "sun; day")
+	seedHanziDef(t, s, "月", "moon; month")
+
+	if _, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "明月",
+		Translations:  map[string][]string{"en": {"bright moon"}},
+		StartTraining: true,
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	// No cedict data at all: both 明 and 月 fall back to single-char tokens
+	// and become top-level-character components in addition to 明's own
+	// radicals (日, 月) — existing radical extraction is unaffected.
+	for _, char := range []string{"明", "月", "日"} {
+		var count int
+		s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM component_progress WHERE user_id = 2 AND character = ?`, char).Scan(&count)
+		if count != 1 {
+			t.Errorf("want a component_progress row for %q, got count=%d", char, count)
+		}
+	}
+
+	exists, err := s.IsZhWordForUser(ctx, 2, "月")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Error("no cedict data means no sub-word should be auto-created")
+	}
+}
+
+func TestAcknowledgeRandomWords_CreatesSubwords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "踢", "to kick")
+	if err := s.SeedCedictEntryForTest(ctx, "足球", "en", "zú qiú", "football"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:       "踢足球",
+		Translations: map[string][]string{"en": {"play football"}},
+		Tags:         []string{"HSK1"},
+	}); err != nil {
+		t.Fatalf("seed word: %v", err)
+	}
+
+	n, err := s.AcknowledgeRandomWords(ctx, 2, 1)
+	if err != nil {
+		t.Fatalf("AcknowledgeRandomWords: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("want 1 word acknowledged, got %d", n)
+	}
+
+	exists, err := s.IsZhWordForUser(ctx, 2, "足球")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Error("want 足球 auto-created via AcknowledgeRandomWords")
+	}
+	if got := wordTagsForText(t, s, 2, "足球"); len(got) != 1 || got[0] != "HSK1-sub" {
+		t.Errorf("want 足球 tagged [HSK1-sub], got %v", got)
+	}
+}
+
 // ── GetRecentMismatches ───────────────────────────────────────────────────────
 
 func TestGetRecentMismatches_Empty(t *testing.T) {
