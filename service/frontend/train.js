@@ -115,6 +115,12 @@ function shouldShowAcceptTypo(answer, result, mode, cardMode) {
   return variants.some(c => levenshtein(norm, c) === 1);
 }
 
+// Reciprocal of the component card's "Component & Word" label: a word card
+// whose character is also tracked as a component gets a suffix appended.
+function wordModeLabel(baseLabel, isAlsoComponent, suffix) {
+  return isAlsoComponent ? `${baseLabel} · ${suffix}` : baseLabel;
+}
+
 function shouldShowAcceptBtn(answer, normCorrects, mode) {
   if (!answer || answer.trim() === '') return false;
   if (mode === 'always') return true;
@@ -748,7 +754,7 @@ function showCard() {
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
 
-    setText('mode-label', getModeLabel(currentCard.mode));
+    setText('mode-label', wordModeLabel(getModeLabel(currentCard.mode), currentCard.is_also_component, t('word.alsoComponent')));
 
     // voice_to_transl: hide the Chinese text — the audio IS the prompt.
     // If the user has voice_unavailable set, fall back to showing the text.

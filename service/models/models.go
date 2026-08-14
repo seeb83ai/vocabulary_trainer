@@ -164,6 +164,9 @@ type QuizCard struct {
 	IsNew       bool              `json:"is_new,omitempty"`
 	Definitions map[string]string `json:"definitions,omitempty"`
 	IsAlsoWord  bool              `json:"is_also_word,omitempty"`
+	// IsAlsoComponent is set on word cards whose zh text is also tracked as a
+	// hanzi component — the reciprocal of IsAlsoWord.
+	IsAlsoComponent bool `json:"is_also_component,omitempty"`
 }
 
 type AnswerRequest struct {
@@ -240,6 +243,7 @@ type WordDetail struct {
 	NeedsReview     bool                `json:"needs_review"`
 	LearningNewWord bool                `json:"learning_new_word"`
 	SceneText       string              `json:"scene_text,omitempty"`
+	IsAlsoComponent bool                `json:"is_also_component,omitempty"`
 }
 
 // ConfusionKindWord / ConfusionKindComponent identify which side of a

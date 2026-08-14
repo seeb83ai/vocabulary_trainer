@@ -474,6 +474,25 @@ describe('isTransCorrect', () => {
   });
 });
 
+// ── wordModeLabel ────────────────────────────────────────────────────────────
+// Mirrors the reciprocal of component.modeLabelAlsoWord: a word card whose
+// character is also tracked as a component gets a suffix appended to its
+// mode label (e.g. "To Chinese · Also a Component").
+
+function wordModeLabel(baseLabel, isAlsoComponent, suffix) {
+  return isAlsoComponent ? `${baseLabel} · ${suffix}` : baseLabel;
+}
+
+describe('wordModeLabel', () => {
+  it('returns the base label unchanged when not also a component', () => {
+    expect(wordModeLabel('To Chinese', false, 'Also a Component')).toBe('To Chinese');
+  });
+
+  it('appends the suffix when also a component', () => {
+    expect(wordModeLabel('To Chinese', true, 'Also a Component')).toBe('To Chinese · Also a Component');
+  });
+});
+
 // ── shouldAutoPlay ──────────────────────────────────────────────────────────────
 // Mirrors the pure eligibility check in train.js that decides whether a newly
 // shown card should trigger auto-play audio (when the user has the auto-play
