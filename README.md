@@ -168,7 +168,7 @@ The **Progressive** quiz mode introduces new words gently and increases difficul
 
 | Condition | What happens |
 |---|---|
-| Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. |
+| Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. Pinyin covers the full Chinese text, including any bracketed annotation (e.g. `过（动词）`). If your settings require typing the Chinese and/or translation to confirm, a bracketed annotation is optional to type — mirroring the parenthesized-segment rule used everywhere else in answer checking. |
 | **Learning phase** (`learning_new_word = true`) | The word is in the **New** bucket. Short retry intervals (minutes, not days) let you drill it in one session. Three correct answers in a row graduate the word. A wrong answer resets the streak. |
 | `total_attempts < 3` | **Translation → Chinese** — not enough data yet, so the app uses the easiest direction |
 | Accuracy < 50% | **Translation → Chinese** — you are still struggling |

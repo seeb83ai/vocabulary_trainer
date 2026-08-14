@@ -25,6 +25,45 @@ func TestToPinyin(t *testing.T) {
 	}
 }
 
+func TestPinyinCoversText(t *testing.T) {
+	tests := []struct {
+		pinyin string
+		zhText string
+		want   bool
+	}{
+		{"guò", "过（动词）", false},            // 3 Han chars, 1 syllable
+		{"guò dòng cí", "过（动词）", true},     // 3 Han chars, 3 syllables
+		{"guò dòng cí lei", "过（动词）", true}, // more syllables than needed is fine
+		{"", "过", false},
+		{"", "", true},
+		{"anything", "hello", true}, // no Han chars — trivially covered
+	}
+	for _, tt := range tests {
+		if got := pinyinCoversText(tt.pinyin, tt.zhText); got != tt.want {
+			t.Errorf("pinyinCoversText(%q, %q) = %v, want %v", tt.pinyin, tt.zhText, got, tt.want)
+		}
+	}
+}
+
+func TestFullPinyinForDisplay(t *testing.T) {
+	stale := "guò"
+	got := fullPinyinForDisplay("过（动词）", &stale)
+	if got == nil || *got != "guò dòng cí" {
+		t.Errorf("want regenerated full-text pinyin, got %v", got)
+	}
+
+	complete := "dei3 dong4 ci2"
+	got = fullPinyinForDisplay("得（动词）", &complete)
+	if got != &complete {
+		t.Error("want the already-complete stored pinyin returned unchanged (same pointer)")
+	}
+
+	got = fullPinyinForDisplay("你好", nil)
+	if got == nil || *got != "nǐ hǎo" {
+		t.Errorf("want generated pinyin when stored is nil, got %v", got)
+	}
+}
+
 func TestSplitTranslations(t *testing.T) {
 	tests := []struct {
 		input string

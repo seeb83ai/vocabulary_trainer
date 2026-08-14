@@ -71,7 +71,7 @@ function stripParens(s) {
   let prev;
   do {
     prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+    s = s.replace(/\s*[(（][^()（）]*[)）]\s*/g, ' ').trim();
   } while (s !== prev);
   return s;
 }
@@ -1881,19 +1881,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadNextCard();
   });
-  function normalizeNewWordInput(s) {
-    return s.trim().toLowerCase()
-      .replace(/[？！，。：；]/g, m => ({ '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';' }[m]))
-      .replace(/[\p{P}\p{S}\s]+$/u, '');
-  }
+  // Bracketed annotations (e.g. "过（动词）") are optional, mirroring the
+  // backend's CheckAnswer / expandVariants rule for regular quiz answers.
   function isZhCorrect(inputVal, prompt) {
-    return normalizeNewWordInput(inputVal) === normalizeNewWordInput(prompt);
+    if (!inputVal || !inputVal.trim()) return false;
+    return expandVariants(prompt).includes(normalizeAnswer(inputVal));
   }
   function isTransCorrect(inputVal, translations) {
-    const normalized = normalizeNewWordInput(inputVal);
-    if (!normalized) return false;
+    if (!inputVal || !inputVal.trim()) return false;
+    const norm = normalizeAnswer(inputVal);
     const allTrans = Object.values(translations || {}).flat();
-    return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+    return allTrans.some(t => expandVariants(t).includes(norm));
   }
   function updateGotItState() {
     if (!currentCard) return;
