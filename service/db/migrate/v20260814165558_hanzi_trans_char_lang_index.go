@@ -10,6 +10,6 @@ package migrate
 func init() {
 	register(migration{
 		version: 20260814165558,
-		sql: `CREATE INDEX IF NOT EXISTS idx_hanzi_trans_char_lang ON hanzi_decomposition_translation(character, lang);`,
+		sql:     `CREATE INDEX IF NOT EXISTS idx_hanzi_trans_char_lang ON hanzi_decomposition_translation(character, lang);`,
 	})
 }
