@@ -251,6 +251,14 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Reciprocal of the component card's IsAlsoWord: flag word cards whose zh
+	// text is also tracked as a hanzi component.
+	isAlsoComponent, err := h.Store.IsComponentForUser(r.Context(), UserIDFromContext(r.Context()), word.Text)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+
 	requestedMode := r.URL.Query().Get("mode")
 
 	// Progressive mode: new words (total_attempts==0) are shown as introductions
@@ -263,6 +271,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			DueDate:          progress.DueDate,
 			IntervalDays:     progress.IntervalDays,
 			SessionExtension: sessionExtension,
+			IsAlsoComponent:  isAlsoComponent,
 		}
 		card.Translations = map[string][]string{}
 		for _, lang := range langs {
@@ -327,6 +336,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		IntervalDays:     progress.IntervalDays,
 		LearningNewWord:  progress.LearningNewWord,
 		SessionExtension: sessionExtension,
+		IsAlsoComponent:  isAlsoComponent,
 	}
 
 	switch mode {

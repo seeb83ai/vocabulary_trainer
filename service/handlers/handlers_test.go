@@ -5906,6 +5906,42 @@ func TestQuizNext_ComponentCard_IsAlsoWord_False(t *testing.T) {
 	}
 }
 
+// ── word is_also_component field (reciprocal of is_also_word) ────────────────
+
+func TestQuizNext_WordCard_IsAlsoComponent_True(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	s.InsertComponentProgressForTest(ctx, int64(2), "关", time.Now())
+	seedWord(t, s, "关", "guān", []string{"close"})
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if v, _ := card["is_also_component"].(bool); !v {
+		t.Error("want is_also_component=true when word text is also a component")
+	}
+}
+
+func TestQuizNext_WordCard_IsAlsoComponent_False(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card map[string]any
+	decodeJSON(t, rec, &card)
+	if v, _ := card["is_also_component"].(bool); v {
+		t.Error("want is_also_component=false when word text is not a component")
+	}
+}
+
 // ── Component HMM scene handler tests ────────────────────────────────────────
 
 func TestComponentGetHMMScene_ReturnsSceneText(t *testing.T) {

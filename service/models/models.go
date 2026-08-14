@@ -212,6 +212,9 @@ type QuizCard struct {
 	// the target word/substring replaced by "___".
 	SentenceContext string `json:"sentence_context,omitempty"`
 	SentenceBlank   string `json:"sentence_blank,omitempty"`
+	// IsAlsoComponent is set on word cards whose zh text is also tracked as a
+	// hanzi component — the reciprocal of IsAlsoWord.
+	IsAlsoComponent bool `json:"is_also_component,omitempty"`
 }
 
 type AnswerRequest struct {
@@ -288,6 +291,7 @@ type WordDetail struct {
 	NeedsReview     bool                `json:"needs_review"`
 	LearningNewWord bool                `json:"learning_new_word"`
 	SceneText       string              `json:"scene_text,omitempty"`
+	IsAlsoComponent bool                `json:"is_also_component,omitempty"`
 }
 
 // ConfusionKindWord / ConfusionKindComponent identify which side of a
