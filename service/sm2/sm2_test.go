@@ -309,6 +309,18 @@ func TestCheckAnswer_OptionalParens_Middle(t *testing.T) {
 	}
 }
 
+func TestCheckAnswer_OptionalParens_Fullwidth(t *testing.T) {
+	if !CheckAnswer("过", []string{"过（动词）"}) {
+		t.Error("fullwidth-parenthesized segment should be optional, same as ASCII parens")
+	}
+}
+
+func TestCheckAnswer_OptionalParens_FullwidthFullForm(t *testing.T) {
+	if !CheckAnswer("过（动词）", []string{"过（动词）"}) {
+		t.Error("full form with fullwidth parens should also be accepted")
+	}
+}
+
 func TestCheckAnswer_Slash_FullForm(t *testing.T) {
 	if !CheckAnswer("Essen / Gericht", []string{"Essen / Gericht"}) {
 		t.Error("full slash form should be accepted")

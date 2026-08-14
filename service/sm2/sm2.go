@@ -9,9 +9,9 @@ import (
 	"vocabulary_trainer/models"
 )
 
-// reParens matches a parenthesized segment (no nested parens) and any surrounding whitespace.
-// Applied iteratively so that nested parens are stripped inside-out.
-var reParens = regexp.MustCompile(`\s*\([^()]*\)\s*`)
+// reParens matches a parenthesized segment (no nested parens) — ASCII () or fullwidth （）—
+// and any surrounding whitespace. Applied iteratively so that nested parens are stripped inside-out.
+var reParens = regexp.MustCompile(`\s*[(（][^()（）]*[)）]\s*`)
 
 // reTrailingPunct matches any trailing punctuation (Unicode \p{P} and \p{S}) and whitespace.
 var reTrailingPunct = regexp.MustCompile(`[\p{P}\p{S}\s]+$`)

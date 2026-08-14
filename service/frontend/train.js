@@ -71,7 +71,7 @@ function stripParens(s) {
   let prev;
   do {
     prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+    s = s.replace(/\s*[(（][^()（）]*[)）]\s*/g, ' ').trim();
   } while (s !== prev);
   return s;
 }
