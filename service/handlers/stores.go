@@ -81,6 +81,7 @@ type llmStore interface {
 
 type translateStore interface {
 	db.UserStore
+	LookupDictionary(ctx context.Context, simplified, lang string) ([]string, error)
 }
 
 type authStore interface {
@@ -104,4 +105,5 @@ type adminStore interface {
 type componentIniter interface {
 	GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Progress, error)
 	InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error
+	CreateSubwordsForWord(ctx context.Context, userID, zhWordID int64, zhText string) error
 }

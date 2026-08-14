@@ -179,3 +179,37 @@ func TestTranslate_TargetLangNotSwapped(t *testing.T) {
 		t.Fatalf("DE translate: want [%q], got %v", "Werkzeuge", deResp.Translations)
 	}
 }
+
+// TestTranslate_FreeUserDictionaryHit verifies the free, ungated local
+// dictionary lookup returns a result for free users without touching the
+// plus/admin role gate or DeepL, when the zh text has a cedict_entries match
+// in the request's target language.
+func TestTranslate_FreeUserDictionaryHit(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	freeID, err := s.CreateUser(ctx, "free4@example.com", "hash", "tok-free4", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "你好", "en", "nǐ hǎo", "hello"); err != nil {
+		t.Fatal(err)
+	}
+
+	r := newRouterWithUserID(s, freeID)
+	rec := do(t, r, http.MethodPost, "/api/translate", map[string]string{"zh_text": "你好"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("free user dictionary hit: want 200, got %d", rec.Code)
+	}
+	var resp struct {
+		SourceText   string   `json:"source_text"`
+		Translations []string `json:"translations"`
+		Pinyin       string   `json:"pinyin"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.SourceText != "hello" || len(resp.Translations) != 1 || resp.Translations[0] != "hello" {
+		t.Errorf("want dictionary definition \"hello\", got %+v", resp)
+	}
+	if resp.Pinyin == "" {
+		t.Error("expected non-empty pinyin in response")
+	}
+}

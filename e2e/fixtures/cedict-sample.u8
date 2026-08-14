@@ -1,0 +1,5 @@
+# Tiny CEDICT-format fixture for E2E tests (sub-word auto-creation, free
+# dictionary lookup). Not a real CC-CEDICT dump — just enough entries to
+# exercise the segmentation + Translate-button flows end to end.
+踢 踢 [ti1] /to kick/
+足球 足球 [zu2 qiu2] /football/soccer/

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -471,7 +472,23 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 		}
 	}
 
-	return zhID, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	// Sub-word creation writes its own new word(s) in their own transaction
+	// (it can't share this one — db.SetMaxOpenConns(1) means a second
+	// transaction on the same connection while this one is still open would
+	// deadlock), so it runs after commit, best-effort like component
+	// initialisation at the other two call sites (AcknowledgeWord/
+	// AcknowledgeRandomWords).
+	if req.StartTraining {
+		if err := s.CreateSubwordsForWord(ctx, userID, zhID, req.ZhText); err != nil {
+			log.Printf("CreateWord: CreateSubwordsForWord %q: %v", req.ZhText, err)
+		}
+	}
+
+	return zhID, nil
 }
 
 // UpdateWord updates zh word text/pinyin and replaces all translation links.
