@@ -55,6 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const el of document.querySelectorAll('[data-show-tab]')) {
     el.addEventListener('click', () => showTab(el.dataset.showTab));
   }
+  // On small screens the auth card sits below the hero — bring it into view.
+  document.getElementById('hero-cta')?.addEventListener('click', () => {
+    document.getElementById('auth-column')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
 
   // Sign In
   document.getElementById('signin-form').addEventListener('submit', async e => {
