@@ -4,6 +4,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Features
 
+- **One-button onboarding.** When a new account opens the training page with no vocabulary and the shared library offers HSK lists, the empty state asks "How much Chinese do you know?" and offers one-click starts: *I'm new — start with HSK 1* and *I know the basics — HSK 2–3*. One click imports the list and shows the first new-word introduction immediately. A third option, *Let me choose word lists myself*, opens the existing tag picker with language filters and preview.
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
 - The app supports N:N word relationships. The same English or Chinese word can appear in more than one entry.
 - The app has seven quiz modes. You can pick a mode, or let the app pick one at random.
