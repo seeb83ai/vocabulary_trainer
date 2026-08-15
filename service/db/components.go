@@ -306,7 +306,7 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		WHERE cp.user_id = ?
 		  AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation
 		              WHERE character = cp.character AND lang IN (`+strings.Join(placeholders, ",")+`) AND definition != '')
-		  AND cp.due_date <= CURRENT_TIMESTAMP
+		  AND cp.due_date < date('now', '+1 day')
 		ORDER BY cp.due_date ASC
 		LIMIT 1`,
 		args...,
