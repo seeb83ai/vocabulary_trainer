@@ -4,6 +4,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Features
 
+- **Try-before-signup demo quiz.** Signed-out visitors can answer five fixed demo cards (Chinese + pinyin → English) directly on the root page, with no account. Answers are checked server-side with the same flexible matching logic as the real quiz, wrong answers reveal the accepted translations, and finishing the demo leads to a "Create free account" prompt. The endpoints (`GET /api/demo/cards`, `POST /api/demo/answer`) are public, stateless, and store nothing.
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
 - The app supports N:N word relationships. The same English or Chinese word can appear in more than one entry.
 - The app has seven quiz modes. You can pick a mode, or let the app pick one at random.
@@ -584,6 +585,8 @@ The app records every request internally, in the `usage_events` table (`user_id`
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/api/demo/cards` | Public demo card list for the landing page (no auth, translations omitted) |
+| `POST` | `/api/demo/answer` | Check a demo answer statelessly (no auth; returns `correct` + accepted translations) |
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
 | `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag) |
 | `GET` | `/api/quiz/match-game` | Get up to 3 recent confusion pairs for the match mini-game (empty if < 3 pairs in last 7 days); tiles may be words or hanzi components |

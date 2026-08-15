@@ -110,9 +110,43 @@
         </div>
 
       </div>
+
+      <!-- Try-it demo quiz (no account needed) -->
+      <div id="demo-section" class="bg-white rounded-2xl shadow p-8 mt-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Try it — no account needed</h2>
+        <p class="text-sm text-gray-500 mb-6">Translate five Chinese words to see how the trainer works.</p>
+
+        <div id="demo-card">
+          <div class="mb-4">
+            <span id="demo-progress" class="text-xs font-medium uppercase tracking-wide text-gray-400"></span>
+          </div>
+          <div class="text-center mb-6">
+            <div id="demo-zh" class="text-5xl font-bold text-gray-900 mb-2"></div>
+            <div id="demo-pinyin" class="text-gray-500"></div>
+          </div>
+          <form id="demo-form" class="flex gap-2">
+            <input id="demo-input" type="text" autocomplete="off" placeholder="Type the English meaning…"
+              class="flex-1 min-w-0 border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button type="submit" id="demo-submit"
+              class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-5 rounded-xl transition">Check</button>
+          </form>
+          <div id="demo-feedback" class="hidden mt-4 text-sm rounded-lg px-3 py-2"></div>
+          <button id="demo-next" type="button"
+            class="hidden mt-3 w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition">Next word</button>
+        </div>
+
+        <div id="demo-done" class="hidden text-center py-4">
+          <div class="text-4xl mb-3" aria-hidden="true">🎉</div>
+          <p class="font-semibold text-gray-800 mb-1">That's the demo — <span id="demo-score"></span> correct.</p>
+          <p class="text-sm text-gray-500 mb-4">With a free account, the trainer schedules each word for review right before you would forget it.</p>
+          <button id="demo-done-cta" type="button" data-show-tab="register"
+            class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 px-6 rounded-xl transition">Create free account</button>
+        </div>
+      </div>
     </div>
   </main>
 
   <script src="index.js"></script>
+  <script src="demo.js"></script>
 </body>
 </html>

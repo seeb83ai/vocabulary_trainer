@@ -171,6 +171,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
+	demoH := &handlers.DemoHandler{}
+	r.Get("/api/demo/cards", demoH.Cards)
+	r.Post("/api/demo/answer", demoH.Answer)
 	r.Post("/api/quiz/record-time", quizH.RecordTime)
 	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
@@ -7767,5 +7770,78 @@ func TestClearDifficult_EmptiesPoolAndDrillReturns404(t *testing.T) {
 	rec = do(t, r, "GET", "/api/quiz/next?difficult=true", nil)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for empty drill, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── Demo quiz (unauthenticated try-before-signup) ─────────────────────────────
+
+func TestDemoCards_ReturnsFiveCardsWithoutTranslations(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/demo/cards", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var body struct {
+		Cards []struct {
+			ID           int      `json:"id"`
+			Zh           string   `json:"zh"`
+			Pinyin       string   `json:"pinyin"`
+			Translations []string `json:"translations"`
+		} `json:"cards"`
+	}
+	decodeJSON(t, rec, &body)
+	if len(body.Cards) != 5 {
+		t.Fatalf("want 5 demo cards, got %d", len(body.Cards))
+	}
+	for i, c := range body.Cards {
+		if c.Zh == "" || c.Pinyin == "" {
+			t.Errorf("card %d: missing zh or pinyin: %+v", i, c)
+		}
+		if len(c.Translations) != 0 {
+			t.Errorf("card %d: translations must not be exposed in the card list", i)
+		}
+	}
+}
+
+func TestDemoAnswer_CorrectWrongAndNormalized(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	cases := []struct {
+		answer  string
+		correct bool
+	}{
+		{"hello", true},
+		{"  HELLO ", true}, // normalization applies
+		{"zzz", false},
+	}
+	for _, c := range cases {
+		rec := do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": 0, "answer": c.answer})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer %q: want 200, got %d", c.answer, rec.Code)
+		}
+		var body struct {
+			Correct      bool     `json:"correct"`
+			Translations []string `json:"translations"`
+		}
+		decodeJSON(t, rec, &body)
+		if body.Correct != c.correct {
+			t.Errorf("answer %q: want correct=%v, got %v", c.answer, c.correct, body.Correct)
+		}
+		if len(body.Translations) == 0 {
+			t.Errorf("answer %q: result must reveal the accepted translations", c.answer)
+		}
+	}
+}
+
+func TestDemoAnswer_InvalidRequests(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	rec := do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": 99, "answer": "x"})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("out-of-range card_id: want 400, got %d", rec.Code)
+	}
+	rec = do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": -1, "answer": "x"})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("negative card_id: want 400, got %d", rec.Code)
 	}
 }
