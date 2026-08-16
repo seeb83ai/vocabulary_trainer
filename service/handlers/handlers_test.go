@@ -7366,6 +7366,38 @@ func TestSettingsPatch_GamificationFields(t *testing.T) {
 	}
 }
 
+// TestSettingsPatch_GamificationEnabled_OmittedPreservesExisting guards
+// against a regression where saving a PATCH payload that doesn't include
+// gamification_enabled (e.g. from the Daily Learning, Training Mode, Cycle
+// Mode, Language, or Accept-as-correct save buttons in settings.js — none of
+// which currently send this field) silently resets it to false, even though
+// the user only intended to change a different section.
+func TestSettingsPatch_GamificationEnabled_OmittedPreservesExisting(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["gamification_enabled"] = true
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Save again without the field, as every non-Gamification settings card does.
+	body2 := baseSettingsPatch()
+	rec2 := do(t, r, "PATCH", "/api/settings", body2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	rec3 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec3, &st)
+	if st["gamification_enabled"] != true {
+		t.Errorf("want gamification_enabled preserved as true, got %v", st["gamification_enabled"])
+	}
+}
+
 func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

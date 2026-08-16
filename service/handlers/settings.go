@@ -63,7 +63,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineLearningValue       int    `json:"baseline_learning_value"`
 		BaselineNewBucketEnabled    bool   `json:"baseline_new_bucket_enabled"`
 		BaselineNewBucketValue      int    `json:"baseline_new_bucket_value"`
-		GamificationEnabled         bool   `json:"gamification_enabled"`
+		GamificationEnabled         *bool  `json:"gamification_enabled"`
 		GamificationFrequency       *int   `json:"gamification_frequency"`
 		BlurPinyin                  bool   `json:"blur_pinyin"`
 		NoAutoVoiceOnBlur           bool   `json:"no_auto_voice_on_blur"`
@@ -158,6 +158,18 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve gamification_enabled: nil means the field was omitted (as every
+	// settings.js save button except Gamification's currently does) → keep
+	// the stored value instead of resetting it to false.
+	var resolvedGamificationEnabled bool
+	if req.GamificationEnabled == nil {
+		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
+			resolvedGamificationEnabled = existing.GamificationEnabled
+		}
+	} else {
+		resolvedGamificationEnabled = *req.GamificationEnabled
+	}
+
 	resolvedFrequency := 5
 	if req.GamificationFrequency == nil {
 		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
@@ -203,7 +215,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineLearningValue:       req.BaselineLearningValue,
 		BaselineNewBucketEnabled:    req.BaselineNewBucketEnabled,
 		BaselineNewBucketValue:      req.BaselineNewBucketValue,
-		GamificationEnabled:         req.GamificationEnabled,
+		GamificationEnabled:         resolvedGamificationEnabled,
 		GamificationFrequency:       resolvedFrequency,
 		BlurPinyin:                  req.BlurPinyin,
 		NoAutoVoiceOnBlur:           req.NoAutoVoiceOnBlur,

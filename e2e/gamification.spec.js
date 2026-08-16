@@ -183,4 +183,32 @@ test.describe('Gamification — match game', () => {
     await expect(page.locator('#gamification-enabled')).toBeChecked({ timeout: 5000 });
     await expect(page.locator('#gamification-frequency')).toHaveValue('2');
   });
+
+  // Regression: saving a *different* settings card must not silently disable
+  // gamification. settings.js only sends gamification_enabled from the
+  // Gamification card's own save button — every other card (Daily Learning,
+  // Training Mode, Cycle Mode, Language, Accept-as-correct) omits it, and the
+  // PATCH handler used to decode a missing boolean field as false and write
+  // it straight through.
+  test('enabling gamification survives saving the Daily Learning card', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings`);
+    const checkbox = page.locator('#gamification-enabled');
+    await expect(checkbox).toBeVisible();
+
+    await checkbox.check();
+    await page.locator('#gamification-save-btn').click();
+    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+
+    // Save a wholly unrelated card, whose payload doesn't mention gamification.
+    await page.locator('#max-new-words').fill('5');
+    await page.locator('#daily-save-btn').click();
+    await expect(page.locator('#daily-success')).toBeVisible({ timeout: 5000 });
+
+    await page.reload();
+    await expect(page.locator('#gamification-enabled')).toBeChecked({ timeout: 5000 });
+
+    const res = await page.request.get(`${BASE_URL}/api/settings`);
+    const settings = await res.json();
+    expect(settings.gamification_enabled).toBe(true);
+  });
 });
