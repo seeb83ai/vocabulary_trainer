@@ -62,6 +62,7 @@ type UserSettings struct {
 	NoAutoVoiceOnBlur           bool     `json:"no_auto_voice_on_blur"`
 	CelebrateBucketChange       bool     `json:"celebrate_bucket_change"`
 	VoiceUnavailable            bool     `json:"voice_unavailable"`
+	ComponentCoverageThreshold  float64  `json:"component_coverage_threshold"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.

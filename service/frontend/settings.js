@@ -192,6 +192,10 @@ async function loadSettings() {
     const gamFreqEl = document.getElementById('gamification-frequency');
     if (gamFreqEl) gamFreqEl.value = st.gamification_frequency ?? 5;
 
+    const compThresholdEl = document.getElementById('component-coverage-threshold');
+    if (compThresholdEl) compThresholdEl.value = st.component_coverage_threshold ?? 0;
+    updateComponentCoverageSummary();
+
     // API key status
     if (st.deepl_key_masked) {
       const el = document.getElementById('deepl-key-status');
@@ -223,6 +227,7 @@ for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2','cycle-step-3','c
 }
 
 loadLanguages().then(() => loadSettings());
+loadComponentCoverage();
 
 // Language save
 document.getElementById('lang-save-btn')?.addEventListener('click', async () => {
@@ -565,6 +570,99 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
 });
 
 // Gamification save
+// ── Component training threshold ────────────────────────────────────────────
+
+let componentCoverageData = [];
+let componentCoverageTotalWords = 0;
+
+// computeThresholdSummary is pure: given the fetched coverage list and a
+// candidate threshold, returns how many components would qualify for
+// training. No DOM access, so it can recompute live on every input change
+// without a server round trip.
+function computeThresholdSummary(components, threshold) {
+  const total = components.length;
+  const qualifying = components.filter(c => c.coverage_pct >= threshold).length;
+  return { qualifying, total };
+}
+
+function renderComponentCoverageTable(components, threshold) {
+  const tbody = document.getElementById('component-coverage-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  for (const comp of components) {
+    const belowThreshold = comp.coverage_pct < threshold;
+    const statusLabel = comp.already_trained ? 'Training' : (belowThreshold ? 'Skipped' : 'Would train');
+    const def = comp.definition_en || comp.definition_de || '';
+    const tr = document.createElement('tr');
+    tr.className = 'border-t border-gray-100' + (belowThreshold ? ' opacity-40' : '');
+    tr.innerHTML =
+      '<td class="px-3 py-1.5 font-medium">' + escHtml(comp.character) + '</td>' +
+      '<td class="px-3 py-1.5 text-gray-500">' + escHtml(comp.pinyin || '') + '</td>' +
+      '<td class="px-3 py-1.5 text-gray-500">' + escHtml(def) + '</td>' +
+      '<td class="px-3 py-1.5 text-right">' + comp.word_count + '</td>' +
+      '<td class="px-3 py-1.5 text-right">' + comp.coverage_pct.toFixed(1) + '%</td>' +
+      '<td class="px-3 py-1.5 text-gray-500">' + escHtml(statusLabel) + '</td>';
+    tbody.appendChild(tr);
+  }
+}
+
+function updateComponentCoverageSummary() {
+  const threshold = parseFloat(document.getElementById('component-coverage-threshold')?.value || '0');
+  const { qualifying, total } = computeThresholdSummary(componentCoverageData, threshold);
+  const summaryEl = document.getElementById('component-coverage-summary');
+  if (summaryEl) {
+    summaryEl.textContent = total === 0
+      ? 'No components found in your vocabulary yet.'
+      : qualifying + ' of ' + total + ' components would train at this threshold (across ' + componentCoverageTotalWords + ' words).';
+  }
+  renderComponentCoverageTable(componentCoverageData, isNaN(threshold) ? 0 : threshold);
+}
+
+async function loadComponentCoverage() {
+  try {
+    const res = await fetch('/api/components/coverage');
+    if (!res.ok) return;
+    const data = await res.json();
+    componentCoverageData = data.components || [];
+    componentCoverageTotalWords = data.total_words || 0;
+    updateComponentCoverageSummary();
+  } catch { /* ignore */ }
+}
+
+document.getElementById('component-coverage-threshold')?.addEventListener('input', updateComponentCoverageSummary);
+
+document.getElementById('component-threshold-save-btn')?.addEventListener('click', async () => {
+  hideMsg('component-threshold-success'); hideMsg('component-threshold-error');
+  const threshold = parseFloat(document.getElementById('component-coverage-threshold')?.value || '0');
+  if (isNaN(threshold) || threshold < 0 || threshold > 100) {
+    showMsg('component-threshold-error', 'Threshold must be between 0 and 100.', true);
+    return;
+  }
+  const payload = {
+    primary_lang:        document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang:      document.getElementById('secondary-lang')?.value || '',
+    accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
+    ...buildModePayload(),
+    ...buildDailyPayload(),
+    component_coverage_threshold: threshold,
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('component-threshold-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('component-threshold-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('component-threshold-error', 'Network error.', true);
+  }
+});
+
 document.getElementById('gamification-save-btn')?.addEventListener('click', async () => {
   hideMsg('gamification-success'); hideMsg('gamification-error');
   const freq = parseInt(document.getElementById('gamification-frequency')?.value || '5', 10);

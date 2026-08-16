@@ -332,6 +332,7 @@ func main() {
 		r.Post("/hmm-quiz/answer", hmmQuizH.Answer)
 		r.Post("/hmm-quiz/skip", hmmQuizH.Skip)
 		r.Get("/components", componentH.List)
+		r.Get("/components/coverage", componentH.Coverage)
 		r.Post("/component/answer", componentH.Answer)
 		r.Post("/component/accept-correct", componentH.AcceptCorrect)
 		r.Post("/component/seen", componentH.Seen)

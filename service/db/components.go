@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -25,14 +26,26 @@ func (s *Store) InitComponentsForWord(ctx context.Context, userID int64, zhText 
 }
 
 // querier is satisfied by both *sql.DB and *sql.Tx, letting initComponentsForWord
-// run either standalone or inside an enclosing transaction (e.g. CreateWord).
+// (and the coverage helpers below) run either standalone or inside an enclosing
+// transaction (e.g. CreateWord) — always on the single connection SQLite is
+// capped to (db.SetMaxOpenConns(1)), never a fresh one that would deadlock
+// against an open transaction.
 type querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText string, dueDate time.Time) error {
-	dueDateStr := dueDate.UTC().Format("2006-01-02 15:04:05")
+// wordRequiredComponents returns the deduped set of qualifying component
+// characters for zhText: the direct sub-parts of each Han character's
+// hanzi_decomposition, filtered by shouldKeepComponent (etymology label, with
+// pinyin similarity fallback) and requiring the component to have its own
+// non-empty dictionary definition. This is the same one-level "character
+// breakdown" rule GetHanziDecomposition and train.js use to decide what's
+// shown to a learner.
+func wordRequiredComponents(ctx context.Context, q querier, zhText string) ([]string, error) {
+	seen := make(map[string]bool)
+	var out []string
 	for _, r := range []rune(zhText) {
 		if !unicode.Is(unicode.Han, r) {
 			continue
@@ -46,20 +59,24 @@ func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText 
 			continue
 		}
 		if err != nil {
-			return fmt.Errorf("decomp lookup %q: %w", string(r), err)
+			return nil, fmt.Errorf("decomp lookup %q: %w", string(r), err)
 		}
 		parentPy := parsePinyinJSON(parentPinyin.String)
 		for _, comp := range extractComponents(decomp.String) {
+			compStr := string(comp)
+			if seen[compStr] {
+				continue
+			}
 			var def, compPinyin sql.NullString
 			err := q.QueryRowContext(ctx,
 				`SELECT definition, pinyin FROM hanzi_decomposition WHERE character = ?`,
-				string(comp),
+				compStr,
 			).Scan(&def, &compPinyin)
 			if err == sql.ErrNoRows {
 				continue
 			}
 			if err != nil {
-				return fmt.Errorf("component def lookup %q: %w", string(comp), err)
+				return nil, fmt.Errorf("component def lookup %q: %w", compStr, err)
 			}
 			if !def.Valid || def.String == "" {
 				continue
@@ -67,12 +84,104 @@ func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText 
 			if !shouldKeepComponent(r, comp, etymology.String, radical.String, parentPy, parsePinyinJSON(compPinyin.String)) {
 				continue
 			}
-			if _, err := q.ExecContext(ctx,
-				`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
-				userID, string(comp), dueDateStr,
-			); err != nil {
-				return fmt.Errorf("init component %q: %w", string(comp), err)
+			seen[compStr] = true
+			out = append(out, compStr)
+		}
+	}
+	return out, nil
+}
+
+// getComponentCoverageThreshold reads the user's minimum-coverage setting for
+// adding new components to training (0-100, default 0 = no filtering).
+// A missing user_settings row (not yet created) is treated as 0, same as the
+// column's default.
+func getComponentCoverageThreshold(ctx context.Context, q querier, userID int64) (float64, error) {
+	var threshold float64
+	err := q.QueryRowContext(ctx,
+		`SELECT COALESCE(component_coverage_threshold, 0) FROM user_settings WHERE user_id = ?`,
+		userID,
+	).Scan(&threshold)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get component coverage threshold: %w", err)
+	}
+	return threshold, nil
+}
+
+// componentWordCoverage tallies, for every qualifying component character
+// across all of userID's zh words, how many of those words require it — the
+// same rule wordRequiredComponents applies per word, just accumulated. Also
+// returns the total zh word count, used as the percentage denominator.
+func componentWordCoverage(ctx context.Context, q querier, userID int64) (counts map[string]int, totalWords int, err error) {
+	rows, err := q.QueryContext(ctx,
+		`SELECT text FROM words WHERE user_id = ? AND language = 'zh'`, userID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list zh words: %w", err)
+	}
+	var texts []string
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			rows.Close()
+			return nil, 0, fmt.Errorf("scan zh word: %w", err)
+		}
+		texts = append(texts, text)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list zh words rows: %w", err)
+	}
+
+	counts = make(map[string]int)
+	for _, text := range texts {
+		components, err := wordRequiredComponents(ctx, q, text)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, c := range components {
+			counts[c]++
+		}
+	}
+	return counts, len(texts), nil
+}
+
+func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText string, dueDate time.Time) error {
+	dueDateStr := dueDate.UTC().Format("2006-01-02 15:04:05")
+	components, err := wordRequiredComponents(ctx, q, zhText)
+	if err != nil {
+		return err
+	}
+	if len(components) == 0 {
+		return nil
+	}
+
+	threshold, err := getComponentCoverageThreshold(ctx, q, userID)
+	if err != nil {
+		return err
+	}
+	var counts map[string]int
+	var totalWords int
+	if threshold > 0 {
+		counts, totalWords, err = componentWordCoverage(ctx, q, userID)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, comp := range components {
+		if threshold > 0 && totalWords > 0 {
+			pct := float64(counts[comp]) / float64(totalWords) * 100
+			if pct < threshold {
+				continue
 			}
+		}
+		if _, err := q.ExecContext(ctx,
+			`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
+			userID, comp, dueDateStr,
+		); err != nil {
+			return fmt.Errorf("init component %q: %w", comp, err)
 		}
 	}
 	return nil
@@ -837,6 +946,78 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 		return nil, 0, fmt.Errorf("component list rows: %w", err)
 	}
 	return items, total, nil
+}
+
+// ComponentCoverageItem is one row in the full component-coverage listing:
+// every qualifying component across a user's current zh vocabulary, not just
+// ones already in component_progress.
+type ComponentCoverageItem struct {
+	Character      string  `json:"character"`
+	Pinyin         string  `json:"pinyin,omitempty"`
+	DefinitionEN   string  `json:"definition_en"`
+	DefinitionDE   string  `json:"definition_de"`
+	WordCount      int     `json:"word_count"`
+	CoveragePct    float64 `json:"coverage_pct"`
+	AlreadyTrained bool    `json:"already_trained"`
+}
+
+// GetComponentCoverage returns every qualifying component across userID's
+// current zh vocabulary — not just components already in component_progress —
+// each annotated with how many (and what percentage) of the user's zh words
+// require it, and whether it's already being trained. Used by the Settings
+// page to help pick a training threshold (see getComponentCoverageThreshold).
+// Sorted by word count descending, then character ascending for stability.
+func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageItem, int, error) {
+	counts, totalWords, err := componentWordCoverage(ctx, s.db, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	trained := make(map[string]bool)
+	rows, err := s.db.QueryContext(ctx, `SELECT character FROM component_progress WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list trained components: %w", err)
+	}
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			rows.Close()
+			return nil, 0, fmt.Errorf("scan trained component: %w", err)
+		}
+		trained[c] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list trained components rows: %w", err)
+	}
+
+	items := make([]ComponentCoverageItem, 0, len(counts))
+	for char, wordCount := range counts {
+		defs, err := s.GetComponentDefinitions(ctx, userID, char, []string{"en", "de"})
+		if err != nil {
+			return nil, 0, err
+		}
+		var pct float64
+		if totalWords > 0 {
+			pct = float64(wordCount) / float64(totalWords) * 100
+		}
+		items = append(items, ComponentCoverageItem{
+			Character:      char,
+			Pinyin:         s.GetComponentPinyin(ctx, char),
+			DefinitionEN:   defs["en"],
+			DefinitionDE:   defs["de"],
+			WordCount:      wordCount,
+			CoveragePct:    pct,
+			AlreadyTrained: trained[char],
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].WordCount != items[j].WordCount {
+			return items[i].WordCount > items[j].WordCount
+		}
+		return items[i].Character < items[j].Character
+	})
+	return items, totalWords, nil
 }
 
 func joinPinyinJSON(s string) string {

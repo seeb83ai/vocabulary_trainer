@@ -152,6 +152,7 @@ type ComponentStore interface {
 	ClearComponentPrevState(ctx context.Context, userID int64, character string) error
 	UpdateComponentProgress(ctx context.Context, userID int64, character string, p models.SM2Progress) error
 	GetComponentList(ctx context.Context, userID int64, search string, page, perPage int, reviewOnly bool) ([]ComponentListItem, int, error)
+	GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageItem, int, error)
 	GetComponentPinyin(ctx context.Context, character string) string
 	GetComponentCounts(ctx context.Context, userID int64, langs []string) (dueToday, total int, err error)
 	GetComponentCountByDueDate(ctx context.Context, userID int64) ([]models.DueDateCount, error)
