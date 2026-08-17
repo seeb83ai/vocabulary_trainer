@@ -619,6 +619,29 @@ func TestQuizAnswer_EnToZh(t *testing.T) {
 	}
 }
 
+// Regression for issue #309/#311: a word stored with a fullwidth-paren POS
+// annotation ("还（动词）") must accept the bare character as correct in
+// transl_to_zh mode, just like an ASCII-paren annotation already does.
+func TestQuizAnswer_TranslToZh_FullwidthParensAnnotationStripped(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "还（动词）", "huán", []string{"Return"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeTranslToZh,
+		Answer: "还",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("'还' should be accepted as correct for '还（动词）' — fullwidth parens mark an optional segment")
+	}
+}
+
 // ── TranslToZh wrong answer: user_answer_pinyin ───────────────────────────────
 
 func TestQuizAnswer_TranslToZh_WrongKnownWordIncludesPinyin(t *testing.T) {
