@@ -62,6 +62,7 @@ type UserSettings struct {
 	NoAutoVoiceOnBlur           bool     `json:"no_auto_voice_on_blur"`
 	CelebrateBucketChange       bool     `json:"celebrate_bucket_change"`
 	VoiceUnavailable            bool     `json:"voice_unavailable"`
+	RetypeOnWrong               bool     `json:"retype_on_wrong"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.

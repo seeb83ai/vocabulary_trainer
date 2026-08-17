@@ -69,6 +69,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NoAutoVoiceOnBlur           bool   `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange       bool   `json:"celebrate_bucket_change"`
 		VoiceUnavailable            bool   `json:"voice_unavailable"`
+		RetypeOnWrong               bool   `json:"retype_on_wrong"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -209,6 +210,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NoAutoVoiceOnBlur:           req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:       req.CelebrateBucketChange,
 		VoiceUnavailable:            req.VoiceUnavailable,
+		RetypeOnWrong:               req.RetypeOnWrong,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

@@ -474,6 +474,33 @@ describe('isTransCorrect', () => {
   });
 });
 
+// ── Retype-on-wrong gate ─────────────────────────────────────────────────────
+// Mirrors the pure helper added to train.js that decides whether the retype
+// gate shown after a wrong answer is satisfied (reuses isZhCorrect/isTransCorrect,
+// the same helpers the new-word introduction screen uses).
+
+function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations) {
+  return isZhCorrect(zhVal, correctZh) && isTransCorrect(transVal, translations);
+}
+
+describe('wrongRetypeSatisfied', () => {
+  it('returns true when both the Chinese word and translation are typed correctly', () => {
+    expect(wrongRetypeSatisfied('你好', 'hello', '你好', { en: ['hello', 'hi'] })).toBe(true);
+  });
+
+  it('returns false when only the Chinese word is correct', () => {
+    expect(wrongRetypeSatisfied('你好', 'nope', '你好', { en: ['hello'] })).toBe(false);
+  });
+
+  it('returns false when only the translation is correct', () => {
+    expect(wrongRetypeSatisfied('错', 'hello', '你好', { en: ['hello'] })).toBe(false);
+  });
+
+  it('returns false when both are wrong', () => {
+    expect(wrongRetypeSatisfied('错', 'nope', '你好', { en: ['hello'] })).toBe(false);
+  });
+});
+
 // ── shouldAutoPlay ──────────────────────────────────────────────────────────────
 // Mirrors the pure eligibility check in train.js that decides whether a newly
 // shown card should trigger auto-play audio (when the user has the auto-play

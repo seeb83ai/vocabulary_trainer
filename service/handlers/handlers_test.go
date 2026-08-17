@@ -7451,6 +7451,30 @@ func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_RetypeOnWrong(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["retype_on_wrong"] != false {
+		t.Errorf("retype_on_wrong: want false by default, got %v", st["retype_on_wrong"])
+	}
+
+	body := baseSettingsPatch()
+	body["retype_on_wrong"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["retype_on_wrong"] != true {
+		t.Errorf("retype_on_wrong: want true after update, got %v", st["retype_on_wrong"])
+	}
+}
+
 func TestSettingsPatch_VoiceUnavailable(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
