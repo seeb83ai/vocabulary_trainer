@@ -127,6 +127,16 @@
           <span class="text-sm text-gray-600">Celebrate bucket changes</span>
         </label>
         <p class="text-xs text-gray-400 ml-7">Shows an extra screen when a word moves up a level, before the next card.</p>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="sentence-blank-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-600">Sentence fill-in-the-blank</span>
+        </label>
+        <p class="text-xs text-gray-400 ml-7">Occasionally shows a full sentence with one already-reviewed word blanked out, instead of a plain word card.</p>
+        <div class="flex items-center gap-2 ml-7">
+          <label for="sentence-blank-ratio" class="text-xs text-gray-500">Frequency (%)</label>
+          <input type="number" id="sentence-blank-ratio" min="0" max="100" step="5"
+            class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
       </div>
 
       <!-- New word confirmation inputs -->

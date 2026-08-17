@@ -236,7 +236,9 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(blur_pinyin, 0),
 		       COALESCE(no_auto_voice_on_blur, 0),
 		       COALESCE(celebrate_bucket_change, 0),
-		       COALESCE(voice_unavailable, 0)
+		       COALESCE(voice_unavailable, 0),
+		       COALESCE(sentence_blank_enabled, 0),
+		       COALESCE(sentence_blank_ratio, 20)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -271,6 +273,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.NoAutoVoiceOnBlur,
 		&st.CelebrateBucketChange,
 		&st.VoiceUnavailable,
+		&st.SentenceBlankEnabled,
+		&st.SentenceBlankRatio,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
@@ -373,7 +377,9 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			blur_pinyin                     = ?,
 			no_auto_voice_on_blur           = ?,
 			celebrate_bucket_change         = ?,
-			voice_unavailable               = ?
+			voice_unavailable               = ?,
+			sentence_blank_enabled          = ?,
+			sentence_blank_ratio            = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -401,6 +407,8 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.NoAutoVoiceOnBlur,
 		st.CelebrateBucketChange,
 		st.VoiceUnavailable,
+		st.SentenceBlankEnabled,
+		st.SentenceBlankRatio,
 		userID,
 	)
 	if err == nil {

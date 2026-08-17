@@ -172,6 +172,10 @@ async function loadSettings() {
     if (noAutoVoiceOnBlurEl) noAutoVoiceOnBlurEl.checked = !!st.no_auto_voice_on_blur;
     const celebrateBucketChangeEl = document.getElementById('celebrate-bucket-change');
     if (celebrateBucketChangeEl) celebrateBucketChangeEl.checked = !!st.celebrate_bucket_change;
+    const sentenceBlankEnabledEl = document.getElementById('sentence-blank-enabled');
+    if (sentenceBlankEnabledEl) sentenceBlankEnabledEl.checked = !!st.sentence_blank_enabled;
+    const sentenceBlankRatioEl = document.getElementById('sentence-blank-ratio');
+    if (sentenceBlankRatioEl) sentenceBlankRatioEl.value = st.sentence_blank_ratio ?? 20;
 
     // Daily learning
     const maxNewEl = document.getElementById('max-new-words');
@@ -281,6 +285,8 @@ function buildModePayload() {
     blur_pinyin:            !!(document.getElementById('blur-pinyin')?.checked),
     no_auto_voice_on_blur:  !!(document.getElementById('no-auto-voice-on-blur')?.checked),
     celebrate_bucket_change: !!(document.getElementById('celebrate-bucket-change')?.checked),
+    sentence_blank_enabled: !!(document.getElementById('sentence-blank-enabled')?.checked),
+    sentence_blank_ratio:   parseInt(document.getElementById('sentence-blank-ratio')?.value || '20', 10),
   };
 }
 

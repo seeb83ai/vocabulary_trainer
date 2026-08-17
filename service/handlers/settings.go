@@ -69,6 +69,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NoAutoVoiceOnBlur           bool   `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange       bool   `json:"celebrate_bucket_change"`
 		VoiceUnavailable            bool   `json:"voice_unavailable"`
+		SentenceBlankEnabled        bool   `json:"sentence_blank_enabled"`
+		SentenceBlankRatio          int    `json:"sentence_blank_ratio"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -157,6 +159,10 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "baseline_new_bucket_value must be >= 0")
 		return
 	}
+	if req.SentenceBlankRatio < 0 || req.SentenceBlankRatio > 100 {
+		writeError(w, http.StatusBadRequest, "sentence_blank_ratio must be between 0 and 100")
+		return
+	}
 
 	resolvedFrequency := 5
 	if req.GamificationFrequency == nil {
@@ -209,6 +215,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		NoAutoVoiceOnBlur:           req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:       req.CelebrateBucketChange,
 		VoiceUnavailable:            req.VoiceUnavailable,
+		SentenceBlankEnabled:        req.SentenceBlankEnabled,
+		SentenceBlankRatio:          req.SentenceBlankRatio,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
