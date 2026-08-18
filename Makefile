@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup restore release test test-go test-js test-e2e test-all
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup restore release test test-go test-js test-e2e test-all screenshots
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -119,6 +119,10 @@ test-e2e:
 
 ## test-all: run all tests — Go unit tests, JS unit tests, and E2E browser tests
 test-all: test-go test-js test-e2e
+
+## screenshots: regenerate README screenshots with Playwright (on-demand only, not part of test-all/CI)
+screenshots:
+	npx playwright test --config=playwright.screenshots.config.js
 
 ## clean: stop containers and remove build artifacts
 clean:
