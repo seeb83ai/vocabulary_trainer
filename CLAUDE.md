@@ -41,6 +41,12 @@ test(s) from step 1 to capture reviewer-facing screenshots instead of a separate
    path there — it silently renders as a dead link instead of an image.
 5. Skip this for changes with no visual/rendered-output difference (pure logic, backend-only, refactors).
 
+CI (`frontend-screenshot-check` in `.github/workflows/test.yml`, backed by `scripts/check-pr-screenshots.sh`)
+report-only-checks every PR: if it touches `service/frontend/` but adds/updates no `pr-screenshots/*.png`, the
+job fails (visible in the PR checks tab, not a merge gate). It also nudges — without failing — when a
+page-specific file changed (`train.js`, `vocab.js`, `stats.js`, `pinyin.js`, `mnemonics.js`/`hmm-builder.js`,
+`mismatches.js`, `settings.js`) but no changed screenshot filename mentions that page.
+
 ## Testing rules
 
 **Mandatory:** Every code change that adds or modifies a function, DB query, or HTTP endpoint **must** include
