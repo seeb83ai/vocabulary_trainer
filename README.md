@@ -321,6 +321,7 @@ When you configure a local model, it takes precedence over any cloud API keys th
 | `make import-hsk` | Fetch and import HSK 1-6 vocabulary from mandarinbean.com (see below) |
 | `make import-pinyin` | Import pinyin audio files for listening training (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
+| `make funnel` | Print the signup → activation → retention funnel (see below) |
 | `make test` | Run all Go and JS tests |
 | `make clean` | Stop containers and remove build artifacts |
 
@@ -579,6 +580,17 @@ vocabulary_trainer/
 ## Usage tracking
 
 The app records every request internally, in the `usage_events` table (`user_id`, `name`, `count`, `last_seen`). This lets admins see which pages and endpoints are actually used. The `name` field holds the HTTP method plus the matched route, for example `GET /train` or `POST /api/quiz/answer`. Hits for the same user and route aggregate into one row, with an incrementing `count` and a refreshed `last_seen`. The app records anonymous requests with `user_id = 0`. It excludes static asset requests and audio-streaming routes (`/api/audio/*`, `/api/pinyin-quiz/audio/*`) as noise. There is currently no UI or API endpoint for viewing this data. You must query the database directly.
+
+### Funnel report
+
+The `funnel` CLI tool prints how many users reach each stage of the signup → activation → retention funnel, with conversion percentages. It reads the `users` and `daily_stats` tables and excludes the shared library user (id=1):
+
+```bash
+make funnel                          # default: data/vocab.db, engaged = ≥20 attempts
+make funnel DB=/path/to/vocab.db MIN_ATTEMPTS=50
+```
+
+Stages: **registered** (accounts created) → **verified email** → **activated** (at least one training day) → **engaged** (total attempts reached the threshold), plus **returned** (trained on at least two distinct days) and **returned next day** (trained again the day after the first session). Use it to find the biggest drop-off before investing in features or promotion.
 
 ## API
 
