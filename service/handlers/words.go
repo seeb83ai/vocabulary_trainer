@@ -387,4 +387,7 @@ func initComponents(ctx context.Context, s componentIniter, userID, wordID int64
 	if err := s.InitComponentsForWord(ctx, userID, zhText, p.DueDate); err != nil {
 		log.Printf("initComponents %q: %v", zhText, err)
 	}
+	if err := s.CreateSubwordsForWord(ctx, userID, wordID, zhText); err != nil {
+		log.Printf("CreateSubwordsForWord %q: %v", zhText, err)
+	}
 }

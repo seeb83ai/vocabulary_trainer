@@ -33,9 +33,38 @@ type querier interface {
 
 func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText string, dueDate time.Time) error {
 	dueDateStr := dueDate.UTC().Format("2006-01-02 15:04:05")
-	for _, r := range []rune(zhText) {
+
+	// For multi-character words, segment into cedict-backed sub-words and
+	// single-character fallback tokens. A single-char token means the
+	// character isn't part of a recognised multi-char sub-word, so it also
+	// gets trained as a component in its own right (using its own
+	// hanzi_decomposition definition, not a sub-radical) — closing the gap
+	// where today's radical extraction below never covers a word's own
+	// top-level characters (issue #293).
+	runes := []rune(zhText)
+	topLevelChars := make(map[rune]bool)
+	if len(runes) > 1 {
+		tokens, ok, err := segmentZhText(ctx, q, zhText)
+		if err != nil {
+			return err
+		}
+		if ok {
+			for _, tok := range tokens {
+				if tok.IsSingle {
+					topLevelChars[[]rune(tok.Text)[0]] = true
+				}
+			}
+		}
+	}
+
+	for _, r := range runes {
 		if !unicode.Is(unicode.Han, r) {
 			continue
+		}
+		if topLevelChars[r] {
+			if err := insertTopLevelCharComponent(ctx, q, userID, r, dueDateStr); err != nil {
+				return err
+			}
 		}
 		var decomp, etymology, radical, parentPinyin sql.NullString
 		err := q.QueryRowContext(ctx,
@@ -74,6 +103,41 @@ func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText 
 				return fmt.Errorf("init component %q: %w", string(comp), err)
 			}
 		}
+	}
+	return nil
+}
+
+// insertTopLevelCharComponent adds a component_progress row for a word's own
+// top-level character (e.g. 踢 within 踢足球), using its own
+// hanzi_decomposition definition — not a sub-radical. Skipped if the
+// character has no definition, or if the user already tracks it as an
+// independent zh vocabulary word (avoid training the same unit twice).
+func insertTopLevelCharComponent(ctx context.Context, q querier, userID int64, r rune, dueDateStr string) error {
+	var def sql.NullString
+	err := q.QueryRowContext(ctx, `SELECT definition FROM hanzi_decomposition WHERE character = ?`, string(r)).Scan(&def)
+	if err == sql.ErrNoRows || !def.Valid || def.String == "" {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("top-level char def lookup %q: %w", string(r), err)
+	}
+
+	var exists int
+	err = q.QueryRowContext(ctx,
+		`SELECT 1 FROM words WHERE user_id = ? AND language = 'zh' AND text = ? LIMIT 1`,
+		userID, string(r)).Scan(&exists)
+	if err == nil {
+		return nil // already tracked as its own vocabulary word
+	}
+	if err != sql.ErrNoRows {
+		return fmt.Errorf("check existing zh word %q: %w", string(r), err)
+	}
+
+	_, err = q.ExecContext(ctx,
+		`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
+		userID, string(r), dueDateStr)
+	if err != nil {
+		return fmt.Errorf("init top-level char component %q: %w", string(r), err)
 	}
 	return nil
 }

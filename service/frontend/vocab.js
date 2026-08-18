@@ -662,20 +662,11 @@ async function fetchAndFillPinyin(zh) {
   } catch (_) {}
 }
 
-async function initTranslateButton() {
-  try {
-    const cfg = await apiFetch('/api/config');
-    if (!cfg) return;
-    const btn = $('translate-btn');
-    if (cfg.deepl_available) {
-      show('translate-btn');
-    } else if (cfg.deepl_configured) {
-      show('translate-btn');
-      btn.disabled = true;
-      btn.title = 'Coming soon — requires plus account or a personal LLM key';
-      btn.classList.add('opacity-50', 'cursor-not-allowed');
-    }
-  } catch (_) {}
+// The Translate button is always shown: it first tries a free, ungated local
+// dictionary lookup (CC-CEDICT/HanDeDict) before falling back to DeepL (which
+// stays gated to plus/admin users or a personal key) — see handleTranslate.
+function initTranslateButton() {
+  show('translate-btn');
 }
 
 async function handleTranslate() {

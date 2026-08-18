@@ -165,6 +165,8 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/quiz.go` | SM-2 progress, `GetStats`, confusion pairs, due-date counts |
 | `service/db/stats.go` | `RecordDailyStat`, `GetDailyStatsHistory`, `GetWordStats`, `AdvanceDueDates` |
 | `service/db/hanzi.go` | Hanzi decomposition queries, zh-text translation lookups, `StoreTranslationForZhChar` |
+| `service/db/components.go` | Component training (SM-2 track for hanzi radicals/top-level chars), `InitComponentsForWord` |
+| `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary` |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
 
@@ -208,6 +210,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-hsk/main.go` | Import HSK word lists |
 | `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
 | `service/cmd/import-hanzi/main.go` | Import hanzi decomposition dataset |
+| `service/cmd/import-cedict/main.go` | Import CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for sub-word segmentation + free dictionary lookup |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 
 ### E2E tests (`e2e/`)
@@ -234,6 +237,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | File | Why to skip |
 |---|---|
 | `dictionary.txt` | 2.5 MB hanzi dataset; only needed by `service/cmd/import-hanzi` |
+| `cedict_ts.u8` / HanDeDict data file | Large CEDICT-format dictionaries; only needed by `service/cmd/import-cedict` |
 | `package-lock.json` | npm lockfile; never needed for code tasks |
 | `chinese_a1.txt` | Sample vocabulary import data; not needed for code tasks |
 
