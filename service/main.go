@@ -170,6 +170,7 @@ func main() {
 	}
 	importH := &handlers.ImportHandler{Store: store}
 	tagsH := &handlers.TagsHandler{Store: store}
+	demoH := &handlers.DemoHandler{}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 	hanziH := &handlers.HanziHandler{Store: store}
@@ -259,6 +260,9 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Use(handlers.MaxBytes(maxBodyBytes))
 		r.Get("/auth/status", handlers.AuthStatus(authH))
+		// Public demo quiz for the landing page (stateless, no user data).
+		r.Get("/demo/cards", demoH.Cards)
+		r.Post("/demo/answer", demoH.Answer)
 		r.With(ipLimit).Post("/login", authH.Login)
 		r.Post("/logout", authH.Logout)
 		r.With(ipLimit).Post("/register", authH.Register)
