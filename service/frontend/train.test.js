@@ -1076,3 +1076,36 @@ describe('matchGameOutcome', () => {
     expect(matchGameOutcome(1, 0, 'hello', ['hello'], new Set([1]))).toBe('correct');
   });
 });
+
+// ── One-button onboarding quick start ─────────────────────────────────────────
+// Mirrors quickStartPlan in train.js.
+
+function quickStartPlan(tagNames) {
+  const has = n => tagNames.includes(n);
+  return { hsk1: has('hsk-1'), hsk23: ['hsk-2', 'hsk-3'].filter(has) };
+}
+
+describe('quickStartPlan', () => {
+  it('offers both buttons when all HSK lists exist', () => {
+    expect(quickStartPlan(['hsk-1', 'hsk-2', 'hsk-3', 'food'])).toEqual({
+      hsk1: true,
+      hsk23: ['hsk-2', 'hsk-3'],
+    });
+  });
+
+  it('offers only HSK 1 when higher lists are missing', () => {
+    expect(quickStartPlan(['hsk-1', 'travel'])).toEqual({ hsk1: true, hsk23: [] });
+  });
+
+  it('offers a partial basics import when only HSK 2 exists', () => {
+    expect(quickStartPlan(['hsk-2'])).toEqual({ hsk1: false, hsk23: ['hsk-2'] });
+  });
+
+  it('offers nothing without HSK library tags', () => {
+    expect(quickStartPlan(['food', 'travel'])).toEqual({ hsk1: false, hsk23: [] });
+  });
+
+  it('handles an empty tag list', () => {
+    expect(quickStartPlan([])).toEqual({ hsk1: false, hsk23: [] });
+  });
+});

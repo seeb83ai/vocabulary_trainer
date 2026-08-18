@@ -416,6 +416,13 @@ function applyTierPills() {
   }
 }
 
+// quickStartPlan decides which one-click onboarding buttons to offer for a
+// given list of importable library tag names.
+function quickStartPlan(tagNames) {
+  const has = n => tagNames.includes(n);
+  return { hsk1: has('hsk-1'), hsk23: ['hsk-2', 'hsk-3'].filter(has) };
+}
+
 let obTagsLoaded = false;
 function showEmptyState() {
   show('empty-state');
@@ -2123,8 +2130,44 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       obAllTags = await apiFetch('/api/import/source-tags');
       obRenderTagPills();
+      obApplyQuickStart();
     } catch (e) {
       list.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
+    }
+  }
+
+  // Show the one-button level chooser when the library offers HSK lists;
+  // the manual tag picker stays available behind the "choose myself" option.
+  function obApplyQuickStart() {
+    const plan = quickStartPlan((obAllTags || []).map(tg => tg.name));
+    if (!plan.hsk1 && plan.hsk23.length === 0) return;
+    $('ob-qs-hsk1').classList.toggle('hidden', !plan.hsk1);
+    $('ob-qs-hsk23').classList.toggle('hidden', plan.hsk23.length === 0);
+    show('ob-quickstart');
+    hide('ob-step1');
+  }
+
+  async function obQuickImport(tags) {
+    const buttons = ['ob-qs-hsk1', 'ob-qs-hsk23', 'ob-qs-custom'];
+    const statusEl = $('ob-qs-status');
+    for (const id of buttons) $(id).disabled = true;
+    statusEl.className = 'text-sm text-gray-500';
+    statusEl.textContent = t('empty.qsImporting');
+    show('ob-qs-status');
+    try {
+      for (const tag of tags) {
+        await apiFetch('/api/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tag, apply_tags: [tag] }),
+        });
+      }
+      hide('empty-state');
+      loadNextCard();
+    } catch (e) {
+      statusEl.className = 'text-sm text-red-600';
+      statusEl.textContent = t('empty.qsFailed');
+      for (const id of buttons) $(id).disabled = false;
     }
   }
 
@@ -2235,6 +2278,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[name="ob-filter-mode"]').forEach(radio => {
     radio.addEventListener('change', () => { obFilterMode = radio.value; obRenderTagPills(); });
   });
+  $('ob-qs-hsk1').addEventListener('click', () => obQuickImport(['hsk-1']));
+  $('ob-qs-hsk23').addEventListener('click', () =>
+    obQuickImport(quickStartPlan((obAllTags || []).map(tg => tg.name)).hsk23));
+  $('ob-qs-custom').addEventListener('click', () => { hide('ob-quickstart'); show('ob-step1'); });
   $('ob-next-btn').addEventListener('click', () => obShowStep(2));
   $('ob-back1-btn').addEventListener('click', () => obShowStep(1));
   $('ob-next2-btn').addEventListener('click', () => obShowStep(3));
