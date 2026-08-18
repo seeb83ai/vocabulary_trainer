@@ -23,6 +23,30 @@ the scope of the current task.
 2. **Write failing unit tests and implement the feature** using the existing unit-test TDD loop (`go test ./...` → red → green per the rules below).
 3. **Validate the E2E test passes** — run `make test-e2e` again; it must now be green.
 
+**PR screenshots for frontend changes:** If a change touches any file under `service/frontend/`, reuse the E2E
+test(s) from step 1 to capture reviewer-facing screenshots instead of a separate script:
+1. In the relevant `e2e/*.spec.js` test, call `captureForPR(page, '<name>')` (import from `e2e/helpers/screenshot.js`)
+   at each UI state worth showing a reviewer — including any interaction needed to reach it (opening a modal/layover,
+   submitting a form, etc). The call is a no-op unless `PR_SCREENSHOTS=1` is set, so normal `make test-e2e` / CI runs
+   are unaffected.
+2. Run `make screenshots-pr FILE=e2e/<spec>.spec.js` to generate the PNGs into `pr-screenshots/`.
+3. `git add` the relevant `pr-screenshots/*.png` files, commit, and push the branch **before** embedding them —
+   the PR description must reference an image that already exists on GitHub.
+4. Run `./scripts/pr-screenshot-url.sh pr-screenshots/<name>.png [more.png ...]` and paste its stdout output
+   directly into the PR description. It builds the correct **absolute** `raw.githubusercontent.com` URL for
+   the current branch and verifies each one resolves (exits non-zero with a diagnostic on stderr if not —
+   most commonly because the file wasn't committed/pushed yet). Do **not** hand-write the markdown or use a
+   relative path like `pr-screenshots/vocab-list.png`: PR/issue description text isn't tied to a git ref
+   (unlike files GitHub renders from the repo browser, e.g. `README.md`), so GitHub cannot resolve a relative
+   path there — it silently renders as a dead link instead of an image.
+5. Skip this for changes with no visual/rendered-output difference (pure logic, backend-only, refactors).
+
+CI (`frontend-screenshot-check` in `.github/workflows/test.yml`, backed by `scripts/check-pr-screenshots.sh`)
+report-only-checks every PR: if it touches `service/frontend/` but adds/updates no `pr-screenshots/*.png`, the
+job fails (visible in the PR checks tab, not a merge gate). It also nudges — without failing — when a
+page-specific file changed (`train.js`, `vocab.js`, `stats.js`, `pinyin.js`, `mnemonics.js`/`hmm-builder.js`,
+`mismatches.js`, `settings.js`) but no changed screenshot filename mentions that page.
+
 ## Testing rules
 
 **Mandatory:** Every code change that adds or modifies a function, DB query, or HTTP endpoint **must** include
@@ -62,6 +86,7 @@ Before marking any task done:
 5. `README.md` updated if user-visible behaviour changed.
 6. No SQL outside `service/db/` package.
 7. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
+8. `service/frontend/` touched? PR screenshots captured and embedded in the PR description (see PR screenshots rule above).
 
 ### What must be tested
 | Change type | Required test |

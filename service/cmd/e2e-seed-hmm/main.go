@@ -1,5 +1,5 @@
 // cmd/e2e-seed-hmm/main.go — test-only helper for the README screenshot
-// generator (make screenshots).
+// generator (make screenshots-readme).
 //
 // A freshly registered user has no hmm_actors/hmm_locations/hmm_tone_rooms
 // rows at all (that skeleton was only ever seeded, historically, for the

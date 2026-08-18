@@ -1,5 +1,5 @@
 // cmd/e2e-seed-pinyin/main.go — test-only helper for the README screenshot
-// generator (make screenshots).
+// generator (make screenshots-readme).
 //
 // There is no REST endpoint for creating pinyin_sounds rows (only the
 // cmd/import-pinyin CLI, which requires real MP3 files). This tool seeds a

@@ -46,7 +46,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Screenshots
 
-Regenerate with `make screenshots` (drives a real browser via Playwright against a seeded local server).
+Regenerate with `make screenshots-readme` (drives a real browser via Playwright against a seeded local server).
 
 Training — question
 ![Training question](images/chinese_train.png)

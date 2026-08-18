@@ -1,6 +1,6 @@
 // @ts-check
 // Separate, on-demand Playwright config for regenerating the README
-// screenshots (`make screenshots`). Deliberately not merged into
+// screenshots (`make screenshots-readme`). Deliberately not merged into
 // playwright.config.js so the default `npx playwright test` / CI run never
 // picks up e2e-screenshots/capture.spec.js.
 import { defineConfig, devices } from '@playwright/test';

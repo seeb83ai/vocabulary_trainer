@@ -1,6 +1,6 @@
 // @ts-check
 // Regenerates the README screenshots against a real browser + real server.
-// Run via `make screenshots` — NOT part of `make test-e2e` / CI (separate
+// Run via `make screenshots-readme` — NOT part of `make test-e2e` / CI (separate
 // testDir + playwright.screenshots.config.js so the default `npx playwright
 // test` run never picks this file up).
 import { test, expect } from '@playwright/test';
