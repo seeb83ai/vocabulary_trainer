@@ -212,6 +212,11 @@ func pinyinCoversText(pinyin, zhText string) bool {
 	return len(strings.Fields(pinyin)) >= hanCount
 }
 
+// bracketChars strips the bracket characters toPinyin preserves for the
+// auto-fill use case (issue #310) — a quiz-card reading should read as
+// plain syllables, not carry the punctuation marking the optional segment.
+var bracketChars = strings.NewReplacer("(", "", ")", "", "（", "", "）", "")
+
 // fullPinyinForDisplay returns stored as-is when it already covers every Han
 // character in zhText (never overwriting a hand-curated reading, e.g. a
 // deliberate choice for a polyphonic character); otherwise it regenerates
@@ -225,6 +230,7 @@ func fullPinyinForDisplay(zhText string, stored *string) *string {
 	if p == "" {
 		return stored
 	}
+	p = strings.Join(strings.Fields(bracketChars.Replace(p)), " ")
 	return &p
 }
 
