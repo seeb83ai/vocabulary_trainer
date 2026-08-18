@@ -4488,6 +4488,53 @@ func TestGetComponentList_BasicAndSearch(t *testing.T) {
 	}
 }
 
+// TestGetComponentList_UsesCharLangIndex guards against the search-is-slow
+// regression: the LEFT JOINs to hanzi_decomposition_translation must be able
+// to use an index on (character, lang), not fall back to a full table scan.
+// The v59 indexes are partial (WHERE user_id IS [NOT] NULL) and can't serve a
+// join that doesn't filter on user_id, so this needs its own plain index.
+func TestGetComponentList_UsesCharLangIndex(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'hanzi_decomposition_translation' AND sql LIKE '%(character, lang)%'`,
+	).Scan(&count); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("want a plain index on hanzi_decomposition_translation(character, lang)")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `EXPLAIN QUERY PLAN
+		SELECT cp.character
+		FROM component_progress cp
+		LEFT JOIN hanzi_decomposition_translation hdt_en
+		       ON hdt_en.character = cp.character AND hdt_en.lang = 'EN'
+		WHERE cp.user_id = ? AND LOWER(hdt_en.definition) LIKE LOWER(?)`,
+		int64(2), "%sun%",
+	)
+	if err != nil {
+		t.Fatalf("explain query plan: %v", err)
+	}
+	defer rows.Close()
+	var sawIndexedJoin bool
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatalf("scan plan row: %v", err)
+		}
+		if strings.Contains(detail, "hdt_en") && strings.Contains(detail, "idx_hanzi_trans_char_lang") {
+			sawIndexedJoin = true
+		}
+	}
+	if !sawIndexedJoin {
+		t.Error("want the hdt_en join to use idx_hanzi_trans_char_lang")
+	}
+}
+
 // ── User Settings ─────────────────────────────────────────────────────────────
 
 func TestGetUserSettings_Defaults(t *testing.T) {
