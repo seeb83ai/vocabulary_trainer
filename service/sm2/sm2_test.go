@@ -487,6 +487,42 @@ func TestCheckAnswer_FullwidthComma_MidString(t *testing.T) {
 	}
 }
 
+// ── Embedded ellipsis / dot-run normalisation (issue #285) ───────────────────
+
+func TestNormalizeAnswer_EmbeddedEllipsisEquivalence(t *testing.T) {
+	// "……" (ideographic ellipsis, U+2026 x2), "。。。" (fullwidth periods), and
+	// "..." (ASCII periods) used mid-string as pause punctuation should all
+	// normalize identically, not just when trailing.
+	forms := []string{
+		"虽然……但是……",
+		"虽然。。。但是。。。",
+		"虽然...但是...",
+	}
+	want := NormalizeAnswer(forms[0])
+	for _, f := range forms[1:] {
+		if got := NormalizeAnswer(f); got != want {
+			t.Errorf("NormalizeAnswer(%q) = %q, want %q (same as NormalizeAnswer(%q))", f, got, want, forms[0])
+		}
+	}
+}
+
+func TestCheckAnswer_EmbeddedEllipsis_PeriodsVsIdeographicEllipsis(t *testing.T) {
+	if !CheckAnswer("虽然。。。但是。。。", []string{"虽然……但是……"}) {
+		t.Error("user answer with 。。。 should match stored answer with ……")
+	}
+	if !CheckAnswer("虽然……但是……", []string{"虽然。。。但是。。。"}) {
+		t.Error("user answer with …… should match stored answer with 。。。")
+	}
+}
+
+func TestCheckAnswer_EmbeddedEllipsis_DifferentCharacterStillRejected(t *testing.T) {
+	// Punctuation normalisation must not paper over an actual character
+	// mismatch: 对 (duì) is a different character from 虽 (suī).
+	if CheckAnswer("对然……但是……", []string{"虽然……但是……"}) {
+		t.Error("differing first character should not be accepted despite matching punctuation")
+	}
+}
+
 // ── CheckComponentAnswer ──────────────────────────────────────────────────────
 
 func TestCheckComponentAnswer_ExactMatch(t *testing.T) {
