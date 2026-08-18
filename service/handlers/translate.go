@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"unicode"
 
 	"github.com/mozillazg/go-pinyin"
 )
@@ -172,6 +173,38 @@ func toPinyin(zh string) string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// pinyinCoversText reports whether pinyin has at least one space-separated
+// syllable per Han character in zhText — i.e. every hanzi in the text
+// (including inside a bracketed annotation) has a pinyin reading.
+func pinyinCoversText(pinyin, zhText string) bool {
+	hanCount := 0
+	for _, r := range zhText {
+		if unicode.Is(unicode.Han, r) {
+			hanCount++
+		}
+	}
+	if hanCount == 0 {
+		return true
+	}
+	return len(strings.Fields(pinyin)) >= hanCount
+}
+
+// fullPinyinForDisplay returns stored as-is when it already covers every Han
+// character in zhText (never overwriting a hand-curated reading, e.g. a
+// deliberate choice for a polyphonic character); otherwise it regenerates
+// pinyin for the full text so annotations like "过（动词）" get a complete
+// reading instead of a stale partial one.
+func fullPinyinForDisplay(zhText string, stored *string) *string {
+	if stored != nil && *stored != "" && pinyinCoversText(*stored, zhText) {
+		return stored
+	}
+	p := toPinyin(zhText)
+	if p == "" {
+		return stored
+	}
+	return &p
 }
 
 func splitTranslations(text string) []string {
