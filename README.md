@@ -4,6 +4,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Features
 
+- **Landing page for signed-out visitors.** The root page (`/`) shows the value proposition — spaced repetition, native audio and pinyin drills, character mnemonics — next to the sign-in/register card, with a "Create free account" call to action. The page carries SEO and Open Graph meta tags so it can be found and shared.
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
 - The app supports N:N word relationships. The same English or Chinese word can appear in more than one entry.
 - The app has seven quiz modes. You can pick a mode, or let the app pick one at random.
