@@ -17,51 +17,56 @@ const (
 
 // UserSettings holds per-user configuration stored in user_settings.
 type UserSettings struct {
-	PrimaryLang                 string   `json:"primary_lang"`
-	SecondaryLang               string   `json:"secondary_lang"`
-	ProgNew                     string   `json:"prog_new"`             // totalAttempts<3
-	ProgTierStruggling          string   `json:"prog_tier_struggling"` // totalAttempts>=3, accuracy<50%
-	ProgTierLearning            string   `json:"prog_tier_learning"`   // accuracy<70% or totalAttempts<10
-	ProgTierPracticing          string   `json:"prog_tier_practicing"` // accuracy<85%
-	ProgTierMastered            string   `json:"prog_tier_mastered"`   // accuracy>=85%
-	NewWordMode0                string   `json:"new_word_mode_0"`      // TotalCorrect==0
-	NewWordMode1                string   `json:"new_word_mode_1"`      // TotalCorrect==1
-	NewWordMode2                string   `json:"new_word_mode_2"`      // TotalCorrect>=2
-	CycleSequence               string   `json:"cycle_sequence"`
-	CycleAdvanceOnSuccessOnly   bool     `json:"cycle_advance_on_success_only"`
-	NewWordRequireZh            bool     `json:"new_word_require_zh"`
-	NewWordRequireTrans         bool     `json:"new_word_require_trans"`
-	MaxNewWordsPerDay           int      `json:"max_new_words_per_day"`
-	NewWordCooldownMinutes      int      `json:"new_word_cooldown_minutes"`
-	SkipNewWordsVisible         bool     `json:"skip_new_words_visible"`
-	ExtendSessionWithExtraWords bool     `json:"extend_session_with_extra_words"`
-	BaselineDueTodayEnabled     bool     `json:"baseline_due_today_enabled"`
-	BaselineDueTodayValue       int      `json:"baseline_due_today_value"`
-	BaselineStrugglingEnabled   bool     `json:"baseline_struggling_enabled"`
-	BaselineStrugglingValue     int      `json:"baseline_struggling_value"`
-	BaselineLearningEnabled     bool     `json:"baseline_learning_enabled"`
-	BaselineLearningValue       int      `json:"baseline_learning_value"`
-	BaselineNewBucketEnabled    bool     `json:"baseline_new_bucket_enabled"`
-	BaselineNewBucketValue      int      `json:"baseline_new_bucket_value"`
-	DeeplKeySet                 bool     `json:"deepl_key_set"`
-	DeeplKeyMasked              string   `json:"deepl_key_masked,omitempty"`
-	LLMProvider                 string   `json:"llm_provider"`
-	LLMLocalURL                 string   `json:"llm_local_url"`
-	LLMKeySet                   bool     `json:"llm_key_set"`
-	LLMKeyMasked                string   `json:"llm_key_masked,omitempty"`
-	AcceptCorrectMode           string   `json:"accept_correct_mode"`
-	GamificationEnabled         bool     `json:"gamification_enabled"`
-	GamificationFrequency       int      `json:"gamification_frequency"`
-	TrainMode                   string   `json:"train_mode"`
-	TrainBucket                 string   `json:"train_bucket"`
-	TrainLangs                  []string `json:"train_langs"`
-	TrainMnemonics              bool     `json:"train_mnemonics"`
-	TrainComponents             bool     `json:"train_components"`
-	TrainTags                   []string `json:"train_tags"`
-	BlurPinyin                  bool     `json:"blur_pinyin"`
-	NoAutoVoiceOnBlur           bool     `json:"no_auto_voice_on_blur"`
-	CelebrateBucketChange       bool     `json:"celebrate_bucket_change"`
-	VoiceUnavailable            bool     `json:"voice_unavailable"`
+	PrimaryLang                      string   `json:"primary_lang"`
+	SecondaryLang                    string   `json:"secondary_lang"`
+	ProgNew                          string   `json:"prog_new"`             // totalAttempts<3
+	ProgTierStruggling               string   `json:"prog_tier_struggling"` // totalAttempts>=3, accuracy<50%
+	ProgTierLearning                 string   `json:"prog_tier_learning"`   // accuracy<70% or totalAttempts<10
+	ProgTierPracticing               string   `json:"prog_tier_practicing"` // accuracy<85%
+	ProgTierMastered                 string   `json:"prog_tier_mastered"`   // accuracy>=85%
+	NewWordMode0                     string   `json:"new_word_mode_0"`      // TotalCorrect==0
+	NewWordMode1                     string   `json:"new_word_mode_1"`      // TotalCorrect==1
+	NewWordMode2                     string   `json:"new_word_mode_2"`      // TotalCorrect>=2
+	CycleSequence                    string   `json:"cycle_sequence"`
+	CycleAdvanceOnSuccessOnly        bool     `json:"cycle_advance_on_success_only"`
+	NewWordRequireZh                 bool     `json:"new_word_require_zh"`
+	NewWordRequireTrans              bool     `json:"new_word_require_trans"`
+	MaxNewWordsPerDay                int      `json:"max_new_words_per_day"`
+	NewWordCooldownMinutes           int      `json:"new_word_cooldown_minutes"`
+	SkipNewWordsVisible              bool     `json:"skip_new_words_visible"`
+	ExtendSessionWithExtraWords      bool     `json:"extend_session_with_extra_words"`
+	BaselineDueTodayEnabled          bool     `json:"baseline_due_today_enabled"`
+	BaselineDueTodayValue            int      `json:"baseline_due_today_value"`
+	BaselineStrugglingEnabled        bool     `json:"baseline_struggling_enabled"`
+	BaselineStrugglingValue          int      `json:"baseline_struggling_value"`
+	BaselineLearningEnabled          bool     `json:"baseline_learning_enabled"`
+	BaselineLearningValue            int      `json:"baseline_learning_value"`
+	BaselineNewBucketEnabled         bool     `json:"baseline_new_bucket_enabled"`
+	BaselineNewBucketValue           int      `json:"baseline_new_bucket_value"`
+	DeeplKeySet                      bool     `json:"deepl_key_set"`
+	DeeplKeyMasked                   string   `json:"deepl_key_masked,omitempty"`
+	LLMProvider                      string   `json:"llm_provider"`
+	LLMLocalURL                      string   `json:"llm_local_url"`
+	LLMKeySet                        bool     `json:"llm_key_set"`
+	LLMKeyMasked                     string   `json:"llm_key_masked,omitempty"`
+	AcceptCorrectMode                string   `json:"accept_correct_mode"`
+	GamificationEnabled              bool     `json:"gamification_enabled"`
+	GamificationFrequency            int      `json:"gamification_frequency"`
+	TrainMode                        string   `json:"train_mode"`
+	TrainBucket                      string   `json:"train_bucket"`
+	TrainLangs                       []string `json:"train_langs"`
+	TrainMnemonics                   bool     `json:"train_mnemonics"`
+	TrainComponents                  bool     `json:"train_components"`
+	TrainTags                        []string `json:"train_tags"`
+	BlurPinyin                       bool     `json:"blur_pinyin"`
+	NoAutoVoiceOnBlur                bool     `json:"no_auto_voice_on_blur"`
+	CelebrateBucketChange            bool     `json:"celebrate_bucket_change"`
+	VoiceUnavailable                 bool     `json:"voice_unavailable"`
+	RandomModeRangeTranslToZh        string   `json:"random_mode_range_transl_to_zh"`
+	RandomModeRangeZhToTransl        string   `json:"random_mode_range_zh_to_transl"`
+	RandomModeRangeZhPinyinToTransl  string   `json:"random_mode_range_zh_pinyin_to_transl"`
+	RandomModeRangeZhToTranslNoSound string   `json:"random_mode_range_zh_to_transl_no_sound"`
+	RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
@@ -83,6 +88,20 @@ type NewWordModeConfig struct {
 	Step2 string // TotalCorrect>=2; default: ModeZhToTransl
 }
 
+// RandomModeConfig holds, for each of the 5 candidate quiz modes that
+// SelectMode/SelectCycleMode pick from, the inclusive learning-bucket range
+// ("new", "0-49", "50-69", "70-84", "85-100") in which that mode is eligible.
+// A zero-value string in any field uses the built-in default range for that
+// mode (see sm2.DefaultRandomModeConfig); "off" disables the mode in every
+// bucket; "<from>,<to>" is an explicit inclusive bucket range.
+type RandomModeConfig struct {
+	TranslToZh        string
+	ZhToTransl        string
+	ZhPinyinToTransl  string
+	ZhToTranslNoSound string
+	VoiceToTransl     string
+}
+
 // QuizConfig projects the user's progressive-mode settings into a
 // ProgressiveModeConfig. Empty fields fall back to per-tier defaults downstream.
 func (s UserSettings) QuizConfig() ProgressiveModeConfig {
@@ -102,6 +121,18 @@ func (s UserSettings) NewWordConfig() NewWordModeConfig {
 		Step0: s.NewWordMode0,
 		Step1: s.NewWordMode1,
 		Step2: s.NewWordMode2,
+	}
+}
+
+// RandomModeConfig projects the user's per-mode bucket-range settings into a
+// RandomModeConfig. Empty fields fall back to per-mode defaults downstream.
+func (s UserSettings) RandomModeConfig() RandomModeConfig {
+	return RandomModeConfig{
+		TranslToZh:        s.RandomModeRangeTranslToZh,
+		ZhToTransl:        s.RandomModeRangeZhToTransl,
+		ZhPinyinToTransl:  s.RandomModeRangeZhPinyinToTransl,
+		ZhToTranslNoSound: s.RandomModeRangeZhToTranslNoSound,
+		VoiceToTransl:     s.RandomModeRangeVoiceToTransl,
 	}
 }
 

@@ -58,6 +58,51 @@ function populateCycleSelect(el, value) {
   }
 }
 
+// Learning buckets, in increasing-difficulty order — mirrors TIERS in app.js
+// and the sm2 package's bucketOrder.
+const BUCKETS = [
+  { key: 'new',    label: 'New' },
+  { key: '0-49',   label: 'Struggling' },
+  { key: '50-69',  label: 'Learning' },
+  { key: '70-84',  label: 'Practicing' },
+  { key: '85-100', label: 'Mastered' },
+];
+
+// The 5 candidate modes governed by the random/cycle per-bucket setting, with
+// the field name UserSettings uses and the built-in default range (mirrors
+// sm2.DefaultRandomModeConfig).
+const RANDOM_MODES = [
+  { key: 'transl_to_zh',          field: 'random_mode_range_transl_to_zh',          def: 'new,50-69' },
+  { key: 'zh_pinyin_to_transl',   field: 'random_mode_range_zh_pinyin_to_transl',   def: 'new,70-84' },
+  { key: 'zh_to_transl',          field: 'random_mode_range_zh_to_transl',          def: '0-49,85-100' },
+  { key: 'zh_to_transl_no_sound', field: 'random_mode_range_zh_to_transl_no_sound', def: '50-69,85-100' },
+  { key: 'voice_to_transl',       field: 'random_mode_range_voice_to_transl',       def: '70-84,85-100' },
+];
+
+// Parses a random-mode-range setting value ("" | "off" | "<from>,<to>") into
+// UI state, falling back to defaultValue when value is "" (unset).
+function parseModeRangeForUI(value, defaultValue) {
+  if (value === 'off') return { off: true, from: '', to: '' };
+  const [from, to] = (value || defaultValue).split(',');
+  return { off: false, from, to };
+}
+
+// Builds the random-mode-range setting value ("off" | "<from>,<to>") from UI state.
+function modeRangeValue(off, from, to) {
+  return off ? 'off' : `${from},${to}`;
+}
+
+function populateBucketSelect(el, value) {
+  el.innerHTML = '';
+  for (const b of BUCKETS) {
+    const o = document.createElement('option');
+    o.value = b.key;
+    o.textContent = b.label;
+    if (b.key === value) o.selected = true;
+    el.appendChild(o);
+  }
+}
+
 function populateModeSelect(el, value) {
   el.innerHTML = '';
   for (const opt of MODE_OPTIONS) {
@@ -155,6 +200,20 @@ async function loadSettings() {
     const advanceEl = document.getElementById('cycle-advance-on-success-only');
     if (advanceEl) advanceEl.checked = !!st.cycle_advance_on_success_only;
 
+    // Random/cycle mode-by-bucket rows
+    for (const m of RANDOM_MODES) {
+      const fromEl = document.getElementById('random-mode-' + m.key + '-from');
+      const toEl = document.getElementById('random-mode-' + m.key + '-to');
+      const offEl = document.getElementById('random-mode-' + m.key + '-off');
+      if (!fromEl || !toEl || !offEl) continue;
+      const state = parseModeRangeForUI(st[m.field] || '', m.def);
+      populateBucketSelect(fromEl, state.from || BUCKETS[0].key);
+      populateBucketSelect(toEl, state.to || BUCKETS[BUCKETS.length - 1].key);
+      offEl.checked = state.off;
+      fromEl.disabled = state.off;
+      toEl.disabled = state.off;
+    }
+
     // Accept-as-correct mode
     const acmValue = st.accept_correct_mode || 'typo';
     document.querySelectorAll('input[name="accept-correct-mode"]').forEach(el => {
@@ -221,6 +280,22 @@ for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2','cycle-step-3','c
   const el = document.getElementById(id);
   if (el) populateCycleSelect(el, '');
 }
+for (const m of RANDOM_MODES) {
+  const fromEl = document.getElementById('random-mode-' + m.key + '-from');
+  const toEl = document.getElementById('random-mode-' + m.key + '-to');
+  if (fromEl) populateBucketSelect(fromEl, '');
+  if (toEl) populateBucketSelect(toEl, '');
+}
+
+// Wire each random-mode "Off" checkbox to enable/disable its bucket selects.
+for (const m of RANDOM_MODES) {
+  document.getElementById('random-mode-' + m.key + '-off')?.addEventListener('change', e => {
+    const fromEl = document.getElementById('random-mode-' + m.key + '-from');
+    const toEl = document.getElementById('random-mode-' + m.key + '-to');
+    if (fromEl) fromEl.disabled = e.target.checked;
+    if (toEl) toEl.disabled = e.target.checked;
+  });
+}
 
 loadLanguages().then(() => loadSettings());
 
@@ -264,6 +339,18 @@ function buildCycleSequence() {
   return steps.join(',');
 }
 
+function buildRandomModePayload() {
+  const payload = {};
+  for (const m of RANDOM_MODES) {
+    const fromEl = document.getElementById('random-mode-' + m.key + '-from');
+    const toEl = document.getElementById('random-mode-' + m.key + '-to');
+    const offEl = document.getElementById('random-mode-' + m.key + '-off');
+    if (!fromEl || !toEl || !offEl) continue;
+    payload[m.field] = modeRangeValue(offEl.checked, fromEl.value, toEl.value);
+  }
+  return payload;
+}
+
 function buildModePayload() {
   return {
     prog_new:               document.getElementById('mode-prog-new')?.value        || 'transl_to_zh',
@@ -281,6 +368,7 @@ function buildModePayload() {
     blur_pinyin:            !!(document.getElementById('blur-pinyin')?.checked),
     no_auto_voice_on_blur:  !!(document.getElementById('no-auto-voice-on-blur')?.checked),
     celebrate_bucket_change: !!(document.getElementById('celebrate-bucket-change')?.checked),
+    ...buildRandomModePayload(),
   };
 }
 
@@ -402,6 +490,31 @@ document.getElementById('cycle-save-btn')?.addEventListener('click', async () =>
     }
   } catch {
     showMsg('cycle-error', 'Network error.', true);
+  }
+});
+
+document.getElementById('random-mode-save-btn')?.addEventListener('click', async () => {
+  hideMsg('random-mode-success'); hideMsg('random-mode-error');
+  const payload = {
+    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
+    secondary_lang: document.getElementById('secondary-lang')?.value || '',
+    ...buildModePayload(),
+    ...buildDailyPayload(),
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      showMsg('random-mode-error', d.error || 'Failed to save.', true);
+    } else {
+      showMsg('random-mode-success', 'Saved.', false);
+    }
+  } catch {
+    showMsg('random-mode-error', 'Network error.', true);
   }
 });
 

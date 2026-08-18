@@ -236,6 +236,25 @@ Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation
 
 You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel has an **Advance only on success** toggle. This toggle switches the counter from `total_attempts` to `total_correct`.
 
+## Random / Cycle mode by bucket
+
+**Random** mode and **Cycle** mode both pick from 5 quiz formats: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, and *Voice → Translation*. In **Settings → Random / Cycle Mode by Bucket**, you can restrict which of these formats is eligible for each of the 5 accuracy tiers (New, Struggling, Learning, Practicing, Mastered — the same buckets used elsewhere in the app). For each format, choose an inclusive "from" and "to" bucket range, or turn the format off entirely.
+
+- **Random mode** picks uniformly at random among the formats eligible for the word's current bucket.
+- **Cycle mode** filters your configured step sequence down to the formats eligible for the word's current bucket before picking a step. If none of your configured steps are eligible for that bucket, the app falls back to picking from the full bucket-eligible format list instead.
+
+On save, the app checks that every one of the 5 buckets has at least one eligible format across all 5 settings combined. If a bucket would be left with no eligible format, the save is rejected and nothing changes.
+
+The default ladder increases difficulty (fewer hints) for higher buckets:
+
+| Format | Default range |
+|---|---|
+| Translation → Chinese | New – Learning |
+| Chinese + Pinyin → Translation | New – Practicing |
+| Chinese → Translation | Struggling – Mastered |
+| Chinese (no sound) → Translation | Learning – Mastered |
+| Voice → Translation | Practicing – Mastered |
+
 ## User settings
 
 Each user has a personal settings page (`/settings`) with these sections:
@@ -243,6 +262,7 @@ Each user has a personal settings page (`/settings`) with these sections:
 - **Language preferences.** Choose a primary and a secondary language. The app shows the primary language first in the vocabulary list, and uses it as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode.** Customize the quiz format for each proficiency tier, for progressive mode, and for each step in the new-word introduction phase. This section includes "Blur pinyin until tapped" and "Celebrate bucket changes" (a level-up interstitial when a word's accuracy tier advances) under Quiz Display.
 - **Cycle mode.** Configure the 3-step direction sequence used by the Cycle quiz mode. Choose whether the cycle advances on every attempt (the default) or only after a correct answer.
+- **Random / Cycle Mode by Bucket.** Restrict which quiz formats Random and Cycle mode may pick, per accuracy tier. See "Random / Cycle mode by bucket" above.
 - **Daily Learning.** Set the number of new words per day, set a cooldown between new-word introductions, toggle the skip button for new words, and toggle session extension (which serves an extra not-yet-due word at the end of a session instead of repeating one right away). You can also configure baseline gates (due-today, struggling, learning, new bucket) that pause introductions when the review load is high.
 - **Gamification.** Enable a word-matching mini-game that appears during training after you confuse at least 3 word pairs in the last 7 days. Configure how often, in minutes, the game may interrupt training. When the game triggers, it shows three confused pairs in two shuffled columns. Click a Chinese word, then its English translation, to match them. Correct pairs turn green, and wrong pairs flash red. If a word shares its translation text with another still-unmatched word, claiming that word's box alone does not complete the match. Instead, the box flashes yellow, so you cannot claim it out from under the word it actually belongs to. The game updates SM-2 progress for each matched word.
 - **API keys.** Store a personal DeepL API key and an LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). The app encrypts these keys with a key derived from your login password, using PBKDF2-SHA256 and AES-GCM, and makes them accessible only while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without a plus account. A user-supplied local LLM URL must be a public `http(s)` address. The app rejects and blocks internal, loopback, and link-local targets, to prevent server-side request forgery. If you run a trusted local model on loopback, configure it with the server-side `LOCAL_LLM_URL` environment variable instead.

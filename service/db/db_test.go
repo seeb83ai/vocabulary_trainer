@@ -4609,6 +4609,77 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestGetUserSettings_RandomModeRangeDefaults(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.RandomModeRangeTranslToZh != "" {
+		t.Errorf("want random_mode_range_transl_to_zh='' by default, got %q", st.RandomModeRangeTranslToZh)
+	}
+	if st.RandomModeRangeZhToTransl != "" {
+		t.Errorf("want random_mode_range_zh_to_transl='' by default, got %q", st.RandomModeRangeZhToTransl)
+	}
+	if st.RandomModeRangeZhPinyinToTransl != "" {
+		t.Errorf("want random_mode_range_zh_pinyin_to_transl='' by default, got %q", st.RandomModeRangeZhPinyinToTransl)
+	}
+	if st.RandomModeRangeZhToTranslNoSound != "" {
+		t.Errorf("want random_mode_range_zh_to_transl_no_sound='' by default, got %q", st.RandomModeRangeZhToTranslNoSound)
+	}
+	if st.RandomModeRangeVoiceToTransl != "" {
+		t.Errorf("want random_mode_range_voice_to_transl='' by default, got %q", st.RandomModeRangeVoiceToTransl)
+	}
+}
+
+func TestUpdateUserSettings_RandomModeRangeRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	in := models.UserSettings{
+		PrimaryLang:                      "en",
+		ProgNew:                          "transl_to_zh",
+		ProgTierStruggling:               "transl_to_zh",
+		ProgTierLearning:                 "zh_pinyin_to_transl",
+		ProgTierPracticing:               "zh_to_transl",
+		ProgTierMastered:                 "random",
+		NewWordMode0:                     "transl_to_zh",
+		NewWordMode1:                     "transl_to_zh",
+		NewWordMode2:                     "zh_to_transl",
+		RandomModeRangeTranslToZh:        "new,50-69",
+		RandomModeRangeZhToTransl:        "off",
+		RandomModeRangeZhPinyinToTransl:  "new,70-84",
+		RandomModeRangeZhToTranslNoSound: "50-69,85-100",
+		RandomModeRangeVoiceToTransl:     "70-84,85-100",
+	}
+	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+	out, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings after update: %v", err)
+	}
+	if out.RandomModeRangeTranslToZh != "new,50-69" {
+		t.Errorf("random_mode_range_transl_to_zh: want %q, got %q", "new,50-69", out.RandomModeRangeTranslToZh)
+	}
+	if out.RandomModeRangeZhToTransl != "off" {
+		t.Errorf("random_mode_range_zh_to_transl: want %q, got %q", "off", out.RandomModeRangeZhToTransl)
+	}
+	if out.RandomModeRangeZhPinyinToTransl != "new,70-84" {
+		t.Errorf("random_mode_range_zh_pinyin_to_transl: want %q, got %q", "new,70-84", out.RandomModeRangeZhPinyinToTransl)
+	}
+	if out.RandomModeRangeZhToTranslNoSound != "50-69,85-100" {
+		t.Errorf("random_mode_range_zh_to_transl_no_sound: want %q, got %q", "50-69,85-100", out.RandomModeRangeZhToTranslNoSound)
+	}
+	if out.RandomModeRangeVoiceToTransl != "70-84,85-100" {
+		t.Errorf("random_mode_range_voice_to_transl: want %q, got %q", "70-84,85-100", out.RandomModeRangeVoiceToTransl)
+	}
+}
+
 func TestUpdateUserAPIKeys_RoundTrip(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

@@ -60,6 +60,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	userSettings, _ := h.Store.GetUserSettings(r.Context(), userID)
 	progCfg := sm2.DefaultProgressiveModeConfig()
 	nwCfg := sm2.DefaultNewWordModeConfig()
+	var randCfg sm2.RandomModeConfig
 	primaryLang := "en"
 	// h.MaxNewPerDay=0 is a test sentinel meaning "block all new words".
 	// Otherwise the per-user setting takes precedence over the server default.
@@ -68,6 +69,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	if userSettings != nil {
 		progCfg = userSettings.QuizConfig()
 		nwCfg = userSettings.NewWordConfig()
+		randCfg = userSettings.RandomModeConfig()
 		primaryLang = userSettings.PrimaryLang
 		if h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
 			maxNew = userSettings.MaxNewWordsPerDay
@@ -279,9 +281,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
 			cycleCounter = progress.TotalCorrect
 		}
-		mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr))
+		bucket := sm2.ClassifyTier(*progress).BucketKey()
+		mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), bucket, randCfg)
 	default:
-		mode = sm2.SelectMode()
+		bucket := sm2.ClassifyTier(*progress).BucketKey()
+		mode = sm2.SelectMode(bucket, randCfg)
 	}
 
 	// mask_pinyin resolves to transl_to_zh with the pinyin hint forced on.
