@@ -172,6 +172,8 @@ const I18N = {
     'vocab.review': 'review',
     'vocab.dueLabel': 'Due',
     'vocab.inDays': 'in {n}d',
+    'vocab.alsoComponent': 'also a component',
+    'vocab.alsoWord': 'also a word',
 
     // Tags tab
     'vocab.tagsTab': 'Tags',
@@ -402,6 +404,7 @@ const I18N = {
     // Component cards in word training
     'component.modeLabel': 'Component',
     'component.modeLabelAlsoWord': 'Component & Word',
+    'word.alsoComponent': 'Also a Component',
     'component.character': 'Character',
     'component.newLabel': 'New Component',
     'component.gotIt': 'Got it!',
@@ -621,6 +624,8 @@ const I18N = {
     'vocab.review': '复习',
     'vocab.dueLabel': '到期',
     'vocab.inDays': '{n}天后',
+    'vocab.alsoComponent': '也是部件',
+    'vocab.alsoWord': '也是词',
 
     // Tags tab
     'vocab.tagsTab': '标签',
@@ -851,6 +856,7 @@ const I18N = {
     // Component cards in word training
     'component.modeLabel': '部件',
     'component.modeLabelAlsoWord': '部件 & 词',
+    'word.alsoComponent': '也是部件',
     'component.character': '汉字',
     'component.newLabel': '新部件',
     'component.gotIt': '知道了！',

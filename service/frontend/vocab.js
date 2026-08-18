@@ -166,6 +166,7 @@ function renderTable(words) {
         <span class="mr-1">${escHtml(word.zh_text)}</span>
         <button class="btn-play text-base text-gray-400 hover:text-blue-500 transition leading-none align-middle" data-id="${word.id}" data-zh="${escHtml(word.zh_text)}" title="Read aloud">🔊</button>
         ${word.needs_review ? `<span class="inline-block bg-orange-100 text-orange-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(t('vocab.review'))}</span>` : ''}
+        ${crossRefBadge(word.is_also_component, t('vocab.alsoComponent'))}
         ${(word.tags || []).map(tag => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(tag)}</span>`).join('')}
       </td>
       <td class="py-3 px-4 text-gray-600">${word.pinyin ? escHtml(word.pinyin) : '<span class="text-gray-400">—</span>'}</td>
@@ -503,6 +504,15 @@ async function resetWordProgress() {
   } catch (e) {
     alert('Failed to reset: ' + e.message);
   }
+}
+
+// Cross-reference badge: shown on the Words tab when a word's character is
+// also tracked as a component, and on the Components tab when a component's
+// character is also stored as a word.
+function crossRefBadge(show, label) {
+  return show
+    ? `<span class="inline-block bg-purple-100 text-purple-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(label)}</span>`
+    : '';
 }
 
 function renderTierBadge(word) {
@@ -1107,7 +1117,7 @@ function renderComponentTable(components) {
     tr.className = 'border-b border-gray-200 hover:bg-gray-50';
     tr.dataset.char = comp.character;
     tr.innerHTML = `
-      <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}</td>
+      <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}${crossRefBadge(comp.is_also_word, t('vocab.alsoWord'))}</td>
       <td class="py-3 px-4 text-gray-500 text-sm">${comp.pinyin ? escHtml(comp.pinyin) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">${comp.definition_en ? escHtml(comp.definition_en) : '<span class="text-gray-400">—</span>'}</td>
       <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>

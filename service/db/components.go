@@ -816,6 +816,7 @@ type ComponentListItem struct {
 	Easiness      float64 `json:"easiness"`
 	IntervalDays  int     `json:"interval_days"`
 	FirstSeenDate *string `json:"first_seen_date,omitempty"`
+	IsAlsoWord    bool    `json:"is_also_word,omitempty"`
 }
 
 // GetComponentList returns a paginated list of component_progress rows for a user,
@@ -862,13 +863,15 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 		       date(cp.due_date) AS due_date,
 		       cp.total_correct, cp.total_attempts,
 		       cp.easiness, cp.interval_days,
-		       cp.first_seen_date
+		       cp.first_seen_date,
+		       w.id IS NOT NULL AS is_also_word
 		FROM component_progress cp
 		LEFT JOIN hanzi_decomposition hd ON hd.character = cp.character
 		LEFT JOIN hanzi_decomposition_translation hdt_en
 		       ON hdt_en.character = cp.character AND hdt_en.lang = 'EN'
 		LEFT JOIN hanzi_decomposition_translation hdt_de
 		       ON hdt_de.character = cp.character AND hdt_de.lang = 'DE'
+		LEFT JOIN words w ON w.text = cp.character AND w.user_id = cp.user_id AND w.language = 'zh'
 		WHERE cp.user_id = ?`+whereExtra+`
 		ORDER BY cp.due_date ASC
 		LIMIT ? OFFSET ?`,
@@ -885,7 +888,7 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 		if err := rows.Scan(
 			&it.Character, &rawPinyin, &it.DefinitionEN, &it.DefinitionDE,
 			&it.DueDate, &it.TotalCorrect, &it.TotalAttempts,
-			&it.Easiness, &it.IntervalDays, &firstSeen,
+			&it.Easiness, &it.IntervalDays, &firstSeen, &it.IsAlsoWord,
 		); err != nil {
 			rows.Close()
 			return nil, 0, fmt.Errorf("scan component list: %w", err)
