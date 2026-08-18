@@ -162,17 +162,38 @@ func (h *TranslateHandler) Config(deeplConfigured, llmConfigured bool) http.Hand
 	}
 }
 
+// pinyinBracket passes parenthesis characters through the pinyin conversion
+// unchanged, so the generated pinyin reflects brackets marking optional text
+// (issue #310). All other non-Chinese characters (e.g. Latin letters,
+// whitespace) are dropped, matching the library's default behaviour.
+func pinyinBracket(r rune, a pinyin.Args) []string {
+	switch r {
+	case '(', ')', '（', '）':
+		return []string{string(r)}
+	default:
+		return []string{}
+	}
+}
+
 func toPinyin(zh string) string {
 	a := pinyin.NewArgs()
 	a.Style = pinyin.Tone
+	a.Fallback = pinyinBracket
 	result := pinyin.Pinyin(zh, a)
-	parts := make([]string, len(result))
-	for i, p := range result {
-		if len(p) > 0 {
-			parts[i] = p[0]
+	var b strings.Builder
+	for _, p := range result {
+		if len(p) == 0 {
+			continue
 		}
+		tok := p[0]
+		closing := tok == ")" || tok == "）"
+		openSuffix := strings.HasSuffix(b.String(), "(") || strings.HasSuffix(b.String(), "（")
+		if b.Len() > 0 && !closing && !openSuffix {
+			b.WriteByte(' ')
+		}
+		b.WriteString(tok)
 	}
-	return strings.Join(parts, " ")
+	return b.String()
 }
 
 // pinyinCoversText reports whether pinyin has at least one space-separated

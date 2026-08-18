@@ -16,6 +16,11 @@ func TestToPinyin(t *testing.T) {
 		{"中文", "zhōng wén"},
 		{"", ""},
 		{"hello", ""},
+		// Regression for issue #310: brackets marking optional text are
+		// preserved in the generated pinyin, attached without extra spacing.
+		{"过 (动词)", "guò (dòng cí)"},
+		{"还（动词）", "hái （dòng cí）"},
+		{"(的)图书馆", "(de) tú shū guǎn"},
 	}
 	for _, tt := range tests {
 		got := toPinyin(tt.input)

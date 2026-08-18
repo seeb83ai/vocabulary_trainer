@@ -851,6 +851,27 @@ func TestCheckAnswer_TrailingSlash(t *testing.T) {
 	}
 }
 
+// Regression for issue #309/#311: fullwidth Chinese parentheses （） mark an
+// optional segment just like ASCII parens do — e.g. a word stored as "还（动词）"
+// must accept the bare character "还" as a correct answer.
+func TestCheckAnswer_FullwidthParens_WithoutParens(t *testing.T) {
+	if !CheckAnswer("还", []string{"还（动词）"}) {
+		t.Error("form without fullwidth parens should be accepted")
+	}
+}
+
+func TestCheckAnswer_FullwidthParens_WithParens(t *testing.T) {
+	if !CheckAnswer("还（动词）", []string{"还（动词）"}) {
+		t.Error("full fullwidth-parens form should be accepted")
+	}
+}
+
+func TestCheckAnswer_FullwidthParens_Middle(t *testing.T) {
+	if !CheckAnswer("guò", []string{"guò（体育）"}) {
+		t.Error("stripping fullwidth parens from the end should be accepted")
+	}
+}
+
 func TestCheckAnswer_OnlyParens(t *testing.T) {
 	// "(test)" stripped becomes "" — should still match empty after normalization,
 	// but since normalize("") == "" and user answer is non-empty, it should NOT match.
