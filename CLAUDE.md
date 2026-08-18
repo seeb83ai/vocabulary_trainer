@@ -23,6 +23,17 @@ the scope of the current task.
 2. **Write failing unit tests and implement the feature** using the existing unit-test TDD loop (`go test ./...` → red → green per the rules below).
 3. **Validate the E2E test passes** — run `make test-e2e` again; it must now be green.
 
+**PR screenshots for frontend changes:** If a change touches any file under `service/frontend/`, reuse the E2E
+test(s) from step 1 to capture reviewer-facing screenshots instead of a separate script:
+1. In the relevant `e2e/*.spec.js` test, call `captureForPR(page, '<name>')` (import from `e2e/helpers/screenshot.js`)
+   at each UI state worth showing a reviewer — including any interaction needed to reach it (opening a modal/layover,
+   submitting a form, etc). The call is a no-op unless `PR_SCREENSHOTS=1` is set, so normal `make test-e2e` / CI runs
+   are unaffected.
+2. Run `make screenshots FILE=e2e/<spec>.spec.js` to generate the PNGs into `pr-screenshots/`.
+3. `git add` the relevant `pr-screenshots/*.png` files and embed them in the PR description with relative image
+   links, e.g. `![Vocabulary list](pr-screenshots/vocab-list.png)` — GitHub renders these against the PR branch.
+4. Skip this for changes with no visual/rendered-output difference (pure logic, backend-only, refactors).
+
 ## Testing rules
 
 **Mandatory:** Every code change that adds or modifies a function, DB query, or HTTP endpoint **must** include
@@ -62,6 +73,7 @@ Before marking any task done:
 5. `README.md` updated if user-visible behaviour changed.
 6. No SQL outside `service/db/` package.
 7. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
+8. `service/frontend/` touched? PR screenshots captured and embedded in the PR description (see PR screenshots rule above).
 
 ### What must be tested
 | Change type | Required test |

@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup restore release test test-go test-js test-e2e test-all
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup restore release test test-go test-js test-e2e test-all screenshots
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -119,6 +119,12 @@ test-e2e:
 
 ## test-all: run all tests — Go unit tests, JS unit tests, and E2E browser tests
 test-all: test-go test-js test-e2e
+
+## screenshots: capture PR review screenshots from an e2e spec (FILE=e2e/vocab.spec.js required)
+## Requires captureForPR() calls (e2e/helpers/screenshot.js) in the spec; writes PNGs to pr-screenshots/.
+screenshots:
+	@test -n "$(FILE)" || (echo "FILE is not set. Usage: make screenshots FILE=e2e/vocab.spec.js" && exit 1)
+	PR_SCREENSHOTS=1 npx playwright test $(FILE)
 
 ## clean: stop containers and remove build artifacts
 clean:
