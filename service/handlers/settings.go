@@ -65,6 +65,10 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineNewBucketValue           int    `json:"baseline_new_bucket_value"`
 		GamificationEnabled              *bool  `json:"gamification_enabled"`
 		GamificationFrequency            *int   `json:"gamification_frequency"`
+		GameModeMismatch                 bool   `json:"game_mode_mismatch"`
+		GameModeNewest                   bool   `json:"game_mode_newest"`
+		GameModeHardest                  bool   `json:"game_mode_hardest"`
+		GameModeLastMistakes             bool   `json:"game_mode_last_mistakes"`
 		BlurPinyin                       bool   `json:"blur_pinyin"`
 		NoAutoVoiceOnBlur                bool   `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange            bool   `json:"celebrate_bucket_change"`
@@ -246,6 +250,10 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineNewBucketValue:           req.BaselineNewBucketValue,
 		GamificationEnabled:              resolvedGamificationEnabled,
 		GamificationFrequency:            resolvedFrequency,
+		GameModeMismatch:                 req.GameModeMismatch,
+		GameModeNewest:                   req.GameModeNewest,
+		GameModeHardest:                  req.GameModeHardest,
+		GameModeLastMistakes:             req.GameModeLastMistakes,
 		BlurPinyin:                       req.BlurPinyin,
 		NoAutoVoiceOnBlur:                req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:            req.CelebrateBucketChange,

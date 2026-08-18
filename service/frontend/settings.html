@@ -362,6 +362,25 @@
           <span class="text-sm text-gray-700">minutes</span>
         </div>
       </div>
+      <p class="text-sm text-gray-500 mb-2">Game modes — which word pools the mini-game can draw from:</p>
+      <div class="space-y-3 mb-4">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="game-mode-mismatch" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Mismatch — recently confused word/component pairs</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="game-mode-newest" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Newest words — your most recently added words</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="game-mode-hardest" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Hardest words — your lowest-accuracy words</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="game-mode-last-mistakes" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Last mistakes — words you recently answered wrong</span>
+        </label>
+      </div>
       <div id="gamification-success" class="hidden mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
       <div id="gamification-error" class="hidden mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
       <button id="gamification-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>

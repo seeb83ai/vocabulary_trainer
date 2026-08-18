@@ -7289,8 +7289,28 @@ func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
 
 // ── GET /api/quiz/match-game ──────────────────────────────────────────────────
 
+// enableOnlyGameMode disables every match-game mode except keep, so a test can
+// exercise one mode's fetch/repeat-avoidance logic in isolation despite all 4
+// modes defaulting to enabled (issue #288).
+func enableOnlyGameMode(t *testing.T, s *db.Store, keep string) {
+	t.Helper()
+	ctx := context.Background()
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.GameModeMismatch = keep == "mismatch"
+	st.GameModeNewest = keep == "newest"
+	st.GameModeHardest = keep == "hardest"
+	st.GameModeLastMistakes = keep == "last_mistakes"
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	// Only 1 confusion pair — game should not trigger
@@ -7312,6 +7332,7 @@ func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
 
 func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
@@ -7337,6 +7358,7 @@ func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
 
 func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
@@ -7361,6 +7383,7 @@ func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
 
 func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
@@ -7394,6 +7417,7 @@ func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
 // match game the same way word-vs-word pairs already do.
 func TestMatchGame_IncludesComponentPairs(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	ctx := context.Background()
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -7427,6 +7451,120 @@ func TestMatchGame_IncludesComponentPairs(t *testing.T) {
 	}
 	if !sawComponent {
 		t.Error("expected at least one component-kind word in the match game")
+	}
+}
+
+// ── GET /api/quiz/match-game — issue #288 gamification modes ─────────────────
+
+func makeDifficultForTest(t *testing.T, s *db.Store, wordID int64, totalCorrect, totalAttempts int) {
+	t.Helper()
+	if _, err := s.ExecForTest(`UPDATE sm2_progress SET learning_new_word = 0, first_seen_at = datetime('now'),
+		total_correct = ?, total_attempts = ?, last_attempt_at = datetime('now', '-2 hours')
+		WHERE word_id = ?`, totalCorrect, totalAttempts, wordID); err != nil {
+		t.Fatalf("makeDifficultForTest(%d): %v", wordID, err)
+	}
+}
+
+func TestMatchGame_OnlyHardestEnabled_ReturnsHardestCandidates(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "hardest")
+	a := seedWord(t, s, "一", "", []string{"one"})
+	b := seedWord(t, s, "二", "", []string{"two"})
+	makeDifficultForTest(t, s, a, 1, 10)
+	makeDifficultForTest(t, s, b, 2, 10)
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 2 {
+		t.Fatalf("expected 2 hardest-mode candidates, got %d: %+v", len(resp.Words), resp.Words)
+	}
+	ids := map[int64]bool{}
+	for _, w := range resp.Words {
+		ids[w.ZhWordID] = true
+	}
+	if !ids[a] || !ids[b] {
+		t.Errorf("expected words %d and %d, got %+v", a, b, resp.Words)
+	}
+}
+
+func TestMatchGame_AllModesDisabled_ReturnsEmpty(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.GameModeMismatch = false
+	st.GameModeNewest = false
+	st.GameModeHardest = false
+	st.GameModeLastMistakes = false
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+
+	a := seedWord(t, s, "一", "", []string{"one"})
+	b := seedWord(t, s, "二", "", []string{"two"})
+	makeDifficultForTest(t, s, a, 1, 10)
+	makeDifficultForTest(t, s, b, 2, 10)
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 0 {
+		t.Errorf("expected 0 words with all modes disabled, got %d: %+v", len(resp.Words), resp.Words)
+	}
+}
+
+// TestMatchGame_DisabledModeNeverSelectedEvenWithCandidates covers issue #288
+// decision #3: a disabled mode is never picked even when it has plenty of
+// eligible candidates — only enabled modes are ever considered.
+func TestMatchGame_DisabledModeNeverSelectedEvenWithCandidates(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "last_mistakes")
+	// Hardest-mode candidates exist too, but hardest is disabled.
+	a := seedWord(t, s, "一", "", []string{"one"})
+	b := seedWord(t, s, "二", "", []string{"two"})
+	makeDifficultForTest(t, s, a, 1, 10)
+	makeDifficultForTest(t, s, b, 2, 10)
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	// last_mistakes is enabled but has no recorded mistakes, and hardest (which
+	// does have candidates) is disabled — the game must not trigger at all.
+	if len(resp.Words) != 0 {
+		t.Errorf("expected 0 words (only a disabled mode has candidates), got %d: %+v", len(resp.Words), resp.Words)
+	}
+}
+
+func TestMatchGame_OnlyNewestEnabled_ReturnsNewestCandidates(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "newest")
+	seedWord(t, s, "一", "", []string{"one"})
+	seedWord(t, s, "二", "", []string{"two"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 2 {
+		t.Fatalf("expected 2 newest-mode candidates, got %d: %+v", len(resp.Words), resp.Words)
 	}
 }
 
@@ -7684,6 +7822,36 @@ func TestSettingsPatch_VoiceUnavailable(t *testing.T) {
 	decodeJSON(t, rec2, &st)
 	if st["voice_unavailable"] != true {
 		t.Errorf("voice_unavailable: want true after update, got %v", st["voice_unavailable"])
+	}
+}
+
+func TestSettingsPatch_GameModeFields(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	for _, field := range []string{"game_mode_mismatch", "game_mode_newest", "game_mode_hardest", "game_mode_last_mistakes"} {
+		if st[field] != true {
+			t.Errorf("%s: want true by default, got %v", field, st[field])
+		}
+	}
+
+	body := baseSettingsPatch()
+	body["game_mode_mismatch"] = true
+	body["game_mode_newest"] = false
+	body["game_mode_hardest"] = true
+	body["game_mode_last_mistakes"] = false
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["game_mode_mismatch"] != true || st["game_mode_newest"] != false ||
+		st["game_mode_hardest"] != true || st["game_mode_last_mistakes"] != false {
+		t.Errorf("game mode fields after update: %+v", st)
 	}
 }
 

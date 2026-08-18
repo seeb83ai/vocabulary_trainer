@@ -52,6 +52,10 @@ type UserSettings struct {
 	AcceptCorrectMode                string   `json:"accept_correct_mode"`
 	GamificationEnabled              bool     `json:"gamification_enabled"`
 	GamificationFrequency            int      `json:"gamification_frequency"`
+	GameModeMismatch                 bool     `json:"game_mode_mismatch"`
+	GameModeNewest                   bool     `json:"game_mode_newest"`
+	GameModeHardest                  bool     `json:"game_mode_hardest"`
+	GameModeLastMistakes             bool     `json:"game_mode_last_mistakes"`
 	TrainMode                        string   `json:"train_mode"`
 	TrainBucket                      string   `json:"train_bucket"`
 	TrainLangs                       []string `json:"train_langs"`

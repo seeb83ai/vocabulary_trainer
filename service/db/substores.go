@@ -57,6 +57,11 @@ type QuizStore interface {
 	GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error)
 	GetRecentMismatches(ctx context.Context, userID int64, since time.Time, limit int) ([]models.ConfusionDetail, error)
 	MarkConfusionsShownInGame(ctx context.Context, pairs []ConfusionPairKey) error
+	GetNewestWordsForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error)
+	GetHardestWordsForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error)
+	GetLastMistakesForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error)
+	MarkWordsShownInGame(ctx context.Context, userID int64, wordIDs []int64, mode string) error
+	RecordAnswerTimestamps(ctx context.Context, wordID int64, correct bool) error
 	SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2Progress) error
 	GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2Progress, error)
 	ClearSM2PrevState(ctx context.Context, wordID int64) error
