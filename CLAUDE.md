@@ -30,9 +30,15 @@ test(s) from step 1 to capture reviewer-facing screenshots instead of a separate
    submitting a form, etc). The call is a no-op unless `PR_SCREENSHOTS=1` is set, so normal `make test-e2e` / CI runs
    are unaffected.
 2. Run `make screenshots FILE=e2e/<spec>.spec.js` to generate the PNGs into `pr-screenshots/`.
-3. `git add` the relevant `pr-screenshots/*.png` files and embed them in the PR description with relative image
-   links, e.g. `![Vocabulary list](pr-screenshots/vocab-list.png)` — GitHub renders these against the PR branch.
-4. Skip this for changes with no visual/rendered-output difference (pure logic, backend-only, refactors).
+3. `git add` the relevant `pr-screenshots/*.png` files, commit, and push the branch **before** embedding them —
+   the PR description must reference an image that already exists on GitHub.
+4. Embed them in the PR description as **absolute** `raw.githubusercontent.com` links, not relative paths:
+   `![Vocabulary list](https://raw.githubusercontent.com/<owner>/<repo>/<branch>/pr-screenshots/vocab-list.png)`.
+   Relative links (`pr-screenshots/vocab-list.png`) do **not** render in PR/issue bodies — that text isn't
+   tied to a git ref, unlike files GitHub renders from the repo browser (e.g. `README.md`), so GitHub can't
+   resolve a relative path there. Verify each URL resolves before finishing, e.g.
+   `curl -sI <raw-url>` should return `200`.
+5. Skip this for changes with no visual/rendered-output difference (pure logic, backend-only, refactors).
 
 ## Testing rules
 
