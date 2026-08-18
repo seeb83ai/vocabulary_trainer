@@ -4282,9 +4282,15 @@ func TestGetNextComponentCard_DoesNotServeFutureComponent(t *testing.T) {
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman; female")
 	seedHanziTranslation(t, s, "女", "en", "woman")
-	// Simulate a component whose due_date is 23 hours from now — this is the
-	// range SM-2 uses after a correct answer with interval=1 day + negative jitter.
-	future := time.Now().Add(23 * time.Hour)
+	// Simulate a component that comes due just after the next midnight — the
+	// earliest instant with tomorrow's date. This is within the 22-24h window
+	// SM-2 produces after a correct answer (interval=1 day + jitter), so the
+	// pre-fix datetime('now', '+1 day') comparison would have served it, while
+	// the fixed date('now', '+1 day') bound must not. A fixed clock offset like
+	// now+23h is wrong here: between 00:00 and 01:00 it still lands on today's
+	// date, which the date-based bound correctly serves, making the test flaky.
+	now := time.Now()
+	future := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 1, 0, now.Location())
 	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", future)
 
 	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
