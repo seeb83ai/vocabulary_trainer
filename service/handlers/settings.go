@@ -80,6 +80,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
 		RetypeOnWrong                    bool     `json:"retype_on_wrong"`
 		ComponentCoverageThreshold       *float64 `json:"component_coverage_threshold"`
+		SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
+		SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -166,6 +168,10 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.BaselineNewBucketValue < 0 {
 		writeError(w, http.StatusBadRequest, "baseline_new_bucket_value must be >= 0")
+		return
+	}
+	if req.SentenceBlankRatio < 0 || req.SentenceBlankRatio > 100 {
+		writeError(w, http.StatusBadRequest, "sentence_blank_ratio must be between 0 and 100")
 		return
 	}
 
@@ -280,6 +286,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeVoiceToTransl:     randCfg.VoiceToTransl,
 		RetypeOnWrong:                    req.RetypeOnWrong,
 		ComponentCoverageThreshold:       resolvedComponentThreshold,
+		SentenceBlankEnabled:             req.SentenceBlankEnabled,
+		SentenceBlankRatio:               req.SentenceBlankRatio,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

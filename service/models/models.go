@@ -73,6 +73,8 @@ type UserSettings struct {
 	RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
 	RetypeOnWrong                    bool     `json:"retype_on_wrong"`
 	ComponentCoverageThreshold       float64  `json:"component_coverage_threshold"`
+	SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
+	SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
@@ -201,6 +203,15 @@ type QuizCard struct {
 	IsNew       bool              `json:"is_new,omitempty"`
 	Definitions map[string]string `json:"definitions,omitempty"`
 	IsAlsoWord  bool              `json:"is_also_word,omitempty"`
+	// Sentence-blank card fields (card_type="sentence"); zero-value for other
+	// cards. WordID/Mode/DueDate/IntervalDays above are reused for the blanked
+	// word itself — Mode carries the resolved direction (transl_to_zh means the
+	// zh sentence is blanked; other modes mean the translation is blanked).
+	// SentenceContext is the fully-shown side (translation text for a zh blank,
+	// full zh sentence for a translation blank); SentenceBlank is the side with
+	// the target word/substring replaced by "___".
+	SentenceContext string `json:"sentence_context,omitempty"`
+	SentenceBlank   string `json:"sentence_blank,omitempty"`
 }
 
 type AnswerRequest struct {

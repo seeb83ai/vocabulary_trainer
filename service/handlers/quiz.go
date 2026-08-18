@@ -114,6 +114,26 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	// ignoring the normal due-date horizon). Mnemonic/component candidates are
 	// not part of the drill.
 	difficult := r.URL.Query().Get("difficult") == "true"
+
+	langs := parseLangs(r, primaryLang)
+
+	// Sentence fill-in-the-blank: when enabled, roll against the user's
+	// configured ratio to decide whether to attempt serving a sentence-blank
+	// card this turn instead of a normal word/HMM/component card. It shares
+	// sm2_progress with normal word quizzing (see CLAUDE.md), so this bypasses
+	// the HMM/component candidate selection below entirely on a hit.
+	if !difficult && userSettings != nil && userSettings.SentenceBlankEnabled &&
+		rand.Intn(100) < userSettings.SentenceBlankRatio {
+		card, err := h.Store.NextSentenceBlankCard(r.Context(), userID, progCfg, nwCfg, langs)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		if card != nil {
+			writeJSON(w, http.StatusOK, *card)
+			return
+		}
+	}
 	// Opt-in (default): allow GetNextCard to widen beyond today's due-date bound
 	// and serve a not-yet-due word so a just-answered word isn't immediately
 	// repeated. Users can disable this in settings to only ever be served
@@ -133,7 +153,6 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	langs := parseLangs(r, primaryLang)
 	mnemonics := r.URL.Query().Get("mnemonics") != "false" && !difficult
 	trainComponents := r.URL.Query().Get("trainComponents") == "1" && !difficult
 

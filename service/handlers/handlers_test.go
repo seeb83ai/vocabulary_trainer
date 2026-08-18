@@ -315,6 +315,96 @@ func TestQuizNext_ReturnsCard(t *testing.T) {
 	}
 }
 
+// enableSentenceBlank fetches the user's current settings, flips the
+// sentence-blank fields, and saves them back — mirroring how the frontend
+// settings page PATCHes the full settings object.
+func enableSentenceBlank(t *testing.T, s *db.Store, userID int64, enabled bool, ratio int) {
+	t.Helper()
+	ctx := context.Background()
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.SentenceBlankEnabled = enabled
+	st.SentenceBlankRatio = ratio
+	if err := s.UpdateUserSettings(ctx, userID, *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+}
+
+// seedSentenceScenario seeds three acknowledged component words plus a
+// sentence word (我买牛奶, tagged s_test, left unacknowledged) that fully
+// segments from them — the shared fixture for sentence-blank handler tests.
+func seedSentenceScenario(t *testing.T, s *db.Store, userID int64) (wo, mai, niunai int64) {
+	t.Helper()
+	ctx := context.Background()
+	wo = seedWordFull(t, s, userID, "我", "wǒ", []string{"I"}, nil, nil)
+	mai = seedWordFull(t, s, userID, "买", "mǎi", []string{"buy"}, nil, nil)
+	niunai = seedWordFull(t, s, userID, "牛奶", "niú nǎi", []string{"milk"}, nil, nil)
+	for _, id := range []int64{wo, mai, niunai} {
+		if err := s.AcknowledgeWord(ctx, userID, id); err != nil {
+			t.Fatalf("AcknowledgeWord %d: %v", id, err)
+		}
+	}
+	seedWordFull(t, s, userID, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I buy milk"}, nil, []string{"s_test"})
+	return
+}
+
+func TestQuizNext_SentenceBlank_ServedWhenEnabledAndEligible(t *testing.T) {
+	s := openTestDB(t)
+	wo, mai, niunai := seedSentenceScenario(t, s, 2)
+	enableSentenceBlank(t, s, 2, true, 100)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.CardType != "sentence" {
+		t.Fatalf("want card_type=sentence, got %q (body: %s)", card.CardType, rec.Body)
+	}
+	if card.WordID != wo && card.WordID != mai && card.WordID != niunai {
+		t.Errorf("word_id %d is not one of the seeded component words", card.WordID)
+	}
+	if !strings.Contains(card.SentenceBlank, "___") {
+		t.Errorf("sentence_blank should contain a blank marker, got %q", card.SentenceBlank)
+	}
+}
+
+func TestQuizNext_SentenceBlank_NeverServedWhenDisabled(t *testing.T) {
+	s := openTestDB(t)
+	seedSentenceScenario(t, s, 2)
+	enableSentenceBlank(t, s, 2, false, 100)
+	r := newRouter(s)
+
+	for i := 0; i < 10; i++ {
+		rec := do(t, r, "GET", "/api/quiz/next?langs=en", nil)
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.CardType == "sentence" {
+			t.Fatal("sentence card must never be served when sentence_blank_enabled=false")
+		}
+	}
+}
+
+func TestQuizNext_SentenceBlank_NeverServedWhenRatioZero(t *testing.T) {
+	s := openTestDB(t)
+	seedSentenceScenario(t, s, 2)
+	enableSentenceBlank(t, s, 2, true, 0)
+	r := newRouter(s)
+
+	for i := 0; i < 10; i++ {
+		rec := do(t, r, "GET", "/api/quiz/next?langs=en", nil)
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.CardType == "sentence" {
+			t.Fatal("sentence card must never be served when sentence_blank_ratio=0")
+		}
+	}
+}
+
 func TestQuizNext_NoPinyinFallsBackMode(t *testing.T) {
 	s := openTestDB(t)
 	// Word with no pinyin — zh_pinyin_to_en must never be returned
@@ -7899,6 +7989,49 @@ func TestSettingsPatch_NoAutoVoiceOnBlur(t *testing.T) {
 	decodeJSON(t, rec2, &st)
 	if st["no_auto_voice_on_blur"] != true {
 		t.Errorf("no_auto_voice_on_blur: want true after update, got %v", st["no_auto_voice_on_blur"])
+	}
+}
+
+func TestSettingsPatch_SentenceBlank(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["sentence_blank_enabled"] != false {
+		t.Errorf("sentence_blank_enabled: want false by default, got %v", st["sentence_blank_enabled"])
+	}
+	if st["sentence_blank_ratio"] != float64(20) {
+		t.Errorf("sentence_blank_ratio: want 20 by default, got %v", st["sentence_blank_ratio"])
+	}
+
+	body := baseSettingsPatch()
+	body["sentence_blank_enabled"] = true
+	body["sentence_blank_ratio"] = 50
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["sentence_blank_enabled"] != true {
+		t.Errorf("sentence_blank_enabled: want true after update, got %v", st["sentence_blank_enabled"])
+	}
+	if st["sentence_blank_ratio"] != float64(50) {
+		t.Errorf("sentence_blank_ratio: want 50 after update, got %v", st["sentence_blank_ratio"])
+	}
+}
+
+func TestSettingsPatch_SentenceBlankRatio_Invalid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["sentence_blank_ratio"] = 101
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for out-of-range ratio, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

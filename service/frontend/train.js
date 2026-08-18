@@ -260,6 +260,7 @@ function shouldAutoPlay(currentCard) {
   if (currentCard.mode === 'new_word') return true;
   if (currentCard.card_type === 'component') return true;
   if (currentCard.card_type === 'hmm') return false;
+  if (currentCard.card_type === 'sentence') return false;
   return isZhPromptWithSound(currentCard.mode);
 }
 
@@ -313,6 +314,7 @@ function autoPlayCard(currentCard) {
 function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   if (!autoPlayEnabled || !currentCard) return false;
   if (currentCard.card_type === 'hmm') return false;
+  if (currentCard.card_type === 'sentence') return false;
   return !alreadyPlayed;
 }
 
@@ -756,12 +758,14 @@ function showCard() {
     hide('translations-hint');
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
+    hide('sentence-context');
   } else if (currentCard.card_type === 'hmm') {
     setText('mode-label', t('hmm.modeLabel'));
     setText('prompt-word', currentCard.prompt);
     hide('play-btn');
     hide('pinyin-hint');
     hide('translations-hint');
+    hide('sentence-context');
 
     const badge = $('hmm-type-badge');
     badge.className = 'inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2 ' +
@@ -778,9 +782,21 @@ function showCard() {
     } else {
       hide('hmm-actor-hint');
     }
+  } else if (currentCard.card_type === 'sentence') {
+    setText('mode-label', t('sentence.modeLabel'));
+    setText('prompt-word', currentCard.sentence_blank);
+    show('prompt-word');
+    hide('play-btn');
+    hide('pinyin-hint');
+    hide('translations-hint');
+    hide('hmm-type-badge');
+    hide('hmm-actor-hint');
+    setText('sentence-context', currentCard.sentence_context);
+    show('sentence-context');
   } else {
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
+    hide('sentence-context');
 
     setText('mode-label', getModeLabel(currentCard.mode));
 
