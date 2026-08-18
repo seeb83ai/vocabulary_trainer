@@ -36,49 +36,50 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Patch handles PATCH /api/settings — updates language prefs and quiz mode settings.
 func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PrimaryLang                      string `json:"primary_lang"`
-		SecondaryLang                    string `json:"secondary_lang"`
-		ProgNew                          string `json:"prog_new"`
-		ProgTierStruggling               string `json:"prog_tier_struggling"`
-		ProgTierLearning                 string `json:"prog_tier_learning"`
-		ProgTierPracticing               string `json:"prog_tier_practicing"`
-		ProgTierMastered                 string `json:"prog_tier_mastered"`
-		NewWordMode0                     string `json:"new_word_mode_0"`
-		NewWordMode1                     string `json:"new_word_mode_1"`
-		NewWordMode2                     string `json:"new_word_mode_2"`
-		CycleSequence                    string `json:"cycle_sequence"`
-		CycleAdvanceOnSuccessOnly        bool   `json:"cycle_advance_on_success_only"`
-		NewWordRequireZh                 bool   `json:"new_word_require_zh"`
-		NewWordRequireTrans              bool   `json:"new_word_require_trans"`
-		AcceptCorrectMode                string `json:"accept_correct_mode"`
-		MaxNewWordsPerDay                *int   `json:"max_new_words_per_day"`
-		NewWordCooldownMinutes           int    `json:"new_word_cooldown_minutes"`
-		SkipNewWordsVisible              bool   `json:"skip_new_words_visible"`
-		ExtendSessionWithExtraWords      bool   `json:"extend_session_with_extra_words"`
-		BaselineDueTodayEnabled          bool   `json:"baseline_due_today_enabled"`
-		BaselineDueTodayValue            int    `json:"baseline_due_today_value"`
-		BaselineStrugglingEnabled        bool   `json:"baseline_struggling_enabled"`
-		BaselineStrugglingValue          int    `json:"baseline_struggling_value"`
-		BaselineLearningEnabled          bool   `json:"baseline_learning_enabled"`
-		BaselineLearningValue            int    `json:"baseline_learning_value"`
-		BaselineNewBucketEnabled         bool   `json:"baseline_new_bucket_enabled"`
-		BaselineNewBucketValue           int    `json:"baseline_new_bucket_value"`
-		GamificationEnabled              *bool  `json:"gamification_enabled"`
-		GamificationFrequency            *int   `json:"gamification_frequency"`
-		GameModeMismatch                 bool   `json:"game_mode_mismatch"`
-		GameModeNewest                   bool   `json:"game_mode_newest"`
-		GameModeHardest                  bool   `json:"game_mode_hardest"`
-		GameModeLastMistakes             bool   `json:"game_mode_last_mistakes"`
-		BlurPinyin                       bool   `json:"blur_pinyin"`
-		NoAutoVoiceOnBlur                bool   `json:"no_auto_voice_on_blur"`
-		CelebrateBucketChange            bool   `json:"celebrate_bucket_change"`
-		VoiceUnavailable                 bool   `json:"voice_unavailable"`
-		RandomModeRangeTranslToZh        string `json:"random_mode_range_transl_to_zh"`
-		RandomModeRangeZhToTransl        string `json:"random_mode_range_zh_to_transl"`
-		RandomModeRangeZhPinyinToTransl  string `json:"random_mode_range_zh_pinyin_to_transl"`
-		RandomModeRangeZhToTranslNoSound string `json:"random_mode_range_zh_to_transl_no_sound"`
-		RandomModeRangeVoiceToTransl     string `json:"random_mode_range_voice_to_transl"`
-		RetypeOnWrong                    bool   `json:"retype_on_wrong"`
+		PrimaryLang                      string   `json:"primary_lang"`
+		SecondaryLang                    string   `json:"secondary_lang"`
+		ProgNew                          string   `json:"prog_new"`
+		ProgTierStruggling               string   `json:"prog_tier_struggling"`
+		ProgTierLearning                 string   `json:"prog_tier_learning"`
+		ProgTierPracticing               string   `json:"prog_tier_practicing"`
+		ProgTierMastered                 string   `json:"prog_tier_mastered"`
+		NewWordMode0                     string   `json:"new_word_mode_0"`
+		NewWordMode1                     string   `json:"new_word_mode_1"`
+		NewWordMode2                     string   `json:"new_word_mode_2"`
+		CycleSequence                    string   `json:"cycle_sequence"`
+		CycleAdvanceOnSuccessOnly        bool     `json:"cycle_advance_on_success_only"`
+		NewWordRequireZh                 bool     `json:"new_word_require_zh"`
+		NewWordRequireTrans              bool     `json:"new_word_require_trans"`
+		AcceptCorrectMode                string   `json:"accept_correct_mode"`
+		MaxNewWordsPerDay                *int     `json:"max_new_words_per_day"`
+		NewWordCooldownMinutes           int      `json:"new_word_cooldown_minutes"`
+		SkipNewWordsVisible              bool     `json:"skip_new_words_visible"`
+		ExtendSessionWithExtraWords      bool     `json:"extend_session_with_extra_words"`
+		BaselineDueTodayEnabled          bool     `json:"baseline_due_today_enabled"`
+		BaselineDueTodayValue            int      `json:"baseline_due_today_value"`
+		BaselineStrugglingEnabled        bool     `json:"baseline_struggling_enabled"`
+		BaselineStrugglingValue          int      `json:"baseline_struggling_value"`
+		BaselineLearningEnabled          bool     `json:"baseline_learning_enabled"`
+		BaselineLearningValue            int      `json:"baseline_learning_value"`
+		BaselineNewBucketEnabled         bool     `json:"baseline_new_bucket_enabled"`
+		BaselineNewBucketValue           int      `json:"baseline_new_bucket_value"`
+		GamificationEnabled              *bool    `json:"gamification_enabled"`
+		GamificationFrequency            *int     `json:"gamification_frequency"`
+		GameModeMismatch                 bool     `json:"game_mode_mismatch"`
+		GameModeNewest                   bool     `json:"game_mode_newest"`
+		GameModeHardest                  bool     `json:"game_mode_hardest"`
+		GameModeLastMistakes             bool     `json:"game_mode_last_mistakes"`
+		BlurPinyin                       bool     `json:"blur_pinyin"`
+		NoAutoVoiceOnBlur                bool     `json:"no_auto_voice_on_blur"`
+		CelebrateBucketChange            bool     `json:"celebrate_bucket_change"`
+		VoiceUnavailable                 bool     `json:"voice_unavailable"`
+		RandomModeRangeTranslToZh        string   `json:"random_mode_range_transl_to_zh"`
+		RandomModeRangeZhToTransl        string   `json:"random_mode_range_zh_to_transl"`
+		RandomModeRangeZhPinyinToTransl  string   `json:"random_mode_range_zh_pinyin_to_transl"`
+		RandomModeRangeZhToTranslNoSound string   `json:"random_mode_range_zh_to_transl_no_sound"`
+		RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
+		RetypeOnWrong                    bool     `json:"retype_on_wrong"`
+		ComponentCoverageThreshold       *float64 `json:"component_coverage_threshold"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -220,6 +221,19 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var resolvedComponentThreshold float64
+	if req.ComponentCoverageThreshold == nil {
+		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
+			resolvedComponentThreshold = existing.ComponentCoverageThreshold
+		}
+	} else {
+		resolvedComponentThreshold = *req.ComponentCoverageThreshold
+	}
+	if resolvedComponentThreshold < 0 || resolvedComponentThreshold > 100 {
+		writeError(w, http.StatusBadRequest, "component_coverage_threshold must be between 0 and 100")
+		return
+	}
+
 	userID := UserIDFromContext(r.Context())
 	st := models.UserSettings{
 		PrimaryLang:                      req.PrimaryLang,
@@ -265,6 +279,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhToTranslNoSound: randCfg.ZhToTranslNoSound,
 		RandomModeRangeVoiceToTransl:     randCfg.VoiceToTransl,
 		RetypeOnWrong:                    req.RetypeOnWrong,
+		ComponentCoverageThreshold:       resolvedComponentThreshold,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

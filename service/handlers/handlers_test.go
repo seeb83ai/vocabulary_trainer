@@ -199,6 +199,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/github/issues", ghH.Create)
 	r.Get("/api/github/config", ghH.ConfigFlag)
 	r.Get("/api/components", componentH.List)
+	r.Get("/api/components/coverage", componentH.Coverage)
 	r.Post("/api/component/answer", componentH.Answer)
 	r.Post("/api/component/accept-correct", componentH.AcceptCorrect)
 	r.Post("/api/component/seen", componentH.Seen)
@@ -4731,6 +4732,71 @@ func TestComponentList_SearchFilter(t *testing.T) {
 	}
 }
 
+// ── GET /api/components/coverage ─────────────────────────────────────────────
+
+func TestComponentCoverage_ReturnsWordCountsAndPct(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionWithDecompForTest(ctx, "明", "bright", "⿰日月"); err != nil {
+		t.Fatalf("seed 明: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "日", "sun; day"); err != nil {
+		t.Fatalf("seed 日: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "月", "moon; month"); err != nil {
+		t.Fatalf("seed 月: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:       "明",
+		Translations: map[string][]string{"en": {"bright"}},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create word: want 201, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec2 := do(t, r, http.MethodGet, "/api/components/coverage", nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec2, &resp)
+	if tw, _ := resp["total_words"].(float64); int(tw) != 1 {
+		t.Errorf("want total_words=1, got %v", resp["total_words"])
+	}
+	items, _ := resp["components"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("want 2 components (日, 月), got %d: %v", len(items), items)
+	}
+	for _, raw := range items {
+		item := raw.(map[string]any)
+		if item["word_count"].(float64) != 1 {
+			t.Errorf("want word_count=1 for %v, got %v", item["character"], item["word_count"])
+		}
+		if item["coverage_pct"].(float64) != 100 {
+			t.Errorf("want coverage_pct=100 for %v, got %v", item["character"], item["coverage_pct"])
+		}
+		if item["already_trained"] != false {
+			t.Errorf("want already_trained=false for %v (word not started training), got %v", item["character"], item["already_trained"])
+		}
+	}
+}
+
+func TestComponentCoverage_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodGet, "/api/components/coverage", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	items, _ := resp["components"].([]any)
+	if len(items) != 0 {
+		t.Errorf("want empty components on fresh DB, got %d", len(items))
+	}
+}
+
 func TestHMMBreakdown_Empty(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodGet, "/api/hmm/breakdown", nil)
@@ -7726,6 +7792,65 @@ func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("frequency=%d: expected 400, got %d", freq, rec.Code)
 		}
+	}
+}
+
+// ── PATCH /api/settings — component coverage threshold ──────────────────────
+
+func TestSettingsPatch_ComponentCoverageThreshold(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	body := baseSettingsPatch()
+	body["component_coverage_threshold"] = 7.5
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec2, &st)
+	if st["component_coverage_threshold"].(float64) != 7.5 {
+		t.Errorf("component_coverage_threshold: got %v", st["component_coverage_threshold"])
+	}
+}
+
+func TestSettingsPatch_ComponentCoverageThresholdValidation(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	for _, v := range []float64{-1, 100.1, 150} {
+		body := baseSettingsPatch()
+		body["component_coverage_threshold"] = v
+		rec := do(t, r, "PATCH", "/api/settings", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("threshold=%v: expected 400, got %d", v, rec.Code)
+		}
+	}
+}
+
+func TestSettingsPatch_ComponentCoverageThreshold_OmittedPreservesExisting(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	body := baseSettingsPatch()
+	body["component_coverage_threshold"] = 5
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Saving again without the field must preserve the previously-set value
+	// rather than resetting it to 0 — the same nil-preserving pattern used by
+	// max_new_words_per_day / gamification_frequency.
+	body2 := baseSettingsPatch()
+	rec2 := do(t, r, "PATCH", "/api/settings", body2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	rec3 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec3, &st)
+	if st["component_coverage_threshold"].(float64) != 5 {
+		t.Errorf("want threshold preserved at 5, got %v", st["component_coverage_threshold"])
 	}
 }
 

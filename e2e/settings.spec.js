@@ -164,6 +164,55 @@ test.describe('Settings – Blur pinyin (issue #201)', () => {
   });
 });
 
+// Component training threshold: skip low-value hanzi components (ones that
+// appear in only a small share of the user's zh vocabulary) when deciding
+// what gets added to the component training rotation.
+test.describe('Settings – Component training threshold', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('component training section is visible with threshold input and coverage table', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.locator('#component-training-section')).toBeVisible();
+    await expect(page.locator('#component-coverage-threshold')).toBeVisible();
+    await expect(page.locator('#component-coverage-threshold')).toHaveValue('0');
+    await expect(page.locator('#component-coverage-table')).toBeVisible();
+  });
+
+  test('threshold can be changed and saved, and persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+    const input = page.locator('#component-coverage-threshold');
+    await expect(input).toHaveValue('0');
+
+    await input.fill('5');
+    await page.locator('#component-threshold-save-btn').click();
+    await expect(page.locator('#component-threshold-success')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#component-coverage-threshold')).toHaveValue('5');
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.component_coverage_threshold).toBe(5);
+
+    // Reset to default.
+    await input.fill('0');
+    await page.locator('#component-threshold-save-btn').click();
+    await expect(page.locator('#component-threshold-success')).toBeVisible();
+  });
+
+  test('rejects an out-of-range threshold', async ({ page }) => {
+    await page.goto('/settings');
+    const input = page.locator('#component-coverage-threshold');
+    // Wait for the async settings load to finish populating the field before
+    // typing into it, so the fetch response can't race the fill and clobber it.
+    await expect(input).toHaveValue('0');
+
+    await input.fill('150');
+    await page.locator('#component-threshold-save-btn').click();
+    await expect(page.locator('#component-threshold-error')).toBeVisible();
+  });
+});
+
 // "Chinese (no sound) → Translation" mode: selectable per proficiency tier,
 // per new-word step, and as a cycle-mode step, alongside the existing modes.
 test.describe('Settings – Chinese (no sound) mode', () => {

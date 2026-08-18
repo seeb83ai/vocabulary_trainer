@@ -246,7 +246,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(game_mode_newest, 1),
 		       COALESCE(game_mode_hardest, 1),
 		       COALESCE(game_mode_last_mistakes, 1),
-		       COALESCE(retype_on_wrong, 0)
+		       COALESCE(retype_on_wrong, 0),
+		       COALESCE(component_coverage_threshold, 0)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -291,6 +292,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.GameModeHardest,
 		&st.GameModeLastMistakes,
 		&st.RetypeOnWrong,
+		&st.ComponentCoverageThreshold,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
@@ -403,7 +405,8 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			game_mode_newest                = ?,
 			game_mode_hardest               = ?,
 			game_mode_last_mistakes         = ?,
-			retype_on_wrong                 = ?
+			retype_on_wrong                 = ?,
+			component_coverage_threshold    = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -441,6 +444,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.GameModeHardest,
 		st.GameModeLastMistakes,
 		st.RetypeOnWrong,
+		st.ComponentCoverageThreshold,
 		userID,
 	)
 	if err == nil {
