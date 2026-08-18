@@ -71,6 +71,7 @@ type UserSettings struct {
 	RandomModeRangeZhPinyinToTransl  string   `json:"random_mode_range_zh_pinyin_to_transl"`
 	RandomModeRangeZhToTranslNoSound string   `json:"random_mode_range_zh_to_transl_no_sound"`
 	RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
+	RetypeOnWrong                    bool     `json:"retype_on_wrong"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.

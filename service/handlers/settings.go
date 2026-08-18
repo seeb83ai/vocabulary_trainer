@@ -78,6 +78,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhPinyinToTransl  string `json:"random_mode_range_zh_pinyin_to_transl"`
 		RandomModeRangeZhToTranslNoSound string `json:"random_mode_range_zh_to_transl_no_sound"`
 		RandomModeRangeVoiceToTransl     string `json:"random_mode_range_voice_to_transl"`
+		RetypeOnWrong                    bool   `json:"retype_on_wrong"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -263,6 +264,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhPinyinToTransl:  randCfg.ZhPinyinToTransl,
 		RandomModeRangeZhToTranslNoSound: randCfg.ZhToTranslNoSound,
 		RandomModeRangeVoiceToTransl:     randCfg.VoiceToTransl,
+		RetypeOnWrong:                    req.RetypeOnWrong,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
