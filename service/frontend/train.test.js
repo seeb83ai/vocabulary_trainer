@@ -787,7 +787,7 @@ function stripParens(s) {
   let prev;
   do {
     prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+    s = s.replace(/\s*[(（][^()（）]*[)）]\s*/g, ' ').trim();
   } while (s !== prev);
   return s;
 }
@@ -855,6 +855,9 @@ describe('stripParens', () => {
   it('handles nested parens iteratively', () => {
     expect(stripParens('a (b (c))')).toBe('a');
   });
+  it('removes a fullwidth-parenthesised segment', () => {
+    expect(stripParens('过（动词）')).toBe('过');
+  });
 });
 
 describe('expandVariants', () => {
@@ -863,6 +866,9 @@ describe('expandVariants', () => {
   });
   it('includes the paren-stripped form', () => {
     expect(expandVariants('Morgen (5 Uhr bis 9 Uhr)')).toContain('morgen');
+  });
+  it('includes the fullwidth-paren-stripped form', () => {
+    expect(expandVariants('过（动词）')).toContain('过');
   });
   it('splits on slash', () => {
     const vs = expandVariants('hi/hello');
