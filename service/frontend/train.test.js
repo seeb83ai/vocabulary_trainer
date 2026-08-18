@@ -1109,3 +1109,87 @@ describe('quickStartPlan', () => {
     expect(quickStartPlan([])).toEqual({ hsk1: false, hsk23: [] });
   });
 });
+
+// ── End-of-session comeback info ──────────────────────────────────────────────
+// Mirror computeDayStreak and dueTomorrowCount in train.js.
+
+function computeDayStreak(days, today) {
+  const trained = new Set((days || []).filter(d => d.attempts > 0).map(d => d.date));
+  let streak = 0;
+  const cur = new Date(today + 'T00:00:00Z');
+  while (trained.has(cur.toISOString().slice(0, 10))) {
+    streak++;
+    cur.setUTCDate(cur.getUTCDate() - 1);
+  }
+  return streak;
+}
+
+function dueTomorrowCount(dates, tomorrow) {
+  const hit = (dates || []).find(d => d.date === tomorrow);
+  return hit ? hit.count : 0;
+}
+
+describe('computeDayStreak', () => {
+  it('counts consecutive days ending today', () => {
+    const days = [
+      { date: '2026-08-13', attempts: 5 },
+      { date: '2026-08-14', attempts: 2 },
+      { date: '2026-08-15', attempts: 9 },
+    ];
+    expect(computeDayStreak(days, '2026-08-15')).toBe(3);
+  });
+
+  it('breaks the streak at a gap', () => {
+    const days = [
+      { date: '2026-08-12', attempts: 5 },
+      { date: '2026-08-14', attempts: 2 },
+      { date: '2026-08-15', attempts: 1 },
+    ];
+    expect(computeDayStreak(days, '2026-08-15')).toBe(2);
+  });
+
+  it('ignores zero-attempt days', () => {
+    const days = [
+      { date: '2026-08-14', attempts: 0 },
+      { date: '2026-08-15', attempts: 1 },
+    ];
+    expect(computeDayStreak(days, '2026-08-15')).toBe(1);
+  });
+
+  it('returns 0 when today has no training', () => {
+    expect(computeDayStreak([{ date: '2026-08-14', attempts: 3 }], '2026-08-15')).toBe(0);
+  });
+
+  it('handles unordered input and month boundaries', () => {
+    const days = [
+      { date: '2026-09-01', attempts: 1 },
+      { date: '2026-08-31', attempts: 4 },
+    ];
+    expect(computeDayStreak(days, '2026-09-01')).toBe(2);
+  });
+
+  it('handles empty and missing input', () => {
+    expect(computeDayStreak([], '2026-08-15')).toBe(0);
+    expect(computeDayStreak(null, '2026-08-15')).toBe(0);
+  });
+});
+
+describe('dueTomorrowCount', () => {
+  const dates = [
+    { date: '2026-08-15', count: 4 },
+    { date: '2026-08-16', count: 7 },
+  ];
+
+  it('finds the count for tomorrow', () => {
+    expect(dueTomorrowCount(dates, '2026-08-16')).toBe(7);
+  });
+
+  it('returns 0 when tomorrow has no due words', () => {
+    expect(dueTomorrowCount(dates, '2026-08-17')).toBe(0);
+  });
+
+  it('handles empty and missing input', () => {
+    expect(dueTomorrowCount([], '2026-08-16')).toBe(0);
+    expect(dueTomorrowCount(null, '2026-08-16')).toBe(0);
+  });
+});

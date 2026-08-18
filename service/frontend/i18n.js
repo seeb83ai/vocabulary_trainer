@@ -79,6 +79,9 @@ const I18N = {
     'success.difficultWords': 'Drill my hardest words instead',
     'success.noDifficult': 'No difficult words to drill yet — keep training!',
     'success.alsoNew': 'Also introduce new words today',
+    'success.dayStreak': 'Day streak:',
+    'success.comebackDue': 'words come due tomorrow — come back to keep them fresh.',
+    'success.comebackNoDue': 'words due tomorrow — a quick session tomorrow keeps your streak alive.',
     'success.introduceNew': 'Introduce new words',
     'error.icon': '⚠️',
 
@@ -536,6 +539,9 @@ const I18N = {
     'success.difficultWords': '改为练习我最难的词',
     'success.noDifficult': '暂时没有可练习的难词——继续学习吧！',
     'success.alsoNew': '同时引入今天的新词',
+    'success.dayStreak': '连续学习天数：',
+    'success.comebackDue': '个词明天到期——记得回来复习，保持记忆新鲜。',
+    'success.comebackNoDue': '个词明天到期——明天来一小节，保持连续纪录。',
     'success.introduceNew': '引入新词',
     'error.icon': '⚠️',
 

@@ -423,6 +423,55 @@ function quickStartPlan(tagNames) {
   return { hsk1: has('hsk-1'), hsk23: ['hsk-2', 'hsk-3'].filter(has) };
 }
 
+// computeDayStreak returns the number of consecutive training days
+// (attempts > 0) ending at `today` (YYYY-MM-DD). `days` may be unordered.
+function computeDayStreak(days, today) {
+  const trained = new Set((days || []).filter(d => d.attempts > 0).map(d => d.date));
+  let streak = 0;
+  const cur = new Date(today + 'T00:00:00Z');
+  while (trained.has(cur.toISOString().slice(0, 10))) {
+    streak++;
+    cur.setUTCDate(cur.getUTCDate() - 1);
+  }
+  return streak;
+}
+
+// dueTomorrowCount extracts the review count scheduled for `tomorrow`
+// (YYYY-MM-DD) from a due-date distribution.
+function dueTomorrowCount(dates, tomorrow) {
+  const hit = (dates || []).find(d => d.date === tomorrow);
+  return hit ? hit.count : 0;
+}
+
+// localDateStr formats today + offsetDays in the browser's local timezone,
+// matching the server-local dates used by daily stats and due scheduling.
+function localDateStr(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + (offsetDays || 0));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// loadComebackInfo fills the "come back tomorrow" block on the success
+// screen: current day streak and how many reviews come due tomorrow.
+async function loadComebackInfo() {
+  if (!$('success-comeback')) return;
+  try {
+    const params = selectedTags.length ? '?tags=' + encodeURIComponent(selectedTags.join(',')) : '';
+    const [daily, dist] = await Promise.all([
+      apiFetch('/api/quiz/daily-stats'),
+      apiFetch('/api/quiz/due-date-distribution' + params),
+    ]);
+    const streak = computeDayStreak(daily.days, localDateStr(0));
+    const due = dueTomorrowCount(dist.dates, localDateStr(1));
+    setText('success-streak', String(streak));
+    setText('success-due-tomorrow', String(due));
+    setText('success-comeback-msg', t(due > 0 ? 'success.comebackDue' : 'success.comebackNoDue'));
+    show('success-comeback');
+  } catch (e) {
+    hide('success-comeback');
+  }
+}
+
 let obTagsLoaded = false;
 function showEmptyState() {
   show('empty-state');
@@ -568,6 +617,7 @@ async function loadNextCard(trackCurrent = false) {
         hide('introduce-new-btn');
       }
       show('success-state');
+      loadComebackInfo();
       return;
     }
   }
@@ -618,6 +668,7 @@ async function loadNextCard(trackCurrent = false) {
         });
         updateAdvanceButtonsForDifficult();
         show('success-state');
+        loadComebackInfo();
       }
     } else {
       show('error-state');
