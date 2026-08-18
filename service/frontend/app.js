@@ -120,7 +120,37 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
   } catch (_) {}
+
+  initFullscreenToggle();
 });
+
+// Fullscreen can't be forced on page load — browsers only grant it from a
+// user gesture — so this shows a floating toggle button instead. Hidden
+// entirely when the Fullscreen API isn't available (e.g. already running
+// installed/standalone, where there's no browser chrome left to hide).
+function initFullscreenToggle() {
+  const btn = document.getElementById('fullscreen-toggle-btn');
+  if (!btn || !document.documentElement.requestFullscreen || window.matchMedia('(display-mode: standalone)').matches) {
+    return;
+  }
+  btn.classList.remove('hidden');
+  const updateLabel = () => {
+    const active = !!document.fullscreenElement;
+    btn.setAttribute('aria-pressed', String(active));
+    const key = active ? 'fullscreen.exitTitle' : 'fullscreen.enterTitle';
+    btn.title = t(key);
+    btn.setAttribute('data-i18n-title', key);
+  };
+  btn.addEventListener('click', () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  });
+  document.addEventListener('fullscreenchange', updateLabel);
+  updateLabel();
+}
 
 function $(id) {
   return document.getElementById(id);

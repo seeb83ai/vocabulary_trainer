@@ -1204,6 +1204,16 @@ test.describe('Quiz – auto-play sound toggle', () => {
   });
 });
 
+test.describe('Quiz – fullscreen toggle', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('fullscreen toggle button is visible and off by default', async ({ page }) => {
+    await page.goto('/train');
+    await expect(page.locator('#fullscreen-toggle-btn')).toBeVisible();
+    await expect(page.locator('#fullscreen-toggle-btn')).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Group: Chinese (no sound) → Translation mode
 // ─────────────────────────────────────────────────────────────────────────────
