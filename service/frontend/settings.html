@@ -41,12 +41,12 @@
     </div>
 
     <!-- Language Preferences -->
-    <div class="bg-white rounded-2xl shadow p-6">
+    <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="lang">
       <h2 class="text-lg font-semibold text-gray-800 mb-1">Language Preferences</h2>
-      <p class="text-sm text-gray-500 mb-4">The primary language is shown first in the vocabulary list and training. Both languages are accepted as answers.</p>
+      <p class="text-sm text-gray-500 mb-4">The primary language is shown first in the vocabulary list and training. Both languages are accepted as answers. Changes save automatically.</p>
       <div id="lang-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
       <div id="lang-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Primary Language</label>
           <select id="primary-lang" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
@@ -58,11 +58,10 @@
           </select>
         </div>
       </div>
-      <button id="lang-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- Training Mode -->
-    <div class="bg-white rounded-2xl shadow p-6">
+    <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="mode">
       <h2 class="text-lg font-semibold text-gray-800 mb-1">Training Mode</h2>
       <p class="text-sm text-gray-500 mb-5">Customize which quiz format is shown for each proficiency tier when using <strong>Progressive</strong> mode.</p>
       <div id="mode-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
@@ -162,11 +161,10 @@
           <span class="text-sm text-gray-600">Require retyping correctly before continuing</span>
         </label>
       </div>
-      <button id="mode-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- Cycle Mode -->
-    <div class="bg-white rounded-2xl shadow p-6">
+    <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="cycle">
       <h2 class="text-lg font-semibold text-gray-800 mb-1">Cycle Mode</h2>
       <p class="text-sm text-gray-500 mb-5">Configure the direction sequence when using <strong>Cycle</strong> mode.</p>
       <div id="cycle-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
@@ -202,11 +200,10 @@
           </span>
         </label>
       </div>
-      <button id="cycle-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- Random / Cycle Mode by Bucket -->
-    <div class="bg-white rounded-2xl shadow p-6">
+    <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="random-mode">
       <h2 class="text-lg font-semibold text-gray-800 mb-1">Random / Cycle Mode by Bucket</h2>
       <p class="text-sm text-gray-500 mb-5">Choose which learning buckets each quiz format may be picked for, when using <strong>Random</strong> or <strong>Cycle</strong> mode. Every bucket must have at least one eligible format.</p>
       <div id="random-mode-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
@@ -263,11 +260,10 @@
           </label>
         </div>
       </div>
-      <button id="random-mode-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- Daily Learning -->
-    <div id="daily-learning-section" class="bg-white rounded-2xl shadow p-6">
+    <div id="daily-learning-section" class="bg-white rounded-2xl shadow p-6" data-settings-autosave="daily">
       <h2 class="text-lg font-semibold text-gray-800 mb-1">Daily Learning</h2>
       <p class="text-sm text-gray-500 mb-5">Control how many new words are introduced each day and set optional gates that pause new introductions when your review load is high.</p>
       <div id="daily-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
@@ -340,12 +336,10 @@
         </div>
 
       </div>
-
-      <button id="daily-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- Accept as Correct -->
-    <div class="bg-white rounded-2xl shadow p-6">
+    <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="accept-mode">
       <h2 class="text-lg font-semibold text-gray-800 mb-1">Accept as Correct</h2>
       <p class="text-sm text-gray-500 mb-4">Show an "Accept as correct" button after a wrong answer to override typos without penalising your SM-2 progress.</p>
       <div class="space-y-2 mb-4">
@@ -363,11 +357,11 @@
         </label>
       </div>
       <div id="accept-mode-success" class="hidden mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
-      <button id="accept-mode-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
+      <div id="accept-mode-error" class="hidden mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
     </div>
 
     <!-- Gamification -->
-    <div class="bg-white rounded-2xl shadow p-6">
+    <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="gamification">
       <h2 class="text-lg font-semibold text-gray-800 mb-1">Gamification</h2>
       <p class="text-sm text-gray-500 mb-4">After you have made enough mistakes, a word-matching mini-game will appear during training to help you distinguish confused pairs.</p>
       <div class="space-y-3 mb-4">
@@ -403,11 +397,10 @@
       </div>
       <div id="gamification-success" class="hidden mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
       <div id="gamification-error" class="hidden mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
-      <button id="gamification-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- Component Training -->
-    <div id="component-training-section" class="bg-white rounded-2xl shadow p-6">
+    <div id="component-training-section" class="bg-white rounded-2xl shadow p-6" data-settings-autosave="component-threshold">
       <h2 class="text-lg font-semibold text-gray-800 mb-1">Component Training</h2>
       <p class="text-sm text-gray-500 mb-5">Words are broken into hanzi components (radicals and sub-parts) for the character breakdown and component quiz. Skip components that recur in only a small share of your vocabulary, so training time stays focused on the ones that pull the most weight. Already-trained components are never removed by this setting.</p>
       <div id="component-threshold-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
@@ -440,12 +433,10 @@
           <tbody id="component-coverage-tbody"></tbody>
         </table>
       </div>
-
-      <button id="component-threshold-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- API Keys -->
-    <div class="bg-white rounded-2xl shadow p-6">
+    <div id="apikey-section" class="bg-white rounded-2xl shadow p-6">
       <div class="flex items-center gap-2 mb-1">
         <h2 class="text-lg font-semibold text-gray-800">API Keys</h2>
         <div class="relative inline-block group">

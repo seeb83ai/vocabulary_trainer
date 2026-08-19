@@ -78,3 +78,58 @@ describe('computeThresholdSummary', () => {
     expect(computeThresholdSummary([], 10)).toEqual({ qualifying: 0, total: 0 });
   });
 });
+
+// ── localValidationError ────────────────────────────────────────────────────
+// Inline from settings.js to test in isolation. Auto-save runs this per-group
+// check before submitting so a card only blocks on the concern it owns.
+
+function localValidationError(group, payload) {
+  if (group === 'lang' && payload.secondary_lang !== '' && payload.primary_lang === payload.secondary_lang) {
+    return 'Primary and secondary languages must differ.';
+  }
+  if (group === 'daily' && (!payload.max_new_words_per_day || payload.max_new_words_per_day < 1)) {
+    return 'New words per day must be at least 1.';
+  }
+  if (group === 'gamification' && (!payload.gamification_frequency || payload.gamification_frequency < 1 || payload.gamification_frequency > 1440)) {
+    return 'Frequency must be between 1 and 1440 minutes.';
+  }
+  if (group === 'component-threshold' && (isNaN(payload.component_coverage_threshold) || payload.component_coverage_threshold < 0 || payload.component_coverage_threshold > 100)) {
+    return 'Threshold must be between 0 and 100.';
+  }
+  return null;
+}
+
+describe('localValidationError', () => {
+  it('rejects equal primary/secondary languages for the lang group', () => {
+    expect(localValidationError('lang', { primary_lang: 'en', secondary_lang: 'en' }))
+      .toBe('Primary and secondary languages must differ.');
+  });
+
+  it('allows an empty secondary language for the lang group', () => {
+    expect(localValidationError('lang', { primary_lang: 'en', secondary_lang: '' })).toBeNull();
+  });
+
+  it('rejects max_new_words_per_day below 1 for the daily group', () => {
+    expect(localValidationError('daily', { max_new_words_per_day: 0 }))
+      .toBe('New words per day must be at least 1.');
+  });
+
+  it('rejects an out-of-range gamification_frequency for the gamification group', () => {
+    expect(localValidationError('gamification', { gamification_frequency: 1500 }))
+      .toBe('Frequency must be between 1 and 1440 minutes.');
+  });
+
+  it('rejects an out-of-range component_coverage_threshold for the component-threshold group', () => {
+    expect(localValidationError('component-threshold', { component_coverage_threshold: 150 }))
+      .toBe('Threshold must be between 0 and 100.');
+  });
+
+  it('does not cross-validate a different group\'s concern', () => {
+    // A stale-invalid gamification_frequency must not block a daily-group save.
+    expect(localValidationError('daily', { max_new_words_per_day: 5, gamification_frequency: 9999 })).toBeNull();
+  });
+
+  it('returns null for an unrecognised group', () => {
+    expect(localValidationError('mode', { primary_lang: 'en', secondary_lang: 'en' })).toBeNull();
+  });
+});
