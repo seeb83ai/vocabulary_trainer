@@ -194,6 +194,12 @@ type UserStore interface {
 	ResetFailedLogins(ctx context.Context, userID int64) error
 }
 
+// AdminStore: cross-user aggregate data for the admin dashboard.
+type AdminStore interface {
+	GetAdminOverview(ctx context.Context) (*models.AdminOverview, error)
+	GetUserRole(ctx context.Context, userID int64) (string, error)
+}
+
 // Compile-time guarantees that the concrete *Store provides every sub-store
 // surface, so db.Open() callers and handler construction need no changes.
 var (
@@ -203,4 +209,5 @@ var (
 	_ PinyinStore    = (*Store)(nil)
 	_ ComponentStore = (*Store)(nil)
 	_ UserStore      = (*Store)(nil)
+	_ AdminStore     = (*Store)(nil)
 )

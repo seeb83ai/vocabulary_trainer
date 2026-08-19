@@ -65,6 +65,10 @@ function startMockGitHub() {
 }
 export const TEST_EMAIL = 'e2e@test.local';
 export const TEST_PASSWORD = 'E2eTestPassword123!';
+// Seeded via migration v20 (ADMIN_EMAIL/ADMIN_PASSWORD below) as user id=1,
+// which migration v34 assigns role='admin'.
+export const ADMIN_EMAIL = 'admin@e2e.local';
+export const ADMIN_PASSWORD = 'AdminE2ePassword1!';
 // Second test user — has a single unseen word (start_training: false).
 // Used by quiz.spec.js to test the new-word introduction flow.
 export const TEST_NEWWORD_EMAIL = 'e2e-newword@test.local';
@@ -118,8 +122,8 @@ export default async function globalSetup() {
       // Secure flag so the browser stores the session cookie.
       APP_ENV: 'dev',
       // Skip interactive first-run setup prompts (migration v20)
-      ADMIN_EMAIL: 'admin@e2e.local',
-      ADMIN_PASSWORD: 'AdminE2ePassword1!',
+      ADMIN_EMAIL,
+      ADMIN_PASSWORD,
       USER_EMAIL: 'seed@e2e.local',
       USER_PASSWORD: 'SeedE2ePassword1!',
       // Use minimum bcrypt cost for fast test user creation

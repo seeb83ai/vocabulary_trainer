@@ -96,6 +96,10 @@ type audioStore interface {
 	db.WordStore
 }
 
+type adminStore interface {
+	db.AdminStore
+}
+
 // componentIniter is the minimal surface the initComponents helper needs.
 type componentIniter interface {
 	GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Progress, error)

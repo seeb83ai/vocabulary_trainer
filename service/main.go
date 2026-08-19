@@ -38,7 +38,7 @@ var templateCache map[string]*template.Template
 
 func initTemplates(fsys fs.FS) {
 	templateCache = make(map[string]*template.Template)
-	pages := []string{"train", "vocab", "stats", "mnemonics", "mismatches", "pinyin", "settings"}
+	pages := []string{"train", "vocab", "stats", "mnemonics", "mismatches", "pinyin", "settings", "admin-dashboard"}
 	for _, name := range pages {
 		t, err := template.ParseFS(fsys, "layout.html", name+".html")
 		if err != nil {
@@ -178,6 +178,7 @@ func main() {
 	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
 	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDirs: pinyinAudioDirs}
 	componentH := &handlers.ComponentHandler{Store: store}
+	adminH := &handlers.AdminHandler{Store: store}
 
 	llmClient := llm.NewClientFromEnv()
 	var llmH *handlers.LLMHandler
@@ -359,6 +360,7 @@ func main() {
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
 		r.With(expensiveLimit).Post("/translate", translateH.Translate)
 		r.Get("/github/config", githubH.ConfigFlag)
+		r.With(handlers.RequireAdmin(store)).Get("/admin/overview", adminH.Overview)
 	})
 
 	// Issue submission is registered outside the /api group so it can carry a
@@ -428,6 +430,14 @@ func main() {
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
+	})
+	r.With(handlers.RequireAdmin(store)).Get("/admin-dashboard", func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "admin-dashboard", PageData{
+			Title:       "Admin Dashboard — Vocab Trainer",
+			ActiveNav:   "admin-dashboard",
+			ExtraHead:   template.HTML(`<script src="chart.js"></script>`),
+			PageScripts: []string{"admin-dashboard.js"},
+		})
 	})
 	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "pinyin", PageData{

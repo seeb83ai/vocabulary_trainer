@@ -1,0 +1,108 @@
+{{template "layout" .}}
+{{define "content"}}
+
+  <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8 space-y-8">
+
+    <div>
+      <h2 class="text-lg font-semibold text-gray-800">Admin Dashboard</h2>
+      <p class="text-sm text-gray-500 mt-1">Cross-user usage insights.</p>
+    </div>
+
+    <div id="load-error" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm"></div>
+
+    <!-- Stat tiles -->
+    <div id="stat-tiles" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4"></div>
+
+    <!-- Signups & quiz volume -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-base font-semibold text-gray-800">Signups (last 30 days)</h3>
+        </div>
+        <div class="p-4">
+          <canvas id="signups-chart" height="220"></canvas>
+          <p id="signups-empty" class="hidden text-center py-8 text-gray-400 text-sm">No signups in the last 30 days.</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-base font-semibold text-gray-800">Quiz volume (last 30 days)</h3>
+        </div>
+        <div class="p-4">
+          <canvas id="quiz-volume-chart" height="220"></canvas>
+          <p id="quiz-volume-empty" class="hidden text-center py-8 text-gray-400 text-sm">No quiz activity in the last 30 days.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Guest activity -->
+    <div class="bg-white rounded-2xl shadow overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-base font-semibold text-gray-800">Guest activity — failed logins (last 30 days)</h3>
+        <p class="text-sm text-gray-500 mt-1">Login attempts against unknown or wrong-password accounts, unauthenticated (user_id = 0).</p>
+      </div>
+      <div class="p-4">
+        <canvas id="guest-activity-chart" height="180"></canvas>
+        <p id="guest-activity-empty" class="hidden text-center py-8 text-gray-400 text-sm">No guest activity recorded.</p>
+      </div>
+    </div>
+
+    <!-- DeepL / LLM usage -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div class="bg-white rounded-2xl shadow p-6">
+        <h3 class="text-base font-semibold text-gray-800 mb-2">DeepL translation usage</h3>
+        <p class="text-3xl font-bold text-gray-800" id="deepl-total-calls">0</p>
+        <p class="text-sm text-gray-500">calls across <span id="deepl-unique-users">0</span> users</p>
+      </div>
+      <div class="bg-white rounded-2xl shadow p-6">
+        <h3 class="text-base font-semibold text-gray-800 mb-2">LLM scene generation usage</h3>
+        <p class="text-3xl font-bold text-gray-800" id="llm-total-calls">0</p>
+        <p class="text-sm text-gray-500">calls across <span id="llm-unique-users">0</span> users</p>
+      </div>
+    </div>
+
+    <!-- Page views & feature usage -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-base font-semibold text-gray-800">Page views</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
+              <tr>
+                <th class="py-3 px-4 text-left">Page</th>
+                <th class="py-3 px-4 text-left">Views</th>
+                <th class="py-3 px-4 text-left">Unique users</th>
+                <th class="py-3 px-4 text-left">Last seen</th>
+              </tr>
+            </thead>
+            <tbody id="page-views-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h3 class="text-base font-semibold text-gray-800">Feature usage</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
+              <tr>
+                <th class="py-3 px-4 text-left">Feature</th>
+                <th class="py-3 px-4 text-left">Calls</th>
+                <th class="py-3 px-4 text-left">Unique users</th>
+                <th class="py-3 px-4 text-left">Last seen</th>
+              </tr>
+            </thead>
+            <tbody id="feature-usage-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+{{end}}
