@@ -62,7 +62,12 @@ test.describe('Difficult-words drill', () => {
       await answer(id, w.en[0]);
       // Now make it difficult: several wrong answers drop accuracy well below 50 %.
       for (let i = 0; i < 5; i++) await answer(id, 'definitely-wrong');
-      // One final correct answer pushes due_date to tomorrow (off today's queue).
+      // Two correct answers push due_date well past tomorrow. A single correct
+      // answer at this point sets a 1-day interval with a ±2h jitter, which can
+      // land back on today's calendar date when run close to midnight UTC; a
+      // second correct answer escalates to a 6-day interval, safely clearing
+      // that jitter window regardless of time of day.
+      await answer(id, w.en[0]);
       await answer(id, w.en[0]);
     }
 
