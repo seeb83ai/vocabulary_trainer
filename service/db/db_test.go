@@ -4282,9 +4282,13 @@ func TestGetNextComponentCard_DoesNotServeFutureComponent(t *testing.T) {
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman; female")
 	seedHanziTranslation(t, s, "女", "en", "woman")
-	// Simulate a component whose due_date is 23 hours from now — this is the
-	// range SM-2 uses after a correct answer with interval=1 day + negative jitter.
-	future := time.Now().Add(23 * time.Hour)
+	// Simulate a component whose due_date SM-2 pushed to tomorrow (interval=1
+	// day, the range used after a correct answer). GetNextComponentCard filters
+	// by calendar date, not elapsed hours, so the due_date must land on
+	// tomorrow's date regardless of what time this test happens to run —
+	// Add(23*time.Hour) only does that outside the last hour of the UTC day,
+	// which made this test flake right around midnight.
+	future := time.Now().AddDate(0, 0, 1)
 	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", future)
 
 	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
