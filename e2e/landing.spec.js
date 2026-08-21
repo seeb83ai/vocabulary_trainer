@@ -30,4 +30,16 @@ test.describe('Landing page', () => {
     await expect(page.locator('#panel-register')).toBeVisible();
     await expect(page.locator('#panel-signin')).toBeHidden();
   });
+
+  test('small screens stack login on top, value proposition below, demo quiz last', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto('/');
+
+    const authTop = await page.locator('#auth-column').boundingBox();
+    const heroTop = await page.locator('#hero').boundingBox();
+    const demoTop = await page.locator('#demo-section-wrap').boundingBox();
+
+    expect(authTop.y).toBeLessThan(heroTop.y);
+    expect(heroTop.y).toBeLessThan(demoTop.y);
+  });
 });

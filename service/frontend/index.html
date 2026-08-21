@@ -26,10 +26,17 @@
 
   <!-- Main content -->
   <main class="flex-1 px-4 py-10 md:py-16">
-    <div class="max-w-5xl mx-auto grid gap-10 md:grid-cols-2 md:items-center">
+    <!--
+      Mobile (flex-col): order-* stacks login on top, the hero value
+      proposition below it, and the demo quiz last.
+      Desktop (md:grid): explicit row/col placement restores the original
+      two-column layout — hero spans the full left column, login and the
+      demo quiz stack in the right column.
+    -->
+    <div class="max-w-5xl mx-auto flex flex-col gap-10 md:grid md:grid-cols-2 md:items-start">
 
     <!-- Hero / value proposition -->
-    <section id="hero">
+    <section id="hero" class="order-2 md:order-none md:col-start-1 md:row-start-1 md:row-span-2">
       <h1 id="hero-title" class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Learn Chinese vocabulary that sticks.</h1>
       <p class="text-gray-600 text-lg mb-6">A free spaced-repetition trainer: every word comes back for review right before you would forget it. A few minutes a day is enough.</p>
       <ul id="hero-features" class="space-y-3 text-gray-700 mb-8">
@@ -53,7 +60,7 @@
       <p class="mt-3 text-sm text-gray-500">Free · Open source · HSK 1–6 word lists included</p>
     </section>
 
-    <div class="w-full max-w-md md:justify-self-end" id="auth-column">
+    <div class="order-1 md:order-none w-full max-w-md md:col-start-2 md:row-start-1 md:justify-self-end" id="auth-column">
 
       <!-- HIBP warning banner (shown after login with compromised password) -->
       <div id="hibp-warning" class="hidden mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4">
@@ -142,9 +149,11 @@
         </div>
 
       </div>
+    </div>
 
-      <!-- Try-it demo quiz (no account needed) -->
-      <div id="demo-section" class="bg-white rounded-2xl shadow p-8 mt-6">
+    <!-- Try-it demo quiz (no account needed) -->
+    <div id="demo-section-wrap" class="order-3 md:order-none w-full max-w-md md:col-start-2 md:row-start-2 md:justify-self-end">
+      <div id="demo-section" class="bg-white rounded-2xl shadow p-8">
         <h2 class="text-lg font-semibold text-gray-800 mb-1">Try it — no account needed</h2>
         <p class="text-sm text-gray-500 mb-6">Translate five Chinese words to see how the trainer works.</p>
 
@@ -152,7 +161,7 @@
           <div class="mb-4">
             <span id="demo-progress" class="text-xs font-medium uppercase tracking-wide text-gray-400"></span>
           </div>
-          <div class="text-center mb-6">
+          <div id="demo-question" class="text-center mb-6">
             <div id="demo-zh" class="text-5xl font-bold text-gray-900 mb-2"></div>
             <div id="demo-pinyin" class="text-gray-500"></div>
           </div>
@@ -162,9 +171,13 @@
             <button type="submit" id="demo-submit"
               class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-5 rounded-xl transition">Check</button>
           </form>
-          <div id="demo-feedback" class="hidden mt-4 text-sm rounded-lg px-3 py-2"></div>
+          <!-- Mirrors the real quiz's result screen (#result-icon / #word-breakdown in train.html). -->
+          <div id="demo-feedback" class="hidden text-center">
+            <div id="demo-icon" class="text-3xl font-bold mb-4"></div>
+            <div id="demo-breakdown" class="text-left space-y-2"></div>
+          </div>
           <button id="demo-next" type="button"
-            class="hidden mt-3 w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition">Next word</button>
+            class="hidden mt-4 w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition">Next word</button>
         </div>
 
         <div id="demo-done" class="hidden text-center py-4">
