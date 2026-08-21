@@ -370,7 +370,7 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 	}
 
 	switch mode {
-	case "zh_to_transl", "zh_pinyin_to_transl":
+	case models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
 		// Fetch all translation words for the user across ALL languages (excluding
 		// translations of the word being quizzed), then match in Go using ExpandVariants.
 		// Language-agnostic: when transl_to_zh has no translations in the selected lang
@@ -402,7 +402,7 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		}
 		return 0, false, rows.Err()
 
-	case "transl_to_zh":
+	case models.ModeTranslToZh:
 		// First: find a ZH word whose text matches the answer (user typed Chinese).
 		var confusedWithID int64
 		err := s.db.QueryRowContext(ctx, `
