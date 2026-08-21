@@ -131,39 +131,50 @@ test.describe('Gamification — match game', () => {
     const wB = await api(request, 'POST', '/api/words', {
       zh_text: '可能', pinyin: 'kě néng', translations: { de: ['können', 'möglicherweise'] }, tags: [], start_training: true,
     });
-    const words = [
-      { zh_word_id: wA.id, zh_text: '能', pinyin: 'néng', translations: { de: ['in der Lage sein', 'können'] } },
-      { zh_word_id: wB.id, zh_text: '可能', pinyin: 'kě néng', translations: { de: ['können', 'möglicherweise'] } },
-    ];
+    try {
+      const words = [
+        { zh_word_id: wA.id, zh_text: '能', pinyin: 'néng', translations: { de: ['in der Lage sein', 'können'] } },
+        { zh_word_id: wB.id, zh_text: '可能', pinyin: 'kě néng', translations: { de: ['können', 'möglicherweise'] } },
+      ];
 
-    await page.goto(`${BASE_URL}/train`);
-    await page.evaluate((w) => {
-      // @ts-ignore
-      window.__mgDone = false;
-      // @ts-ignore
-      window.showMatchGame(w).then(() => { window.__mgDone = true; });
-    }, words);
-    await expect(page.locator('#match-game-overlay')).toBeVisible();
+      await page.goto(`${BASE_URL}/train`);
+      await page.evaluate((w) => {
+        // @ts-ignore
+        window.__mgDone = false;
+        // @ts-ignore
+        window.showMatchGame(w).then(() => { window.__mgDone = true; });
+      }, words);
+      await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-    const nengBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('能', { exact: true }) });
-    const konnenBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('können', { exact: true }) });
-    const keNengBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('可能', { exact: true }) });
-    const lageBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('in der Lage sein', { exact: true }) });
+      const nengBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('能', { exact: true }) });
+      const konnenBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('können', { exact: true }) });
+      const keNengBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('可能', { exact: true }) });
+      const lageBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('in der Lage sein', { exact: true }) });
 
-    await nengBox.click();
-    await konnenBox.click();
-    await expect(nengBox).toHaveClass(/border-yellow-500/);
-    await expect(nengBox).not.toHaveClass(/border-green-500/);
-    await page.waitForTimeout(900); // let the blocked-state reset timeout fire
+      await nengBox.click();
+      await konnenBox.click();
+      await expect(nengBox).toHaveClass(/border-yellow-500/);
+      await expect(nengBox).not.toHaveClass(/border-green-500/);
+      await page.waitForTimeout(900); // let the blocked-state reset timeout fire
 
-    // 能 solves against its own box, then 可能 can still claim "können".
-    await nengBox.click();
-    await lageBox.click();
-    await keNengBox.click();
-    await konnenBox.click();
+      // 能 solves against its own box, then 可能 can still claim "können".
+      await nengBox.click();
+      await lageBox.click();
+      await keNengBox.click();
+      await konnenBox.click();
 
-    await expect(page.locator('#match-game-overlay')).toBeHidden({ timeout: 3000 });
-    expect(await page.evaluate(() => /** @ts-ignore */ window.__mgDone)).toBe(true);
+      await expect(page.locator('#match-game-overlay')).toBeHidden({ timeout: 3000 });
+      expect(await page.evaluate(() => /** @ts-ignore */ window.__mgDone)).toBe(true);
+    } finally {
+      // These words are created directly against the shared main test user
+      // (single worker, single DB, tests run in file order). Left behind,
+      // they are DE-only and immediately due, so later specs (e.g.
+      // quiz.spec.js) that assume the seeded EN-only vocabulary can be
+      // unexpectedly served one of these as the next due card. Delete them
+      // once this test is done so they don't leak into other specs.
+      await request.delete(`${BASE_URL}/api/words/${wA.id}`);
+      await request.delete(`${BASE_URL}/api/words/${wB.id}`);
+    }
   });
 
   test('settings page saves gamification toggle', async ({ page }) => {
