@@ -663,3 +663,14 @@ type PinyinConfusionDetail struct {
 	ConfusedWithLabel string `json:"confused_with_label"`
 	Count             int    `json:"count"`
 }
+
+// FunnelReport aggregates the signup → activation → retention funnel.
+// All counts exclude the shared library user (id=1).
+type FunnelReport struct {
+	Registered   int `json:"registered"`     // accounts created
+	Verified     int `json:"verified"`       // accounts with a verified email
+	Activated    int `json:"activated"`      // users with at least one training day
+	Engaged      int `json:"engaged"`        // users whose total attempts reached the threshold
+	Returned     int `json:"returned"`       // users with at least two distinct training days
+	ReturnedDay1 int `json:"returned_day_1"` // users who trained again the day after their first session
+}

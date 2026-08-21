@@ -167,6 +167,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/hanzi.go` | Hanzi decomposition queries, zh-text translation lookups, `StoreTranslationForZhChar` |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
+| `service/db/funnel.go` | Signup → activation → retention funnel (`GetFunnelReport`) |
 
 ### Handlers (`service/handlers/`)
 | Path | Purpose |
@@ -209,6 +210,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
 | `service/cmd/import-hanzi/main.go` | Import hanzi decomposition dataset |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
+| `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
 
 ### E2E tests (`e2e/`)
 | Path | Purpose |
