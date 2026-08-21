@@ -171,7 +171,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
-	demoH := &handlers.DemoHandler{}
+	demoH := &handlers.DemoHandler{Store: s}
 	r.Get("/api/demo/cards", demoH.Cards)
 	r.Post("/api/demo/answer", demoH.Answer)
 	r.Post("/api/quiz/record-time", quizH.RecordTime)
@@ -7843,5 +7843,32 @@ func TestDemoAnswer_InvalidRequests(t *testing.T) {
 	rec = do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": -1, "answer": "x"})
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("negative card_id: want 400, got %d", rec.Code)
+	}
+}
+
+func TestDemoAnswer_RecordsAuditLogEntry(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": 0, "answer": "hello"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+
+	// httptest.NewRequest defaults RemoteAddr to 192.0.2.1:1234.
+	entries, err := s.GetAuditLogByIP(context.Background(), "192.0.2.1", 10)
+	if err != nil {
+		t.Fatalf("GetAuditLogByIP: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("want 1 audit entry, got %d", len(entries))
+	}
+	if entries[0].Action != db.AuditDemoAnswer {
+		t.Errorf("action: want %q, got %q", db.AuditDemoAnswer, entries[0].Action)
+	}
+	// user_id stays 0 — the demo has no account, matching the existing
+	// convention for pre-account audit events (e.g. failed logins).
+	if entries[0].UserID != 0 {
+		t.Errorf("user_id: want 0, got %d", entries[0].UserID)
 	}
 }

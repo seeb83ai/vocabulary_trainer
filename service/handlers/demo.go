@@ -2,16 +2,22 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/sm2"
 )
 
 // DemoHandler serves the unauthenticated try-before-signup quiz on the
 // landing page. The card set is fixed and stateless: no user data is read
 // or written, answers are checked with the same sm2.CheckAnswer logic the
-// real quiz uses.
-type DemoHandler struct{}
+// real quiz uses. Each answer is recorded to the audit log (user_id 0, like
+// other pre-account events) so demo engagement is visible without touching
+// the real quiz stats or funnel tables.
+type DemoHandler struct {
+	Store *db.Store
+}
 
 type demoCard struct {
 	ID           int      `json:"id"`
@@ -55,8 +61,13 @@ func (h *DemoHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card := demoCardSet[req.CardID]
+	correct := sm2.CheckAnswer(req.Answer, card.Translations)
+
+	detail := fmt.Sprintf("card_id=%d correct=%v", card.ID, correct)
+	_ = h.Store.RecordAuditLog(r.Context(), 0, db.AuditDemoAnswer, ClientIP(r), detail)
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"correct":      sm2.CheckAnswer(req.Answer, card.Translations),
+		"correct":      correct,
 		"translations": card.Translations,
 	})
 }

@@ -170,7 +170,7 @@ func main() {
 	}
 	importH := &handlers.ImportHandler{Store: store}
 	tagsH := &handlers.TagsHandler{Store: store}
-	demoH := &handlers.DemoHandler{}
+	demoH := &handlers.DemoHandler{Store: store}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
 	mismatchH := &handlers.MismatchesHandler{Store: store}
 	hanziH := &handlers.HanziHandler{Store: store}
