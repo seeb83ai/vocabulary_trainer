@@ -622,6 +622,29 @@ func TestQuizAnswer_EnToZh(t *testing.T) {
 	}
 }
 
+// Regression for issue #309/#311: a word stored with a fullwidth-paren POS
+// annotation ("还（动词）") must accept the bare character as correct in
+// transl_to_zh mode, just like an ASCII-paren annotation already does.
+func TestQuizAnswer_TranslToZh_FullwidthParensAnnotationStripped(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "还（动词）", "huán", []string{"Return"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeTranslToZh,
+		Answer: "还",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("'还' should be accepted as correct for '还（动词）' — fullwidth parens mark an optional segment")
+	}
+}
+
 // ── TranslToZh wrong answer: user_answer_pinyin ───────────────────────────────
 
 func TestQuizAnswer_TranslToZh_WrongKnownWordIncludesPinyin(t *testing.T) {
@@ -1357,6 +1380,54 @@ func TestQuizNext_ProgressiveNewWord(t *testing.T) {
 	}
 	if len(card.Translations["en"]) != 2 {
 		t.Errorf("en_texts should have 2 entries, got %d", len(card.Translations["en"]))
+	}
+}
+
+// TestQuizNext_ProgressiveNewWord_PinyinCoversFullText guards against a New
+// Word card only showing pinyin for the headword when the zh text carries a
+// bracketed annotation (e.g. "过（动词）") and the stored pinyin predates it —
+// the card should regenerate a full-text pinyin instead of the stale partial one.
+func TestQuizNext_ProgressiveNewWord_PinyinCoversFullText(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "过（动词）", "guò", []string{"pass"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Pinyin == nil {
+		t.Fatal("want non-nil pinyin")
+	}
+	want := "guò dòng cí"
+	if *card.Pinyin != want {
+		t.Errorf("want full-text pinyin %q, got %q", want, *card.Pinyin)
+	}
+}
+
+// TestQuizNext_ProgressiveNewWord_PinyinAlreadyComplete_NotOverwritten ensures
+// the regeneration only kicks in when the stored pinyin is short — a
+// hand-curated pinyin that already covers every character (e.g. picking one
+// reading of a polyphonic character) must not be silently replaced.
+func TestQuizNext_ProgressiveNewWord_PinyinAlreadyComplete_NotOverwritten(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "得（动词）", "dei3 dong4 ci2", []string{"must"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Pinyin == nil {
+		t.Fatal("want non-nil pinyin")
+	}
+	want := "dei3 dong4 ci2"
+	if *card.Pinyin != want {
+		t.Errorf("stored pinyin already covers the text, want it kept as %q, got %q", want, *card.Pinyin)
 	}
 }
 

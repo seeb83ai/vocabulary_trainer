@@ -236,7 +236,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			WordID:           word.ID,
 			Mode:             models.ModeNewWord,
 			Prompt:           word.Text,
-			Pinyin:           word.Pinyin,
+			Pinyin:           fullPinyinForDisplay(word.Text, word.Pinyin),
 			DueDate:          progress.DueDate,
 			IntervalDays:     progress.IntervalDays,
 			SessionExtension: sessionExtension,
