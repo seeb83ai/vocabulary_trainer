@@ -4824,7 +4824,7 @@ func TestComponentList_SearchFilter(t *testing.T) {
 
 // ── GET /api/components/coverage ─────────────────────────────────────────────
 
-func TestComponentCoverage_ReturnsWordCountsAndPct(t *testing.T) {
+func TestComponentCoverage_ReturnsWordIDSets(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionWithDecompForTest(ctx, "明", "bright", "⿰日月"); err != nil {
@@ -4861,14 +4861,9 @@ func TestComponentCoverage_ReturnsWordCountsAndPct(t *testing.T) {
 	}
 	for _, raw := range items {
 		item := raw.(map[string]any)
-		if item["word_count"].(float64) != 1 {
-			t.Errorf("want word_count=1 for %v, got %v", item["character"], item["word_count"])
-		}
-		if item["coverage_pct"].(float64) != 100 {
-			t.Errorf("want coverage_pct=100 for %v, got %v", item["character"], item["coverage_pct"])
-		}
-		if item["already_trained"] != false {
-			t.Errorf("want already_trained=false for %v (word not started training), got %v", item["character"], item["already_trained"])
+		wordIDs, _ := item["word_ids"].([]any)
+		if len(wordIDs) != 1 {
+			t.Errorf("want word_ids of length 1 for %v, got %v", item["character"], item["word_ids"])
 		}
 	}
 }
