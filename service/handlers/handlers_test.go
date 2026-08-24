@@ -171,6 +171,9 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)
 	r.Get("/api/quiz/word-stats", quizH.WordStats)
 	r.Get("/api/quiz/due-date-distribution", quizH.DueDateDistribution)
+	demoH := &handlers.DemoHandler{Store: s}
+	r.Get("/api/demo/cards", demoH.Cards)
+	r.Post("/api/demo/answer", demoH.Answer)
 	r.Post("/api/quiz/record-time", quizH.RecordTime)
 	r.Get("/api/mismatches", mismatchH.List)
 	r.Route("/api/words", func(r chi.Router) {
@@ -199,6 +202,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/github/issues", ghH.Create)
 	r.Get("/api/github/config", ghH.ConfigFlag)
 	r.Get("/api/components", componentH.List)
+	r.Get("/api/components/coverage", componentH.Coverage)
 	r.Post("/api/component/answer", componentH.Answer)
 	r.Post("/api/component/accept-correct", componentH.AcceptCorrect)
 	r.Post("/api/component/seen", componentH.Seen)
@@ -311,6 +315,96 @@ func TestQuizNext_ReturnsCard(t *testing.T) {
 	}
 	if card.Prompt == "" {
 		t.Error("prompt should not be empty")
+	}
+}
+
+// enableSentenceBlank fetches the user's current settings, flips the
+// sentence-blank fields, and saves them back — mirroring how the frontend
+// settings page PATCHes the full settings object.
+func enableSentenceBlank(t *testing.T, s *db.Store, userID int64, enabled bool, ratio int) {
+	t.Helper()
+	ctx := context.Background()
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.SentenceBlankEnabled = enabled
+	st.SentenceBlankRatio = ratio
+	if err := s.UpdateUserSettings(ctx, userID, *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+}
+
+// seedSentenceScenario seeds three acknowledged component words plus a
+// sentence word (我买牛奶, tagged s_test, left unacknowledged) that fully
+// segments from them — the shared fixture for sentence-blank handler tests.
+func seedSentenceScenario(t *testing.T, s *db.Store, userID int64) (wo, mai, niunai int64) {
+	t.Helper()
+	ctx := context.Background()
+	wo = seedWordFull(t, s, userID, "我", "wǒ", []string{"I"}, nil, nil)
+	mai = seedWordFull(t, s, userID, "买", "mǎi", []string{"buy"}, nil, nil)
+	niunai = seedWordFull(t, s, userID, "牛奶", "niú nǎi", []string{"milk"}, nil, nil)
+	for _, id := range []int64{wo, mai, niunai} {
+		if err := s.AcknowledgeWord(ctx, userID, id); err != nil {
+			t.Fatalf("AcknowledgeWord %d: %v", id, err)
+		}
+	}
+	seedWordFull(t, s, userID, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I buy milk"}, nil, []string{"s_test"})
+	return
+}
+
+func TestQuizNext_SentenceBlank_ServedWhenEnabledAndEligible(t *testing.T) {
+	s := openTestDB(t)
+	wo, mai, niunai := seedSentenceScenario(t, s, 2)
+	enableSentenceBlank(t, s, 2, true, 100)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.CardType != "sentence" {
+		t.Fatalf("want card_type=sentence, got %q (body: %s)", card.CardType, rec.Body)
+	}
+	if card.WordID != wo && card.WordID != mai && card.WordID != niunai {
+		t.Errorf("word_id %d is not one of the seeded component words", card.WordID)
+	}
+	if !strings.Contains(card.SentenceBlank, "___") {
+		t.Errorf("sentence_blank should contain a blank marker, got %q", card.SentenceBlank)
+	}
+}
+
+func TestQuizNext_SentenceBlank_NeverServedWhenDisabled(t *testing.T) {
+	s := openTestDB(t)
+	seedSentenceScenario(t, s, 2)
+	enableSentenceBlank(t, s, 2, false, 100)
+	r := newRouter(s)
+
+	for i := 0; i < 10; i++ {
+		rec := do(t, r, "GET", "/api/quiz/next?langs=en", nil)
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.CardType == "sentence" {
+			t.Fatal("sentence card must never be served when sentence_blank_enabled=false")
+		}
+	}
+}
+
+func TestQuizNext_SentenceBlank_NeverServedWhenRatioZero(t *testing.T) {
+	s := openTestDB(t)
+	seedSentenceScenario(t, s, 2)
+	enableSentenceBlank(t, s, 2, true, 0)
+	r := newRouter(s)
+
+	for i := 0; i < 10; i++ {
+		rec := do(t, r, "GET", "/api/quiz/next?langs=en", nil)
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.CardType == "sentence" {
+			t.Fatal("sentence card must never be served when sentence_blank_ratio=0")
+		}
 	}
 }
 
@@ -616,6 +710,29 @@ func TestQuizAnswer_EnToZh(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if !resp.Correct {
 		t.Error("answer '你好' for en_to_zh should be correct")
+	}
+}
+
+// Regression for issue #309/#311: a word stored with a fullwidth-paren POS
+// annotation ("还（动词）") must accept the bare character as correct in
+// transl_to_zh mode, just like an ASCII-paren annotation already does.
+func TestQuizAnswer_TranslToZh_FullwidthParensAnnotationStripped(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "还（动词）", "huán", []string{"Return"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id,
+		Mode:   models.ModeTranslToZh,
+		Answer: "还",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("'还' should be accepted as correct for '还（动词）' — fullwidth parens mark an optional segment")
 	}
 }
 
@@ -1354,6 +1471,54 @@ func TestQuizNext_ProgressiveNewWord(t *testing.T) {
 	}
 	if len(card.Translations["en"]) != 2 {
 		t.Errorf("en_texts should have 2 entries, got %d", len(card.Translations["en"]))
+	}
+}
+
+// TestQuizNext_ProgressiveNewWord_PinyinCoversFullText guards against a New
+// Word card only showing pinyin for the headword when the zh text carries a
+// bracketed annotation (e.g. "过（动词）") and the stored pinyin predates it —
+// the card should regenerate a full-text pinyin instead of the stale partial one.
+func TestQuizNext_ProgressiveNewWord_PinyinCoversFullText(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "过（动词）", "guò", []string{"pass"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Pinyin == nil {
+		t.Fatal("want non-nil pinyin")
+	}
+	want := "guò dòng cí"
+	if *card.Pinyin != want {
+		t.Errorf("want full-text pinyin %q, got %q", want, *card.Pinyin)
+	}
+}
+
+// TestQuizNext_ProgressiveNewWord_PinyinAlreadyComplete_NotOverwritten ensures
+// the regeneration only kicks in when the stored pinyin is short — a
+// hand-curated pinyin that already covers every character (e.g. picking one
+// reading of a polyphonic character) must not be silently replaced.
+func TestQuizNext_ProgressiveNewWord_PinyinAlreadyComplete_NotOverwritten(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "得（动词）", "dei3 dong4 ci2", []string{"must"})
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=progressive", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Pinyin == nil {
+		t.Fatal("want non-nil pinyin")
+	}
+	want := "dei3 dong4 ci2"
+	if *card.Pinyin != want {
+		t.Errorf("stored pinyin already covers the text, want it kept as %q, got %q", want, *card.Pinyin)
 	}
 }
 
@@ -4765,6 +4930,66 @@ func TestComponentList_SearchFilter(t *testing.T) {
 	}
 }
 
+// ── GET /api/components/coverage ─────────────────────────────────────────────
+
+func TestComponentCoverage_ReturnsWordIDSets(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionWithDecompForTest(ctx, "明", "bright", "⿰日月"); err != nil {
+		t.Fatalf("seed 明: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "日", "sun; day"); err != nil {
+		t.Fatalf("seed 日: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "月", "moon; month"); err != nil {
+		t.Fatalf("seed 月: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:       "明",
+		Translations: map[string][]string{"en": {"bright"}},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create word: want 201, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec2 := do(t, r, http.MethodGet, "/api/components/coverage", nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec2, &resp)
+	if tw, _ := resp["total_words"].(float64); int(tw) != 1 {
+		t.Errorf("want total_words=1, got %v", resp["total_words"])
+	}
+	items, _ := resp["components"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("want 2 components (日, 月), got %d: %v", len(items), items)
+	}
+	for _, raw := range items {
+		item := raw.(map[string]any)
+		wordIDs, _ := item["word_ids"].([]any)
+		if len(wordIDs) != 1 {
+			t.Errorf("want word_ids of length 1 for %v, got %v", item["character"], item["word_ids"])
+		}
+	}
+}
+
+func TestComponentCoverage_Empty(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodGet, "/api/components/coverage", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec, &resp)
+	items, _ := resp["components"].([]any)
+	if len(items) != 0 {
+		t.Errorf("want empty components on fresh DB, got %d", len(items))
+	}
+}
+
 func TestHMMBreakdown_Empty(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodGet, "/api/hmm/breakdown", nil)
@@ -4916,6 +5141,182 @@ func TestPatchSettings_ExtendSessionWithExtraWords_RoundTrip(t *testing.T) {
 	decodeJSON(t, rec, &st)
 	if st.ExtendSessionWithExtraWords {
 		t.Error("want extend_session_with_extra_words=false after patch")
+	}
+}
+
+// ── PATCH /api/settings — random-mode-range (per-bucket mode eligibility) ────
+
+func TestPatchSettings_RandomModeRange_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "new,50-69"
+	payload["random_mode_range_zh_to_transl"] = "off"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "new,70-84"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "50-69,85-100"
+	payload["random_mode_range_voice_to_transl"] = "70-84,85-100"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.RandomModeRangeTranslToZh != "new,50-69" {
+		t.Errorf("random_mode_range_transl_to_zh: want %q, got %q", "new,50-69", st.RandomModeRangeTranslToZh)
+	}
+	if st.RandomModeRangeZhToTransl != "off" {
+		t.Errorf("random_mode_range_zh_to_transl: want %q, got %q", "off", st.RandomModeRangeZhToTransl)
+	}
+	if st.RandomModeRangeZhPinyinToTransl != "new,70-84" {
+		t.Errorf("random_mode_range_zh_pinyin_to_transl: want %q, got %q", "new,70-84", st.RandomModeRangeZhPinyinToTransl)
+	}
+	if st.RandomModeRangeZhToTranslNoSound != "50-69,85-100" {
+		t.Errorf("random_mode_range_zh_to_transl_no_sound: want %q, got %q", "50-69,85-100", st.RandomModeRangeZhToTranslNoSound)
+	}
+	if st.RandomModeRangeVoiceToTransl != "70-84,85-100" {
+		t.Errorf("random_mode_range_voice_to_transl: want %q, got %q", "70-84,85-100", st.RandomModeRangeVoiceToTransl)
+	}
+}
+
+func TestPatchSettings_RandomModeRange_InvalidFormatRejected(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "bogus"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for malformed random_mode_range_transl_to_zh, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Turning every mode "off" leaves every bucket with zero eligible modes —
+// the save must be rejected (400) and nothing must be persisted.
+func TestPatchSettings_RandomModeRange_UncoveredBucketRejected(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Confirm the pre-existing (default) value before the rejected attempt.
+	before := do(t, r, http.MethodGet, "/api/settings", nil)
+	var beforeSt models.UserSettings
+	decodeJSON(t, before, &beforeSt)
+
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "off"
+	payload["random_mode_range_zh_to_transl"] = "off"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
+	payload["random_mode_range_voice_to_transl"] = "off"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 when every bucket is left uncovered, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify nothing was persisted.
+	after := do(t, r, http.MethodGet, "/api/settings", nil)
+	var afterSt models.UserSettings
+	decodeJSON(t, after, &afterSt)
+	if afterSt.RandomModeRangeTranslToZh != beforeSt.RandomModeRangeTranslToZh {
+		t.Errorf("rejected PATCH must not persist: random_mode_range_transl_to_zh changed from %q to %q",
+			beforeSt.RandomModeRangeTranslToZh, afterSt.RandomModeRangeTranslToZh)
+	}
+}
+
+// A narrow but non-empty per-bucket coverage (a partial ladder that still
+// covers every bucket) must be accepted.
+func TestPatchSettings_RandomModeRange_PartialCoverageAccepted(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	// Single mode spanning the full ladder covers every bucket on its own.
+	payload["random_mode_range_transl_to_zh"] = "new,85-100"
+	payload["random_mode_range_zh_to_transl"] = "off"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
+	payload["random_mode_range_voice_to_transl"] = "off"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for a config that still covers every bucket, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── GET /api/quiz/next — random/cycle mode respects per-bucket restrictions ──
+
+func TestQuizNext_RandomMode_RespectsBucketRestriction(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	// Restrict the "new" bucket to zh_to_transl only.
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "off"
+	payload["random_mode_range_zh_to_transl"] = "new,85-100"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
+	payload["random_mode_range_voice_to_transl"] = "off"
+	if rec := do(t, r, http.MethodPatch, "/api/settings", payload); rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	// Word is now in the "new" bucket (learning_new_word=true).
+
+	for i := 0; i < 20; i++ {
+		rec := do(t, r, "GET", "/api/quiz/next?mode=random", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.Mode != models.ModeZhToTransl {
+			t.Fatalf("random mode with restrictive config: want %s, got %s", models.ModeZhToTransl, card.Mode)
+		}
+	}
+}
+
+func TestQuizNext_CycleMode_RespectsBucketRestriction(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	// Restrict the "new" bucket to zh_to_transl only, and configure a cycle
+	// sequence that does not include zh_to_transl at all — forcing the
+	// bucket-restricted fallback path.
+	payload := baseSettingsPatch()
+	payload["random_mode_range_transl_to_zh"] = "off"
+	payload["random_mode_range_zh_to_transl"] = "new,85-100"
+	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
+	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
+	payload["random_mode_range_voice_to_transl"] = "off"
+	payload["cycle_sequence"] = "transl_to_zh,zh_pinyin_to_transl"
+	if rec := do(t, r, http.MethodPatch, "/api/settings", payload); rec.Code != http.StatusOK {
+		t.Fatalf("PATCH /api/settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeZhToTransl {
+		t.Errorf("cycle mode with no bucket-eligible configured step: want fallback %s, got %s", models.ModeZhToTransl, card.Mode)
 	}
 }
 
@@ -6146,7 +6547,11 @@ func TestQuizCycleWraps(t *testing.T) {
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	// Set total_attempts=4 directly so position=(4-1)%3=0 → back to step 0.
+	// Set total_attempts=4 so position=(4-1)%3=0 in the raw 3-step default
+	// sequence. The word stays in the "new" bucket (learning_new_word=true),
+	// and the default random-mode-range ladder makes zh_to_transl ineligible
+	// there, so the cycle sequence is filtered down to [zh_pinyin_to_transl,
+	// transl_to_zh] before indexing — position (4-1)%2=1 → transl_to_zh.
 	// AcknowledgeWord first to set first_seen_date (required for GetNextCard).
 	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
@@ -6170,9 +6575,9 @@ func TestQuizCycleWraps(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	// total_attempts=4 → (4-1)%3=0 → zh_pinyin_to_transl (wrapped back to step 0)
-	if card.Mode != models.ModeZhPinyinToTransl {
-		t.Errorf("cycle wrapped: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	// total_attempts=4 → bucket-filtered 2-step sequence → (4-1)%2=1 → transl_to_zh
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("cycle wrapped (bucket-filtered): want %s, got %s", models.ModeTranslToZh, card.Mode)
 	}
 }
 
@@ -7179,8 +7584,28 @@ func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
 
 // ── GET /api/quiz/match-game ──────────────────────────────────────────────────
 
+// enableOnlyGameMode disables every match-game mode except keep, so a test can
+// exercise one mode's fetch/repeat-avoidance logic in isolation despite all 4
+// modes defaulting to enabled (issue #288).
+func enableOnlyGameMode(t *testing.T, s *db.Store, keep string) {
+	t.Helper()
+	ctx := context.Background()
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.GameModeMismatch = keep == "mismatch"
+	st.GameModeNewest = keep == "newest"
+	st.GameModeHardest = keep == "hardest"
+	st.GameModeLastMistakes = keep == "last_mistakes"
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	// Only 1 confusion pair — game should not trigger
@@ -7202,6 +7627,7 @@ func TestMatchGame_EmptyWhenFewerThan2Pairs(t *testing.T) {
 
 func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
@@ -7227,6 +7653,7 @@ func TestMatchGame_Returns4UniqueWordsFrom2Pairs(t *testing.T) {
 
 func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
@@ -7251,6 +7678,7 @@ func TestMatchGame_DeduplicatesOverlappingPairs(t *testing.T) {
 
 func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
 	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
@@ -7284,6 +7712,7 @@ func TestMatchGame_MarksShownAndHidesOnSecondCall(t *testing.T) {
 // match game the same way word-vs-word pairs already do.
 func TestMatchGame_IncludesComponentPairs(t *testing.T) {
 	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
 	ctx := context.Background()
 	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
@@ -7317,6 +7746,120 @@ func TestMatchGame_IncludesComponentPairs(t *testing.T) {
 	}
 	if !sawComponent {
 		t.Error("expected at least one component-kind word in the match game")
+	}
+}
+
+// ── GET /api/quiz/match-game — issue #288 gamification modes ─────────────────
+
+func makeDifficultForTest(t *testing.T, s *db.Store, wordID int64, totalCorrect, totalAttempts int) {
+	t.Helper()
+	if _, err := s.ExecForTest(`UPDATE sm2_progress SET learning_new_word = 0, first_seen_at = datetime('now'),
+		total_correct = ?, total_attempts = ?, last_attempt_at = datetime('now', '-2 hours')
+		WHERE word_id = ?`, totalCorrect, totalAttempts, wordID); err != nil {
+		t.Fatalf("makeDifficultForTest(%d): %v", wordID, err)
+	}
+}
+
+func TestMatchGame_OnlyHardestEnabled_ReturnsHardestCandidates(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "hardest")
+	a := seedWord(t, s, "一", "", []string{"one"})
+	b := seedWord(t, s, "二", "", []string{"two"})
+	makeDifficultForTest(t, s, a, 1, 10)
+	makeDifficultForTest(t, s, b, 2, 10)
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 2 {
+		t.Fatalf("expected 2 hardest-mode candidates, got %d: %+v", len(resp.Words), resp.Words)
+	}
+	ids := map[int64]bool{}
+	for _, w := range resp.Words {
+		ids[w.ZhWordID] = true
+	}
+	if !ids[a] || !ids[b] {
+		t.Errorf("expected words %d and %d, got %+v", a, b, resp.Words)
+	}
+}
+
+func TestMatchGame_AllModesDisabled_ReturnsEmpty(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.GameModeMismatch = false
+	st.GameModeNewest = false
+	st.GameModeHardest = false
+	st.GameModeLastMistakes = false
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+
+	a := seedWord(t, s, "一", "", []string{"one"})
+	b := seedWord(t, s, "二", "", []string{"two"})
+	makeDifficultForTest(t, s, a, 1, 10)
+	makeDifficultForTest(t, s, b, 2, 10)
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 0 {
+		t.Errorf("expected 0 words with all modes disabled, got %d: %+v", len(resp.Words), resp.Words)
+	}
+}
+
+// TestMatchGame_DisabledModeNeverSelectedEvenWithCandidates covers issue #288
+// decision #3: a disabled mode is never picked even when it has plenty of
+// eligible candidates — only enabled modes are ever considered.
+func TestMatchGame_DisabledModeNeverSelectedEvenWithCandidates(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "last_mistakes")
+	// Hardest-mode candidates exist too, but hardest is disabled.
+	a := seedWord(t, s, "一", "", []string{"one"})
+	b := seedWord(t, s, "二", "", []string{"two"})
+	makeDifficultForTest(t, s, a, 1, 10)
+	makeDifficultForTest(t, s, b, 2, 10)
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	// last_mistakes is enabled but has no recorded mistakes, and hardest (which
+	// does have candidates) is disabled — the game must not trigger at all.
+	if len(resp.Words) != 0 {
+		t.Errorf("expected 0 words (only a disabled mode has candidates), got %d: %+v", len(resp.Words), resp.Words)
+	}
+}
+
+func TestMatchGame_OnlyNewestEnabled_ReturnsNewestCandidates(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "newest")
+	seedWord(t, s, "一", "", []string{"one"})
+	seedWord(t, s, "二", "", []string{"two"})
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 2 {
+		t.Fatalf("expected 2 newest-mode candidates, got %d: %+v", len(resp.Words), resp.Words)
 	}
 }
 
@@ -7436,6 +7979,38 @@ func TestSettingsPatch_GamificationFields(t *testing.T) {
 	}
 }
 
+// TestSettingsPatch_GamificationEnabled_OmittedPreservesExisting guards
+// against a regression where saving a PATCH payload that doesn't include
+// gamification_enabled (e.g. from the Daily Learning, Training Mode, Cycle
+// Mode, Language, or Accept-as-correct save buttons in settings.js — none of
+// which currently send this field) silently resets it to false, even though
+// the user only intended to change a different section.
+func TestSettingsPatch_GamificationEnabled_OmittedPreservesExisting(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["gamification_enabled"] = true
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Save again without the field, as every non-Gamification settings card does.
+	body2 := baseSettingsPatch()
+	rec2 := do(t, r, "PATCH", "/api/settings", body2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	rec3 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec3, &st)
+	if st["gamification_enabled"] != true {
+		t.Errorf("want gamification_enabled preserved as true, got %v", st["gamification_enabled"])
+	}
+}
+
 func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
@@ -7446,6 +8021,65 @@ func TestSettingsPatch_GamificationFrequencyValidation(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("frequency=%d: expected 400, got %d", freq, rec.Code)
 		}
+	}
+}
+
+// ── PATCH /api/settings — component coverage threshold ──────────────────────
+
+func TestSettingsPatch_ComponentCoverageThreshold(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	body := baseSettingsPatch()
+	body["component_coverage_threshold"] = 7.5
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec2, &st)
+	if st["component_coverage_threshold"].(float64) != 7.5 {
+		t.Errorf("component_coverage_threshold: got %v", st["component_coverage_threshold"])
+	}
+}
+
+func TestSettingsPatch_ComponentCoverageThresholdValidation(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	for _, v := range []float64{-1, 100.1, 150} {
+		body := baseSettingsPatch()
+		body["component_coverage_threshold"] = v
+		rec := do(t, r, "PATCH", "/api/settings", body)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("threshold=%v: expected 400, got %d", v, rec.Code)
+		}
+	}
+}
+
+func TestSettingsPatch_ComponentCoverageThreshold_OmittedPreservesExisting(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	body := baseSettingsPatch()
+	body["component_coverage_threshold"] = 5
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Saving again without the field must preserve the previously-set value
+	// rather than resetting it to 0 — the same nil-preserving pattern used by
+	// max_new_words_per_day / gamification_frequency.
+	body2 := baseSettingsPatch()
+	rec2 := do(t, r, "PATCH", "/api/settings", body2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	rec3 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec3, &st)
+	if st["component_coverage_threshold"].(float64) != 5 {
+		t.Errorf("want threshold preserved at 5, got %v", st["component_coverage_threshold"])
 	}
 }
 
@@ -7497,6 +8131,49 @@ func TestSettingsPatch_NoAutoVoiceOnBlur(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_SentenceBlank(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["sentence_blank_enabled"] != false {
+		t.Errorf("sentence_blank_enabled: want false by default, got %v", st["sentence_blank_enabled"])
+	}
+	if st["sentence_blank_ratio"] != float64(20) {
+		t.Errorf("sentence_blank_ratio: want 20 by default, got %v", st["sentence_blank_ratio"])
+	}
+
+	body := baseSettingsPatch()
+	body["sentence_blank_enabled"] = true
+	body["sentence_blank_ratio"] = 50
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["sentence_blank_enabled"] != true {
+		t.Errorf("sentence_blank_enabled: want true after update, got %v", st["sentence_blank_enabled"])
+	}
+	if st["sentence_blank_ratio"] != float64(50) {
+		t.Errorf("sentence_blank_ratio: want 50 after update, got %v", st["sentence_blank_ratio"])
+	}
+}
+
+func TestSettingsPatch_SentenceBlankRatio_Invalid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["sentence_blank_ratio"] = 101
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for out-of-range ratio, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
@@ -7521,6 +8198,30 @@ func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_RetypeOnWrong(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["retype_on_wrong"] != false {
+		t.Errorf("retype_on_wrong: want false by default, got %v", st["retype_on_wrong"])
+	}
+
+	body := baseSettingsPatch()
+	body["retype_on_wrong"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["retype_on_wrong"] != true {
+		t.Errorf("retype_on_wrong: want true after update, got %v", st["retype_on_wrong"])
+	}
+}
+
 func TestSettingsPatch_VoiceUnavailable(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
@@ -7542,6 +8243,36 @@ func TestSettingsPatch_VoiceUnavailable(t *testing.T) {
 	decodeJSON(t, rec2, &st)
 	if st["voice_unavailable"] != true {
 		t.Errorf("voice_unavailable: want true after update, got %v", st["voice_unavailable"])
+	}
+}
+
+func TestSettingsPatch_GameModeFields(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	for _, field := range []string{"game_mode_mismatch", "game_mode_newest", "game_mode_hardest", "game_mode_last_mistakes"} {
+		if st[field] != true {
+			t.Errorf("%s: want true by default, got %v", field, st[field])
+		}
+	}
+
+	body := baseSettingsPatch()
+	body["game_mode_mismatch"] = true
+	body["game_mode_newest"] = false
+	body["game_mode_hardest"] = true
+	body["game_mode_last_mistakes"] = false
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["game_mode_mismatch"] != true || st["game_mode_newest"] != false ||
+		st["game_mode_hardest"] != true || st["game_mode_last_mistakes"] != false {
+		t.Errorf("game mode fields after update: %+v", st)
 	}
 }
 
@@ -7837,5 +8568,105 @@ func TestClearDifficult_EmptiesPoolAndDrillReturns404(t *testing.T) {
 	rec = do(t, r, "GET", "/api/quiz/next?difficult=true", nil)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for empty drill, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ── Demo quiz (unauthenticated try-before-signup) ─────────────────────────────
+
+func TestDemoCards_ReturnsFiveCardsWithoutTranslations(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/demo/cards", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var body struct {
+		Cards []struct {
+			ID           int      `json:"id"`
+			Zh           string   `json:"zh"`
+			Pinyin       string   `json:"pinyin"`
+			Translations []string `json:"translations"`
+		} `json:"cards"`
+	}
+	decodeJSON(t, rec, &body)
+	if len(body.Cards) != 5 {
+		t.Fatalf("want 5 demo cards, got %d", len(body.Cards))
+	}
+	for i, c := range body.Cards {
+		if c.Zh == "" || c.Pinyin == "" {
+			t.Errorf("card %d: missing zh or pinyin: %+v", i, c)
+		}
+		if len(c.Translations) != 0 {
+			t.Errorf("card %d: translations must not be exposed in the card list", i)
+		}
+	}
+}
+
+func TestDemoAnswer_CorrectWrongAndNormalized(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	cases := []struct {
+		answer  string
+		correct bool
+	}{
+		{"hello", true},
+		{"  HELLO ", true}, // normalization applies
+		{"zzz", false},
+	}
+	for _, c := range cases {
+		rec := do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": 0, "answer": c.answer})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer %q: want 200, got %d", c.answer, rec.Code)
+		}
+		var body struct {
+			Correct      bool     `json:"correct"`
+			Translations []string `json:"translations"`
+		}
+		decodeJSON(t, rec, &body)
+		if body.Correct != c.correct {
+			t.Errorf("answer %q: want correct=%v, got %v", c.answer, c.correct, body.Correct)
+		}
+		if len(body.Translations) == 0 {
+			t.Errorf("answer %q: result must reveal the accepted translations", c.answer)
+		}
+	}
+}
+
+func TestDemoAnswer_InvalidRequests(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	rec := do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": 99, "answer": "x"})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("out-of-range card_id: want 400, got %d", rec.Code)
+	}
+	rec = do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": -1, "answer": "x"})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("negative card_id: want 400, got %d", rec.Code)
+	}
+}
+
+func TestDemoAnswer_RecordsAuditLogEntry(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": 0, "answer": "hello"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+
+	// httptest.NewRequest defaults RemoteAddr to 192.0.2.1:1234.
+	entries, err := s.GetAuditLogByIP(context.Background(), "192.0.2.1", 10)
+	if err != nil {
+		t.Fatalf("GetAuditLogByIP: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("want 1 audit entry, got %d", len(entries))
+	}
+	if entries[0].Action != db.AuditDemoAnswer {
+		t.Errorf("action: want %q, got %q", db.AuditDemoAnswer, entries[0].Action)
+	}
+	// user_id stays 0 — the demo has no account, matching the existing
+	// convention for pre-account audit events (e.g. failed logins).
+	if entries[0].UserID != 0 {
+		t.Errorf("user_id: want 0, got %d", entries[0].UserID)
 	}
 }

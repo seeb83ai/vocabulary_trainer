@@ -402,19 +402,16 @@ describe('buildAddTranslationLangOptions', () => {
 // ── New word input validation ──────────────────────────────────────────────────
 // Mirrors the pure helpers added to train.js for the new-word input fields.
 
-function normalizeNewWordInput(s) {
-  return s.trim().toLowerCase();
-}
-
 function isZhCorrect(inputVal, prompt) {
-  return inputVal.trim() === prompt.trim();
+  if (!inputVal || !inputVal.trim()) return false;
+  return expandVariants(prompt).includes(normalizeAnswer(inputVal));
 }
 
 function isTransCorrect(inputVal, translations) {
-  const normalized = normalizeNewWordInput(inputVal);
-  if (!normalized) return false;
+  if (!inputVal || !inputVal.trim()) return false;
+  const norm = normalizeAnswer(inputVal);
   const allTrans = Object.values(translations || {}).flat();
-  return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+  return allTrans.some(t => expandVariants(t).includes(norm));
 }
 
 describe('isZhCorrect', () => {
@@ -432,6 +429,14 @@ describe('isZhCorrect', () => {
 
   it('returns false for empty input', () => {
     expect(isZhCorrect('', '你好')).toBe(false);
+  });
+
+  it('accepts input without a bracketed annotation present in the prompt', () => {
+    expect(isZhCorrect('过', '过（动词）')).toBe(true);
+  });
+
+  it('still accepts the full form including the bracketed annotation', () => {
+    expect(isZhCorrect('过（动词）', '过（动词）')).toBe(true);
   });
 });
 
@@ -464,6 +469,10 @@ describe('isTransCorrect', () => {
     expect(isTransCorrect('  hello  ', { en: ['hello'] })).toBe(true);
   });
 
+  it('accepts input without a bracketed annotation present in the translation', () => {
+    expect(isTransCorrect('pass', { en: ['(to) pass'] })).toBe(true);
+  });
+
   it('handles empty translations object', () => {
     expect(isTransCorrect('hello', {})).toBe(false);
   });
@@ -490,6 +499,33 @@ describe('wordModeLabel', () => {
 
   it('appends the suffix when also a component', () => {
     expect(wordModeLabel('To Chinese', true, 'Also a Component')).toBe('To Chinese · Also a Component');
+  });
+});
+
+// ── Retype-on-wrong gate ─────────────────────────────────────────────────────
+// Mirrors the pure helper added to train.js that decides whether the retype
+// gate shown after a wrong answer is satisfied (reuses isZhCorrect/isTransCorrect,
+// the same helpers the new-word introduction screen uses).
+
+function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations) {
+  return isZhCorrect(zhVal, correctZh) && isTransCorrect(transVal, translations);
+}
+
+describe('wrongRetypeSatisfied', () => {
+  it('returns true when both the Chinese word and translation are typed correctly', () => {
+    expect(wrongRetypeSatisfied('你好', 'hello', '你好', { en: ['hello', 'hi'] })).toBe(true);
+  });
+
+  it('returns false when only the Chinese word is correct', () => {
+    expect(wrongRetypeSatisfied('你好', 'nope', '你好', { en: ['hello'] })).toBe(false);
+  });
+
+  it('returns false when only the translation is correct', () => {
+    expect(wrongRetypeSatisfied('错', 'hello', '你好', { en: ['hello'] })).toBe(false);
+  });
+
+  it('returns false when both are wrong', () => {
+    expect(wrongRetypeSatisfied('错', 'nope', '你好', { en: ['hello'] })).toBe(false);
   });
 });
 
@@ -806,7 +842,7 @@ function stripParens(s) {
   let prev;
   do {
     prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+    s = s.replace(/\s*[(（][^()（）]*[)）]\s*/g, ' ').trim();
   } while (s !== prev);
   return s;
 }
@@ -874,6 +910,9 @@ describe('stripParens', () => {
   it('handles nested parens iteratively', () => {
     expect(stripParens('a (b (c))')).toBe('a');
   });
+  it('removes a fullwidth-parenthesised segment', () => {
+    expect(stripParens('过（动词）')).toBe('过');
+  });
 });
 
 describe('expandVariants', () => {
@@ -882,6 +921,9 @@ describe('expandVariants', () => {
   });
   it('includes the paren-stripped form', () => {
     expect(expandVariants('Morgen (5 Uhr bis 9 Uhr)')).toContain('morgen');
+  });
+  it('includes the fullwidth-paren-stripped form', () => {
+    expect(expandVariants('过（动词）')).toContain('过');
   });
   it('splits on slash', () => {
     const vs = expandVariants('hi/hello');

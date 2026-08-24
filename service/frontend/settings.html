@@ -127,6 +127,16 @@
           <span class="text-sm text-gray-600">Celebrate bucket changes</span>
         </label>
         <p class="text-xs text-gray-400 ml-7">Shows an extra screen when a word moves up a level, before the next card.</p>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="sentence-blank-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-600">Sentence fill-in-the-blank</span>
+        </label>
+        <p class="text-xs text-gray-400 ml-7">Occasionally shows a full sentence with one already-reviewed word blanked out, instead of a plain word card.</p>
+        <div class="flex items-center gap-2 ml-7">
+          <label for="sentence-blank-ratio" class="text-xs text-gray-500">Frequency (%)</label>
+          <input type="number" id="sentence-blank-ratio" min="0" max="100" step="5"
+            class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
       </div>
 
       <!-- New word confirmation inputs -->
@@ -140,6 +150,16 @@
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="require-trans" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
           <span class="text-sm text-gray-600">Require typing a translation</span>
+        </label>
+      </div>
+
+      <!-- Wrong answer retry -->
+      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">Wrong Answer Retry</p>
+      <p class="text-sm text-gray-500 mb-3">After a wrong answer, require retyping the correct Chinese word and translation before continuing.</p>
+      <div class="space-y-2 mb-5">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="retype-on-wrong" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-600">Require retyping correctly before continuing</span>
         </label>
       </div>
       <button id="mode-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
@@ -183,6 +203,67 @@
         </label>
       </div>
       <button id="cycle-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
+    </div>
+
+    <!-- Random / Cycle Mode by Bucket -->
+    <div class="bg-white rounded-2xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-1">Random / Cycle Mode by Bucket</h2>
+      <p class="text-sm text-gray-500 mb-5">Choose which learning buckets each quiz format may be picked for, when using <strong>Random</strong> or <strong>Cycle</strong> mode. Every bucket must have at least one eligible format.</p>
+      <div id="random-mode-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
+      <div id="random-mode-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+      <div class="space-y-3 mb-5">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="transl_to_zh">
+          <span class="sm:w-44 text-sm text-gray-600">Translation → Chinese</span>
+          <select id="random-mode-transl_to_zh-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <span class="text-sm text-gray-400">to</span>
+          <select id="random-mode-transl_to_zh-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="random-mode-transl_to_zh-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+            Off
+          </label>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="zh_pinyin_to_transl">
+          <span class="sm:w-44 text-sm text-gray-600">Chinese + Pinyin → Translation</span>
+          <select id="random-mode-zh_pinyin_to_transl-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <span class="text-sm text-gray-400">to</span>
+          <select id="random-mode-zh_pinyin_to_transl-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="random-mode-zh_pinyin_to_transl-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+            Off
+          </label>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="zh_to_transl">
+          <span class="sm:w-44 text-sm text-gray-600">Chinese → Translation</span>
+          <select id="random-mode-zh_to_transl-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <span class="text-sm text-gray-400">to</span>
+          <select id="random-mode-zh_to_transl-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="random-mode-zh_to_transl-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+            Off
+          </label>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="zh_to_transl_no_sound">
+          <span class="sm:w-44 text-sm text-gray-600">Chinese (no sound) → Translation</span>
+          <select id="random-mode-zh_to_transl_no_sound-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <span class="text-sm text-gray-400">to</span>
+          <select id="random-mode-zh_to_transl_no_sound-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="random-mode-zh_to_transl_no_sound-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+            Off
+          </label>
+        </div>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="voice_to_transl">
+          <span class="sm:w-44 text-sm text-gray-600">Voice → Translation</span>
+          <select id="random-mode-voice_to_transl-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <span class="text-sm text-gray-400">to</span>
+          <select id="random-mode-voice_to_transl-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+          <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+            <input type="checkbox" id="random-mode-voice_to_transl-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+            Off
+          </label>
+        </div>
+      </div>
+      <button id="random-mode-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- Daily Learning -->
@@ -301,9 +382,50 @@
           <span class="text-sm text-gray-700">minutes</span>
         </div>
       </div>
+      <p class="text-sm text-gray-500 mb-2">Game modes — which word pools the mini-game can draw from:</p>
+      <div class="space-y-3 mb-4">
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="game-mode-mismatch" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Mismatch — recently confused word/component pairs</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="game-mode-newest" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Newest words — your most recently added words</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="game-mode-hardest" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Hardest words — your lowest-accuracy words</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="game-mode-last-mistakes" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">Last mistakes — words you recently answered wrong</span>
+        </label>
+      </div>
       <div id="gamification-success" class="hidden mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
       <div id="gamification-error" class="hidden mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
       <button id="gamification-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
+    </div>
+
+    <!-- Component Training -->
+    <div id="component-training-section" class="bg-white rounded-2xl shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-800 mb-1">Component Training</h2>
+      <p class="text-sm text-gray-500 mb-5">Words are broken into hanzi components (radicals and sub-parts) for the character breakdown and component quiz. Instead of training every component, pick a target: as new words start training, only enough components — starting with whichever unlocks the most words you haven't covered yet — are added to reach that share of your Chinese vocabulary. Already-trained components are never removed by this setting.</p>
+      <div id="component-threshold-success" class="hidden mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>
+      <div id="component-threshold-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="component-coverage-threshold">Target word coverage</label>
+        <div class="flex items-center gap-2">
+          <input id="component-coverage-threshold" type="number" min="0" max="100" step="0.5" value="0"
+            class="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <span class="text-sm text-gray-600">%</span>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Learn as many components as needed to cover this share of all your Chinese words. Set to 0 to train every component (default).</p>
+      </div>
+
+      <p id="component-coverage-summary" class="text-sm text-gray-600 mb-5"></p>
+
+      <button id="component-threshold-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save</button>
     </div>
 
     <!-- API Keys -->

@@ -411,6 +411,9 @@ const I18N = {
     'comp.sceneLabel': 'Mnemonic scene',
     'comp.scenePlaceholder': 'Write a memorable scene for this character…',
 
+    // Sentence fill-in-the-blank cards in word training
+    'sentence.modeLabel': 'Sentence',
+
     // HMM mnemonic cards in word training
     'hmm.modeLabel': 'Mnemonic',
     'hmm.type.actor': 'Actor',
@@ -862,6 +865,9 @@ const I18N = {
     'component.gotIt': '知道了！',
     'comp.sceneLabel': '记忆场景',
     'comp.scenePlaceholder': '为这个字写一个印象深刻的场景…',
+
+    // Sentence fill-in-the-blank cards in word training
+    'sentence.modeLabel': '句子',
 
     // HMM mnemonic cards in word training
     'hmm.modeLabel': '记忆法',

@@ -29,6 +29,7 @@ const (
 	AuditAccountLocked     = "account_locked"
 	AuditAPIKeyUpdate      = "api_key_update"
 	AuditGitHubIssue       = "github_issue_created"
+	AuditDemoAnswer        = "demo_answer"
 )
 
 // RecordAuditLog appends a row to audit_log. userID may be 0 when the
