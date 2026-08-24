@@ -2216,6 +2216,43 @@ func TestWordStats_WithData(t *testing.T) {
 	}
 }
 
+func TestWordStats_AccBucketsFilterByTag(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	tagged := seedWordFull(t, s, int64(2), "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"vip"})
+	other := seedWordFull(t, s, int64(2), "再见", "zài jiàn", []string{"bye"}, nil, []string{"other"})
+
+	// Acknowledge both words so they are counted in the accuracy-bucket breakdown.
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": tagged})
+	do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": other})
+
+	// Unfiltered: both words fall in the "new" bucket (still in the learning phase).
+	rec := do(t, r, "GET", "/api/quiz/word-stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unfiltered: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var all models.WordStatsResponse
+	decodeJSON(t, rec, &all)
+	if all.AccBuckets["new"] != 2 {
+		t.Errorf("unfiltered new bucket: want 2, got %d", all.AccBuckets["new"])
+	}
+
+	// Tag-filtered: only the "vip"-tagged word is counted.
+	rec = do(t, r, "GET", "/api/quiz/word-stats?tags=vip", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("tag-filtered: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var filtered models.WordStatsResponse
+	decodeJSON(t, rec, &filtered)
+	if filtered.AccBuckets["new"] != 1 {
+		t.Errorf("tag-filtered new bucket: want 1, got %d", filtered.AccBuckets["new"])
+	}
+	if filtered.TotalSeen != all.TotalSeen {
+		t.Errorf("total_seen should be unaffected by tag filter: want %d, got %d", all.TotalSeen, filtered.TotalSeen)
+	}
+}
+
 // ── /api/quiz/stats new fields ────────────────────────────────────────────────
 
 func TestStatsHandlerNewFields(t *testing.T) {

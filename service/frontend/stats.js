@@ -47,14 +47,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Load word-level statistics
-  try {
-    const ws = await apiFetch('/api/quiz/word-stats');
-    if (ws && ws.total_seen > 0) {
-      renderWordStats(ws);
-      show('word-stats-section');
-    }
-  } catch (_) {}
+  // Load word-level statistics, with a tag filter for the bucket breakdown
+  await initWordStatsTagFilter();
 
   // Load due-date distribution with tag filters
   await initDueDateChart();
@@ -286,11 +280,65 @@ function renderTable(days) {
   }).join('');
 }
 
+// --- Word Statistics / Bucket Breakdown Tag Filter ---
+
+let wordStatsSelectedTags = [];
+let _accuracyChart = null;
+
+async function initWordStatsTagFilter() {
+  let allTags = [];
+  try { allTags = await apiFetch('/api/tags'); } catch (_) {}
+  renderWordStatsTagChips(allTags);
+  await loadWordStats();
+}
+
+function renderWordStatsTagChips(allTags) {
+  const container = $('bucket-tag-chips');
+  if (!container) return;
+  container.innerHTML = '';
+  if (allTags.length === 0) return;
+  for (const tag of allTags) {
+    const pill = document.createElement('button');
+    const active = wordStatsSelectedTags.includes(tag);
+    pill.className = `px-2.5 py-0.5 rounded-full text-xs font-medium transition cursor-pointer ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    pill.textContent = tag;
+    pill.addEventListener('click', () => {
+      if (wordStatsSelectedTags.includes(tag)) {
+        wordStatsSelectedTags = wordStatsSelectedTags.filter(t => t !== tag);
+      } else {
+        wordStatsSelectedTags.push(tag);
+      }
+      renderWordStatsTagChips(allTags);
+      loadWordStats();
+    });
+    container.appendChild(pill);
+  }
+}
+
+async function loadWordStats() {
+  let url = '/api/quiz/word-stats';
+  if (wordStatsSelectedTags.length > 0) {
+    url += '?tags=' + encodeURIComponent(wordStatsSelectedTags.join(','));
+  }
+  let ws;
+  try { ws = await apiFetch(url); } catch (_) { return; }
+  if (ws && ws.total_seen > 0) {
+    renderWordStats(ws);
+    show('word-stats-section');
+  } else {
+    hide('word-stats-section');
+  }
+}
+
 function renderWordStats(ws) {
   // Accuracy distribution doughnut
+  if (_accuracyChart) {
+    _accuracyChart.destroy();
+    _accuracyChart = null;
+  }
   const aCtx = $('accuracy-chart').getContext('2d');
   const aData = TIERS.map(t => ws.accuracy_buckets[t.key] || 0);
-  new Chart(aCtx, {
+  _accuracyChart = new Chart(aCtx, {
     type: 'doughnut',
     data: {
       labels: TIERS.map(tier => t('tier.' + tier.label.toLowerCase())),

@@ -1426,6 +1426,64 @@ func TestGetStats_FilterByTag(t *testing.T) {
 	}
 }
 
+func TestGetWordStats_AccBucketsFilterByTag(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	tagged := seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"vip"})
+	other := seedWordWithTags(t, s, "再见", "", []string{"bye"}, []string{"other"})
+
+	// Push both words into the "85-100" (mastered) accuracy bucket.
+	for _, id := range []int64{tagged, other} {
+		if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+			t.Fatal(err)
+		}
+		p, err := s.GetSM2Progress(ctx, id)
+		if err != nil || p == nil {
+			t.Fatalf("GetSM2Progress: %v / %v", err, p)
+		}
+		p.LearningNewWord = false
+		p.TotalAttempts = 10
+		p.TotalCorrect = 10
+		p.StreakBonus = 0
+		if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Regression: an empty/absent tag filter must be unchanged from current behavior.
+	all, err := s.GetWordStats(ctx, int64(2), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.AccBuckets["85-100"] != 2 {
+		t.Errorf("unfiltered 85-100 bucket: want 2, got %d", all.AccBuckets["85-100"])
+	}
+	if all.TotalSeen != 2 {
+		t.Errorf("unfiltered total_seen: want 2, got %d", all.TotalSeen)
+	}
+
+	// Tag-filtered: only the "vip"-tagged word should be counted in AccBuckets.
+	filtered, err := s.GetWordStats(ctx, int64(2), []string{"vip"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.AccBuckets["85-100"] != 1 {
+		t.Errorf("tag-filtered 85-100 bucket: want 1, got %d", filtered.AccBuckets["85-100"])
+	}
+	if filtered.AccBuckets["0-49"] != 0 {
+		t.Errorf("tag-filtered 0-49 bucket: want 0, got %d", filtered.AccBuckets["0-49"])
+	}
+
+	// Other stats sections must stay unaffected by the bucket-only tag filter.
+	if filtered.TotalSeen != all.TotalSeen {
+		t.Errorf("total_seen should be unaffected by tag filter: want %d, got %d", all.TotalSeen, filtered.TotalSeen)
+	}
+	if len(filtered.MostPract) != len(all.MostPract) {
+		t.Errorf("most_practiced should be unaffected by tag filter: want %d entries, got %d", len(all.MostPract), len(filtered.MostPract))
+	}
+}
+
 func TestGetAllTags(t *testing.T) {
 	s := openTestDB(t)
 	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"B-tag", "A-tag"})
