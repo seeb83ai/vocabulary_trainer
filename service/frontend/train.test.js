@@ -1082,23 +1082,23 @@ describe('matchGameOutcome', () => {
 
 function quickStartPlan(tagNames) {
   const has = n => tagNames.includes(n);
-  return { hsk1: has('hsk-1'), hsk23: ['hsk-2', 'hsk-3'].filter(has) };
+  return { hsk1: has('hsk1'), hsk23: ['hsk2', 'hsk3'].filter(has) };
 }
 
 describe('quickStartPlan', () => {
   it('offers both buttons when all HSK lists exist', () => {
-    expect(quickStartPlan(['hsk-1', 'hsk-2', 'hsk-3', 'food'])).toEqual({
+    expect(quickStartPlan(['hsk1', 'hsk2', 'hsk3', 'food'])).toEqual({
       hsk1: true,
-      hsk23: ['hsk-2', 'hsk-3'],
+      hsk23: ['hsk2', 'hsk3'],
     });
   });
 
   it('offers only HSK 1 when higher lists are missing', () => {
-    expect(quickStartPlan(['hsk-1', 'travel'])).toEqual({ hsk1: true, hsk23: [] });
+    expect(quickStartPlan(['hsk1', 'travel'])).toEqual({ hsk1: true, hsk23: [] });
   });
 
   it('offers a partial basics import when only HSK 2 exists', () => {
-    expect(quickStartPlan(['hsk-2'])).toEqual({ hsk1: false, hsk23: ['hsk-2'] });
+    expect(quickStartPlan(['hsk2'])).toEqual({ hsk1: false, hsk23: ['hsk2'] });
   });
 
   it('offers nothing without HSK library tags', () => {

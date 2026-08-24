@@ -420,7 +420,7 @@ function applyTierPills() {
 // given list of importable library tag names.
 function quickStartPlan(tagNames) {
   const has = n => tagNames.includes(n);
-  return { hsk1: has('hsk-1'), hsk23: ['hsk-2', 'hsk-3'].filter(has) };
+  return { hsk1: has('hsk1'), hsk23: ['hsk2', 'hsk3'].filter(has) };
 }
 
 // computeDayStreak returns the number of consecutive training days
@@ -2329,7 +2329,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[name="ob-filter-mode"]').forEach(radio => {
     radio.addEventListener('change', () => { obFilterMode = radio.value; obRenderTagPills(); });
   });
-  $('ob-qs-hsk1').addEventListener('click', () => obQuickImport(['hsk-1']));
+  $('ob-qs-hsk1').addEventListener('click', () => obQuickImport(['hsk1']));
   $('ob-qs-hsk23').addEventListener('click', () =>
     obQuickImport(quickStartPlan((obAllTags || []).map(tg => tg.name)).hsk23));
   $('ob-qs-custom').addEventListener('click', () => { hide('ob-quickstart'); show('ob-step1'); });
