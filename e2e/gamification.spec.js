@@ -49,6 +49,10 @@ test.describe('Gamification — match game', () => {
         extend_session_with_extra_words: true,
         gamification_enabled: false,
         gamification_frequency: 5,
+        game_mode_mismatch: true,
+        game_mode_newest: true,
+        game_mode_hardest: true,
+        game_mode_last_mistakes: true,
       },
       headers: { 'Content-Type': 'application/json' },
     });
@@ -73,6 +77,10 @@ test.describe('Gamification — match game', () => {
         extend_session_with_extra_words: true,
         gamification_enabled: true,
         gamification_frequency: 1,
+        game_mode_mismatch: true,
+        game_mode_newest: true,
+        game_mode_hardest: true,
+        game_mode_last_mistakes: true,
       },
     });
     expect(patch.status()).toBe(200);
@@ -118,6 +126,44 @@ test.describe('Gamification — match game', () => {
     await expect(page.getByText('Gamification')).toBeVisible();
     await expect(page.locator('#gamification-enabled')).toBeVisible();
     await expect(page.locator('#gamification-frequency')).toBeVisible();
+  });
+
+  // Issue #288: 4 individual game-mode toggles (mismatch/newest/hardest/last
+  // mistakes), all on by default, alongside the existing gamification toggle.
+  test('settings page shows and saves the 4 game-mode toggles', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings`);
+    const mismatch = page.locator('#game-mode-mismatch');
+    const newest = page.locator('#game-mode-newest');
+    const hardest = page.locator('#game-mode-hardest');
+    const lastMistakes = page.locator('#game-mode-last-mistakes');
+
+    await expect(mismatch).toBeVisible();
+    await expect(newest).toBeVisible();
+    await expect(hardest).toBeVisible();
+    await expect(lastMistakes).toBeVisible();
+
+    // All 4 default to enabled.
+    await expect(mismatch).toBeChecked();
+    await expect(newest).toBeChecked();
+    await expect(hardest).toBeChecked();
+    await expect(lastMistakes).toBeChecked();
+
+    await newest.uncheck();
+    await lastMistakes.uncheck();
+    await page.locator('#gamification-save-btn').click();
+    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+
+    await page.reload();
+    await expect(mismatch).toBeChecked();
+    await expect(newest).not.toBeChecked();
+    await expect(hardest).toBeChecked();
+    await expect(lastMistakes).not.toBeChecked();
+
+    // Restore defaults so later specs in this file see the standard state.
+    await newest.check();
+    await lastMistakes.check();
+    await page.locator('#gamification-save-btn').click();
+    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
   });
 
   test('shared-translation claim is blocked (yellow) instead of stealing the true owner\'s box (issue #215)', async ({ page, request }) => {
@@ -182,5 +228,33 @@ test.describe('Gamification — match game', () => {
     await page.reload();
     await expect(page.locator('#gamification-enabled')).toBeChecked({ timeout: 5000 });
     await expect(page.locator('#gamification-frequency')).toHaveValue('2');
+  });
+
+  // Regression: saving a *different* settings card must not silently disable
+  // gamification. settings.js only sends gamification_enabled from the
+  // Gamification card's own save button — every other card (Daily Learning,
+  // Training Mode, Cycle Mode, Language, Accept-as-correct) omits it, and the
+  // PATCH handler used to decode a missing boolean field as false and write
+  // it straight through.
+  test('enabling gamification survives saving the Daily Learning card', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings`);
+    const checkbox = page.locator('#gamification-enabled');
+    await expect(checkbox).toBeVisible();
+
+    await checkbox.check();
+    await page.locator('#gamification-save-btn').click();
+    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+
+    // Save a wholly unrelated card, whose payload doesn't mention gamification.
+    await page.locator('#max-new-words').fill('5');
+    await page.locator('#daily-save-btn').click();
+    await expect(page.locator('#daily-success')).toBeVisible({ timeout: 5000 });
+
+    await page.reload();
+    await expect(page.locator('#gamification-enabled')).toBeChecked({ timeout: 5000 });
+
+    const res = await page.request.get(`${BASE_URL}/api/settings`);
+    const settings = await res.json();
+    expect(settings.gamification_enabled).toBe(true);
   });
 });

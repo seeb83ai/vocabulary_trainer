@@ -253,6 +253,7 @@
           </div>
           <div id="pinyin-hint" class="hidden text-xl text-gray-500 mb-6"></div>
           <div id="translations-hint" class="hidden text-2x1 text-gray-400 mb-4"></div>
+          <div id="sentence-context" class="hidden text-lg text-gray-500 mb-4"></div>
           <div id="hmm-type-badge" class="hidden inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2"></div>
           <div id="hmm-actor-hint" class="hidden text-sm text-gray-400 mb-4"></div>
 
@@ -367,6 +368,22 @@
           <button id="result-play-btn" type="button" class="hidden text-3xl text-gray-400 hover:text-blue-500 transition mb-3" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
 
           <div id="word-breakdown" class="hidden mb-2"></div>
+          <div id="wrong-retype-area" class="hidden mb-4 space-y-3 text-left">
+            <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" data-i18n="newWord.typeZh">Type the Chinese</div>
+            <div class="flex items-center gap-2">
+              <input type="text" id="wrong-retype-zh-input"
+                     class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-base sm:text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+                     autocomplete="off" spellcheck="false">
+              <span id="wrong-retype-zh-check" class="text-xl w-6 text-center"></span>
+            </div>
+            <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" data-i18n="newWord.typeTrans">Type the translation</div>
+            <div class="flex items-center gap-2">
+              <input type="text" id="wrong-retype-trans-input"
+                     class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-sm sm:text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+                     autocomplete="off">
+              <span id="wrong-retype-trans-check" class="text-xl w-6 text-center"></span>
+            </div>
+          </div>
           <div id="add-translation-row" class="hidden mb-3 flex items-center gap-2">
             <button id="add-translation-btn" class="flex-1"></button>
             <select id="add-translation-lang-select" class="hidden shrink-0 w-16 border border-gray-300 rounded-xl px-1.5 py-2 text-xs text-center"></select>
@@ -390,7 +407,7 @@
           </div>
           <button
             id="next-btn"
-            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
+            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl text-lg transition"
             data-i18n="result.next"
           >
             Next →

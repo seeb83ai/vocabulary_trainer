@@ -1668,7 +1668,11 @@ document.addEventListener('DOMContentLoaded', () => {
   $('form-zh').addEventListener('input', () => {
     clearTimeout(pinyinTimer);
     const zh = $('form-zh').value.trim();
-    pinyinTimer = setTimeout(() => fetchAndFillPinyin(zh), 500);
+    // Pinyin is already set: recalculating on every keystroke would repeatedly
+    // prompt to overwrite it (applyPinyin's confirm dialog), so wait for a
+    // longer idle period instead. An empty field still fills in quickly.
+    const delay = $('form-pinyin').value.trim() ? 3000 : 500;
+    pinyinTimer = setTimeout(() => fetchAndFillPinyin(zh), delay);
     const hanziwayLink = $('hanziway-link');
     if (zh) {
       hanziwayLink.href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(zh);
@@ -1676,6 +1680,10 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       hide('hanziway-link');
     }
+  });
+  $('form-zh').addEventListener('blur', () => {
+    clearTimeout(pinyinTimer);
+    fetchAndFillPinyin($('form-zh').value.trim());
   });
 
   $('add-en-btn').addEventListener('click', () => addEnInput(''));

@@ -309,6 +309,18 @@ func TestCheckAnswer_OptionalParens_Middle(t *testing.T) {
 	}
 }
 
+func TestCheckAnswer_OptionalParens_Fullwidth(t *testing.T) {
+	if !CheckAnswer("过", []string{"过（动词）"}) {
+		t.Error("fullwidth-parenthesized segment should be optional, same as ASCII parens")
+	}
+}
+
+func TestCheckAnswer_OptionalParens_FullwidthFullForm(t *testing.T) {
+	if !CheckAnswer("过（动词）", []string{"过（动词）"}) {
+		t.Error("full form with fullwidth parens should also be accepted")
+	}
+}
+
 func TestCheckAnswer_Slash_FullForm(t *testing.T) {
 	if !CheckAnswer("Essen / Gericht", []string{"Essen / Gericht"}) {
 		t.Error("full slash form should be accepted")
@@ -487,6 +499,42 @@ func TestCheckAnswer_FullwidthComma_MidString(t *testing.T) {
 	}
 }
 
+// ── Embedded ellipsis / dot-run normalisation (issue #285) ───────────────────
+
+func TestNormalizeAnswer_EmbeddedEllipsisEquivalence(t *testing.T) {
+	// "……" (ideographic ellipsis, U+2026 x2), "。。。" (fullwidth periods), and
+	// "..." (ASCII periods) used mid-string as pause punctuation should all
+	// normalize identically, not just when trailing.
+	forms := []string{
+		"虽然……但是……",
+		"虽然。。。但是。。。",
+		"虽然...但是...",
+	}
+	want := NormalizeAnswer(forms[0])
+	for _, f := range forms[1:] {
+		if got := NormalizeAnswer(f); got != want {
+			t.Errorf("NormalizeAnswer(%q) = %q, want %q (same as NormalizeAnswer(%q))", f, got, want, forms[0])
+		}
+	}
+}
+
+func TestCheckAnswer_EmbeddedEllipsis_PeriodsVsIdeographicEllipsis(t *testing.T) {
+	if !CheckAnswer("虽然。。。但是。。。", []string{"虽然……但是……"}) {
+		t.Error("user answer with 。。。 should match stored answer with ……")
+	}
+	if !CheckAnswer("虽然……但是……", []string{"虽然。。。但是。。。"}) {
+		t.Error("user answer with …… should match stored answer with 。。。")
+	}
+}
+
+func TestCheckAnswer_EmbeddedEllipsis_DifferentCharacterStillRejected(t *testing.T) {
+	// Punctuation normalisation must not paper over an actual character
+	// mismatch: 对 (duì) is a different character from 虽 (suī).
+	if CheckAnswer("对然……但是……", []string{"虽然……但是……"}) {
+		t.Error("differing first character should not be accepted despite matching punctuation")
+	}
+}
+
 // ── CheckComponentAnswer ──────────────────────────────────────────────────────
 
 func TestCheckComponentAnswer_ExactMatch(t *testing.T) {
@@ -579,8 +627,10 @@ func TestSelectMode_ValidMode(t *testing.T) {
 		models.ModeZhToTranslNoSound: true,
 		models.ModeVoiceToTransl:     true,
 	}
+	// An empty/unknown bucket has no resolvable eligible-mode set, so SelectMode
+	// falls back to the full uniform pool — preserving the historical no-args behaviour.
 	for i := 0; i < 50; i++ {
-		m := SelectMode()
+		m := SelectMode("", RandomModeConfig{})
 		if !validModes[m] {
 			t.Errorf("SelectMode returned invalid mode %q", m)
 		}
@@ -590,7 +640,7 @@ func TestSelectMode_ValidMode(t *testing.T) {
 func TestSelectMode_AllModesReachable(t *testing.T) {
 	seen := map[string]bool{}
 	for i := 0; i < 300; i++ {
-		seen[SelectMode()] = true
+		seen[SelectMode("", RandomModeConfig{})] = true
 	}
 	for _, m := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl} {
 		if !seen[m] {
@@ -803,6 +853,27 @@ func TestCheckAnswer_TrailingSlash(t *testing.T) {
 	}
 }
 
+// Regression for issue #309/#311: fullwidth Chinese parentheses （） mark an
+// optional segment just like ASCII parens do — e.g. a word stored as "还（动词）"
+// must accept the bare character "还" as a correct answer.
+func TestCheckAnswer_FullwidthParens_WithoutParens(t *testing.T) {
+	if !CheckAnswer("还", []string{"还（动词）"}) {
+		t.Error("form without fullwidth parens should be accepted")
+	}
+}
+
+func TestCheckAnswer_FullwidthParens_WithParens(t *testing.T) {
+	if !CheckAnswer("还（动词）", []string{"还（动词）"}) {
+		t.Error("full fullwidth-parens form should be accepted")
+	}
+}
+
+func TestCheckAnswer_FullwidthParens_Middle(t *testing.T) {
+	if !CheckAnswer("guò", []string{"guò（体育）"}) {
+		t.Error("stripping fullwidth parens from the end should be accepted")
+	}
+}
+
 func TestCheckAnswer_OnlyParens(t *testing.T) {
 	// "(test)" stripped becomes "" — should still match empty after normalization,
 	// but since normalize("") == "" and user answer is non-empty, it should NOT match.
@@ -980,5 +1051,176 @@ func TestSelectNewWordMode_CustomConfig(t *testing.T) {
 	}
 	if m := SelectNewWordMode(5, cfg); m != models.ModeMaskPinyin {
 		t.Errorf("step2+ custom: want mask_pinyin, got %s", m)
+	}
+}
+
+// ── RandomModeConfig / resolveEligibleModes (bucket-aware random/cycle mode) ───
+
+func modeSet(modes []string) map[string]bool {
+	out := make(map[string]bool, len(modes))
+	for _, m := range modes {
+		out[m] = true
+	}
+	return out
+}
+
+func TestResolveEligibleModes_Defaults(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	cases := []struct {
+		bucket string
+		want   []string
+	}{
+		{"new", []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl}},
+		{"0-49", []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl, models.ModeZhToTransl}},
+		{"50-69", []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl, models.ModeZhToTransl, models.ModeZhToTranslNoSound}},
+		{"70-84", []string{models.ModeZhPinyinToTransl, models.ModeZhToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl}},
+		{"85-100", []string{models.ModeZhToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl}},
+	}
+	for _, tc := range cases {
+		got := modeSet(resolveEligibleModes(tc.bucket, cfg))
+		want := modeSet(tc.want)
+		if len(got) != len(want) {
+			t.Errorf("bucket %s: want %d eligible modes %v, got %d %v", tc.bucket, len(want), tc.want, len(got), resolveEligibleModes(tc.bucket, cfg))
+			continue
+		}
+		for m := range want {
+			if !got[m] {
+				t.Errorf("bucket %s: want mode %q eligible, got %v", tc.bucket, m, resolveEligibleModes(tc.bucket, cfg))
+			}
+		}
+	}
+}
+
+// This is the invariant the issue's default ladder was designed to guarantee:
+// every one of the 5 buckets must have at least one eligible mode by default,
+// so a word can always be served a random/cycle-mode card.
+func TestDefaultRandomModeConfig_EveryBucketHasEligibleMode(t *testing.T) {
+	if uncovered := BucketsWithoutEligibleMode(DefaultRandomModeConfig()); len(uncovered) != 0 {
+		t.Errorf("default random-mode ladder leaves buckets uncovered: %v", uncovered)
+	}
+}
+
+func TestResolveEligibleModes_Off(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	cfg.TranslToZh = "off"
+	for _, b := range []string{"new", "0-49", "50-69", "70-84", "85-100"} {
+		for _, m := range resolveEligibleModes(b, cfg) {
+			if m == models.ModeTranslToZh {
+				t.Errorf("bucket %s: transl_to_zh should be off, got eligible modes %v", b, resolveEligibleModes(b, cfg))
+			}
+		}
+	}
+}
+
+func TestResolveEligibleModes_ExplicitRange(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	cfg.ZhToTransl = "50-69,70-84"
+	got := modeSet(resolveEligibleModes("50-69", cfg))
+	if !got[models.ModeZhToTransl] {
+		t.Errorf("50-69 should be within explicit range 50-69,70-84, got %v", resolveEligibleModes("50-69", cfg))
+	}
+	got = modeSet(resolveEligibleModes("new", cfg))
+	if got[models.ModeZhToTransl] {
+		t.Errorf("new should be outside explicit range 50-69,70-84, got %v", resolveEligibleModes("new", cfg))
+	}
+	got = modeSet(resolveEligibleModes("85-100", cfg))
+	if got[models.ModeZhToTransl] {
+		t.Errorf("85-100 should be outside explicit range 50-69,70-84, got %v", resolveEligibleModes("85-100", cfg))
+	}
+}
+
+func TestBucketsWithoutEligibleMode_DetectsGap(t *testing.T) {
+	// Turn every mode off — every bucket must show up as uncovered.
+	cfg := RandomModeConfig{
+		TranslToZh:        "off",
+		ZhToTransl:        "off",
+		ZhPinyinToTransl:  "off",
+		ZhToTranslNoSound: "off",
+		VoiceToTransl:     "off",
+	}
+	uncovered := BucketsWithoutEligibleMode(cfg)
+	if len(uncovered) != 5 {
+		t.Errorf("want all 5 buckets uncovered when every mode is off, got %v", uncovered)
+	}
+}
+
+func TestValidModeRange(t *testing.T) {
+	valid := []string{"", "off", "new,new", "new,85-100", "50-69,70-84"}
+	for _, v := range valid {
+		if !ValidModeRange(v) {
+			t.Errorf("ValidModeRange(%q): want valid", v)
+		}
+	}
+	invalid := []string{"bogus", "new", "new,bogus", "70-84,new", "new,50-69,70-84"}
+	for _, v := range invalid {
+		if ValidModeRange(v) {
+			t.Errorf("ValidModeRange(%q): want invalid", v)
+		}
+	}
+}
+
+// ── SelectMode (bucket-aware) ────────────────────────────────────────────────
+
+func TestSelectMode_BucketAware_OnlyReturnsEligibleModes(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	for i := 0; i < 200; i++ {
+		m := SelectMode("new", cfg)
+		if m != models.ModeTranslToZh && m != models.ModeZhPinyinToTransl {
+			t.Fatalf("bucket=new: got ineligible mode %q", m)
+		}
+	}
+}
+
+func TestSelectMode_BucketAware_AllEligibleReachable(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	seen := map[string]bool{}
+	for i := 0; i < 300; i++ {
+		seen[SelectMode("50-69", cfg)] = true
+	}
+	for _, m := range []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl, models.ModeZhToTransl, models.ModeZhToTranslNoSound} {
+		if !seen[m] {
+			t.Errorf("bucket=50-69: mode %q never returned in 300 calls", m)
+		}
+	}
+}
+
+// ── SelectCycleMode (bucket-aware) ───────────────────────────────────────────
+
+func TestSelectCycleMode_FiltersByBucket(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	// Sequence includes zh_to_transl (ineligible for "new") at position 2 and
+	// two eligible steps at 0/1. Filtered pool for "new" should be [transl_to_zh, zh_pinyin_to_transl].
+	seq := []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl, models.ModeZhToTransl}
+	if m := SelectCycleMode(1, seq, "new", cfg); m != models.ModeTranslToZh {
+		t.Errorf("pos 0 filtered: want transl_to_zh, got %s", m)
+	}
+	if m := SelectCycleMode(2, seq, "new", cfg); m != models.ModeZhPinyinToTransl {
+		t.Errorf("pos 1 filtered: want zh_pinyin_to_transl, got %s", m)
+	}
+	// pos 2 wraps back to filtered index 0 (len(filtered)=2), not the raw sequence's zh_to_transl.
+	if m := SelectCycleMode(3, seq, "new", cfg); m != models.ModeTranslToZh {
+		t.Errorf("pos 2 wraps in filtered pool: want transl_to_zh, got %s", m)
+	}
+}
+
+func TestSelectCycleMode_FallsBackWhenNoOverlap(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	// A sequence made entirely of modes ineligible for "new" (voice_to_transl,
+	// zh_to_transl_no_sound) must fall back to the bucket's full eligible list.
+	seq := []string{models.ModeVoiceToTransl, models.ModeZhToTranslNoSound}
+	m := SelectCycleMode(1, seq, "new", cfg)
+	eligible := modeSet(resolveEligibleModes("new", cfg))
+	if !eligible[m] {
+		t.Errorf("fallback pick %q is not in the bucket's eligible set %v", m, resolveEligibleModes("new", cfg))
+	}
+}
+
+func TestSelectCycleMode_UncontrolledStepAlwaysEligible(t *testing.T) {
+	// mask_pinyin is a valid cycle step but is not one of the 5 modes this
+	// setting governs — it must never be filtered out by bucket restrictions.
+	cfg := DefaultRandomModeConfig()
+	seq := []string{models.ModeMaskPinyin}
+	if m := SelectCycleMode(1, seq, "new", cfg); m != models.ModeMaskPinyin {
+		t.Errorf("uncontrolled step: want mask_pinyin to survive bucket filtering, got %s", m)
 	}
 }

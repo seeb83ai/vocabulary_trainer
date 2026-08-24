@@ -9,12 +9,18 @@ import (
 	"vocabulary_trainer/models"
 )
 
-// reParens matches a parenthesized segment (no nested parens) and any surrounding whitespace.
-// Applied iteratively so that nested parens are stripped inside-out.
-var reParens = regexp.MustCompile(`\s*\([^()]*\)\s*`)
+// reParens matches a parenthesized segment (no nested parens) — ASCII () or fullwidth （）—
+// and any surrounding whitespace. Applied iteratively so that nested parens are stripped inside-out.
+var reParens = regexp.MustCompile(`\s*[(（][^()（）]*[)）]\s*`)
 
 // reTrailingPunct matches any trailing punctuation (Unicode \p{P} and \p{S}) and whitespace.
 var reTrailingPunct = regexp.MustCompile(`[\p{P}\p{S}\s]+$`)
+
+// reDotsRun matches a run of one or more halfwidth periods and/or ideographic
+// ellipsis characters (U+2026), in any combination, anywhere in the string —
+// so "……", "。。。" (after fullwidth conversion), and "..." are all treated as
+// the same pause punctuation regardless of position.
+var reDotsRun = regexp.MustCompile(`[.…]+`)
 
 // fullwidthToHalfwidth converts common fullwidth punctuation characters to their
 // ASCII halfwidth equivalents so that, e.g., ？ and ? are interchangeable in answers.
@@ -195,11 +201,13 @@ func CheckAnswer(userAnswer string, accepted []string) bool {
 }
 
 // NormalizeAnswer lowercases, collapses internal whitespace, converts common
-// fullwidth punctuation to their ASCII equivalents, and strips all trailing
-// punctuation and whitespace.
+// fullwidth punctuation to their ASCII equivalents, collapses any run of
+// periods and/or ideographic ellipsis characters (anywhere in the string)
+// into a single space, and strips all trailing punctuation and whitespace.
 func NormalizeAnswer(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = fullwidthToHalfwidth.Replace(s)
+	s = reDotsRun.ReplaceAllString(s, " ")
 	s = reTrailingPunct.ReplaceAllString(s, "")
 	s = strings.Join(strings.Fields(s), " ")
 	return s
@@ -354,7 +362,7 @@ func resolveMode(configured, fallback string) string {
 		return fallback
 	}
 	if configured == "random" {
-		return SelectMode()
+		return selectModeUniform()
 	}
 	return configured
 }
@@ -396,14 +404,167 @@ func SelectNewWordMode(totalCorrect int, cfg NewWordModeConfig) string {
 	}
 }
 
-// SelectMode randomly picks one of the quiz modes with equal probability.
-func SelectMode() string {
-	modes := []string{
-		models.ModeTranslToZh,
-		models.ModeZhToTransl,
-		models.ModeZhPinyinToTransl,
-		models.ModeZhToTranslNoSound,
-		models.ModeVoiceToTransl,
+// allRandomModes is the fixed candidate pool that SelectMode/SelectCycleMode
+// pick from and that RandomModeConfig governs per learning bucket.
+var allRandomModes = []string{
+	models.ModeTranslToZh,
+	models.ModeZhToTransl,
+	models.ModeZhPinyinToTransl,
+	models.ModeZhToTranslNoSound,
+	models.ModeVoiceToTransl,
+}
+
+// controlledRandomModes is the set of modes RandomModeConfig governs. A cycle
+// step outside this set (e.g. mask_pinyin) is never restricted by bucket.
+var controlledRandomModes = map[string]bool{
+	models.ModeTranslToZh:        true,
+	models.ModeZhToTransl:        true,
+	models.ModeZhPinyinToTransl:  true,
+	models.ModeZhToTranslNoSound: true,
+	models.ModeVoiceToTransl:     true,
+}
+
+// selectModeUniform randomly picks one of the 5 quiz modes with equal
+// probability, ignoring any bucket restriction. Used internally by
+// resolveMode's "random" fallback for the progressive/new-word ladders,
+// which are intentionally unaffected by RandomModeConfig.
+func selectModeUniform() string {
+	return allRandomModes[rand.Intn(len(allRandomModes))]
+}
+
+// RandomModeConfig is defined in the models package (see ProgressiveModeConfig);
+// this alias keeps sm2.RandomModeConfig working for existing callers.
+type RandomModeConfig = models.RandomModeConfig
+
+// DefaultRandomModeConfig returns the built-in default per-mode bucket ranges
+// used when a mode's RandomModeConfig field is unset (""). Ranges increase in
+// difficulty (fewer hints) for higher buckets; every bucket has at least one
+// eligible mode (see TestDefaultRandomModeConfig_EveryBucketHasEligibleMode).
+func DefaultRandomModeConfig() RandomModeConfig {
+	return RandomModeConfig{
+		TranslToZh:        "new,50-69",
+		ZhPinyinToTransl:  "new,70-84",
+		ZhToTransl:        "0-49,85-100",
+		ZhToTranslNoSound: "50-69,85-100",
+		VoiceToTransl:     "70-84,85-100",
+	}
+}
+
+// bucketOrder lists the tier bucket keys used by RandomModeConfig ranges, in
+// increasing-difficulty order. Mirrors tierFilter (db/words.go) and TIERS
+// (frontend/app.js).
+var bucketOrder = []string{"new", "0-49", "50-69", "70-84", "85-100"}
+
+func bucketIndex(b string) int {
+	for i, x := range bucketOrder {
+		if x == b {
+			return i
+		}
+	}
+	return -1
+}
+
+// parseModeRange parses a "<from>,<to>" RandomModeConfig field value into
+// bucketOrder indices. ok is false for malformed values, unknown bucket keys,
+// or a from-index greater than the to-index.
+func parseModeRange(v string) (from, to int, ok bool) {
+	parts := strings.SplitN(v, ",", 2)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	from, to = bucketIndex(strings.TrimSpace(parts[0])), bucketIndex(strings.TrimSpace(parts[1]))
+	if from == -1 || to == -1 || from > to {
+		return 0, 0, false
+	}
+	return from, to, true
+}
+
+// ValidModeRange reports whether v is a valid RandomModeConfig field value:
+// "" (default), "off", or "<from>,<to>" using valid bucket keys with from<=to.
+func ValidModeRange(v string) bool {
+	if v == "" || v == "off" {
+		return true
+	}
+	_, _, ok := parseModeRange(v)
+	return ok
+}
+
+// resolveEligibleModes returns the controlled quiz modes eligible for bucket,
+// resolved from cfg's per-mode ranges (falling back to DefaultRandomModeConfig
+// for unset "" fields). "off" disables a mode in every bucket. An unknown
+// bucket or malformed range value yields no eligibility for that mode. The
+// returned order matches allRandomModes.
+func resolveEligibleModes(bucket string, cfg RandomModeConfig) []string {
+	def := DefaultRandomModeConfig()
+	bi := bucketIndex(bucket)
+	if bi == -1 {
+		return nil
+	}
+	ranges := []struct{ mode, value, fallback string }{
+		{models.ModeTranslToZh, cfg.TranslToZh, def.TranslToZh},
+		{models.ModeZhToTransl, cfg.ZhToTransl, def.ZhToTransl},
+		{models.ModeZhPinyinToTransl, cfg.ZhPinyinToTransl, def.ZhPinyinToTransl},
+		{models.ModeZhToTranslNoSound, cfg.ZhToTranslNoSound, def.ZhToTranslNoSound},
+		{models.ModeVoiceToTransl, cfg.VoiceToTransl, def.VoiceToTransl},
+	}
+	var eligible []string
+	for _, r := range ranges {
+		v := r.value
+		if v == "" {
+			v = r.fallback
+		}
+		if v == "off" {
+			continue
+		}
+		from, to, ok := parseModeRange(v)
+		if !ok {
+			continue
+		}
+		if bi >= from && bi <= to {
+			eligible = append(eligible, r.mode)
+		}
+	}
+	return eligible
+}
+
+// BucketsWithoutEligibleMode returns the bucket keys (in bucketOrder) that
+// have zero eligible modes under cfg. Used to validate, at settings-save
+// time, that every learning bucket has at least one eligible random/cycle
+// mode before persisting.
+func BucketsWithoutEligibleMode(cfg RandomModeConfig) []string {
+	var uncovered []string
+	for _, b := range bucketOrder {
+		if len(resolveEligibleModes(b, cfg)) == 0 {
+			uncovered = append(uncovered, b)
+		}
+	}
+	return uncovered
+}
+
+// isEligibleForBucket reports whether mode may be picked for bucket under cfg.
+// Modes RandomModeConfig does not govern (e.g. mask_pinyin as a cycle step)
+// are always eligible.
+func isEligibleForBucket(mode, bucket string, cfg RandomModeConfig) bool {
+	if !controlledRandomModes[mode] {
+		return true
+	}
+	for _, m := range resolveEligibleModes(bucket, cfg) {
+		if m == mode {
+			return true
+		}
+	}
+	return false
+}
+
+// SelectMode randomly picks one of the quiz modes eligible for bucket under
+// cfg, with equal probability among the eligible set. Falls back to the full
+// 5-mode pool when bucket is empty/unrecognized or resolves to zero eligible
+// modes (e.g. cfg turns every mode off for this bucket), so a mode is always
+// returned.
+func SelectMode(bucket string, cfg RandomModeConfig) string {
+	modes := resolveEligibleModes(bucket, cfg)
+	if len(modes) == 0 {
+		modes = allRandomModes
 	}
 	return modes[rand.Intn(len(modes))]
 }
@@ -432,11 +593,28 @@ func ParseCycleSequence(seq string) []string {
 
 // SelectCycleMode returns the quiz mode for the current cycle position derived
 // from totalAttempts. Position is (totalAttempts-1) so that a word with
-// total_attempts=1 (just acknowledged) starts at position 0.
-func SelectCycleMode(totalAttempts int, sequence []string) string {
+// total_attempts=1 (just acknowledged) starts at position 0. The configured
+// sequence is first filtered down to the modes eligible for bucket under cfg;
+// if that intersection is empty (e.g. every configured step is disabled for
+// this bucket), the full bucket-eligible mode list is used instead so a valid
+// mode is always returned.
+func SelectCycleMode(totalAttempts int, sequence []string, bucket string, cfg RandomModeConfig) string {
+	filtered := make([]string, 0, len(sequence))
+	for _, m := range sequence {
+		if isEligibleForBucket(m, bucket, cfg) {
+			filtered = append(filtered, m)
+		}
+	}
+	pool := filtered
+	if len(pool) == 0 {
+		pool = resolveEligibleModes(bucket, cfg)
+	}
+	if len(pool) == 0 {
+		pool = sequence
+	}
 	pos := totalAttempts - 1
 	if pos < 0 {
 		pos = 0
 	}
-	return sequence[pos%len(sequence)]
+	return pool[pos%len(pool)]
 }

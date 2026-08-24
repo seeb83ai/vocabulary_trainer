@@ -71,7 +71,7 @@ function stripParens(s) {
   let prev;
   do {
     prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+    s = s.replace(/\s*[(（][^()（）]*[)）]\s*/g, ' ').trim();
   } while (s !== prev);
   return s;
 }
@@ -89,6 +89,31 @@ function expandVariants(a) {
     }
   }
   return [...seen];
+}
+
+// normalizeNewWordInput/isZhCorrect/isTransCorrect back the "must type it
+// correctly to continue" gates — shared by the new-word introduction screen
+// and the retype-on-wrong-answer gate (see wrongRetypeSatisfied below).
+function normalizeNewWordInput(s) {
+  return s.trim().toLowerCase()
+    .replace(/[？！，。：；]/g, m => ({ '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';' }[m]))
+    .replace(/[\p{P}\p{S}\s]+$/u, '');
+}
+function isZhCorrect(inputVal, prompt) {
+  return normalizeNewWordInput(inputVal) === normalizeNewWordInput(prompt);
+}
+function isTransCorrect(inputVal, translations) {
+  const normalized = normalizeNewWordInput(inputVal);
+  if (!normalized) return false;
+  const allTrans = Object.values(translations || {}).flat();
+  return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+}
+
+// wrongRetypeSatisfied decides whether the retype-on-wrong gate (shown after
+// a wrong answer when the retype_on_wrong setting is enabled) is satisfied —
+// the user must retype both the correct Chinese word and a correct translation.
+function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations) {
+  return isZhCorrect(zhVal, correctZh) && isTransCorrect(transVal, translations);
 }
 
 // Returns true if a wrong answer should be offered as "accept as typo".
@@ -235,6 +260,7 @@ function shouldAutoPlay(currentCard) {
   if (currentCard.mode === 'new_word') return true;
   if (currentCard.card_type === 'component') return true;
   if (currentCard.card_type === 'hmm') return false;
+  if (currentCard.card_type === 'sentence') return false;
   return isZhPromptWithSound(currentCard.mode);
 }
 
@@ -288,6 +314,7 @@ function autoPlayCard(currentCard) {
 function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   if (!autoPlayEnabled || !currentCard) return false;
   if (currentCard.card_type === 'hmm') return false;
+  if (currentCard.card_type === 'sentence') return false;
   return !alreadyPlayed;
 }
 
@@ -329,6 +356,11 @@ async function saveTrainFilters() {
 let skipNewWords = false;
 let requireNewWordZh = true;
 let requireNewWordTrans = true;
+let retypeOnWrong = false;
+// Holds { zhText, translations } for the currently rendered wrong-answer
+// result while the retype-on-wrong gate is active; read by the top-level
+// wrong-retype input listeners set up in DOMContentLoaded.
+let wrongRetypeTarget = null;
 // Difficult-words drill: when active, /api/quiz/next is queried with difficult=true
 // and only flagged (hardest) words are served until each is answered correctly.
 let difficultDrill = localStorage.getItem('quizDifficultDrill') === 'true';
@@ -518,6 +550,7 @@ async function loadTrainSettings() {
     const st = await apiFetch('/api/settings');
     requireNewWordZh    = st.new_word_require_zh    !== false;
     requireNewWordTrans = st.new_word_require_trans !== false;
+    retypeOnWrong        = !!st.retype_on_wrong;
   } catch (_) { /* keep defaults */ }
   // Re-apply filter UI in case _settingsPromise updated state after DOMContentLoaded.
   applyModeButtons();
@@ -581,6 +614,9 @@ async function loadNextCard(trackCurrent = false) {
   hide('result-decompose-content');
   hide('bucket-info');
   hide('streak-info');
+  hide('wrong-retype-area');
+  wrongRetypeTarget = null;
+  $('next-btn').disabled = false;
   $('answer-input').value = '';
   const reviewBtn = $('needs-review-btn');
   reviewBtn.textContent = t('result.flagReview');
@@ -780,12 +816,14 @@ function showCard() {
     hide('translations-hint');
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
+    hide('sentence-context');
   } else if (currentCard.card_type === 'hmm') {
     setText('mode-label', t('hmm.modeLabel'));
     setText('prompt-word', currentCard.prompt);
     hide('play-btn');
     hide('pinyin-hint');
     hide('translations-hint');
+    hide('sentence-context');
 
     const badge = $('hmm-type-badge');
     badge.className = 'inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2 ' +
@@ -802,9 +840,21 @@ function showCard() {
     } else {
       hide('hmm-actor-hint');
     }
+  } else if (currentCard.card_type === 'sentence') {
+    setText('mode-label', t('sentence.modeLabel'));
+    setText('prompt-word', currentCard.sentence_blank);
+    show('prompt-word');
+    hide('play-btn');
+    hide('pinyin-hint');
+    hide('translations-hint');
+    hide('hmm-type-badge');
+    hide('hmm-actor-hint');
+    setText('sentence-context', currentCard.sentence_context);
+    show('sentence-context');
   } else {
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
+    hide('sentence-context');
 
     setText('mode-label', getModeLabel(currentCard.mode));
 
@@ -1080,6 +1130,29 @@ function renderWordAnswerResult(result, answer) {
 
       loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
       autoPlayResultAudio(currentCard, result);
+
+      // Retype-on-wrong gate: block Next until the user retypes the correct
+      // Chinese word and translation (same input-validation pattern as the
+      // new-word introduction screen — see updateGotItState/isZhCorrect/isTransCorrect).
+      // "Add as translation" and "Accept as correct" also advance to the next
+      // card, so they're suppressed here too — otherwise they'd bypass the gate.
+      if (retypeOnWrong) {
+        wrongRetypeTarget = { zhText: result.zh_text, translations: result.translations };
+        $('wrong-retype-zh-input').value = '';
+        $('wrong-retype-trans-input').value = '';
+        $('wrong-retype-zh-check').textContent = '';
+        $('wrong-retype-trans-check').textContent = '';
+        show('wrong-retype-area');
+        $('next-btn').disabled = true;
+        hide('add-translation-row');
+        hide('add-translation-lang-select');
+        hide('accept-correct-btn');
+        setTimeout(() => $('wrong-retype-zh-input').focus(), 50);
+      } else {
+        wrongRetypeTarget = null;
+        hide('wrong-retype-area');
+        $('next-btn').disabled = false;
+      }
     };
 
     if (result.ambiguous) {
@@ -1939,19 +2012,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadNextCard();
   });
-  function normalizeNewWordInput(s) {
-    return s.trim().toLowerCase()
-      .replace(/[？！，。：；]/g, m => ({ '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';' }[m]))
-      .replace(/[\p{P}\p{S}\s]+$/u, '');
-  }
+  // Bracketed annotations (e.g. "过（动词）") are optional, mirroring the
+  // backend's CheckAnswer / expandVariants rule for regular quiz answers.
   function isZhCorrect(inputVal, prompt) {
-    return normalizeNewWordInput(inputVal) === normalizeNewWordInput(prompt);
+    if (!inputVal || !inputVal.trim()) return false;
+    return expandVariants(prompt).includes(normalizeAnswer(inputVal));
   }
   function isTransCorrect(inputVal, translations) {
-    const normalized = normalizeNewWordInput(inputVal);
-    if (!normalized) return false;
+    if (!inputVal || !inputVal.trim()) return false;
+    const norm = normalizeAnswer(inputVal);
     const allTrans = Object.values(translations || {}).flat();
-    return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+    return allTrans.some(t => expandVariants(t).includes(norm));
   }
   function updateGotItState() {
     if (!currentCard) return;
@@ -1991,6 +2062,23 @@ document.addEventListener('DOMContentLoaded', () => {
     skipNewWords = true;
     loadNextCard();
   });
+
+  // Retype-on-wrong gate: mirrors updateGotItState above, but drives the
+  // shared #next-btn instead of a dedicated "Got it" button.
+  function updateWrongRetypeState() {
+    if (!wrongRetypeTarget) return;
+    const zhVal    = $('wrong-retype-zh-input').value;
+    const transVal = $('wrong-retype-trans-input').value;
+    const zhCorrect    = isZhCorrect(zhVal, wrongRetypeTarget.zhText);
+    const transCorrect = isTransCorrect(transVal, wrongRetypeTarget.translations);
+    $('wrong-retype-zh-check').textContent = zhVal.trim() ? (zhCorrect ? '✓' : '✗') : '';
+    $('wrong-retype-zh-check').className   = 'text-xl w-6 text-center ' + (zhCorrect ? 'text-green-500' : 'text-red-400');
+    $('wrong-retype-trans-check').textContent = transVal.trim() ? (transCorrect ? '✓' : '✗') : '';
+    $('wrong-retype-trans-check').className   = 'text-xl w-6 text-center ' + (transCorrect ? 'text-green-500' : 'text-red-400');
+    $('next-btn').disabled = !wrongRetypeSatisfied(zhVal, transVal, wrongRetypeTarget.zhText, wrongRetypeTarget.translations);
+  }
+  $('wrong-retype-zh-input').addEventListener('input', updateWrongRetypeState);
+  $('wrong-retype-trans-input').addEventListener('input', updateWrongRetypeState);
   $('new-component-got-it-btn').addEventListener('click', async () => {
     if (!currentCard) return;
     try {
