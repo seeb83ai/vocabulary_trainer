@@ -58,6 +58,23 @@ jobs:
         run: npx --yes eslint service/frontend
         continue-on-error: true
 
+  frontend-screenshot-check:
+    name: PR screenshots for frontend changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Report-only: nudges toward the "PR screenshots for frontend changes"
+      # rule in CLAUDE.md — not yet a merge gate (screenshot naming is
+      # free-form, and not every frontend diff has a rendered-output change).
+      - name: Check frontend changes have an updated screenshot
+        run: ./scripts/check-pr-screenshots.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+        continue-on-error: true
+
   test-go:
     name: Go tests
     runs-on: ubuntu-latest

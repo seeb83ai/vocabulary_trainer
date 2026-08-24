@@ -56,17 +56,37 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Screenshots
 
+Regenerate with `make screenshots-readme` (drives a real browser via Playwright against a seeded local server).
+
 Training — question
 ![Training question](images/chinese_train.png)
 
 Training — answer
 ![Training answer](images/chinese_train_answer.png)
 
-Vocabulary management |
+Vocabulary management
 ![Vocabulary management](images/chinese_vocabulary.png)
 
 Overview - Vocabulary Mismatches
-![Training answer](images/chinese_mismatches.png)
+![Vocabulary mismatches](images/chinese_mismatches.png)
+
+Gamification — match game
+![Gamification match game](images/chinese_gamification.png)
+
+Stats dashboard
+![Stats dashboard](images/chinese_stats.png)
+
+Pinyin listening quiz
+![Pinyin listening quiz](images/chinese_pinyin.png)
+
+Mnemonics (HMM) builder
+![Mnemonics HMM builder](images/chinese_mnemonics.png)
+
+Settings
+![Settings](images/chinese_settings.png)
+
+Login / Register
+![Login and register](images/chinese_login.png)
 
 ## Quick start
 

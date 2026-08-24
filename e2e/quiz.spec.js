@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { captureForPR } from './helpers/screenshot.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Main user — 3 acknowledged words (total_attempts=1, learning_new_word=1)
@@ -197,6 +198,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 
     const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
     await expect(yellowBox).toBeVisible();
+    await captureForPR(page, 'train-mismatch');
 
     const redSize = await page.locator('#word-breakdown .bg-red-50 .text-red-700')
       .evaluate(el => getComputedStyle(el).fontSize);
