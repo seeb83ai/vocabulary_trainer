@@ -388,7 +388,7 @@ func (h *ComponentHandler) List(w http.ResponseWriter, r *http.Request) {
 // components a candidate coverage-target percentage would select for
 // training (see db.selectComponentsForCoverage).
 func (h *ComponentHandler) Coverage(w http.ResponseWriter, r *http.Request) {
-	items, totalWords, err := h.Store.GetComponentCoverage(r.Context(), UserIDFromContext(r.Context()))
+	items, wordComponentCounts, totalWords, err := h.Store.GetComponentCoverage(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		internalError(w, err)
 		return
@@ -396,9 +396,13 @@ func (h *ComponentHandler) Coverage(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []db.ComponentCoverageComponent{}
 	}
+	if wordComponentCounts == nil {
+		wordComponentCounts = map[int64]int{}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"components":  items,
-		"total_words": totalWords,
+		"components":            items,
+		"word_component_counts": wordComponentCounts,
+		"total_words":           totalWords,
 	})
 }
 

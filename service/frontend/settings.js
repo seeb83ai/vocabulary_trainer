@@ -704,43 +704,59 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
 
 let componentCoverageData = [];
 let componentCoverageTotalWords = 0;
+let componentCoverageWordCounts = {}; // word_id (string) -> number of trainable components
 
 // computeCoverageSelection is pure: given the fetched per-component word-ID
-// sets and a candidate coverage-target percentage, greedily picks components
-// — always the one covering the most not-yet-covered words next — until
-// their combined word coverage reaches targetPct% of totalWords. This
-// mirrors selectComponentsForCoverage in service/db/components.go (the same
-// greedy set-cover approximation, with the same character-ascending
-// tie-break), so the preview shown here matches what actually gets added to
-// training. No DOM access, so it can recompute live on every input change
-// without a server round trip.
-function computeCoverageSelection(components, totalWords, targetPct) {
+// sets, the per-word trainable-component counts, and a candidate coverage-target
+// percentage, greedily picks components — always the one that immediately fully
+// covers the most additional words next (a word is fully covered when all its
+// trainable components are selected; words with 0 components are auto-covered).
+// Mirrors selectComponentsForCoverage in service/db/components.go.
+function computeCoverageSelection(components, wordComponentCounts, totalWords, targetPct) {
   const totalComponents = components.length;
-  if (totalWords <= 0 || targetPct <= 0 || totalComponents === 0) {
+  if (totalWords <= 0 || targetPct <= 0) {
     return { selectedCount: 0, totalComponents };
   }
-  const target = (targetPct / 100) * totalWords;
-  const remaining = components
+  const target = Math.ceil((targetPct / 100) * totalWords);
+
+  // remaining[wid] = unselected component count still needed for that word.
+  const remaining = {};
+  let coveredCount = 0;
+  for (const [wid, cnt] of Object.entries(wordComponentCounts)) {
+    if (cnt === 0) {
+      coveredCount++;
+    } else {
+      remaining[wid] = cnt;
+    }
+  }
+  if (coveredCount >= target) return { selectedCount: 0, totalComponents };
+
+  const candidates = components
     .map(c => ({ character: c.character, wordIds: c.word_ids || [] }))
     .sort((a, b) => (a.character < b.character ? -1 : a.character > b.character ? 1 : 0));
-  const covered = new Set();
+
   let selectedCount = 0;
-  while (covered.size < target && remaining.length > 0) {
-    let bestIdx = -1;
-    let bestGain = 0;
-    for (let i = 0; i < remaining.length; i++) {
+  while (coveredCount < target && candidates.length > 0) {
+    let bestIdx = -1, bestGain = 0;
+    for (let i = 0; i < candidates.length; i++) {
       let gain = 0;
-      for (const wid of remaining[i].wordIds) {
-        if (!covered.has(wid)) gain++;
+      for (const wid of candidates[i].wordIds) {
+        if (remaining[wid] === 1) gain++;
       }
-      if (gain > bestGain) {
-        bestGain = gain;
-        bestIdx = i;
-      }
+      if (gain > bestGain) { bestGain = gain; bestIdx = i; }
     }
     if (bestIdx === -1) break;
-    for (const wid of remaining[bestIdx].wordIds) covered.add(wid);
-    remaining.splice(bestIdx, 1);
+    for (const wid of candidates[bestIdx].wordIds) {
+      if (remaining[wid] !== undefined) {
+        if (remaining[wid] === 1) {
+          delete remaining[wid];
+          coveredCount++;
+        } else {
+          remaining[wid]--;
+        }
+      }
+    }
+    candidates.splice(bestIdx, 1);
     selectedCount++;
   }
   return { selectedCount, totalComponents };
@@ -749,7 +765,7 @@ function computeCoverageSelection(components, totalWords, targetPct) {
 function updateComponentCoverageSummary() {
   const raw = parseFloat(document.getElementById('component-coverage-threshold')?.value || '0');
   const targetPct = isNaN(raw) ? 0 : raw;
-  const { selectedCount, totalComponents } = computeCoverageSelection(componentCoverageData, componentCoverageTotalWords, targetPct);
+  const { selectedCount, totalComponents } = computeCoverageSelection(componentCoverageData, componentCoverageWordCounts, componentCoverageTotalWords, targetPct);
   const summaryEl = document.getElementById('component-coverage-summary');
   if (!summaryEl) return;
   if (totalComponents === 0) {
@@ -769,6 +785,7 @@ async function loadComponentCoverage() {
     if (!res.ok) return;
     const data = await res.json();
     componentCoverageData = data.components || [];
+    componentCoverageWordCounts = data.word_component_counts || {};
     componentCoverageTotalWords = data.total_words || 0;
     updateComponentCoverageSummary();
   } catch { /* ignore */ }

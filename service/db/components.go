@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -113,12 +114,13 @@ func getComponentCoverageThreshold(ctx context.Context, q querier, userID int64)
 // componentWordSets returns, for every qualifying component character across
 // all of userID's zh words, the set of zh word IDs that require it — the same
 // rule wordRequiredComponents applies per word, just accumulated. Also
-// returns the total zh word count, used as the coverage-target denominator.
-func componentWordSets(ctx context.Context, q querier, userID int64) (wordSets map[string]map[int64]bool, totalWords int, err error) {
+// returns the total zh word count and a per-word component count map (word ID
+// → number of trainable components; 0 means the word is always covered).
+func componentWordSets(ctx context.Context, q querier, userID int64) (wordSets map[string]map[int64]bool, wordComponentCounts map[int64]int, totalWords int, err error) {
 	rows, err := q.QueryContext(ctx,
 		`SELECT id, text FROM words WHERE user_id = ? AND language = 'zh'`, userID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("list zh words: %w", err)
+		return nil, nil, 0, fmt.Errorf("list zh words: %w", err)
 	}
 	type zhWord struct {
 		id   int64
@@ -129,21 +131,23 @@ func componentWordSets(ctx context.Context, q querier, userID int64) (wordSets m
 		var wd zhWord
 		if err := rows.Scan(&wd.id, &wd.text); err != nil {
 			rows.Close()
-			return nil, 0, fmt.Errorf("scan zh word: %w", err)
+			return nil, nil, 0, fmt.Errorf("scan zh word: %w", err)
 		}
 		words = append(words, wd)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("list zh words rows: %w", err)
+		return nil, nil, 0, fmt.Errorf("list zh words rows: %w", err)
 	}
 
 	wordSets = make(map[string]map[int64]bool)
+	wordComponentCounts = make(map[int64]int, len(words))
 	for _, wd := range words {
 		components, err := wordRequiredComponents(ctx, q, wd.text)
 		if err != nil {
-			return nil, 0, err
+			return nil, nil, 0, err
 		}
+		wordComponentCounts[wd.id] = len(components)
 		for _, c := range components {
 			if wordSets[c] == nil {
 				wordSets[c] = make(map[int64]bool)
@@ -151,36 +155,52 @@ func componentWordSets(ctx context.Context, q querier, userID int64) (wordSets m
 			wordSets[c][wd.id] = true
 		}
 	}
-	return wordSets, len(words), nil
+	return wordSets, wordComponentCounts, len(words), nil
 }
 
-// selectComponentsForCoverage greedily picks components — always the one
-// covering the most not-yet-covered zh words next — until the union of
-// covered words reaches targetPct percent of totalWords, or every qualifying
-// component has been picked. This is the standard greedy approximation to
-// minimum set cover: "learn as few components as possible to cover X% of all
-// words," rather than filtering components individually by their own
-// coverage share. Ties are broken by character (ascending) for determinism.
-func selectComponentsForCoverage(wordSets map[string]map[int64]bool, totalWords int, targetPct float64) []string {
-	if totalWords == 0 || targetPct <= 0 || len(wordSets) == 0 {
+// selectComponentsForCoverage greedily picks components — always the one that
+// fully covers the most additional zh words next — until the count of fully-
+// covered words reaches targetPct percent of totalWords, or no more progress
+// is possible. A word is fully covered when every one of its trainable
+// components has been selected. Words with zero trainable components
+// (wordComponentCounts[id]==0) are counted as covered from the start.
+// Ties are broken by character (ascending) for determinism.
+func selectComponentsForCoverage(wordSets map[string]map[int64]bool, wordComponentCounts map[int64]int, totalWords int, targetPct float64) []string {
+	if totalWords == 0 || targetPct <= 0 {
 		return nil
 	}
-	target := targetPct / 100 * float64(totalWords)
+	// Integer target: ceil(targetPct/100 * totalWords) — "cover at least X% of words".
+	target := int(math.Ceil(targetPct / 100 * float64(totalWords)))
 
-	remaining := make([]string, 0, len(wordSets))
-	for c := range wordSets {
-		remaining = append(remaining, c)
+	// remaining[wid] = number of components still unselected for that word.
+	remaining := make(map[int64]int, len(wordComponentCounts))
+	coveredCount := 0
+	for wid, cnt := range wordComponentCounts {
+		if cnt == 0 {
+			coveredCount++
+		} else {
+			remaining[wid] = cnt
+		}
 	}
-	sort.Strings(remaining)
 
-	covered := make(map[int64]bool)
+	if coveredCount >= target {
+		return nil
+	}
+
+	candidates := make([]string, 0, len(wordSets))
+	for c := range wordSets {
+		candidates = append(candidates, c)
+	}
+	sort.Strings(candidates)
+
 	var selected []string
-	for float64(len(covered)) < target && len(remaining) > 0 {
+	for coveredCount < target && len(candidates) > 0 {
 		bestIdx, bestGain := -1, 0
-		for i, c := range remaining {
+		for i, c := range candidates {
 			gain := 0
 			for wid := range wordSets[c] {
-				if !covered[wid] {
+				if r, ok := remaining[wid]; ok && r == 1 {
+					// selecting c would fully cover this word
 					gain++
 				}
 			}
@@ -192,12 +212,19 @@ func selectComponentsForCoverage(wordSets map[string]map[int64]bool, totalWords 
 		if bestIdx == -1 {
 			break
 		}
-		best := remaining[bestIdx]
+		best := candidates[bestIdx]
 		selected = append(selected, best)
 		for wid := range wordSets[best] {
-			covered[wid] = true
+			if r, ok := remaining[wid]; ok {
+				if r == 1 {
+					delete(remaining, wid)
+					coveredCount++
+				} else {
+					remaining[wid] = r - 1
+				}
+			}
 		}
-		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
+		candidates = append(candidates[:bestIdx], candidates[bestIdx+1:]...)
 	}
 	return selected
 }
@@ -218,11 +245,11 @@ func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText 
 	}
 	var selected map[string]bool
 	if threshold > 0 {
-		wordSets, totalWords, err := componentWordSets(ctx, q, userID)
+		wordSets, wordComponentCounts, totalWords, err := componentWordSets(ctx, q, userID)
 		if err != nil {
 			return err
 		}
-		sel := selectComponentsForCoverage(wordSets, totalWords, threshold)
+		sel := selectComponentsForCoverage(wordSets, wordComponentCounts, totalWords, threshold)
 		selected = make(map[string]bool, len(sel))
 		for _, c := range sel {
 			selected[c] = true
@@ -1017,15 +1044,15 @@ type ComponentCoverageComponent struct {
 
 // GetComponentCoverage returns every qualifying component across userID's
 // current zh vocabulary — not just components already in component_progress —
-// together with the zh word IDs that require each one, plus the total zh word
-// count. Used by the Settings page to preview how many components a
-// candidate coverage-target threshold would select (see
-// selectComponentsForCoverage / getComponentCoverageThreshold). Sorted by
-// character for stability.
-func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageComponent, int, error) {
-	wordSets, totalWords, err := componentWordSets(ctx, s.db, userID)
+// together with the zh word IDs that require each one, the total zh word
+// count, and a per-word trainable-component count (word ID → count). Used by
+// the Settings page to preview how many components a candidate coverage-target
+// threshold would select (see selectComponentsForCoverage /
+// getComponentCoverageThreshold). Sorted by character for stability.
+func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageComponent, map[int64]int, int, error) {
+	wordSets, wordComponentCounts, totalWords, err := componentWordSets(ctx, s.db, userID)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 
 	items := make([]ComponentCoverageComponent, 0, len(wordSets))
@@ -1038,7 +1065,7 @@ func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]Compo
 		items = append(items, ComponentCoverageComponent{Character: char, WordIDs: ids})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Character < items[j].Character })
-	return items, totalWords, nil
+	return items, wordComponentCounts, totalWords, nil
 }
 
 func joinPinyinJSON(s string) string {

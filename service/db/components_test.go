@@ -502,7 +502,7 @@ func TestComponentWordSets_MembershipAndTotal(t *testing.T) {
 	seedZhWord(t, s, userID, "明")
 	seedZhWord(t, s, userID, "明月")
 
-	wordSets, total, err := componentWordSets(ctx, s.db, userID)
+	wordSets, wordComponentCounts, total, err := componentWordSets(ctx, s.db, userID)
 	if err != nil {
 		t.Fatalf("componentWordSets: %v", err)
 	}
@@ -515,39 +515,79 @@ func TestComponentWordSets_MembershipAndTotal(t *testing.T) {
 	if len(wordSets) != 2 {
 		t.Errorf("want exactly 2 distinct components, got %v", wordSets)
 	}
+	// 妈 has no decomposition seeded → 0 components; 明 and 明月 each have 日+月 → 2.
+	for wid, cnt := range wordComponentCounts {
+		if cnt != 0 && cnt != 2 {
+			t.Errorf("unexpected component count %d for word %d", cnt, wid)
+		}
+	}
+	if len(wordComponentCounts) != 3 {
+		t.Errorf("want 3 entries in wordComponentCounts, got %d", len(wordComponentCounts))
+	}
 }
 
-func TestSelectComponentsForCoverage_GreedyPicksHighestGainFirst(t *testing.T) {
-	// 日 covers words {1,2,3}; 月 covers {3,4}; 女 covers {5}. Total 5 words.
+func TestSelectComponentsForCoverage_AllComponentsRequired(t *testing.T) {
+	// Word 1 needs 日 and 月 (both required to cover it).
+	// Word 2 needs 日 and 女 (both required to cover it).
+	// Word 3 needs 女 only.
+	// 日 alone covers neither word 1 nor word 2 (each needs a second component).
+	// 女 alone immediately fully covers word 3.
+	// To reach 2 fully-covered words we need e.g. 日+月 (covers word1) or 日+女 (covers word2+word3).
 	wordSets := map[string]map[int64]bool{
-		"日": {1: true, 2: true, 3: true},
-		"月": {3: true, 4: true},
-		"女": {5: true},
+		"日": {1: true, 2: true},
+		"月": {1: true},
+		"女": {2: true, 3: true},
 	}
-	// 60% of 5 = 3 words -> 日 alone (covers 3) satisfies the target.
-	got := selectComponentsForCoverage(wordSets, 5, 60)
-	if len(got) != 1 || got[0] != "日" {
-		t.Errorf("want [日] at 60%% target, got %v", got)
+	wordComponentCounts := map[int64]int{1: 2, 2: 2, 3: 1}
+
+	// 33% of 3 = 1 word. Only 女 can immediately fully cover a word (word 3, count=1).
+	// 日 and 月 alone don't yet cover anything fully.
+	got := selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 33)
+	if len(got) != 1 || got[0] != "女" {
+		t.Errorf("want [女] at 33%% target, got %v", got)
 	}
 
-	// 80% of 5 = 4 words -> 日 (3) alone isn't enough; either 月 (covers word 4)
-	// or 女 (covers word 5) adds exactly 1 more — tied on gain, so the
-	// character-ascending tie-break picks 女.
-	got = selectComponentsForCoverage(wordSets, 5, 80)
-	if len(got) != 2 || got[0] != "日" || got[1] != "女" {
-		t.Errorf("want [日 女] at 80%% target (tie-break picks the lexicographically smaller character), got %v", got)
+	// 50% of 3 = ceil(1.5) = 2 words. After 女: word3 covered (1), word2 remaining needs 日.
+	// Next: 日 covers word2 (now both 女+日 selected, word2 fully covered = 2 words).
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 50)
+	if len(got) != 2 || got[0] != "女" || got[1] != "日" {
+		t.Errorf("want [女 日] at 50%% target, got %v", got)
 	}
 
-	// 100% of 5 = 5 words -> needs all three components.
-	got = selectComponentsForCoverage(wordSets, 5, 100)
+	// 100% of 3 = 3 words -> needs 女, 日, 月 (word1 still needs 月).
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 100)
 	if len(got) != 3 {
 		t.Errorf("want all 3 components at 100%% target, got %v", got)
 	}
 }
 
+func TestSelectComponentsForCoverage_WordsWithNoComponentsAlwaysCovered(t *testing.T) {
+	// Word 1 has no trainable components (count=0, not in any wordSet) -> auto-covered.
+	// Word 2 needs 日. Total 2 words; even 50% target needs word 2 covered.
+	wordSets := map[string]map[int64]bool{
+		"日": {2: true},
+	}
+	wordComponentCounts := map[int64]int{1: 0, 2: 1}
+
+	// 50% of 2 = 1 word. Word 1 is auto-covered; word 2 needs 日. So 1 is already
+	// covered -> target met without selecting anything? No: we start with covered=1
+	// (the zero-component words), target=1, so loop exits immediately with 0 picks.
+	got := selectComponentsForCoverage(wordSets, wordComponentCounts, 2, 50)
+	if len(got) != 0 {
+		t.Errorf("want 0 selections when auto-covered words already meet target, got %v", got)
+	}
+
+	// 100% of 2 = 2 words -> word 2 needs 日.
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 2, 100)
+	if len(got) != 1 || got[0] != "日" {
+		t.Errorf("want [日] at 100%% target, got %v", got)
+	}
+}
+
 func TestSelectComponentsForCoverage_ZeroTargetSelectsNothing(t *testing.T) {
 	wordSets := map[string]map[int64]bool{"日": {1: true}}
-	if got := selectComponentsForCoverage(wordSets, 1, 0); got != nil {
+	wordComponentCounts := map[int64]int{1: 1}
+	if got := selectComponentsForCoverage(wordSets, wordComponentCounts, 1, 0); got != nil {
 		t.Errorf("want nil selection at target 0, got %v", got)
 	}
 }
@@ -694,7 +734,7 @@ func TestGetComponentCoverage_ReturnsWordIDSetsSortedByCharacter(t *testing.T) {
 	seedZhWord(t, s, userID, "妈")
 	// 日 and 月 each cover 2 of the 3 words, 女 covers 1 (马 excluded — phonetic-only).
 
-	items, total, err := s.GetComponentCoverage(ctx, userID)
+	items, _, total, err := s.GetComponentCoverage(ctx, userID)
 	if err != nil {
 		t.Fatalf("GetComponentCoverage: %v", err)
 	}
