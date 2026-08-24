@@ -71,7 +71,7 @@ function stripParens(s) {
   let prev;
   do {
     prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+    s = s.replace(/\s*[(（][^()（）]*[)）]\s*/g, ' ').trim();
   } while (s !== prev);
   return s;
 }
@@ -1954,6 +1954,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadNextCard();
   });
+  // Bracketed annotations (e.g. "过（动词）") are optional, mirroring the
+  // backend's CheckAnswer / expandVariants rule for regular quiz answers.
+  function isZhCorrect(inputVal, prompt) {
+    if (!inputVal || !inputVal.trim()) return false;
+    return expandVariants(prompt).includes(normalizeAnswer(inputVal));
+  }
+  function isTransCorrect(inputVal, translations) {
+    if (!inputVal || !inputVal.trim()) return false;
+    const norm = normalizeAnswer(inputVal);
+    const allTrans = Object.values(translations || {}).flat();
+    return allTrans.some(t => expandVariants(t).includes(norm));
+  }
   function updateGotItState() {
     if (!currentCard) return;
     const zhVal    = $('new-word-zh-input').value;

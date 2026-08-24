@@ -30,6 +30,9 @@ func newAuthRouter(t *testing.T) http.Handler {
 	r.Get("/api/protected", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	r.Get("/api/demo/cards", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -779,5 +782,13 @@ func TestMaskKey(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("MaskKey(%q): want %q, got %q", tt.input, tt.want, got)
 		}
+	}
+}
+
+func TestMiddleware_DemoAccessibleWithoutSession(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := do(t, r, "GET", "/api/demo/cards", nil)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 on /api/demo/cards without session, got %d", rec.Code)
 	}
 }
