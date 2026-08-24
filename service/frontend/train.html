@@ -84,6 +84,26 @@
           <p class="text-gray-500 text-sm" data-i18n="empty.importMsg">Import a word list to get started — it only takes a moment.</p>
         </div>
 
+        <!-- Quick start: one-button level chooser (shown when HSK library tags exist) -->
+        <div id="ob-quickstart" class="hidden">
+          <p class="text-sm font-medium text-gray-700 mb-3" data-i18n="empty.quickStartQuestion">How much Chinese do you know?</p>
+          <div class="grid gap-2 mb-3">
+            <button id="ob-qs-hsk1" type="button"
+              class="hidden w-full text-left px-4 py-3 rounded-xl border border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition font-medium text-gray-700">
+              🌱 <span data-i18n="empty.qsBeginner">I'm new — start with HSK 1</span>
+            </button>
+            <button id="ob-qs-hsk23" type="button"
+              class="hidden w-full text-left px-4 py-3 rounded-xl border border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition font-medium text-gray-700">
+              📗 <span data-i18n="empty.qsBasics">I know the basics — HSK 2–3</span>
+            </button>
+            <button id="ob-qs-custom" type="button"
+              class="w-full text-left px-4 py-3 rounded-xl border border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition font-medium text-gray-700">
+              ⚙️ <span data-i18n="empty.qsCustom">Let me choose word lists myself</span>
+            </button>
+          </div>
+          <div id="ob-qs-status" class="hidden text-sm text-gray-500"></div>
+        </div>
+
         <!-- Step 1: pick a source tag -->
         <div id="ob-step1">
           <p class="text-sm font-medium text-gray-700 mb-2" data-i18n="vocab.importPickTag">Select a tag to import from the shared library:</p>
@@ -193,6 +213,10 @@
         <div class="text-5xl mb-4">🎉</div>
         <h2 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="success.title">All done for today!</h2>
         <p id="success-stats" class="text-gray-500 mb-6"></p>
+        <div id="success-comeback" class="hidden mb-6 mx-auto max-w-md bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-900 text-left">
+          <p class="font-semibold mb-1">🔥 <span data-i18n="success.dayStreak">Day streak:</span> <span id="success-streak"></span></p>
+          <p><span id="success-due-tomorrow"></span> <span id="success-comeback-msg"></span></p>
+        </div>
         <div class="mb-5">
           <p id="success-amount-label" class="text-sm font-medium text-gray-600 mb-3" data-i18n="success.learnMore">Learn more words?</p>
           <div class="flex gap-3 justify-center">
