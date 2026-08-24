@@ -207,12 +207,12 @@ test.describe('Settings – Blur pinyin (issue #201)', () => {
 test.describe('Settings – Component training threshold', () => {
   test.use({ storageState: 'e2e/.auth/user.json' });
 
-  test('component training section is visible with threshold input and coverage table', async ({ page }) => {
+  test('component training section is visible with threshold input and coverage summary', async ({ page }) => {
     await page.goto('/settings');
     await expect(page.locator('#component-training-section')).toBeVisible();
     await expect(page.locator('#component-coverage-threshold')).toBeVisible();
     await expect(page.locator('#component-coverage-threshold')).toHaveValue('0');
-    await expect(page.locator('#component-coverage-table')).toBeVisible();
+    await expect(page.locator('#component-coverage-summary')).toBeVisible();
   });
 
   test('threshold can be changed and saved, and persists across reload', async ({ page }) => {

@@ -540,48 +540,79 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
 
 let componentCoverageData = [];
 let componentCoverageTotalWords = 0;
+let componentCoverageWordCounts = {}; // word_id (string) -> number of trainable components
 
-// computeThresholdSummary is pure: given the fetched coverage list and a
-// candidate threshold, returns how many components would qualify for
-// training. No DOM access, so it can recompute live on every input change
-// without a server round trip.
-function computeThresholdSummary(components, threshold) {
-  const total = components.length;
-  const qualifying = components.filter(c => c.coverage_pct >= threshold).length;
-  return { qualifying, total };
-}
-
-function renderComponentCoverageTable(components, threshold) {
-  const tbody = document.getElementById('component-coverage-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  for (const comp of components) {
-    const belowThreshold = comp.coverage_pct < threshold;
-    const statusLabel = comp.already_trained ? 'Training' : (belowThreshold ? 'Skipped' : 'Would train');
-    const def = comp.definition_en || comp.definition_de || '';
-    const tr = document.createElement('tr');
-    tr.className = 'border-t border-gray-100' + (belowThreshold ? ' opacity-40' : '');
-    tr.innerHTML =
-      '<td class="px-3 py-1.5 font-medium">' + escHtml(comp.character) + '</td>' +
-      '<td class="px-3 py-1.5 text-gray-500">' + escHtml(comp.pinyin || '') + '</td>' +
-      '<td class="px-3 py-1.5 text-gray-500">' + escHtml(def) + '</td>' +
-      '<td class="px-3 py-1.5 text-right">' + comp.word_count + '</td>' +
-      '<td class="px-3 py-1.5 text-right">' + comp.coverage_pct.toFixed(1) + '%</td>' +
-      '<td class="px-3 py-1.5 text-gray-500">' + escHtml(statusLabel) + '</td>';
-    tbody.appendChild(tr);
+// computeCoverageSelection is pure: given the fetched per-component word-ID
+// sets, the per-word trainable-component counts, and a candidate coverage-target
+// percentage, greedily picks components — always the one that immediately fully
+// covers the most additional words next (a word is fully covered when all its
+// trainable components are selected; words with 0 components are auto-covered).
+// Mirrors selectComponentsForCoverage in service/db/components.go.
+function computeCoverageSelection(components, wordComponentCounts, totalWords, targetPct) {
+  const totalComponents = components.length;
+  if (totalWords <= 0 || targetPct <= 0) {
+    return { selectedCount: 0, totalComponents };
   }
+  const target = Math.ceil((targetPct / 100) * totalWords);
+
+  // remaining[wid] = unselected component count still needed for that word.
+  const remaining = {};
+  let coveredCount = 0;
+  for (const [wid, cnt] of Object.entries(wordComponentCounts)) {
+    if (cnt === 0) {
+      coveredCount++;
+    } else {
+      remaining[wid] = cnt;
+    }
+  }
+  if (coveredCount >= target) return { selectedCount: 0, totalComponents };
+
+  const candidates = components
+    .map(c => ({ character: c.character, wordIds: c.word_ids || [] }))
+    .sort((a, b) => (a.character < b.character ? -1 : a.character > b.character ? 1 : 0));
+
+  let selectedCount = 0;
+  while (coveredCount < target && candidates.length > 0) {
+    let bestIdx = -1, bestGain = 0;
+    for (let i = 0; i < candidates.length; i++) {
+      let gain = 0;
+      for (const wid of candidates[i].wordIds) {
+        if (remaining[wid] === 1) gain++;
+      }
+      if (gain > bestGain) { bestGain = gain; bestIdx = i; }
+    }
+    if (bestIdx === -1) break;
+    for (const wid of candidates[bestIdx].wordIds) {
+      if (remaining[wid] !== undefined) {
+        if (remaining[wid] === 1) {
+          delete remaining[wid];
+          coveredCount++;
+        } else {
+          remaining[wid]--;
+        }
+      }
+    }
+    candidates.splice(bestIdx, 1);
+    selectedCount++;
+  }
+  return { selectedCount, totalComponents };
 }
 
 function updateComponentCoverageSummary() {
-  const threshold = parseFloat(document.getElementById('component-coverage-threshold')?.value || '0');
-  const { qualifying, total } = computeThresholdSummary(componentCoverageData, threshold);
+  const raw = parseFloat(document.getElementById('component-coverage-threshold')?.value || '0');
+  const targetPct = isNaN(raw) ? 0 : raw;
+  const { selectedCount, totalComponents } = computeCoverageSelection(componentCoverageData, componentCoverageWordCounts, componentCoverageTotalWords, targetPct);
   const summaryEl = document.getElementById('component-coverage-summary');
-  if (summaryEl) {
-    summaryEl.textContent = total === 0
-      ? 'No components found in your vocabulary yet.'
-      : qualifying + ' of ' + total + ' components would train at this threshold (across ' + componentCoverageTotalWords + ' words).';
+  if (!summaryEl) return;
+  if (totalComponents === 0) {
+    summaryEl.textContent = 'No components found in your vocabulary yet.';
+  } else if (targetPct <= 0) {
+    summaryEl.textContent = 'All ' + totalComponents + ' components would be added to training (no coverage target set).';
+  } else {
+    const pct = Math.round((selectedCount / totalComponents) * 100);
+    summaryEl.textContent = selectedCount + ' of ' + totalComponents + ' components (' + pct +
+      '%) would be added to training to cover ' + targetPct + '% of your ' + componentCoverageTotalWords + ' Chinese words.';
   }
-  renderComponentCoverageTable(componentCoverageData, isNaN(threshold) ? 0 : threshold);
 }
 
 async function loadComponentCoverage() {
@@ -590,6 +621,7 @@ async function loadComponentCoverage() {
     if (!res.ok) return;
     const data = await res.json();
     componentCoverageData = data.components || [];
+    componentCoverageWordCounts = data.word_component_counts || {};
     componentCoverageTotalWords = data.total_words || 0;
     updateComponentCoverageSummary();
   } catch { /* ignore */ }

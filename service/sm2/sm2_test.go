@@ -309,6 +309,18 @@ func TestCheckAnswer_OptionalParens_Middle(t *testing.T) {
 	}
 }
 
+func TestCheckAnswer_OptionalParens_Fullwidth(t *testing.T) {
+	if !CheckAnswer("过", []string{"过（动词）"}) {
+		t.Error("fullwidth-parenthesized segment should be optional, same as ASCII parens")
+	}
+}
+
+func TestCheckAnswer_OptionalParens_FullwidthFullForm(t *testing.T) {
+	if !CheckAnswer("过（动词）", []string{"过（动词）"}) {
+		t.Error("full form with fullwidth parens should also be accepted")
+	}
+}
+
 func TestCheckAnswer_Slash_FullForm(t *testing.T) {
 	if !CheckAnswer("Essen / Gericht", []string{"Essen / Gericht"}) {
 		t.Error("full slash form should be accepted")
@@ -484,6 +496,42 @@ func TestCheckAnswer_FullwidthExclamation_MidString(t *testing.T) {
 func TestCheckAnswer_FullwidthComma_MidString(t *testing.T) {
 	if !CheckAnswer("你好,世界", []string{"你好，世界"}) {
 		t.Error("mid-string ASCII , should match stored fullwidth ，")
+	}
+}
+
+// ── Embedded ellipsis / dot-run normalisation (issue #285) ───────────────────
+
+func TestNormalizeAnswer_EmbeddedEllipsisEquivalence(t *testing.T) {
+	// "……" (ideographic ellipsis, U+2026 x2), "。。。" (fullwidth periods), and
+	// "..." (ASCII periods) used mid-string as pause punctuation should all
+	// normalize identically, not just when trailing.
+	forms := []string{
+		"虽然……但是……",
+		"虽然。。。但是。。。",
+		"虽然...但是...",
+	}
+	want := NormalizeAnswer(forms[0])
+	for _, f := range forms[1:] {
+		if got := NormalizeAnswer(f); got != want {
+			t.Errorf("NormalizeAnswer(%q) = %q, want %q (same as NormalizeAnswer(%q))", f, got, want, forms[0])
+		}
+	}
+}
+
+func TestCheckAnswer_EmbeddedEllipsis_PeriodsVsIdeographicEllipsis(t *testing.T) {
+	if !CheckAnswer("虽然。。。但是。。。", []string{"虽然……但是……"}) {
+		t.Error("user answer with 。。。 should match stored answer with ……")
+	}
+	if !CheckAnswer("虽然……但是……", []string{"虽然。。。但是。。。"}) {
+		t.Error("user answer with …… should match stored answer with 。。。")
+	}
+}
+
+func TestCheckAnswer_EmbeddedEllipsis_DifferentCharacterStillRejected(t *testing.T) {
+	// Punctuation normalisation must not paper over an actual character
+	// mismatch: 对 (duì) is a different character from 虽 (suī).
+	if CheckAnswer("对然……但是……", []string{"虽然……但是……"}) {
+		t.Error("differing first character should not be accepted despite matching punctuation")
 	}
 }
 
@@ -802,6 +850,27 @@ func TestCheckAnswer_NestedParens(t *testing.T) {
 func TestCheckAnswer_TrailingSlash(t *testing.T) {
 	if !CheckAnswer("hello", []string{"hello /"}) {
 		t.Error("trailing slash after normalization should still match 'hello'")
+	}
+}
+
+// Regression for issue #309/#311: fullwidth Chinese parentheses （） mark an
+// optional segment just like ASCII parens do — e.g. a word stored as "还（动词）"
+// must accept the bare character "还" as a correct answer.
+func TestCheckAnswer_FullwidthParens_WithoutParens(t *testing.T) {
+	if !CheckAnswer("还", []string{"还（动词）"}) {
+		t.Error("form without fullwidth parens should be accepted")
+	}
+}
+
+func TestCheckAnswer_FullwidthParens_WithParens(t *testing.T) {
+	if !CheckAnswer("还（动词）", []string{"还（动词）"}) {
+		t.Error("full fullwidth-parens form should be accepted")
+	}
+}
+
+func TestCheckAnswer_FullwidthParens_Middle(t *testing.T) {
+	if !CheckAnswer("guò", []string{"guò（体育）"}) {
+		t.Error("stripping fullwidth parens from the end should be accepted")
 	}
 }
 

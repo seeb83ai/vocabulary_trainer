@@ -16,12 +16,56 @@ func TestToPinyin(t *testing.T) {
 		{"中文", "zhōng wén"},
 		{"", ""},
 		{"hello", ""},
+		// Regression for issue #310: brackets marking optional text are
+		// preserved in the generated pinyin, attached without extra spacing.
+		{"过 (动词)", "guò (dòng cí)"},
+		{"还（动词）", "hái （dòng cí）"},
+		{"(的)图书馆", "(de) tú shū guǎn"},
 	}
 	for _, tt := range tests {
 		got := toPinyin(tt.input)
 		if got != tt.want {
 			t.Errorf("toPinyin(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestPinyinCoversText(t *testing.T) {
+	tests := []struct {
+		pinyin string
+		zhText string
+		want   bool
+	}{
+		{"guò", "过（动词）", false},            // 3 Han chars, 1 syllable
+		{"guò dòng cí", "过（动词）", true},     // 3 Han chars, 3 syllables
+		{"guò dòng cí lei", "过（动词）", true}, // more syllables than needed is fine
+		{"", "过", false},
+		{"", "", true},
+		{"anything", "hello", true}, // no Han chars — trivially covered
+	}
+	for _, tt := range tests {
+		if got := pinyinCoversText(tt.pinyin, tt.zhText); got != tt.want {
+			t.Errorf("pinyinCoversText(%q, %q) = %v, want %v", tt.pinyin, tt.zhText, got, tt.want)
+		}
+	}
+}
+
+func TestFullPinyinForDisplay(t *testing.T) {
+	stale := "guò"
+	got := fullPinyinForDisplay("过（动词）", &stale)
+	if got == nil || *got != "guò dòng cí" {
+		t.Errorf("want regenerated full-text pinyin, got %v", got)
+	}
+
+	complete := "dei3 dong4 ci2"
+	got = fullPinyinForDisplay("得（动词）", &complete)
+	if got != &complete {
+		t.Error("want the already-complete stored pinyin returned unchanged (same pointer)")
+	}
+
+	got = fullPinyinForDisplay("你好", nil)
+	if got == nil || *got != "nǐ hǎo" {
+		t.Errorf("want generated pinyin when stored is nil, got %v", got)
 	}
 }
 

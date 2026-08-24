@@ -490,7 +490,7 @@ func TestWordRequiredComponents_DedupsRepeatedCharacter(t *testing.T) {
 	}
 }
 
-func TestComponentWordCoverage_CountsAndTotal(t *testing.T) {
+func TestComponentWordSets_MembershipAndTotal(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
@@ -502,18 +502,93 @@ func TestComponentWordCoverage_CountsAndTotal(t *testing.T) {
 	seedZhWord(t, s, userID, "明")
 	seedZhWord(t, s, userID, "明月")
 
-	counts, total, err := componentWordCoverage(ctx, s.db, userID)
+	wordSets, wordComponentCounts, total, err := componentWordSets(ctx, s.db, userID)
 	if err != nil {
-		t.Fatalf("componentWordCoverage: %v", err)
+		t.Fatalf("componentWordSets: %v", err)
 	}
 	if total != 3 {
 		t.Errorf("want total=3, got %d", total)
 	}
-	if counts["日"] != 2 || counts["月"] != 2 {
-		t.Errorf("want 日:2 月:2, got %v", counts)
+	if len(wordSets["日"]) != 2 || len(wordSets["月"]) != 2 {
+		t.Errorf("want 日:2 月:2 words, got %v", wordSets)
 	}
-	if len(counts) != 2 {
-		t.Errorf("want exactly 2 distinct components, got %v", counts)
+	if len(wordSets) != 2 {
+		t.Errorf("want exactly 2 distinct components, got %v", wordSets)
+	}
+	// 妈 has no decomposition seeded → 0 components; 明 and 明月 each have 日+月 → 2.
+	for wid, cnt := range wordComponentCounts {
+		if cnt != 0 && cnt != 2 {
+			t.Errorf("unexpected component count %d for word %d", cnt, wid)
+		}
+	}
+	if len(wordComponentCounts) != 3 {
+		t.Errorf("want 3 entries in wordComponentCounts, got %d", len(wordComponentCounts))
+	}
+}
+
+func TestSelectComponentsForCoverage_AllComponentsRequired(t *testing.T) {
+	// Word 1 needs 日 and 月 (both required to cover it).
+	// Word 2 needs 日 and 女 (both required to cover it).
+	// Word 3 needs 女 only.
+	// 日 alone covers neither word 1 nor word 2 (each needs a second component).
+	// 女 alone immediately fully covers word 3.
+	// To reach 2 fully-covered words we need e.g. 日+月 (covers word1) or 日+女 (covers word2+word3).
+	wordSets := map[string]map[int64]bool{
+		"日": {1: true, 2: true},
+		"月": {1: true},
+		"女": {2: true, 3: true},
+	}
+	wordComponentCounts := map[int64]int{1: 2, 2: 2, 3: 1}
+
+	// 33% of 3 = 1 word. Only 女 can immediately fully cover a word (word 3, count=1).
+	// 日 and 月 alone don't yet cover anything fully.
+	got := selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 33)
+	if len(got) != 1 || got[0] != "女" {
+		t.Errorf("want [女] at 33%% target, got %v", got)
+	}
+
+	// 50% of 3 = ceil(1.5) = 2 words. After 女: word3 covered (1), word2 remaining needs 日.
+	// Next: 日 covers word2 (now both 女+日 selected, word2 fully covered = 2 words).
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 50)
+	if len(got) != 2 || got[0] != "女" || got[1] != "日" {
+		t.Errorf("want [女 日] at 50%% target, got %v", got)
+	}
+
+	// 100% of 3 = 3 words -> needs 女, 日, 月 (word1 still needs 月).
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 100)
+	if len(got) != 3 {
+		t.Errorf("want all 3 components at 100%% target, got %v", got)
+	}
+}
+
+func TestSelectComponentsForCoverage_WordsWithNoComponentsAlwaysCovered(t *testing.T) {
+	// Word 1 has no trainable components (count=0, not in any wordSet) -> auto-covered.
+	// Word 2 needs 日. Total 2 words; even 50% target needs word 2 covered.
+	wordSets := map[string]map[int64]bool{
+		"日": {2: true},
+	}
+	wordComponentCounts := map[int64]int{1: 0, 2: 1}
+
+	// 50% of 2 = 1 word. Word 1 is auto-covered; word 2 needs 日. So 1 is already
+	// covered -> target met without selecting anything? No: we start with covered=1
+	// (the zero-component words), target=1, so loop exits immediately with 0 picks.
+	got := selectComponentsForCoverage(wordSets, wordComponentCounts, 2, 50)
+	if len(got) != 0 {
+		t.Errorf("want 0 selections when auto-covered words already meet target, got %v", got)
+	}
+
+	// 100% of 2 = 2 words -> word 2 needs 日.
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 2, 100)
+	if len(got) != 1 || got[0] != "日" {
+		t.Errorf("want [日] at 100%% target, got %v", got)
+	}
+}
+
+func TestSelectComponentsForCoverage_ZeroTargetSelectsNothing(t *testing.T) {
+	wordSets := map[string]map[int64]bool{"日": {1: true}}
+	wordComponentCounts := map[int64]int{1: 1}
+	if got := selectComponentsForCoverage(wordSets, wordComponentCounts, 1, 0); got != nil {
+		t.Errorf("want nil selection at target 0, got %v", got)
 	}
 }
 
@@ -565,28 +640,31 @@ func TestInitComponentsForWord_ThresholdZero_IncludesLowCoverageComponent(t *tes
 	}
 }
 
-func TestInitComponentsForWord_ThresholdExcludesLowCoverageComponent(t *testing.T) {
+func TestInitComponentsForWord_ThresholdSelectsMinimalSetToReachTarget(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
+	// 甲 requires only 日 (一 has no seeded definition, so it's filtered out).
+	seedHanziFull(t, s, "甲", "armor", "⿱日一", `{"type":"ideographic","hint":"filler"}`, "日", "")
 	seedHanziDef(t, s, "日", "sun; day")
+	// 乙 requires only 月 (一 has no seeded definition, so it's filtered out).
+	seedHanziFull(t, s, "乙", "second", "⿱月一", `{"type":"ideographic","hint":"filler"}`, "月", "")
 	seedHanziDef(t, s, "月", "moon; month")
-	seedHanziFull(t, s, "好", "good", "⿰女子", `{"type":"ideographic","hint":"woman+child"}`, "女", "")
-	seedHanziDef(t, s, "女", "woman; female")
-	seedHanziDef(t, s, "子", "child; son")
+	// 明 requires both 日 and 月.
+	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
 
 	const userID = int64(2)
-	// 5 pre-existing words use 明 (-> 日/月 at ~83% coverage), 1 uses 好 (-> 女/子
-	// at ~17% coverage). Neither the 明/好 combo word about to be created is in
-	// `words` yet, so the tally below is over these 6 pre-existing words only.
-	for _, filler := range []string{"甲", "乙", "丙", "丁", "戊"} {
-		seedZhWord(t, s, userID, "明"+filler)
-	}
-	seedZhWord(t, s, userID, "好己")
+	// 3 pre-existing words need only 日, 1 needs only 月 — 4 words total. 日
+	// alone already covers 3 of them, so a 60% target (2.4 words) is reached
+	// by 日 alone; 月 would add nothing new that 日 doesn't already cover for
+	// those pre-existing words, so it's skipped as not worth the training slot.
+	seedZhWord(t, s, userID, "甲子")
+	seedZhWord(t, s, userID, "甲丑")
+	seedZhWord(t, s, userID, "甲寅")
+	seedZhWord(t, s, userID, "乙卯")
 
-	setComponentThreshold(t, s, userID, 20) // % — excludes anything below 20%
+	setComponentThreshold(t, s, userID, 60)
 
-	if err := s.InitComponentsForWord(ctx, userID, "明好", time.Now()); err != nil {
+	if err := s.InitComponentsForWord(ctx, userID, "明", time.Now()); err != nil {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
@@ -604,12 +682,42 @@ func TestInitComponentsForWord_ThresholdExcludesLowCoverageComponent(t *testing.
 	}
 	rows.Close()
 
-	if len(chars) != 2 || chars[0] != "日" || chars[1] != "月" {
-		t.Errorf("want [日 月] (high-coverage components kept, low-coverage 女/子 excluded), got %v", chars)
+	if len(chars) != 1 || chars[0] != "日" {
+		t.Errorf("want only [日] (already enough to reach the 60%% coverage target), got %v", chars)
 	}
 }
 
-func TestGetComponentCoverage_SortingPctAndAlreadyTrained(t *testing.T) {
+func TestInitComponentsForWord_ThresholdSelectsBothWhenTargetNeedsFullCoverage(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "甲", "armor", "⿱日一", `{"type":"ideographic","hint":"filler"}`, "日", "")
+	seedHanziDef(t, s, "日", "sun; day")
+	seedHanziFull(t, s, "乙", "second", "⿱月一", `{"type":"ideographic","hint":"filler"}`, "月", "")
+	seedHanziDef(t, s, "月", "moon; month")
+	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
+
+	const userID = int64(2)
+	seedZhWord(t, s, userID, "甲子")
+	seedZhWord(t, s, userID, "甲丑")
+	seedZhWord(t, s, userID, "甲寅")
+	seedZhWord(t, s, userID, "乙卯")
+
+	// 90% of 4 pre-existing words = 3.6 -> 日 alone (3) isn't enough; 月 is
+	// also needed to cover the remaining word.
+	setComponentThreshold(t, s, userID, 90)
+
+	if err := s.InitComponentsForWord(ctx, userID, "明", time.Now()); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM component_progress WHERE user_id = ?`, userID).Scan(&count)
+	if count != 2 {
+		t.Errorf("want both 日 and 月 inserted to reach the 90%% coverage target, got %d rows", count)
+	}
+}
+
+func TestGetComponentCoverage_ReturnsWordIDSetsSortedByCharacter(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
@@ -624,12 +732,9 @@ func TestGetComponentCoverage_SortingPctAndAlreadyTrained(t *testing.T) {
 	seedZhWord(t, s, userID, "明")
 	seedZhWord(t, s, userID, "明月")
 	seedZhWord(t, s, userID, "妈")
-	// 日:2/3, 月:2/3, 女:1/3 (马 excluded — phonetic-only).
+	// 日 and 月 each cover 2 of the 3 words, 女 covers 1 (马 excluded — phonetic-only).
 
-	// Mark 月 as already in training.
-	s.InsertComponentProgressForTest(ctx, userID, "月", time.Now())
-
-	items, total, err := s.GetComponentCoverage(ctx, userID)
+	items, _, total, err := s.GetComponentCoverage(ctx, userID)
 	if err != nil {
 		t.Fatalf("GetComponentCoverage: %v", err)
 	}
@@ -639,24 +744,18 @@ func TestGetComponentCoverage_SortingPctAndAlreadyTrained(t *testing.T) {
 	if len(items) != 3 {
 		t.Fatalf("want 3 components (日, 月, 女), got %d: %+v", len(items), items)
 	}
-	// Sorted by word_count desc, then character asc: 日(2), 月(2), 女(1).
-	if items[0].Character != "日" || items[1].Character != "月" || items[2].Character != "女" {
-		t.Errorf("want order [日 月 女], got [%s %s %s]", items[0].Character, items[1].Character, items[2].Character)
+	// Sorted by character ascending.
+	if items[0].Character != "女" || items[1].Character != "日" || items[2].Character != "月" {
+		t.Errorf("want order [女 日 月], got [%s %s %s]", items[0].Character, items[1].Character, items[2].Character)
 	}
-	if items[0].WordCount != 2 || items[2].WordCount != 1 {
-		t.Errorf("want word counts 2 and 1, got %d and %d", items[0].WordCount, items[2].WordCount)
+	byChar := map[string]ComponentCoverageComponent{}
+	for _, it := range items {
+		byChar[it.Character] = it
 	}
-	wantPct := 2.0 / 3.0 * 100
-	if diff := items[0].CoveragePct - wantPct; diff > 0.01 || diff < -0.01 {
-		t.Errorf("want coverage_pct ~%.2f, got %v", wantPct, items[0].CoveragePct)
+	if len(byChar["日"].WordIDs) != 2 || len(byChar["月"].WordIDs) != 2 {
+		t.Errorf("want 日 and 月 each covering 2 words, got %v", items)
 	}
-	if !items[1].AlreadyTrained {
-		t.Errorf("want 月 marked already_trained")
-	}
-	if items[0].AlreadyTrained || items[2].AlreadyTrained {
-		t.Errorf("want 日 and 女 not already_trained")
-	}
-	if items[0].DefinitionEN != "sun; day" {
-		t.Errorf("want definition_en %q for 日, got %q", "sun; day", items[0].DefinitionEN)
+	if len(byChar["女"].WordIDs) != 1 {
+		t.Errorf("want 女 covering 1 word, got %v", byChar["女"].WordIDs)
 	}
 }

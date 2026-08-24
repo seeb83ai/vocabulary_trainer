@@ -4,6 +4,8 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Features
 
+- **Landing page for signed-out visitors.** The root page (`/`) shows the value proposition — spaced repetition, native audio and pinyin drills, character mnemonics — next to the sign-in/register card, with a "Create free account" call to action. The page carries SEO and Open Graph meta tags so it can be found and shared.
+- **Try-before-signup demo quiz.** Signed-out visitors can answer five fixed demo cards (Chinese + pinyin → English) directly on the root page, with no account. Answers are checked server-side with the same flexible matching logic as the real quiz, wrong answers reveal the accepted translations, and finishing the demo leads to a "Create free account" prompt. The endpoints (`GET /api/demo/cards`, `POST /api/demo/answer`) are public, stateless, and store nothing.
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
 - The app supports N:N word relationships. The same English or Chinese word can appear in more than one entry.
 - The app has seven quiz modes. You can pick a mode, or let the app pick one at random.
@@ -17,7 +19,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - The app uses [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method). Words you get wrong appear more often. The app schedules correct answers further into the future.
 - **Daily new-word cap.** This setting limits how many new words the app introduces per day. The default is 5 words, and you can configure it with `MAX_NEW_WORDS`. Once you reach the cap, the app serves only already-seen cards for the rest of the day. The training page shows a "New today: X / Y" counter in the stats bar.
 - **Difficult-words drill.** Once you review everything due, the "All done for today!" screen offers a "Drill my hardest words" option. Tick the option and pick an amount to flag that many of your hardest words. The app picks about half by lowest accuracy and half by lowest ease factor. The app serves flagged words on demand, regardless of their due date, until you answer each one correctly. A correct answer clears the flag. A temporary "Difficult words" pill in the filter bar shows that the drill is active and shows how many words remain. Click the pill to exit the drill early.
-- **Flexible answer matching.** Parenthesized segments are optional: `(das) Essen` accepts `Essen`. Slash- or comma-separated alternatives are each valid: `Essen / Gericht` accepts `Essen` or `Gericht`, and `topic, item` accepts `topic` or `item`.
+- **Flexible answer matching.** Parenthesized segments are optional: `(das) Essen` accepts `Essen`. Fullwidth Chinese parentheses `（）` work the same way: `还（动词）` accepts `还`. Slash- or comma-separated alternatives are each valid: `Essen / Gericht` accepts `Essen` or `Gericht`, and `topic, item` accepts `topic` or `item`.
 - **Wrong-answer review.** On a wrong answer, the app shows what you typed next to the correct Chinese text, pinyin, and translations. You can add your answer as an accepted translation with one click. In *Translation → Chinese* mode, the app also shows pinyin beside your typed Chinese answer, so you can see how it is pronounced. If you have two active learning languages (primary and secondary), a language picker lets you choose which language the new translation belongs to. The picker defaults to your primary language.
 - **Accept as correct.** If a wrong answer was a typo, click "Accept as correct" to restore your pre-answer SM-2 progress. The app then counts the attempt as correct, with no penalty. You can configure this behavior in Settings: never, on 1-character typos (the default), or always.
 - **Retype on wrong answer.** This optional setting is off by default, in Settings → Training Mode → Wrong Answer Retry. When enabled, a wrong answer requires you to type the correct Chinese word and a correct translation before you can continue — the "Next" button (and the "Accept as correct" / "Add as translation" shortcuts, which would otherwise skip the retype) stay disabled until both inputs check out. This mirrors the same required-retype pattern used for the new-word introduction screen.
@@ -32,14 +34,15 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
   - **Celebrate bucket changes** is an optional setting, off by default, in Settings → Training Mode → Quiz Display. When a correct answer advances a word's tier, this setting shows a full-screen "Level up!" interstitial before the result screen. The old tier's icon dissolves into the new one.
 - **Sentence fill-in-the-blank.** An optional training mode, off by default, in Settings → Training Mode → Quiz Display ("Sentence fill-in-the-blank" + a frequency percentage). Tag a zh word with an `s_`-prefixed tag (for example `s_hsk1`) to mark it as a sentence. When enabled, the training page occasionally shows one of your sentences with one word blanked out instead of a plain word card — either the Chinese word is blanked (translation shown as context) or a word inside the sentence's translation is blanked (Chinese shown as context), following the same direction logic as progressive mode. A sentence only becomes eligible once every word it contains has been reviewed at least once, and the app always blanks whichever of those words is next due, so the mode reinforces words you already know in context. Answering updates that word's own SM-2 progress, the same as answering it in a normal quiz card would.
 - **Tags.** You can assign tags to vocabulary words, for example "HSK1", "food", or "travel". You can filter by tag on the vocabulary list and the training page. When you select multiple tags, the app applies OR logic. An autocomplete input creates tags on the fly, and the app removes unused tags automatically.
-- **Auto-translate.** When you configure a DeepL API key, an auto-translate button appears in the Add/Edit Word form. The button detects direction automatically: enter Chinese to get the translation and pinyin filled in, or enter the translation to get Chinese and pinyin back. The app generates pinyin locally with [go-pinyin](https://github.com/mozillazg/go-pinyin).
+- **Auto-translate.** When you configure a DeepL API key, an auto-translate button appears in the Add/Edit Word form. The button detects direction automatically: enter Chinese to get the translation and pinyin filled in, or enter the translation to get Chinese and pinyin back. The app generates pinyin locally with [go-pinyin](https://github.com/mozillazg/go-pinyin). Generated pinyin preserves `()`/`（）` brackets from the Chinese text, so a word like `过 (动词)` gets pinyin `guò (dòng cí)`.
+- **Pinyin auto-fill in the Add/Edit Word form.** As you type in the Chinese field, the app fills the Pinyin field automatically once you pause. If the Pinyin field is already non-empty (auto-filled or hand-edited), the app doesn't recompute it on every keystroke — only after you stop typing for 3 seconds or move focus out of the Chinese field, and only after confirming if the recomputed value differs from what's there.
 - Vocabulary management: add, edit, delete, search, paginate, and sort by any column. The app shows SM-2 progress per word.
 - **Reset a word.** In the Edit Word form, a **Reset** button appears for any word you've already started training. It clears the word's SM-2 progress back to unseen — removing it from every bucket — so it is reintroduced as a brand-new word.
 - Due-date and correct-answer scheduling include a small random jitter. This shuffles cards and avoids repetitive review patterns.
 - You can bulk-import vocabulary from a structured text file. See `service/cmd/import`.
 - **Character breakdown.** On the training screen, a collapsible "Character breakdown" block appears below each Chinese character. Click it to reveal the radical, definition, etymology hint, and component parts with their meanings. This data comes from [makemeahanzi](https://github.com/skishore/makemeahanzi), imported with `service/cmd/import-hanzi`.
 - **Hanzi Movie Method mnemonics.** For single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorize characters. It maps pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`, and compose scenes in the vocabulary edit form. Saved scenes appear automatically during training: expanded on wrong answers, and collapsed on correct answers. The app remembers your choices globally, so setting an actor for "b" once pre-fills it everywhere. You can also write mnemonic scenes for component characters (radicals and sub-parts) on the component edit tab of the `/vocab` page. Component quiz result cards show these scenes the same way as word scenes.
-- **Component training threshold.** Settings (`/settings`) has a "Component Training" card listing every hanzi component that appears anywhere in your current vocabulary, each with a word count and coverage percentage (the share of your Chinese words that require it). Set a minimum coverage threshold (0–100%, default 0 = no filtering) and only components meeting it are added to your training rotation going forward, when a new word starts training. Components already being trained are never removed by this setting, even if their coverage later falls below the threshold — it only affects future additions.
+- **Component training coverage target.** Settings (`/settings`) has a "Component Training" card with a target word-coverage percentage (0–100%, default 0 = no filtering). When a new word starts training, only enough hanzi components are added to your training rotation to cover that share of your current Chinese vocabulary — greedily picking, each step, whichever not-yet-trained component unlocks the most words you haven't covered yet, until the target is reached (or every qualifying component is exhausted). The card shows only a summary — how many components would be added, both as a count and as a share of every qualifying component in your vocabulary — not a full component list. Components already being trained are never removed by this setting; it only affects future additions.
 - **Pinyin listening training.** The `/pinyin` page trains tone and sound discrimination. You hear a pinyin syllable and identify it: by multiple choice in the learning phase, or by typing an answer, for example `ba1`, in the review phase. SM-2 spaced repetition tracks your progress per sound, across about 1,600 syllable and tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. You can filter by consonant group, for example b/p/m/f or zh/ch/sh/r. The page also tracks confusion between commonly mixed-up sounds.
 - HSK vocabulary import (HSK 1-6) fetches vocabulary directly from mandarinbean.com and applies `hsk-N` tags automatically. See `service/cmd/import-hsk`.
 - Optional single-user password protection. Set `AUTH_USER` and `AUTH_PASSWORD` in `.env`.
@@ -171,7 +174,7 @@ The **Progressive** quiz mode introduces new words gently and increases difficul
 
 | Condition | What happens |
 |---|---|
-| Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. |
+| Brand new word (`total_attempts = 0`) | **Introduction** — shows Chinese, pinyin, and all translations. No quiz. Choose "Got it" to start learning or "Skip" to defer 7 days. Pinyin covers the full Chinese text, including any bracketed annotation (e.g. `过（动词）`). If your settings require typing the Chinese and/or translation to confirm, a bracketed annotation is optional to type — mirroring the parenthesized-segment rule used everywhere else in answer checking. |
 | **Learning phase** (`learning_new_word = true`) | The word is in the **New** bucket. Short retry intervals (minutes, not days) let you drill it in one session. Three correct answers in a row graduate the word. A wrong answer resets the streak. |
 | `total_attempts < 3` | **Translation → Chinese** — not enough data yet, so the app uses the easiest direction |
 | Accuracy < 50% | **Translation → Chinese** — you are still struggling |
@@ -352,6 +355,7 @@ When you configure a local model, it takes precedence over any cloud API keys th
 | `make import-hsk` | Fetch and import HSK 1-6 vocabulary from mandarinbean.com (see below) |
 | `make import-pinyin` | Import pinyin audio files for listening training (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
+| `make funnel` | Print the signup → activation → retention funnel (see below) |
 | `make test` | Run all Go and JS tests |
 | `make clean` | Stop containers and remove build artifacts |
 
@@ -611,10 +615,23 @@ vocabulary_trainer/
 
 The app records every request internally, in the `usage_events` table (`user_id`, `name`, `count`, `last_seen`). This lets admins see which pages and endpoints are actually used. The `name` field holds the HTTP method plus the matched route, for example `GET /train` or `POST /api/quiz/answer`. Hits for the same user and route aggregate into one row, with an incrementing `count` and a refreshed `last_seen`. The app records anonymous requests with `user_id = 0`. It excludes static asset requests and audio-streaming routes (`/api/audio/*`, `/api/pinyin-quiz/audio/*`) as noise. There is currently no UI or API endpoint for viewing this data. You must query the database directly.
 
+### Funnel report
+
+The `funnel` CLI tool prints how many users reach each stage of the signup → activation → retention funnel, with conversion percentages. It reads the `users` and `daily_stats` tables and excludes the shared library user (id=1):
+
+```bash
+make funnel                          # default: data/vocab.db, engaged = ≥20 attempts
+make funnel DB=/path/to/vocab.db MIN_ATTEMPTS=50
+```
+
+Stages: **registered** (accounts created) → **verified email** → **activated** (at least one training day) → **engaged** (total attempts reached the threshold), plus **returned** (trained on at least two distinct days) and **returned next day** (trained again the day after the first session). Use it to find the biggest drop-off before investing in features or promotion.
+
 ## API
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/api/demo/cards` | Public demo card list for the landing page (no auth, translations omitted) |
+| `POST` | `/api/demo/answer` | Check a demo answer statelessly (no auth; returns `correct` + accepted translations) |
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
 | `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag) |
 | `GET` | `/api/quiz/match-game` | Get a round of words for the match mini-game, picked at random among the user's enabled game modes (mismatch / newest / hardest / last-mistakes) that currently have enough eligible words; empty `words` if none qualify. Mismatch tiles may be words or hanzi components; other modes are word-only |
@@ -632,7 +649,7 @@ The app records every request internally, in the `usage_events` table (`user_id`
 | `GET` | `/api/quiz/word-stats` | Get per-word aggregate statistics: milestones, accuracy buckets, avg/median/P95, hardest & most-practiced words |
 | `GET` | `/api/quiz/due-date-distribution` | Get word counts grouped by due date for the next 30 days (`tags` query param) |
 | `GET` | `/api/component/due-date-distribution` | Get seen hanzi component counts grouped by due date for the next 30 days |
-| `GET` | `/api/components/coverage` | List every hanzi component appearing in the user's current zh vocabulary with word count, coverage percentage, and whether it's already in training — used by the Settings page's component training threshold |
+| `GET` | `/api/components/coverage` | List every hanzi component appearing in the user's current zh vocabulary with the zh word IDs it covers — used by the Settings page to preview how many components a candidate coverage-target percentage would select for training |
 | `GET` | `/api/words` | List words (`q`, `page`, `per_page`, `sort`, `order`, `tags` query params) |
 | `POST` | `/api/words` | Create a vocabulary entry |
 | `POST` | `/api/words/upload-csv` | Bulk import from a CSV file (multipart: `file`, `tags`, `start_training_count`) |

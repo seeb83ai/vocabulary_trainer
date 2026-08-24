@@ -147,6 +147,7 @@ func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 			strings.HasPrefix(p, "/api/login") ||
 			strings.HasPrefix(p, "/api/register") ||
 			strings.HasPrefix(p, "/api/verify-email") ||
+			strings.HasPrefix(p, "/api/demo/") ||
 			p == "/api/auth/status" ||
 			strings.HasSuffix(p, ".js") ||
 			strings.HasSuffix(p, ".css") {
