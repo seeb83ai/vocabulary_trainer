@@ -318,35 +318,6 @@ for (const m of RANDOM_MODES) {
 loadLanguages().then(() => loadSettings());
 loadComponentCoverage();
 
-// Language save
-document.getElementById('lang-save-btn')?.addEventListener('click', async () => {
-  hideMsg('lang-success'); hideMsg('lang-error');
-  const primary = document.getElementById('primary-lang').value;
-  const secondary = document.getElementById('secondary-lang').value;
-  if (secondary !== '' && primary === secondary) {
-    showMsg('lang-error', 'Primary and secondary languages must differ.', true);
-    return;
-  }
-  // Collect current mode values to avoid overwriting them
-  const modePayload = buildModePayload();
-  const payload = { primary_lang: primary, secondary_lang: secondary, ...modePayload, ...buildDailyPayload() };
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const d = await res.json();
-      showMsg('lang-error', d.error || 'Failed to save.', true);
-    } else {
-      showMsg('lang-success', 'Saved.', false);
-    }
-  } catch {
-    showMsg('lang-error', 'Network error.', true);
-  }
-});
-
 // ── Training mode ──────────────────────────────────────────────────────────────
 
 function buildCycleSequence() {
@@ -428,140 +399,6 @@ for (const prefix of ['baseline-due-today', 'baseline-struggling', 'baseline-lea
     if (valEl) valEl.disabled = !e.target.checked;
   });
 }
-
-// Daily learning save
-document.getElementById('daily-save-btn')?.addEventListener('click', async () => {
-  hideMsg('daily-success'); hideMsg('daily-error');
-  const maxVal = parseInt(document.getElementById('max-new-words')?.value || '0', 10);
-  if (!maxVal || maxVal < 1) {
-    showMsg('daily-error', 'New words per day must be at least 1.', true);
-    return;
-  }
-  const payload = {
-    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang: document.getElementById('secondary-lang')?.value || '',
-    accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
-    ...buildModePayload(),
-    ...buildDailyPayload(),
-  };
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const d = await res.json();
-      showMsg('daily-error', d.error || 'Failed to save.', true);
-    } else {
-      showMsg('daily-success', 'Saved.', false);
-    }
-  } catch {
-    showMsg('daily-error', 'Network error.', true);
-  }
-});
-
-document.getElementById('mode-save-btn')?.addEventListener('click', async () => {
-  hideMsg('mode-success'); hideMsg('mode-error');
-  const acmChecked = document.querySelector('input[name="accept-correct-mode"]:checked');
-  const payload = {
-    primary_lang:        document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang:      document.getElementById('secondary-lang')?.value || '',
-    accept_correct_mode: acmChecked ? acmChecked.value : 'typo',
-    ...buildModePayload(),
-    ...buildDailyPayload(),
-  };
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const d = await res.json();
-      showMsg('mode-error', d.error || 'Failed to save.', true);
-    } else {
-      showMsg('mode-success', 'Saved.', false);
-    }
-  } catch {
-    showMsg('mode-error', 'Network error.', true);
-  }
-});
-
-// ── Cycle mode ────────────────────────────────────────────────────────────────
-
-document.getElementById('cycle-save-btn')?.addEventListener('click', async () => {
-  hideMsg('cycle-success'); hideMsg('cycle-error');
-  const payload = {
-    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang: document.getElementById('secondary-lang')?.value || '',
-    ...buildModePayload(),
-    ...buildDailyPayload(),
-  };
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const d = await res.json();
-      showMsg('cycle-error', d.error || 'Failed to save.', true);
-    } else {
-      showMsg('cycle-success', 'Saved.', false);
-    }
-  } catch {
-    showMsg('cycle-error', 'Network error.', true);
-  }
-});
-
-document.getElementById('random-mode-save-btn')?.addEventListener('click', async () => {
-  hideMsg('random-mode-success'); hideMsg('random-mode-error');
-  const payload = {
-    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang: document.getElementById('secondary-lang')?.value || '',
-    ...buildModePayload(),
-    ...buildDailyPayload(),
-  };
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const d = await res.json();
-      showMsg('random-mode-error', d.error || 'Failed to save.', true);
-    } else {
-      showMsg('random-mode-success', 'Saved.', false);
-    }
-  } catch {
-    showMsg('random-mode-error', 'Network error.', true);
-  }
-});
-
-// ── Accept-as-correct mode ─────────────────────────────────────────────────────
-
-document.getElementById('accept-mode-save-btn')?.addEventListener('click', async () => {
-  hideMsg('accept-mode-success');
-  const checked = document.querySelector('input[name="accept-correct-mode"]:checked');
-  const mode = checked ? checked.value : 'typo';
-  const payload = {
-    primary_lang:        document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang:      document.getElementById('secondary-lang')?.value || '',
-    ...buildModePayload(),
-    ...buildDailyPayload(),
-    accept_correct_mode: mode,
-  };
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (res.ok) showMsg('accept-mode-success', 'Saved.', false);
-  } catch { /* ignore */ }
-});
 
 // ── API keys ───────────────────────────────────────────────────────────────────
 
@@ -699,8 +536,7 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
   btn.textContent = 'Update Password';
 });
 
-// Gamification save
-// ── Component training coverage target ──────────────────────────────────────
+// ── Component training threshold ────────────────────────────────────────────
 
 let componentCoverageData = [];
 let componentCoverageTotalWords = 0;
@@ -793,58 +629,67 @@ async function loadComponentCoverage() {
 
 document.getElementById('component-coverage-threshold')?.addEventListener('input', updateComponentCoverageSummary);
 
-document.getElementById('component-threshold-save-btn')?.addEventListener('click', async () => {
-  hideMsg('component-threshold-success'); hideMsg('component-threshold-error');
-  const threshold = parseFloat(document.getElementById('component-coverage-threshold')?.value || '0');
-  if (isNaN(threshold) || threshold < 0 || threshold > 100) {
-    showMsg('component-threshold-error', 'Threshold must be between 0 and 100.', true);
-    return;
-  }
-  const payload = {
+// ── Auto-save ────────────────────────────────────────────────────────────────
+// Every settings card except Change Password and API Keys (both security-
+// sensitive, explicit-submit flows) saves automatically as the user edits it.
+// Whatever field changed, the full settings payload is sent — the PATCH
+// handler treats most fields as plain (non-pointer) values that get zeroed
+// out if omitted, so a partial payload would silently wipe unrelated settings.
+
+function buildFullSettingsPayload() {
+  return {
     primary_lang:        document.getElementById('primary-lang')?.value   || 'en',
     secondary_lang:      document.getElementById('secondary-lang')?.value || '',
     accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
     ...buildModePayload(),
     ...buildDailyPayload(),
-    component_coverage_threshold: threshold,
-  };
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const d = await res.json();
-      showMsg('component-threshold-error', d.error || 'Failed to save.', true);
-    } else {
-      showMsg('component-threshold-success', 'Saved.', false);
-    }
-  } catch {
-    showMsg('component-threshold-error', 'Network error.', true);
-  }
-});
-
-document.getElementById('gamification-save-btn')?.addEventListener('click', async () => {
-  hideMsg('gamification-success'); hideMsg('gamification-error');
-  const freq = parseInt(document.getElementById('gamification-frequency')?.value || '5', 10);
-  if (!freq || freq < 1 || freq > 1440) {
-    showMsg('gamification-error', 'Frequency must be between 1 and 1440 minutes.', true);
-    return;
-  }
-  const payload = {
-    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang: document.getElementById('secondary-lang')?.value || '',
-    accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
-    ...buildModePayload(),
-    ...buildDailyPayload(),
     gamification_enabled:   !!(document.getElementById('gamification-enabled')?.checked),
-    gamification_frequency: freq,
+    gamification_frequency: parseInt(document.getElementById('gamification-frequency')?.value || '5', 10),
     game_mode_mismatch:      !!(document.getElementById('game-mode-mismatch')?.checked),
     game_mode_newest:        !!(document.getElementById('game-mode-newest')?.checked),
     game_mode_hardest:       !!(document.getElementById('game-mode-hardest')?.checked),
     game_mode_last_mistakes: !!(document.getElementById('game-mode-last-mistakes')?.checked),
+    component_coverage_threshold: parseFloat(document.getElementById('component-coverage-threshold')?.value || '0'),
   };
+}
+
+// Pure: mirrors the per-card validation the old individual Save buttons used
+// to run before submitting. Only checks the concern owned by `group` — a
+// card with a stale invalid value elsewhere on the page still saves its own
+// change, exactly as the old per-button handlers behaved.
+function localValidationError(group, payload) {
+  if (group === 'lang' && payload.secondary_lang !== '' && payload.primary_lang === payload.secondary_lang) {
+    return 'Primary and secondary languages must differ.';
+  }
+  if (group === 'daily' && (!payload.max_new_words_per_day || payload.max_new_words_per_day < 1)) {
+    return 'New words per day must be at least 1.';
+  }
+  if (group === 'gamification' && (!payload.gamification_frequency || payload.gamification_frequency < 1 || payload.gamification_frequency > 1440)) {
+    return 'Frequency must be between 1 and 1440 minutes.';
+  }
+  if (group === 'component-threshold' && (isNaN(payload.component_coverage_threshold) || payload.component_coverage_threshold < 0 || payload.component_coverage_threshold > 100)) {
+    return 'Threshold must be between 0 and 100.';
+  }
+  return null;
+}
+
+const autoSaveTimers = {};
+
+function scheduleAutoSave(group) {
+  clearTimeout(autoSaveTimers[group]);
+  autoSaveTimers[group] = setTimeout(() => autoSaveSettings(group), 400);
+}
+
+async function autoSaveSettings(group) {
+  hideMsg(group + '-success'); hideMsg(group + '-error');
+  const payload = buildFullSettingsPayload();
+
+  const localErr = localValidationError(group, payload);
+  if (localErr) {
+    showMsg(group + '-error', localErr, true);
+    return;
+  }
+
   try {
     const res = await fetch('/api/settings', {
       method: 'PATCH',
@@ -852,12 +697,20 @@ document.getElementById('gamification-save-btn')?.addEventListener('click', asyn
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const d = await res.json();
-      showMsg('gamification-error', d.error || 'Failed to save.', true);
-    } else {
-      showMsg('gamification-success', 'Saved.', false);
+      const d = await res.json().catch(() => ({}));
+      showMsg(group + '-error', d.error || 'Failed to save.', true);
+      return;
     }
+    showMsg(group + '-success', 'Saved.', false);
+    setTimeout(() => hideMsg(group + '-success'), 2500);
   } catch {
-    showMsg('gamification-error', 'Network error.', true);
+    showMsg(group + '-error', 'Network error.', true);
   }
+}
+
+document.querySelectorAll('[data-settings-autosave] input, [data-settings-autosave] select').forEach(el => {
+  const group = el.closest('[data-settings-autosave]')?.dataset.settingsAutosave;
+  if (!group) return;
+  const evt = (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio') ? 'change' : 'input';
+  el.addEventListener(evt, () => scheduleAutoSave(group));
 });
