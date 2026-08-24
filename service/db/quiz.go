@@ -58,6 +58,29 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 	return nil
 }
 
+// RecordAnswerTimestamps stamps sm2_progress.last_attempt_at (always) and
+// last_wrong_at (only when correct=false) for the given word. These drive the
+// "hardest words" and "last mistakes" match-game modes' repeat-avoidance
+// rules (issue #288) and are independent bookkeeping, not part of the SM-2
+// algorithm itself.
+func (s *Store) RecordAnswerTimestamps(ctx context.Context, wordID int64, correct bool) error {
+	now := time.Now().UTC().Format("2006-01-02 15:04:05")
+	if correct {
+		_, err := s.db.ExecContext(ctx,
+			`UPDATE sm2_progress SET last_attempt_at = ? WHERE word_id = ?`, now, wordID)
+		if err != nil {
+			return fmt.Errorf("record answer timestamps: %w", err)
+		}
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET last_attempt_at = ?, last_wrong_at = ? WHERE word_id = ?`, now, now, wordID)
+	if err != nil {
+		return fmt.Errorf("record answer timestamps: %w", err)
+	}
+	return nil
+}
+
 // IsLearningNewWord returns true if the given word is currently in the new-word
 // introduction phase (learning_new_word=1) for the given user.
 func (s *Store) IsLearningNewWord(ctx context.Context, userID, wordID int64) (bool, error) {

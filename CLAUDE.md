@@ -167,6 +167,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/hanzi.go` | Hanzi decomposition queries, zh-text translation lookups, `StoreTranslationForZhChar` |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
+| `service/db/funnel.go` | Signup → activation → retention funnel (`GetFunnelReport`) |
 
 ### Handlers (`service/handlers/`)
 | Path | Purpose |
@@ -183,6 +184,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/handlers/translate.go` | DeepL translation proxy handler |
 | `service/handlers/mismatches.go` | Mismatch detection handler |
 | `service/handlers/import.go` | Word list import handler |
+| `service/handlers/demo.go` | Public landing-page demo quiz (stateless `Cards`, `Answer`) |
 | `service/handlers/audio.go` | TTS audio serving handler |
 | `service/handlers/github_issues.go` | In-app GitHub issue reporting (`Create`, `ConfigFlag`); optional, gated on `GITHUB_TOKEN`/`GITHUB_ISSUE_REPO` |
 
@@ -191,6 +193,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 |---|---|
 | `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`) |
 | `service/frontend/i18n.js` | Internationalisation helpers |
+| `service/frontend/demo.js` | Landing-page demo quiz widget |
 | `service/frontend/train.js` | Training page state machine |
 | `service/frontend/vocab.js` | Vocabulary management logic |
 | `service/frontend/stats.js` | Stats page logic |
@@ -209,6 +212,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
 | `service/cmd/import-hanzi/main.go` | Import hanzi decomposition dataset |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
+| `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
 
 ### E2E tests (`e2e/`)
 | Path | Purpose |

@@ -102,6 +102,35 @@ test.describe('Vocabulary Management', () => {
     await expect(page.locator('#start-training-row')).toBeVisible();
   });
 
+  test('pinyin auto-fill does not overwrite an existing value until blur (issue #310)', async ({ page }) => {
+    await page.goto('/vocab');
+    await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
+
+    const zhInput = page.locator('#form-zh');
+    const pinyinInput = page.locator('#form-pinyin');
+
+    // Empty pinyin field: typing zh text still auto-fills pinyin (existing behaviour).
+    await zhInput.fill('水');
+    await expect(pinyinInput).toHaveValue('shuǐ', { timeout: 3_000 });
+
+    let dialogSeen = false;
+    page.on('dialog', dialog => {
+      dialogSeen = true;
+      dialog.dismiss();
+    });
+
+    // Editing zh again while pinyin is already set must not immediately
+    // recompute/prompt — only after the idle period or on blur.
+    await zhInput.fill('水果');
+    await page.waitForTimeout(1_000);
+    expect(dialogSeen).toBe(false);
+    await expect(pinyinInput).toHaveValue('shuǐ');
+
+    // Losing focus triggers the recalculation immediately.
+    await zhInput.blur();
+    await expect.poll(() => dialogSeen, { timeout: 3_000 }).toBe(true);
+  });
+
   test('delete a word removes it from the list', async ({ page }) => {
     await page.goto('/vocab');
 

@@ -443,3 +443,319 @@ func TestInitComponentsForWord_EtymologyIdempotent(t *testing.T) {
 		t.Errorf("want 1 component row (idempotent), got %d", count)
 	}
 }
+
+// ── Component coverage tests ────────────────────────────────────────────────
+
+// seedZhWord inserts a zh word row directly (bypassing CreateWord) so coverage
+// tallies have vocabulary to count against.
+func seedZhWord(t *testing.T, s *Store, userID int64, text string) {
+	t.Helper()
+	if _, err := s.db.Exec(
+		`INSERT INTO words (text, language, user_id) VALUES (?, 'zh', ?)`, text, userID,
+	); err != nil {
+		t.Fatalf("seedZhWord %q: %v", text, err)
+	}
+}
+
+// setComponentThreshold ensures a user_settings row exists and sets its
+// component_coverage_threshold directly.
+func setComponentThreshold(t *testing.T, s *Store, userID int64, threshold float64) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := s.GetUserSettings(ctx, userID); err != nil {
+		t.Fatalf("ensure user settings: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE user_settings SET component_coverage_threshold = ? WHERE user_id = ?`,
+		threshold, userID,
+	); err != nil {
+		t.Fatalf("set component_coverage_threshold: %v", err)
+	}
+}
+
+func TestWordRequiredComponents_DedupsRepeatedCharacter(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	ety := `{"type":"pictophonetic","phonetic":"马","semantic":"女","hint":"mother"}`
+	seedHanziFull(t, s, "妈", "mother", "⿰女马", ety, "女", "")
+	seedHanziDef(t, s, "女", "woman; female")
+	seedHanziDef(t, s, "马", "horse")
+
+	comps, err := wordRequiredComponents(ctx, s.db, "妈妈")
+	if err != nil {
+		t.Fatalf("wordRequiredComponents: %v", err)
+	}
+	if len(comps) != 1 || comps[0] != "女" {
+		t.Errorf("want [女] (deduped across repeated 妈, phonetic 马 excluded), got %v", comps)
+	}
+}
+
+func TestComponentWordSets_MembershipAndTotal(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
+	seedHanziDef(t, s, "日", "sun; day")
+	seedHanziDef(t, s, "月", "moon; month")
+
+	const userID = int64(2)
+	seedZhWord(t, s, userID, "妈") // no decomposition seeded for 妈 here -> contributes nothing
+	seedZhWord(t, s, userID, "明")
+	seedZhWord(t, s, userID, "明月")
+
+	wordSets, wordComponentCounts, total, err := componentWordSets(ctx, s.db, userID)
+	if err != nil {
+		t.Fatalf("componentWordSets: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("want total=3, got %d", total)
+	}
+	if len(wordSets["日"]) != 2 || len(wordSets["月"]) != 2 {
+		t.Errorf("want 日:2 月:2 words, got %v", wordSets)
+	}
+	if len(wordSets) != 2 {
+		t.Errorf("want exactly 2 distinct components, got %v", wordSets)
+	}
+	// 妈 has no decomposition seeded → 0 components; 明 and 明月 each have 日+月 → 2.
+	for wid, cnt := range wordComponentCounts {
+		if cnt != 0 && cnt != 2 {
+			t.Errorf("unexpected component count %d for word %d", cnt, wid)
+		}
+	}
+	if len(wordComponentCounts) != 3 {
+		t.Errorf("want 3 entries in wordComponentCounts, got %d", len(wordComponentCounts))
+	}
+}
+
+func TestSelectComponentsForCoverage_AllComponentsRequired(t *testing.T) {
+	// Word 1 needs 日 and 月 (both required to cover it).
+	// Word 2 needs 日 and 女 (both required to cover it).
+	// Word 3 needs 女 only.
+	// 日 alone covers neither word 1 nor word 2 (each needs a second component).
+	// 女 alone immediately fully covers word 3.
+	// To reach 2 fully-covered words we need e.g. 日+月 (covers word1) or 日+女 (covers word2+word3).
+	wordSets := map[string]map[int64]bool{
+		"日": {1: true, 2: true},
+		"月": {1: true},
+		"女": {2: true, 3: true},
+	}
+	wordComponentCounts := map[int64]int{1: 2, 2: 2, 3: 1}
+
+	// 33% of 3 = 1 word. Only 女 can immediately fully cover a word (word 3, count=1).
+	// 日 and 月 alone don't yet cover anything fully.
+	got := selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 33)
+	if len(got) != 1 || got[0] != "女" {
+		t.Errorf("want [女] at 33%% target, got %v", got)
+	}
+
+	// 50% of 3 = ceil(1.5) = 2 words. After 女: word3 covered (1), word2 remaining needs 日.
+	// Next: 日 covers word2 (now both 女+日 selected, word2 fully covered = 2 words).
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 50)
+	if len(got) != 2 || got[0] != "女" || got[1] != "日" {
+		t.Errorf("want [女 日] at 50%% target, got %v", got)
+	}
+
+	// 100% of 3 = 3 words -> needs 女, 日, 月 (word1 still needs 月).
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 3, 100)
+	if len(got) != 3 {
+		t.Errorf("want all 3 components at 100%% target, got %v", got)
+	}
+}
+
+func TestSelectComponentsForCoverage_WordsWithNoComponentsAlwaysCovered(t *testing.T) {
+	// Word 1 has no trainable components (count=0, not in any wordSet) -> auto-covered.
+	// Word 2 needs 日. Total 2 words; even 50% target needs word 2 covered.
+	wordSets := map[string]map[int64]bool{
+		"日": {2: true},
+	}
+	wordComponentCounts := map[int64]int{1: 0, 2: 1}
+
+	// 50% of 2 = 1 word. Word 1 is auto-covered; word 2 needs 日. So 1 is already
+	// covered -> target met without selecting anything? No: we start with covered=1
+	// (the zero-component words), target=1, so loop exits immediately with 0 picks.
+	got := selectComponentsForCoverage(wordSets, wordComponentCounts, 2, 50)
+	if len(got) != 0 {
+		t.Errorf("want 0 selections when auto-covered words already meet target, got %v", got)
+	}
+
+	// 100% of 2 = 2 words -> word 2 needs 日.
+	got = selectComponentsForCoverage(wordSets, wordComponentCounts, 2, 100)
+	if len(got) != 1 || got[0] != "日" {
+		t.Errorf("want [日] at 100%% target, got %v", got)
+	}
+}
+
+func TestSelectComponentsForCoverage_ZeroTargetSelectsNothing(t *testing.T) {
+	wordSets := map[string]map[int64]bool{"日": {1: true}}
+	wordComponentCounts := map[int64]int{1: 1}
+	if got := selectComponentsForCoverage(wordSets, wordComponentCounts, 1, 0); got != nil {
+		t.Errorf("want nil selection at target 0, got %v", got)
+	}
+}
+
+func TestGetComponentCoverageThreshold_DefaultsToZero(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	got, err := getComponentCoverageThreshold(ctx, s.db, int64(2))
+	if err != nil {
+		t.Fatalf("getComponentCoverageThreshold: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("want 0 for a fresh user with no settings row, got %v", got)
+	}
+}
+
+func TestGetComponentCoverageThreshold_ReadsStoredValue(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	setComponentThreshold(t, s, int64(2), 12.5)
+
+	got, err := getComponentCoverageThreshold(ctx, s.db, int64(2))
+	if err != nil {
+		t.Fatalf("getComponentCoverageThreshold: %v", err)
+	}
+	if got != 12.5 {
+		t.Errorf("want 12.5, got %v", got)
+	}
+}
+
+func TestInitComponentsForWord_ThresholdZero_IncludesLowCoverageComponent(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
+	seedHanziDef(t, s, "日", "sun; day")
+	seedHanziDef(t, s, "月", "moon; month")
+
+	const userID = int64(2)
+	// Only one other word in the whole vocabulary uses 明 — very low coverage —
+	// but the default threshold (0, never set) must never filter anything out.
+	seedZhWord(t, s, userID, "甲乙") // unrelated filler word, no decomposition
+
+	if err := s.InitComponentsForWord(ctx, userID, "明", time.Now()); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM component_progress WHERE user_id = ?`, userID).Scan(&count)
+	if count != 2 {
+		t.Errorf("want both 日 and 月 inserted at default threshold 0, got %d rows", count)
+	}
+}
+
+func TestInitComponentsForWord_ThresholdSelectsMinimalSetToReachTarget(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	// 甲 requires only 日 (一 has no seeded definition, so it's filtered out).
+	seedHanziFull(t, s, "甲", "armor", "⿱日一", `{"type":"ideographic","hint":"filler"}`, "日", "")
+	seedHanziDef(t, s, "日", "sun; day")
+	// 乙 requires only 月 (一 has no seeded definition, so it's filtered out).
+	seedHanziFull(t, s, "乙", "second", "⿱月一", `{"type":"ideographic","hint":"filler"}`, "月", "")
+	seedHanziDef(t, s, "月", "moon; month")
+	// 明 requires both 日 and 月.
+	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
+
+	const userID = int64(2)
+	// 3 pre-existing words need only 日, 1 needs only 月 — 4 words total. 日
+	// alone already covers 3 of them, so a 60% target (2.4 words) is reached
+	// by 日 alone; 月 would add nothing new that 日 doesn't already cover for
+	// those pre-existing words, so it's skipped as not worth the training slot.
+	seedZhWord(t, s, userID, "甲子")
+	seedZhWord(t, s, userID, "甲丑")
+	seedZhWord(t, s, userID, "甲寅")
+	seedZhWord(t, s, userID, "乙卯")
+
+	setComponentThreshold(t, s, userID, 60)
+
+	if err := s.InitComponentsForWord(ctx, userID, "明", time.Now()); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	var chars []string
+	rows, err := s.db.Query(`SELECT character FROM component_progress WHERE user_id = ? ORDER BY character`, userID)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		chars = append(chars, c)
+	}
+	rows.Close()
+
+	if len(chars) != 1 || chars[0] != "日" {
+		t.Errorf("want only [日] (already enough to reach the 60%% coverage target), got %v", chars)
+	}
+}
+
+func TestInitComponentsForWord_ThresholdSelectsBothWhenTargetNeedsFullCoverage(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "甲", "armor", "⿱日一", `{"type":"ideographic","hint":"filler"}`, "日", "")
+	seedHanziDef(t, s, "日", "sun; day")
+	seedHanziFull(t, s, "乙", "second", "⿱月一", `{"type":"ideographic","hint":"filler"}`, "月", "")
+	seedHanziDef(t, s, "月", "moon; month")
+	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
+
+	const userID = int64(2)
+	seedZhWord(t, s, userID, "甲子")
+	seedZhWord(t, s, userID, "甲丑")
+	seedZhWord(t, s, userID, "甲寅")
+	seedZhWord(t, s, userID, "乙卯")
+
+	// 90% of 4 pre-existing words = 3.6 -> 日 alone (3) isn't enough; 月 is
+	// also needed to cover the remaining word.
+	setComponentThreshold(t, s, userID, 90)
+
+	if err := s.InitComponentsForWord(ctx, userID, "明", time.Now()); err != nil {
+		t.Fatalf("InitComponentsForWord: %v", err)
+	}
+
+	var count int
+	s.db.QueryRow(`SELECT COUNT(*) FROM component_progress WHERE user_id = ?`, userID).Scan(&count)
+	if count != 2 {
+		t.Errorf("want both 日 and 月 inserted to reach the 90%% coverage target, got %d rows", count)
+	}
+}
+
+func TestGetComponentCoverage_ReturnsWordIDSetsSortedByCharacter(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
+	seedHanziDef(t, s, "日", "sun; day")
+	seedHanziDef(t, s, "月", "moon; month")
+	ety := `{"type":"pictophonetic","phonetic":"马","semantic":"女","hint":"mother"}`
+	seedHanziFull(t, s, "妈", "mother", "⿰女马", ety, "女", "")
+	seedHanziDef(t, s, "女", "woman; female")
+	seedHanziDef(t, s, "马", "horse")
+
+	const userID = int64(2)
+	seedZhWord(t, s, userID, "明")
+	seedZhWord(t, s, userID, "明月")
+	seedZhWord(t, s, userID, "妈")
+	// 日 and 月 each cover 2 of the 3 words, 女 covers 1 (马 excluded — phonetic-only).
+
+	items, _, total, err := s.GetComponentCoverage(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetComponentCoverage: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("want total_words=3, got %d", total)
+	}
+	if len(items) != 3 {
+		t.Fatalf("want 3 components (日, 月, 女), got %d: %+v", len(items), items)
+	}
+	// Sorted by character ascending.
+	if items[0].Character != "女" || items[1].Character != "日" || items[2].Character != "月" {
+		t.Errorf("want order [女 日 月], got [%s %s %s]", items[0].Character, items[1].Character, items[2].Character)
+	}
+	byChar := map[string]ComponentCoverageComponent{}
+	for _, it := range items {
+		byChar[it.Character] = it
+	}
+	if len(byChar["日"].WordIDs) != 2 || len(byChar["月"].WordIDs) != 2 {
+		t.Errorf("want 日 and 月 each covering 2 words, got %v", items)
+	}
+	if len(byChar["女"].WordIDs) != 1 {
+		t.Errorf("want 女 covering 1 word, got %v", byChar["女"].WordIDs)
+	}
+}

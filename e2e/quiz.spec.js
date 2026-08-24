@@ -1445,3 +1445,76 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Retype required after a wrong answer (retype_on_wrong setting)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – retype on wrong answer', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('retype gate is not shown when the setting is disabled (default)', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    await expect(page.locator('#wrong-retype-area')).not.toBeVisible();
+    await expect(page.locator('#next-btn')).toBeEnabled();
+  });
+
+  test('wrong answer requires retyping the Chinese word and translation before Next is enabled', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+
+    try {
+      await useZhToTranslMode(page);
+
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+      expect(cardRes.ok()).toBe(true);
+      const card = await cardRes.json();
+      const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+      expect(correctAnswer).toBeTruthy();
+
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+      await page.locator('#answer-input').fill('xxxxxxxxxxx');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+      // The retype gate must appear and block Next until resolved.
+      await expect(page.locator('#wrong-retype-area')).toBeVisible();
+      await expect(page.locator('#next-btn')).toBeDisabled();
+
+      // Typing a wrong word/translation must not unlock it.
+      await page.locator('#wrong-retype-zh-input').fill('xxx');
+      await page.locator('#wrong-retype-trans-input').fill('xxx');
+      await expect(page.locator('#next-btn')).toBeDisabled();
+
+      // Typing the correct Chinese word and translation unlocks Next.
+      await page.locator('#wrong-retype-zh-input').fill(card.prompt);
+      await page.locator('#wrong-retype-trans-input').fill(correctAnswer);
+      await expect(page.locator('#next-btn')).toBeEnabled();
+
+      await page.locator('#next-btn').click();
+      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+});
