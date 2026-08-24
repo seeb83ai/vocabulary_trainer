@@ -255,16 +255,16 @@ export default async function globalSetup() {
   const adminCookieHeader = adminCookies.map(c => `${c.name}=${c.value}`).join('; ');
 
   const libraryWords = [
-    { zh: '一', pinyin: 'yī', en: ['one'], tags: ['hsk-1'] },
-    { zh: '人', pinyin: 'rén', en: ['person', 'people'], tags: ['hsk-1'] },
-    { zh: '大', pinyin: 'dà', en: ['big', 'large'], tags: ['hsk-1'] },
-    { zh: '时间', pinyin: 'shí jiān', en: ['time'], tags: ['hsk-2'] },
-    { zh: '已经', pinyin: 'yǐ jīng', en: ['already'], tags: ['hsk-2'] },
+    { zh: '一', pinyin: 'yī', en: ['one'], tags: ['hsk1'] },
+    { zh: '人', pinyin: 'rén', en: ['person', 'people'], tags: ['hsk1'] },
+    { zh: '大', pinyin: 'dà', en: ['big', 'large'], tags: ['hsk1'] },
+    { zh: '时间', pinyin: 'shí jiān', en: ['time'], tags: ['hsk2'] },
+    { zh: '已经', pinyin: 'yǐ jīng', en: ['already'], tags: ['hsk2'] },
   ];
   for (const word of libraryWords) {
     await seedWord(BASE_URL, adminCookieHeader, word, false);
   }
-  for (const tag of ['hsk-1', 'hsk-2']) {
+  for (const tag of ['hsk1', 'hsk2']) {
     const tagRes = await fetch(`${BASE_URL}/api/tags/${tag}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Cookie: adminCookieHeader },
@@ -274,7 +274,7 @@ export default async function globalSetup() {
       throw new Error(`Marking ${tag} importable failed (${tagRes.status}): ${await tagRes.text()}`);
     }
   }
-  console.log('[E2E] Seeded importable library words (hsk-1, hsk-2) for user 1');
+  console.log('[E2E] Seeded importable library words (hsk1, hsk2) for user 1');
 
   console.log('[E2E] Global setup complete ✓');
 }

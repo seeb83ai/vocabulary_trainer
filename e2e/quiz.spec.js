@@ -1362,9 +1362,11 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     });
   }
 
-  async function submitAnswerAndWait(page, answer) {
-    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
-    const card = await cardRes.json();
+  async function submitAnswerAndWait(page, answer, card = null) {
+    if (!card) {
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+      card = await cardRes.json();
+    }
 
     await useZhToTranslMode(page);
     await page.goto('/train');
@@ -1380,7 +1382,7 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     const card = await cardRes.json();
     const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
     expect(correctAnswer).toBeTruthy();
-    await submitAnswerAndWait(page, correctAnswer);
+    await submitAnswerAndWait(page, correctAnswer, card);
   }
 
   test('celebration screen appears before the result screen, then reveals it after Continue', async ({ page }) => {
