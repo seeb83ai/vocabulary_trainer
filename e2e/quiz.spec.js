@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { captureForPR } from './helpers/screenshot.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Main user — 3 acknowledged words (total_attempts=1, learning_new_word=1)
@@ -197,6 +198,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 
     const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
     await expect(yellowBox).toBeVisible();
+    await captureForPR(page, 'train-mismatch');
 
     const redSize = await page.locator('#word-breakdown .bg-red-50 .text-red-700')
       .evaluate(el => getComputedStyle(el).fontSize);
@@ -1204,6 +1206,16 @@ test.describe('Quiz – auto-play sound toggle', () => {
   });
 });
 
+test.describe('Quiz – fullscreen toggle', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('fullscreen toggle button is visible and off by default', async ({ page }) => {
+    await page.goto('/train');
+    await expect(page.locator('#fullscreen-toggle-btn')).toBeVisible();
+    await expect(page.locator('#fullscreen-toggle-btn')).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Group: Chinese (no sound) → Translation mode
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1362,9 +1374,11 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     });
   }
 
-  async function submitAnswerAndWait(page, answer) {
-    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
-    const card = await cardRes.json();
+  async function submitAnswerAndWait(page, answer, card = null) {
+    if (!card) {
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+      card = await cardRes.json();
+    }
 
     await useZhToTranslMode(page);
     await page.goto('/train');
@@ -1380,7 +1394,7 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     const card = await cardRes.json();
     const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
     expect(correctAnswer).toBeTruthy();
-    await submitAnswerAndWait(page, correctAnswer);
+    await submitAnswerAndWait(page, correctAnswer, card);
   }
 
   test('celebration screen appears before the result screen, then reveals it after Continue', async ({ page }) => {

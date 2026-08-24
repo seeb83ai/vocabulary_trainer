@@ -4,6 +4,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Features
 
+- **One-button onboarding.** When a new account opens the training page with no vocabulary and the shared library offers HSK lists, the empty state asks "How much Chinese do you know?" and offers one-click starts: *I'm new — start with HSK 1* and *I know the basics — HSK 2–3*. One click imports the list and shows the first new-word introduction immediately. A third option, *Let me choose word lists myself*, opens the existing tag picker with language filters and preview.
 - **Landing page for signed-out visitors.** The root page (`/`) shows the value proposition — spaced repetition, native audio and pinyin drills, character mnemonics — next to the sign-in/register card, with a "Create free account" call to action. The page carries SEO and Open Graph meta tags so it can be found and shared.
 - **Try-before-signup demo quiz.** Signed-out visitors can answer five fixed demo cards (Chinese + pinyin → English) directly on the root page, with no account. Answers are checked server-side with the same flexible matching logic as the real quiz, wrong answers reveal the accepted translations, and finishing the demo leads to a "Create free account" prompt. The endpoints (`GET /api/demo/cards`, `POST /api/demo/answer`) are public, stateless, and store nothing.
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
@@ -18,6 +19,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
   - **Cycle**. This mode rotates through a sequence of directions that you configure for each word.
 - The app uses [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method). Words you get wrong appear more often. The app schedules correct answers further into the future.
 - **Daily new-word cap.** This setting limits how many new words the app introduces per day. The default is 5 words, and you can configure it with `MAX_NEW_WORDS`. Once you reach the cap, the app serves only already-seen cards for the rest of the day. The training page shows a "New today: X / Y" counter in the stats bar.
+- **Come-back-tomorrow summary.** The "All done for today!" screen shows your current day streak (consecutive training days) and how many reviews come due tomorrow, so the spaced-repetition loop is visible from day one.
 - **Difficult-words drill.** Once you review everything due, the "All done for today!" screen offers a "Drill my hardest words" option. Tick the option and pick an amount to flag that many of your hardest words. The app picks about half by lowest accuracy and half by lowest ease factor. The app serves flagged words on demand, regardless of their due date, until you answer each one correctly. A correct answer clears the flag. A temporary "Difficult words" pill in the filter bar shows that the drill is active and shows how many words remain. Click the pill to exit the drill early.
 - **Flexible answer matching.** Parenthesized segments are optional: `(das) Essen` accepts `Essen`. Fullwidth Chinese parentheses `（）` work the same way: `还（动词）` accepts `还`. Slash- or comma-separated alternatives are each valid: `Essen / Gericht` accepts `Essen` or `Gericht`, and `topic, item` accepts `topic` or `item`.
 - **Wrong-answer review.** On a wrong answer, the app shows what you typed next to the correct Chinese text, pinyin, and translations. You can add your answer as an accepted translation with one click. In *Translation → Chinese* mode, the app also shows pinyin beside your typed Chinese answer, so you can see how it is pronounced. If you have two active learning languages (primary and secondary), a language picker lets you choose which language the new translation belongs to. The picker defaults to your primary language.
@@ -29,6 +31,8 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - **Confusion tracking.** If your wrong answer is a valid translation of a different, known word or hanzi component, the app records it as a confusion pair. This works in all quiz modes, including component quizzes. A yellow hint box shows on the result screen right away, and you can see the full history on the `/mismatches` page.
 - Every Chinese word has a 🔊 read-aloud button. The button plays a cached MP3 file, generated with Microsoft Edge neural TTS, which is built into the binary. If this fails, the button falls back silently to the browser's Web Speech API.
 - **Auto-play sound.** A floating 🔇/🔊 toggle button sits at the bottom-left of the training page, near the report-issue button. This setting is off by default. When you turn it on, the app automatically plays the Chinese pronunciation whenever it shows a new word, component prompt, or introduction. The app never auto-plays the prompt in *Translation → Chinese* mode, because that would reveal the answer before you've answered — and it never auto-plays *Chinese (no sound) → English* prompts, for the same reason that mode hides the play button. Once you submit an answer, if the pronunciation wasn't already auto-played on the question screen (e.g. because it was withheld to avoid revealing the answer, or skipped due to the pinyin-blur setting), the app reads it out on the result screen instead — for both word and component cards. The setting does not persist. It resets to off when you reload the page.
+- **Compact mobile layout.** On small screens, the nav bar and quiz card use tighter padding and margins so more of the card fits above the on-screen keyboard.
+- **Fullscreen / installable app.** A floating ⛶ toggle button appears at the bottom-left of every page when the browser supports the Fullscreen API, letting you hide the browser chrome with a tap (browsers only allow entering fullscreen from a user gesture, so it can't happen automatically on page load). The app also ships a web app manifest, so you can "Add to Home Screen" on mobile for a standalone, chrome-free experience — installing it hides the fullscreen toggle, since there's no browser chrome left to hide.
 - **Blur pinyin.** This optional setting is in Settings → Training Mode → Quiz Display. It blurs the pinyin hint on quiz cards, so you cannot read it at a glance. Tap or click the hint to reveal it. The hint blurs again on the next card.
 - **Bucket growth indicator.** The result screen shows one growth icon (🌰🌱🌿🌳🌸) for each accuracy tier: New, Struggling, Learning, Practicing, or Mastered. The icon marks the current tier of a word, HMM entity, or component, on both correct and wrong answers.
   - **Celebrate bucket changes** is an optional setting, off by default, in Settings → Training Mode → Quiz Display. When a correct answer advances a word's tier, this setting shows a full-screen "Level up!" interstitial before the result screen. The old tier's icon dissolves into the new one.
@@ -52,17 +56,37 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Screenshots
 
+Regenerate with `make screenshots-readme` (drives a real browser via Playwright against a seeded local server).
+
 Training — question
 ![Training question](images/chinese_train.png)
 
 Training — answer
 ![Training answer](images/chinese_train_answer.png)
 
-Vocabulary management |
+Vocabulary management
 ![Vocabulary management](images/chinese_vocabulary.png)
 
 Overview - Vocabulary Mismatches
-![Training answer](images/chinese_mismatches.png)
+![Vocabulary mismatches](images/chinese_mismatches.png)
+
+Gamification — match game
+![Gamification match game](images/chinese_gamification.png)
+
+Stats dashboard
+![Stats dashboard](images/chinese_stats.png)
+
+Pinyin listening quiz
+![Pinyin listening quiz](images/chinese_pinyin.png)
+
+Mnemonics (HMM) builder
+![Mnemonics HMM builder](images/chinese_mnemonics.png)
+
+Settings
+![Settings](images/chinese_settings.png)
+
+Login / Register
+![Login and register](images/chinese_login.png)
 
 ## Quick start
 

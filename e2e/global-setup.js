@@ -240,5 +240,41 @@ export default async function globalSetup() {
   writeFileSync(join(AUTH_DIR, 'new-word-user.json'), JSON.stringify(nwStorageState, null, 2));
   console.log('[E2E] Auth state saved to e2e/.auth/new-word-user.json');
 
+  // ── 9. Seed the shared library user (id=1) with importable HSK tags ─────────
+  // The one-button onboarding on the empty training page offers "start with
+  // HSK 1 / HSK 2–3" quick-start imports from this library.
+  const adminLoginRes = await fetch(`${BASE_URL}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'admin@e2e.local', password: 'AdminE2ePassword1!' }),
+  });
+  if (!adminLoginRes.ok) {
+    throw new Error(`Admin login failed (${adminLoginRes.status}): ${await adminLoginRes.text()}`);
+  }
+  const adminCookies = parseSetCookieHeaders(adminLoginRes.headers.getSetCookie?.() ?? []);
+  const adminCookieHeader = adminCookies.map(c => `${c.name}=${c.value}`).join('; ');
+
+  const libraryWords = [
+    { zh: '一', pinyin: 'yī', en: ['one'], tags: ['hsk1'] },
+    { zh: '人', pinyin: 'rén', en: ['person', 'people'], tags: ['hsk1'] },
+    { zh: '大', pinyin: 'dà', en: ['big', 'large'], tags: ['hsk1'] },
+    { zh: '时间', pinyin: 'shí jiān', en: ['time'], tags: ['hsk2'] },
+    { zh: '已经', pinyin: 'yǐ jīng', en: ['already'], tags: ['hsk2'] },
+  ];
+  for (const word of libraryWords) {
+    await seedWord(BASE_URL, adminCookieHeader, word, false);
+  }
+  for (const tag of ['hsk1', 'hsk2']) {
+    const tagRes = await fetch(`${BASE_URL}/api/tags/${tag}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: adminCookieHeader },
+      body: JSON.stringify({ description: `${tag} test library`, importable: true }),
+    });
+    if (!tagRes.ok) {
+      throw new Error(`Marking ${tag} importable failed (${tagRes.status}): ${await tagRes.text()}`);
+    }
+  }
+  console.log('[E2E] Seeded importable library words (hsk1, hsk2) for user 1');
+
   console.log('[E2E] Global setup complete ✓');
 }
