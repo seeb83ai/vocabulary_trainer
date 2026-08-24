@@ -438,6 +438,9 @@ const I18N = {
     'hmm.submit': 'Submit',
     'hmm.next': 'Next →',
 
+    'fullscreen.enterTitle': 'Enter fullscreen',
+    'fullscreen.exitTitle': 'Exit fullscreen',
+
     // In-app issue reporting
     'issue.buttonTitle': 'Report an issue',
     'issue.title': 'Report an issue',
@@ -898,6 +901,9 @@ const I18N = {
     'hmm.placeholder': '输入记忆法名称…',
     'hmm.submit': '提交',
     'hmm.next': '下一个 →',
+
+    'fullscreen.enterTitle': '进入全屏',
+    'fullscreen.exitTitle': '退出全屏',
 
     // In-app issue reporting
     'issue.buttonTitle': '报告问题',
