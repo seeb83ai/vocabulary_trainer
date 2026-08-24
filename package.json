@@ -10,7 +10,7 @@
     "screenshots": "playwright test --config=playwright.screenshots.config.js"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.0",
+    "@playwright/test": "1.62.1",
     "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^30.0.1",
     "vitest": "^4.1.11"
