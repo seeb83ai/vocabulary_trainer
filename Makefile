@@ -121,14 +121,42 @@ test-e2e:
 test-all: test-go test-js test-e2e
 
 ## screenshots-readme: regenerate README screenshots with Playwright (on-demand only, not part of test-all/CI)
+##
+## To screenshot against seeded data (default, fresh temp server):
+##   make screenshots-readme
+##
+## To screenshot against the local running server as a real user:
+##   make screenshots-readme USER_EMAIL=me@example.com USER_PASSWORD=secret
+##   make screenshots-readme USER_EMAIL=me@example.com USER_PASSWORD=secret LOCAL_SERVER_URL=http://localhost:8080
 screenshots-readme:
-	npx playwright test --config=playwright.screenshots.config.js
+	@if [ -n "$(USER_EMAIL)" ]; then \
+		test -n "$(USER_PASSWORD)" || (echo "USER_PASSWORD is required when USER_EMAIL is set" && exit 1); \
+		USE_LOCAL_SERVER=1 LOCAL_USER_EMAIL="$(USER_EMAIL)" LOCAL_USER_PASSWORD="$(USER_PASSWORD)" \
+		  LOCAL_SERVER_URL="$(or $(LOCAL_SERVER_URL),http://localhost:8080)" \
+		  npx playwright test --config=playwright.screenshots.config.js; \
+	else \
+		npx playwright test --config=playwright.screenshots.config.js; \
+	fi
 
 ## screenshots-pr: capture PR review screenshots from an e2e spec (FILE=e2e/vocab.spec.js required)
 ## Requires captureForPR() calls (e2e/helpers/screenshot.js) in the spec; writes PNGs to pr-screenshots/.
+##
+## To screenshot against seeded data (default, fresh temp server):
+##   make screenshots-pr FILE=e2e/vocab.spec.js
+##
+## To screenshot against the local running server as a real user:
+##   make screenshots-pr FILE=e2e/vocab.spec.js USER_EMAIL=me@example.com USER_PASSWORD=secret
+##   make screenshots-pr FILE=e2e/vocab.spec.js USER_EMAIL=me@example.com USER_PASSWORD=secret LOCAL_SERVER_URL=http://localhost:8080
 screenshots-pr:
 	@test -n "$(FILE)" || (echo "FILE is not set. Usage: make screenshots-pr FILE=e2e/vocab.spec.js" && exit 1)
-	PR_SCREENSHOTS=1 npx playwright test $(FILE)
+	@if [ -n "$(USER_EMAIL)" ]; then \
+		test -n "$(USER_PASSWORD)" || (echo "USER_PASSWORD is required when USER_EMAIL is set" && exit 1); \
+		USE_LOCAL_SERVER=1 LOCAL_USER_EMAIL="$(USER_EMAIL)" LOCAL_USER_PASSWORD="$(USER_PASSWORD)" \
+		  LOCAL_SERVER_URL="$(or $(LOCAL_SERVER_URL),http://localhost:8080)" \
+		  PR_SCREENSHOTS=1 npx playwright test --config=playwright.pr-screenshots.config.js $(FILE); \
+	else \
+		PR_SCREENSHOTS=1 npx playwright test --config=playwright.pr-screenshots.config.js $(FILE); \
+	fi
 
 ## clean: stop containers and remove build artifacts
 clean:

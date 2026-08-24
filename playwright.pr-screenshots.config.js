@@ -1,11 +1,8 @@
 // @ts-check
-// Separate, on-demand Playwright config for regenerating the README
-// screenshots (`make screenshots-readme`). Deliberately not merged into
-// playwright.config.js so the default `npx playwright test` / CI run never
-// picks up e2e-screenshots/capture.spec.js.
-//
+// Playwright config for `make screenshots-pr`.
 // When USE_LOCAL_SERVER=1: logs in to the already-running local server as the
-// user given by LOCAL_USER_EMAIL / LOCAL_USER_PASSWORD / LOCAL_SERVER_URL.
+// given user (no binary build, no seeding). Otherwise: spins up a fresh E2E
+// server with seeded data (same as the regular test run).
 import { defineConfig, devices } from '@playwright/test';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -16,6 +13,8 @@ const chromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
 
 const useLocal = process.env.USE_LOCAL_SERVER === '1';
 
+// When using the local server, read the base URL written by global-setup-local.js
+// (after setup runs) or fall back to the env var / default.
 function resolveBaseURL() {
   if (!useLocal) return 'http://localhost:18080';
   const cached = join('e2e/.auth', 'local-base-url.txt');
@@ -24,7 +23,7 @@ function resolveBaseURL() {
 }
 
 export default defineConfig({
-  testDir: './e2e-screenshots',
+  testDir: './e2e',
   globalSetup: useLocal ? './e2e/global-setup-local.js' : './e2e/global-setup.js',
   globalTeardown: useLocal ? './e2e/global-teardown-local.js' : './e2e/global-teardown.js',
 
@@ -50,5 +49,6 @@ export default defineConfig({
     },
   ],
 
+  outputDir: 'playwright-report/results',
   reporter: [['list']],
 });
