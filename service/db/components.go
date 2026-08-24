@@ -91,10 +91,10 @@ func wordRequiredComponents(ctx context.Context, q querier, zhText string) ([]st
 	return out, nil
 }
 
-// getComponentCoverageThreshold reads the user's minimum-coverage setting for
-// adding new components to training (0-100, default 0 = no filtering).
-// A missing user_settings row (not yet created) is treated as 0, same as the
-// column's default.
+// getComponentCoverageThreshold reads the user's target word-coverage
+// percentage (0-100, default 0 = no filtering) — see selectComponentsForCoverage
+// for how it decides which components enter training. A missing user_settings
+// row (not yet created) is treated as 0, same as the column's default.
 func getComponentCoverageThreshold(ctx context.Context, q querier, userID int64) (float64, error) {
 	var threshold float64
 	err := q.QueryRowContext(ctx,
@@ -110,41 +110,96 @@ func getComponentCoverageThreshold(ctx context.Context, q querier, userID int64)
 	return threshold, nil
 }
 
-// componentWordCoverage tallies, for every qualifying component character
-// across all of userID's zh words, how many of those words require it — the
-// same rule wordRequiredComponents applies per word, just accumulated. Also
-// returns the total zh word count, used as the percentage denominator.
-func componentWordCoverage(ctx context.Context, q querier, userID int64) (counts map[string]int, totalWords int, err error) {
+// componentWordSets returns, for every qualifying component character across
+// all of userID's zh words, the set of zh word IDs that require it — the same
+// rule wordRequiredComponents applies per word, just accumulated. Also
+// returns the total zh word count, used as the coverage-target denominator.
+func componentWordSets(ctx context.Context, q querier, userID int64) (wordSets map[string]map[int64]bool, totalWords int, err error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT text FROM words WHERE user_id = ? AND language = 'zh'`, userID)
+		`SELECT id, text FROM words WHERE user_id = ? AND language = 'zh'`, userID)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list zh words: %w", err)
 	}
-	var texts []string
+	type zhWord struct {
+		id   int64
+		text string
+	}
+	var words []zhWord
 	for rows.Next() {
-		var text string
-		if err := rows.Scan(&text); err != nil {
+		var wd zhWord
+		if err := rows.Scan(&wd.id, &wd.text); err != nil {
 			rows.Close()
 			return nil, 0, fmt.Errorf("scan zh word: %w", err)
 		}
-		texts = append(texts, text)
+		words = append(words, wd)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("list zh words rows: %w", err)
 	}
 
-	counts = make(map[string]int)
-	for _, text := range texts {
-		components, err := wordRequiredComponents(ctx, q, text)
+	wordSets = make(map[string]map[int64]bool)
+	for _, wd := range words {
+		components, err := wordRequiredComponents(ctx, q, wd.text)
 		if err != nil {
 			return nil, 0, err
 		}
 		for _, c := range components {
-			counts[c]++
+			if wordSets[c] == nil {
+				wordSets[c] = make(map[int64]bool)
+			}
+			wordSets[c][wd.id] = true
 		}
 	}
-	return counts, len(texts), nil
+	return wordSets, len(words), nil
+}
+
+// selectComponentsForCoverage greedily picks components — always the one
+// covering the most not-yet-covered zh words next — until the union of
+// covered words reaches targetPct percent of totalWords, or every qualifying
+// component has been picked. This is the standard greedy approximation to
+// minimum set cover: "learn as few components as possible to cover X% of all
+// words," rather than filtering components individually by their own
+// coverage share. Ties are broken by character (ascending) for determinism.
+func selectComponentsForCoverage(wordSets map[string]map[int64]bool, totalWords int, targetPct float64) []string {
+	if totalWords == 0 || targetPct <= 0 || len(wordSets) == 0 {
+		return nil
+	}
+	target := targetPct / 100 * float64(totalWords)
+
+	remaining := make([]string, 0, len(wordSets))
+	for c := range wordSets {
+		remaining = append(remaining, c)
+	}
+	sort.Strings(remaining)
+
+	covered := make(map[int64]bool)
+	var selected []string
+	for float64(len(covered)) < target && len(remaining) > 0 {
+		bestIdx, bestGain := -1, 0
+		for i, c := range remaining {
+			gain := 0
+			for wid := range wordSets[c] {
+				if !covered[wid] {
+					gain++
+				}
+			}
+			if gain > bestGain {
+				bestGain = gain
+				bestIdx = i
+			}
+		}
+		if bestIdx == -1 {
+			break
+		}
+		best := remaining[bestIdx]
+		selected = append(selected, best)
+		for wid := range wordSets[best] {
+			covered[wid] = true
+		}
+		remaining = append(remaining[:bestIdx], remaining[bestIdx+1:]...)
+	}
+	return selected
 }
 
 func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText string, dueDate time.Time) error {
@@ -161,21 +216,22 @@ func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText 
 	if err != nil {
 		return err
 	}
-	var counts map[string]int
-	var totalWords int
+	var selected map[string]bool
 	if threshold > 0 {
-		counts, totalWords, err = componentWordCoverage(ctx, q, userID)
+		wordSets, totalWords, err := componentWordSets(ctx, q, userID)
 		if err != nil {
 			return err
+		}
+		sel := selectComponentsForCoverage(wordSets, totalWords, threshold)
+		selected = make(map[string]bool, len(sel))
+		for _, c := range sel {
+			selected[c] = true
 		}
 	}
 
 	for _, comp := range components {
-		if threshold > 0 && totalWords > 0 {
-			pct := float64(counts[comp]) / float64(totalWords) * 100
-			if pct < threshold {
-				continue
-			}
+		if threshold > 0 && !selected[comp] {
+			continue
 		}
 		if _, err := q.ExecContext(ctx,
 			`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
@@ -948,75 +1004,40 @@ func (s *Store) GetComponentList(ctx context.Context, userID int64, search strin
 	return items, total, nil
 }
 
-// ComponentCoverageItem is one row in the full component-coverage listing:
-// every qualifying component across a user's current zh vocabulary, not just
-// ones already in component_progress.
-type ComponentCoverageItem struct {
-	Character      string  `json:"character"`
-	Pinyin         string  `json:"pinyin,omitempty"`
-	DefinitionEN   string  `json:"definition_en"`
-	DefinitionDE   string  `json:"definition_de"`
-	WordCount      int     `json:"word_count"`
-	CoveragePct    float64 `json:"coverage_pct"`
-	AlreadyTrained bool    `json:"already_trained"`
+// ComponentCoverageComponent is one qualifying component across a user's
+// current zh vocabulary (not just ones already in component_progress),
+// together with the zh word IDs that require it. The Settings page uses this
+// to preview, for a candidate coverage-target percentage, how many
+// components selectComponentsForCoverage would pick — without listing
+// individual components in the UI.
+type ComponentCoverageComponent struct {
+	Character string  `json:"character"`
+	WordIDs   []int64 `json:"word_ids"`
 }
 
 // GetComponentCoverage returns every qualifying component across userID's
 // current zh vocabulary — not just components already in component_progress —
-// each annotated with how many (and what percentage) of the user's zh words
-// require it, and whether it's already being trained. Used by the Settings
-// page to help pick a training threshold (see getComponentCoverageThreshold).
-// Sorted by word count descending, then character ascending for stability.
-func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageItem, int, error) {
-	counts, totalWords, err := componentWordCoverage(ctx, s.db, userID)
+// together with the zh word IDs that require each one, plus the total zh word
+// count. Used by the Settings page to preview how many components a
+// candidate coverage-target threshold would select (see
+// selectComponentsForCoverage / getComponentCoverageThreshold). Sorted by
+// character for stability.
+func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageComponent, int, error) {
+	wordSets, totalWords, err := componentWordSets(ctx, s.db, userID)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	trained := make(map[string]bool)
-	rows, err := s.db.QueryContext(ctx, `SELECT character FROM component_progress WHERE user_id = ?`, userID)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list trained components: %w", err)
-	}
-	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
-			rows.Close()
-			return nil, 0, fmt.Errorf("scan trained component: %w", err)
+	items := make([]ComponentCoverageComponent, 0, len(wordSets))
+	for char, words := range wordSets {
+		ids := make([]int64, 0, len(words))
+		for id := range words {
+			ids = append(ids, id)
 		}
-		trained[c] = true
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		items = append(items, ComponentCoverageComponent{Character: char, WordIDs: ids})
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("list trained components rows: %w", err)
-	}
-
-	items := make([]ComponentCoverageItem, 0, len(counts))
-	for char, wordCount := range counts {
-		defs, err := s.GetComponentDefinitions(ctx, userID, char, []string{"en", "de"})
-		if err != nil {
-			return nil, 0, err
-		}
-		var pct float64
-		if totalWords > 0 {
-			pct = float64(wordCount) / float64(totalWords) * 100
-		}
-		items = append(items, ComponentCoverageItem{
-			Character:      char,
-			Pinyin:         s.GetComponentPinyin(ctx, char),
-			DefinitionEN:   defs["en"],
-			DefinitionDE:   defs["de"],
-			WordCount:      wordCount,
-			CoveragePct:    pct,
-			AlreadyTrained: trained[char],
-		})
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].WordCount != items[j].WordCount {
-			return items[i].WordCount > items[j].WordCount
-		}
-		return items[i].Character < items[j].Character
-	})
+	sort.Slice(items, func(i, j int) bool { return items[i].Character < items[j].Character })
 	return items, totalWords, nil
 }
 
