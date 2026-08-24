@@ -382,6 +382,30 @@ func (h *ComponentHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Coverage returns every qualifying component across the user's current zh
+// vocabulary (not just ones already in training), each with the zh word IDs
+// that require it — used by the Settings page to preview how many
+// components a candidate coverage-target percentage would select for
+// training (see db.selectComponentsForCoverage).
+func (h *ComponentHandler) Coverage(w http.ResponseWriter, r *http.Request) {
+	items, wordComponentCounts, totalWords, err := h.Store.GetComponentCoverage(r.Context(), UserIDFromContext(r.Context()))
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if items == nil {
+		items = []db.ComponentCoverageComponent{}
+	}
+	if wordComponentCounts == nil {
+		wordComponentCounts = map[int64]int{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"components":            items,
+		"word_component_counts": wordComponentCounts,
+		"total_words":           totalWords,
+	})
+}
+
 // Stats returns daily component stat history.
 func (h *ComponentHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.Store.GetComponentStatsHistory(r.Context(), UserIDFromContext(r.Context()))
