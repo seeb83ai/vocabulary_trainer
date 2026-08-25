@@ -44,7 +44,7 @@ test(s) from step 1 to capture reviewer-facing screenshots instead of a separate
 CI (`frontend-screenshot-check` in `.github/workflows/test.yml`, backed by `scripts/check-pr-screenshots.sh`)
 report-only-checks every PR: if it touches `service/frontend/` but adds/updates no `pr-screenshots/*.png`, the
 job fails (visible in the PR checks tab, not a merge gate). It also nudges — without failing — when a
-page-specific file changed (`train.js`, `vocab.js`, `stats.js`, `pinyin.js`, `mnemonics.js`/`hmm-builder.js`,
+page-specific file changed (`train-*.js`, `vocab-*.js`, `stats.js`, `pinyin.js`, `mnemonics.js`/`hmm-builder.js`,
 `mismatches.js`, `settings.js`) but no changed screenshot filename mentions that page.
 
 ## Testing rules
@@ -57,8 +57,10 @@ the changed behaviour.
 - Use the **standard library only** (`testing` package). Do not add testify or any other assertion library.
 - Use **in-memory SQLite** (`db.Open(":memory:")`) for all DB tests — never touch `data/vocab.db`.
 - When you change a function, update or add tests in the same package (`_test.go` alongside the source file).
-- When you add or change an HTTP endpoint, update `service/handlers/handlers_test.go`.
-  - Also register any new route in the `newRouter()` helper inside that file.
+- When you add or change an HTTP endpoint, update the corresponding `service/handlers/<domain>_test.go`
+  file (e.g. `quiz_test.go`, `words_test.go`).
+  - Shared test setup (`newRouter()`, `openTestDB`, auth fixtures) lives in `service/handlers/router_test.go` —
+    register any new route there.
 - Run `cd service && go test ./... -count=1` before considering a task done.
 
 ### JS tests (Vitest)
@@ -82,7 +84,7 @@ Before marking any task done:
 1. `cd service && go test ./... -count=1` — no failures.
 2. `npm test` — no failures (if JS was changed).
 3. `make test-e2e` — no failures (if a user-visible flow was added or changed).
-4. New route registered in **both** `service/main.go` and `newRouter()` in `handlers_test.go`.
+4. New route registered in **both** `service/main.go` and `newRouter()` in `router_test.go`.
 5. `README.md` updated if user-visible behaviour changed.
 6. No SQL outside `service/db/` package.
 7. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
@@ -91,9 +93,9 @@ Before marking any task done:
 ### What must be tested
 | Change type | Required test |
 |---|---|
-| New DB query / Store method | Unit test in `service/db/db_test.go` |
+| New DB query / Store method | Unit test in the corresponding `service/db/<domain>_test.go` file |
 | Changed DB query | Update existing test or add regression test |
-| New HTTP endpoint | Integration test in `service/handlers/handlers_test.go` + register route in `newRouter()` |
+| New HTTP endpoint | Integration test in the corresponding `service/handlers/<domain>_test.go` file + register route in `newRouter()` (`router_test.go`) |
 | Changed HTTP endpoint behaviour | Update or extend existing handler test |
 | New pure JS utility function | Unit test in the relevant `*.test.js` file |
 | Changed pure JS utility function | Update or extend existing JS test |
@@ -184,12 +186,20 @@ individual rows in `schema_migrations` on first run after the upgrade.
 |---|---|
 | `service/db/db.go` | `Store`, `Open`, `Close`, `parseDateTime`, `upsertWord`, `initSM2` |
 | `service/db/migrate.go` | Version-based schema migrations (`Migrate()`, `migrations` slice) |
-| `service/db/users.go` | User CRUD, email verification, password update |
+| `service/db/users.go` | User CRUD, email verification, password update, user settings |
 | `service/db/words.go` | Word CRUD, translation links, `GetNextCard`, `tierFilter`, `validSortExprs` |
 | `service/db/tags.go` | Tag management — `GetAllTags`, `GetTagDetails`, `UpsertTagMeta`, `GetImportableSourceTags` |
-| `service/db/quiz.go` | SM-2 progress, `GetStats`, confusion pairs, due-date counts |
+| `service/db/quiz.go` | Core SM-2 progress — `GetSM2Progress`, `UpdateSM2Progress`, `GetStats`, prev-state, `SharesTranslation` |
+| `service/db/confusion.go` | Word/component confusion detection, resolution, mismatch history |
+| `service/db/drill.go` | Difficult-word drill flagging (`FlagDifficultWords`, `GetNextDrillCard`) |
+| `service/db/match_game.go` | Match-game candidate word queries |
 | `service/db/stats.go` | `RecordDailyStat`, `GetDailyStatsHistory`, `GetWordStats`, `AdvanceDueDates` |
 | `service/db/hanzi.go` | Hanzi decomposition queries, zh-text translation lookups, `StoreTranslationForZhChar` |
+| `service/db/components.go` | Component (hanzi) core CRUD/progress, `GetNextComponentCard`, `GetComponentList` |
+| `service/db/components_hmm.go` | Component HMM mnemonic scene storage |
+| `service/db/components_confusion.go` | Component confusion detection |
+| `service/db/components_stats.go` | Component stats history and coverage |
+| `service/db/components_test_helpers.go` | Test-only seed/set helpers for component tests |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
 | `service/db/funnel.go` | Signup → activation → retention funnel (`GetFunnelReport`) |
@@ -198,7 +208,10 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | Path | Purpose |
 |---|---|
 | `service/handlers/words.go` | CRUD + `AddTranslation` handler, shared `writeJSON`/`writeError`/`parseID` |
-| `service/handlers/quiz.go` | `Next`, `Answer`, `Stats` handlers |
+| `service/handlers/quiz.go` | `QuizHandler`, `Next`, `Answer`, `Skip`, `Acknowledge`, `Advance`, `FlagDifficult` |
+| `service/handlers/quiz_stats.go` | `DailyStats`, `WordStats`, `Stats`, `DueDateDistribution` |
+| `service/handlers/quiz_matchgame.go` | `MatchGame`, `MatchAnswer` handlers |
+| `service/handlers/components.go` | Component (hanzi) quiz handlers |
 | `service/handlers/tags.go` | Tag detail and meta handlers |
 | `service/handlers/auth.go` | Registration, login, email verification, password change |
 | `service/handlers/pinyin_quiz.go` | `PinyinQuizHandler`: `Next`, `Answer`, `Stats`, `ServeAudio` |
@@ -219,8 +232,19 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`) |
 | `service/frontend/i18n.js` | Internationalisation helpers |
 | `service/frontend/demo.js` | Landing-page demo quiz widget |
-| `service/frontend/train.js` | Training page state machine |
-| `service/frontend/vocab.js` | Vocabulary management logic |
+| `service/frontend/train-answer.js` | Answer-checking/normalization helpers |
+| `service/frontend/train-audio.js` | Autoplay/audio playback logic |
+| `service/frontend/train-settings.js` | Filters/settings/tags/language chips |
+| `service/frontend/train-stats.js` | Streak/due-count display, difficult-drill mode |
+| `service/frontend/train-result.js` | Answer-result rendering, character decomposition |
+| `service/frontend/train-matchgame.js` | Post-answer match-game widget |
+| `service/frontend/train-card.js` | Core load/show/submit quiz loop, page state, init |
+| `service/frontend/vocab-list.js` | Word table/pagination/filters, page init |
+| `service/frontend/vocab-form.js` | Add/edit/delete word form, translate/pinyin lookup |
+| `service/frontend/vocab-tags.js` | Tag autocomplete for the edit form |
+| `service/frontend/vocab-import.js` | CSV upload and tag-based import |
+| `service/frontend/vocab-download.js` | Vocabulary export/download |
+| `service/frontend/vocab-components.js` | Components tab (hanzi component list/edit) |
 | `service/frontend/stats.js` | Stats page logic |
 | `service/frontend/settings.js` | Settings page logic |
 | `service/frontend/pinyin.js` | Pinyin listening training state machine |

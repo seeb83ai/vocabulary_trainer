@@ -393,10 +393,18 @@ func main() {
 	})
 	r.Get("/vocab", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "vocab", PageData{
-			Title:       "Vocabulary — Vocab Trainer",
-			ActiveNav:   "vocab",
-			PageScripts: []string{"hmm-builder.js", "vocab.js"},
-			IsAdmin:     checkIsAdmin(r, store),
+			Title:     "Vocabulary — Vocab Trainer",
+			ActiveNav: "vocab",
+			PageScripts: []string{
+				"hmm-builder.js",
+				"vocab-list.js",
+				"vocab-form.js",
+				"vocab-tags.js",
+				"vocab-import.js",
+				"vocab-download.js",
+				"vocab-components.js",
+			},
+			IsAdmin: checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/mismatches", func(w http.ResponseWriter, r *http.Request) {
@@ -426,10 +434,19 @@ func main() {
 	})
 	r.Get("/train", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "train", PageData{
-			Title:       "Train — Vocab Trainer",
-			ActiveNav:   "train",
-			PageScripts: []string{"hmm-builder.js", "train.js"},
-			IsAdmin:     checkIsAdmin(r, store),
+			Title:     "Train — Vocab Trainer",
+			ActiveNav: "train",
+			PageScripts: []string{
+				"hmm-builder.js",
+				"train-answer.js",
+				"train-audio.js",
+				"train-settings.js",
+				"train-stats.js",
+				"train-result.js",
+				"train-matchgame.js",
+				"train-card.js",
+			},
+			IsAdmin: checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {

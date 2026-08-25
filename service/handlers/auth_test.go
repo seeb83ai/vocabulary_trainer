@@ -1,14 +1,17 @@
 package handlers_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"vocabulary_trainer/handlers"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // newAuthRouter builds a chi router with DB-backed auth middleware plus a
@@ -790,5 +793,173 @@ func TestMiddleware_DemoAccessibleWithoutSession(t *testing.T) {
 	rec := do(t, r, "GET", "/api/demo/cards", nil)
 	if rec.Code != http.StatusOK {
 		t.Errorf("want 200 on /api/demo/cards without session, got %d", rec.Code)
+	}
+}
+
+func TestRegister_OK(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "new@example.com", "password": "securepass1",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var body map[string]any
+	decodeJSON(t, rec, &body)
+	if body["auto_login"] != true {
+		t.Errorf("expected auto_login=true (nil email sender), got %v", body["auto_login"])
+	}
+	if rec.Result().Cookies() == nil {
+		t.Error("expected session cookie to be set")
+	}
+}
+
+func TestRegister_DuplicateEmail(t *testing.T) {
+	// A duplicate registration must NOT return a distinct status that
+	// reveals the email is already in use. See
+	// TestRegister_ExistingEmail_DoesNotLeak in auth_test.go.
+	r := newRouter(openTestDB(t))
+	payload := map[string]string{"email": "new@example.com", "password": "securepass1"}
+	do(t, r, "POST", "/api/register", payload)
+	rec := do(t, r, "POST", "/api/register", payload)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 (indistinguishable from a fresh registration), got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestRegister_ShortPassword(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "a@b.com", "password": "short",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestRegister_InvalidEmail(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "notanemail", "password": "securepass1",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestVerifyEmail_BadToken(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/verify-email?token=badtoken", nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d", rec.Code)
+	}
+	loc := rec.Header().Get("Location")
+	if loc != "/?error=invalid_token" {
+		t.Errorf("want redirect to /?error=invalid_token, got %q", loc)
+	}
+}
+
+func TestVerifyEmail_MissingToken(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/verify-email", nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d", rec.Code)
+	}
+}
+
+func TestVerifyEmail_OK(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Create unverified user with a known token
+	token := "testtoken1234567890abcdef12345678"
+	expiresAt := time.Now().Add(24 * time.Hour)
+	_, err := s.CreateUser(context.Background(), "verify@example.com", "$2a$10$placeholder", token, expiresAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "GET", "/api/verify-email?token="+token, nil)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("want 302, got %d: %s", rec.Code, rec.Body)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/train" {
+		t.Errorf("want redirect to /train, got %q", loc)
+	}
+}
+
+func TestLogin_UnverifiedEmail(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// Register creates an unverified user if emailSender != nil, but here
+	// we nil emailSender so Register auto-verifies. Create directly instead.
+	token := "unverifiedtoken1234567890123456"
+	expiresAt := time.Now().Add(24 * time.Hour)
+	hash, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.MinCost)
+	_, err := s.CreateUser(context.Background(), "unverified@example.com", string(hash), token, expiresAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "POST", "/api/login", map[string]string{
+		"email": "unverified@example.com", "password": "password123",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d: %s", rec.Code, rec.Body)
+	}
+	var body map[string]string
+	decodeJSON(t, rec, &body)
+	if body["error"] != "email_not_verified" {
+		t.Errorf("expected email_not_verified error, got %q", body["error"])
+	}
+}
+
+func TestMe_OK(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/me", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var body map[string]any
+	decodeJSON(t, rec, &body)
+	if body["email"] == "" || body["email"] == nil {
+		t.Error("expected non-empty email in response")
+	}
+}
+
+func TestChangePassword_OK(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	// user ID 2 is "me@example.de" / "I learn zh" from TestMain env
+	rec := do(t, r, "POST", "/api/change-password", map[string]string{
+		"current_password": "I learn zh",
+		"new_password":     "newpassword123",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestChangePassword_WrongCurrent(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/change-password", map[string]string{
+		"current_password": "wrongpassword",
+		"new_password":     "newpassword123",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestChangePassword_ShortNew(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/change-password", map[string]string{
+		"current_password": "I learn zh",
+		"new_password":     "short",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
 	}
 }

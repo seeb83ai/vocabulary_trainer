@@ -8,7 +8,7 @@ Go through each item and confirm it passes:
 
 3. **Route registration** — If a new HTTP endpoint was added, it is registered in **both**:
    - `service/main.go` (the live router)
-   - `newRouter()` inside `service/handlers/handlers_test.go` (the test router)
+   - `newRouter()` inside `service/handlers/router_test.go` (the test router)
 
 4. **README updated** — If user-visible behaviour changed (new quiz rule, new UI element, new API endpoint, new Makefile target, new env var), `README.md` has been updated accordingly.
 
