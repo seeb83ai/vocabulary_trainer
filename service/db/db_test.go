@@ -1664,6 +1664,31 @@ func TestDetectConfusion_SameWord_NotFound(t *testing.T) {
 	}
 }
 
+// TestDetectConfusion_ZhToTranslVariants_Found ensures confusion detection also
+// fires for the zh_to_transl variant modes (no-sound / voice-only prompt),
+// which are scored identically to zh_to_transl in Answer but were previously
+// missing from DetectConfusion's mode switch (issue #333).
+func TestDetectConfusion_ZhToTranslVariants_Found(t *testing.T) {
+	for _, mode := range []string{models.ModeZhToTranslNoSound, models.ModeVoiceToTransl} {
+		t.Run(mode, func(t *testing.T) {
+			s := openTestDB(t)
+			shoeID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+			bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+
+			confusedWith, found, err := s.DetectConfusion(context.Background(), int64(2), shoeID, "Buch", mode, []string{"en"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !found {
+				t.Fatalf("mode %q: expected confusion for a different entry's translation", mode)
+			}
+			if confusedWith != bookID {
+				t.Errorf("mode %q: confused_with = %d, want the book entry %d", mode, confusedWith, bookID)
+			}
+		})
+	}
+}
+
 func TestUpsertConfusion_IncrementsCount(t *testing.T) {
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
