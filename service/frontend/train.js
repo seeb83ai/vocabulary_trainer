@@ -71,7 +71,7 @@ function stripParens(s) {
   let prev;
   do {
     prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+    s = s.replace(/\s*[(（][^()（）]*[)）]\s*/g, ' ').trim();
   } while (s !== prev);
   return s;
 }
@@ -89,6 +89,31 @@ function expandVariants(a) {
     }
   }
   return [...seen];
+}
+
+// normalizeNewWordInput/isZhCorrect/isTransCorrect back the "must type it
+// correctly to continue" gates — shared by the new-word introduction screen
+// and the retype-on-wrong-answer gate (see wrongRetypeSatisfied below).
+function normalizeNewWordInput(s) {
+  return s.trim().toLowerCase()
+    .replace(/[？！，。：；]/g, m => ({ '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';' }[m]))
+    .replace(/[\p{P}\p{S}\s]+$/u, '');
+}
+function isZhCorrect(inputVal, prompt) {
+  return normalizeNewWordInput(inputVal) === normalizeNewWordInput(prompt);
+}
+function isTransCorrect(inputVal, translations) {
+  const normalized = normalizeNewWordInput(inputVal);
+  if (!normalized) return false;
+  const allTrans = Object.values(translations || {}).flat();
+  return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+}
+
+// wrongRetypeSatisfied decides whether the retype-on-wrong gate (shown after
+// a wrong answer when the retype_on_wrong setting is enabled) is satisfied —
+// the user must retype both the correct Chinese word and a correct translation.
+function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations) {
+  return isZhCorrect(zhVal, correctZh) && isTransCorrect(transVal, translations);
 }
 
 // Returns true if a wrong answer should be offered as "accept as typo".
@@ -235,6 +260,7 @@ function shouldAutoPlay(currentCard) {
   if (currentCard.mode === 'new_word') return true;
   if (currentCard.card_type === 'component') return true;
   if (currentCard.card_type === 'hmm') return false;
+  if (currentCard.card_type === 'sentence') return false;
   return isZhPromptWithSound(currentCard.mode);
 }
 
@@ -288,6 +314,7 @@ function autoPlayCard(currentCard) {
 function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   if (!autoPlayEnabled || !currentCard) return false;
   if (currentCard.card_type === 'hmm') return false;
+  if (currentCard.card_type === 'sentence') return false;
   return !alreadyPlayed;
 }
 
@@ -329,6 +356,11 @@ async function saveTrainFilters() {
 let skipNewWords = false;
 let requireNewWordZh = true;
 let requireNewWordTrans = true;
+let retypeOnWrong = false;
+// Holds { zhText, translations } for the currently rendered wrong-answer
+// result while the retype-on-wrong gate is active; read by the top-level
+// wrong-retype input listeners set up in DOMContentLoaded.
+let wrongRetypeTarget = null;
 // Difficult-words drill: when active, /api/quiz/next is queried with difficult=true
 // and only flagged (hardest) words are served until each is answered correctly.
 let difficultDrill = localStorage.getItem('quizDifficultDrill') === 'true';
@@ -416,6 +448,62 @@ function applyTierPills() {
   }
 }
 
+// quickStartPlan decides which one-click onboarding buttons to offer for a
+// given list of importable library tag names.
+function quickStartPlan(tagNames) {
+  const has = n => tagNames.includes(n);
+  return { hsk1: has('hsk1'), hsk23: ['hsk2', 'hsk3'].filter(has) };
+}
+
+// computeDayStreak returns the number of consecutive training days
+// (attempts > 0) ending at `today` (YYYY-MM-DD). `days` may be unordered.
+function computeDayStreak(days, today) {
+  const trained = new Set((days || []).filter(d => d.attempts > 0).map(d => d.date));
+  let streak = 0;
+  const cur = new Date(today + 'T00:00:00Z');
+  while (trained.has(cur.toISOString().slice(0, 10))) {
+    streak++;
+    cur.setUTCDate(cur.getUTCDate() - 1);
+  }
+  return streak;
+}
+
+// dueTomorrowCount extracts the review count scheduled for `tomorrow`
+// (YYYY-MM-DD) from a due-date distribution.
+function dueTomorrowCount(dates, tomorrow) {
+  const hit = (dates || []).find(d => d.date === tomorrow);
+  return hit ? hit.count : 0;
+}
+
+// localDateStr formats today + offsetDays in the browser's local timezone,
+// matching the server-local dates used by daily stats and due scheduling.
+function localDateStr(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + (offsetDays || 0));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// loadComebackInfo fills the "come back tomorrow" block on the success
+// screen: current day streak and how many reviews come due tomorrow.
+async function loadComebackInfo() {
+  if (!$('success-comeback')) return;
+  try {
+    const params = selectedTags.length ? '?tags=' + encodeURIComponent(selectedTags.join(',')) : '';
+    const [daily, dist] = await Promise.all([
+      apiFetch('/api/quiz/daily-stats'),
+      apiFetch('/api/quiz/due-date-distribution' + params),
+    ]);
+    const streak = computeDayStreak(daily.days, localDateStr(0));
+    const due = dueTomorrowCount(dist.dates, localDateStr(1));
+    setText('success-streak', String(streak));
+    setText('success-due-tomorrow', String(due));
+    setText('success-comeback-msg', t(due > 0 ? 'success.comebackDue' : 'success.comebackNoDue'));
+    show('success-comeback');
+  } catch (e) {
+    hide('success-comeback');
+  }
+}
+
 let obTagsLoaded = false;
 function showEmptyState() {
   show('empty-state');
@@ -462,6 +550,7 @@ async function loadTrainSettings() {
     const st = await apiFetch('/api/settings');
     requireNewWordZh    = st.new_word_require_zh    !== false;
     requireNewWordTrans = st.new_word_require_trans !== false;
+    retypeOnWrong        = !!st.retype_on_wrong;
   } catch (_) { /* keep defaults */ }
   // Re-apply filter UI in case _settingsPromise updated state after DOMContentLoaded.
   applyModeButtons();
@@ -525,6 +614,9 @@ async function loadNextCard(trackCurrent = false) {
   hide('result-decompose-content');
   hide('bucket-info');
   hide('streak-info');
+  hide('wrong-retype-area');
+  wrongRetypeTarget = null;
+  $('next-btn').disabled = false;
   $('answer-input').value = '';
   const reviewBtn = $('needs-review-btn');
   reviewBtn.textContent = t('result.flagReview');
@@ -561,6 +653,7 @@ async function loadNextCard(trackCurrent = false) {
         hide('introduce-new-btn');
       }
       show('success-state');
+      loadComebackInfo();
       return;
     }
   }
@@ -611,6 +704,7 @@ async function loadNextCard(trackCurrent = false) {
         });
         updateAdvanceButtonsForDifficult();
         show('success-state');
+        loadComebackInfo();
       }
     } else {
       show('error-state');
@@ -722,12 +816,14 @@ function showCard() {
     hide('translations-hint');
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
+    hide('sentence-context');
   } else if (currentCard.card_type === 'hmm') {
     setText('mode-label', t('hmm.modeLabel'));
     setText('prompt-word', currentCard.prompt);
     hide('play-btn');
     hide('pinyin-hint');
     hide('translations-hint');
+    hide('sentence-context');
 
     const badge = $('hmm-type-badge');
     badge.className = 'inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2 ' +
@@ -744,9 +840,21 @@ function showCard() {
     } else {
       hide('hmm-actor-hint');
     }
+  } else if (currentCard.card_type === 'sentence') {
+    setText('mode-label', t('sentence.modeLabel'));
+    setText('prompt-word', currentCard.sentence_blank);
+    show('prompt-word');
+    hide('play-btn');
+    hide('pinyin-hint');
+    hide('translations-hint');
+    hide('hmm-type-badge');
+    hide('hmm-actor-hint');
+    setText('sentence-context', currentCard.sentence_context);
+    show('sentence-context');
   } else {
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
+    hide('sentence-context');
 
     setText('mode-label', getModeLabel(currentCard.mode));
 
@@ -1022,6 +1130,29 @@ function renderWordAnswerResult(result, answer) {
 
       loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
       autoPlayResultAudio(currentCard, result);
+
+      // Retype-on-wrong gate: block Next until the user retypes the correct
+      // Chinese word and translation (same input-validation pattern as the
+      // new-word introduction screen — see updateGotItState/isZhCorrect/isTransCorrect).
+      // "Add as translation" and "Accept as correct" also advance to the next
+      // card, so they're suppressed here too — otherwise they'd bypass the gate.
+      if (retypeOnWrong) {
+        wrongRetypeTarget = { zhText: result.zh_text, translations: result.translations };
+        $('wrong-retype-zh-input').value = '';
+        $('wrong-retype-trans-input').value = '';
+        $('wrong-retype-zh-check').textContent = '';
+        $('wrong-retype-trans-check').textContent = '';
+        show('wrong-retype-area');
+        $('next-btn').disabled = true;
+        hide('add-translation-row');
+        hide('add-translation-lang-select');
+        hide('accept-correct-btn');
+        setTimeout(() => $('wrong-retype-zh-input').focus(), 50);
+      } else {
+        wrongRetypeTarget = null;
+        hide('wrong-retype-area');
+        $('next-btn').disabled = false;
+      }
     };
 
     if (result.ambiguous) {
@@ -1881,19 +2012,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     loadNextCard();
   });
-  function normalizeNewWordInput(s) {
-    return s.trim().toLowerCase()
-      .replace(/[？！，。：；]/g, m => ({ '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';' }[m]))
-      .replace(/[\p{P}\p{S}\s]+$/u, '');
-  }
+  // Bracketed annotations (e.g. "过（动词）") are optional, mirroring the
+  // backend's CheckAnswer / expandVariants rule for regular quiz answers.
   function isZhCorrect(inputVal, prompt) {
-    return normalizeNewWordInput(inputVal) === normalizeNewWordInput(prompt);
+    if (!inputVal || !inputVal.trim()) return false;
+    return expandVariants(prompt).includes(normalizeAnswer(inputVal));
   }
   function isTransCorrect(inputVal, translations) {
-    const normalized = normalizeNewWordInput(inputVal);
-    if (!normalized) return false;
+    if (!inputVal || !inputVal.trim()) return false;
+    const norm = normalizeAnswer(inputVal);
     const allTrans = Object.values(translations || {}).flat();
-    return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+    return allTrans.some(t => expandVariants(t).includes(norm));
   }
   function updateGotItState() {
     if (!currentCard) return;
@@ -1933,6 +2062,23 @@ document.addEventListener('DOMContentLoaded', () => {
     skipNewWords = true;
     loadNextCard();
   });
+
+  // Retype-on-wrong gate: mirrors updateGotItState above, but drives the
+  // shared #next-btn instead of a dedicated "Got it" button.
+  function updateWrongRetypeState() {
+    if (!wrongRetypeTarget) return;
+    const zhVal    = $('wrong-retype-zh-input').value;
+    const transVal = $('wrong-retype-trans-input').value;
+    const zhCorrect    = isZhCorrect(zhVal, wrongRetypeTarget.zhText);
+    const transCorrect = isTransCorrect(transVal, wrongRetypeTarget.translations);
+    $('wrong-retype-zh-check').textContent = zhVal.trim() ? (zhCorrect ? '✓' : '✗') : '';
+    $('wrong-retype-zh-check').className   = 'text-xl w-6 text-center ' + (zhCorrect ? 'text-green-500' : 'text-red-400');
+    $('wrong-retype-trans-check').textContent = transVal.trim() ? (transCorrect ? '✓' : '✗') : '';
+    $('wrong-retype-trans-check').className   = 'text-xl w-6 text-center ' + (transCorrect ? 'text-green-500' : 'text-red-400');
+    $('next-btn').disabled = !wrongRetypeSatisfied(zhVal, transVal, wrongRetypeTarget.zhText, wrongRetypeTarget.translations);
+  }
+  $('wrong-retype-zh-input').addEventListener('input', updateWrongRetypeState);
+  $('wrong-retype-trans-input').addEventListener('input', updateWrongRetypeState);
   $('new-component-got-it-btn').addEventListener('click', async () => {
     if (!currentCard) return;
     try {
@@ -2123,8 +2269,44 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       obAllTags = await apiFetch('/api/import/source-tags');
       obRenderTagPills();
+      obApplyQuickStart();
     } catch (e) {
       list.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
+    }
+  }
+
+  // Show the one-button level chooser when the library offers HSK lists;
+  // the manual tag picker stays available behind the "choose myself" option.
+  function obApplyQuickStart() {
+    const plan = quickStartPlan((obAllTags || []).map(tg => tg.name));
+    if (!plan.hsk1 && plan.hsk23.length === 0) return;
+    $('ob-qs-hsk1').classList.toggle('hidden', !plan.hsk1);
+    $('ob-qs-hsk23').classList.toggle('hidden', plan.hsk23.length === 0);
+    show('ob-quickstart');
+    hide('ob-step1');
+  }
+
+  async function obQuickImport(tags) {
+    const buttons = ['ob-qs-hsk1', 'ob-qs-hsk23', 'ob-qs-custom'];
+    const statusEl = $('ob-qs-status');
+    for (const id of buttons) $(id).disabled = true;
+    statusEl.className = 'text-sm text-gray-500';
+    statusEl.textContent = t('empty.qsImporting');
+    show('ob-qs-status');
+    try {
+      for (const tag of tags) {
+        await apiFetch('/api/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tag, apply_tags: [tag] }),
+        });
+      }
+      hide('empty-state');
+      loadNextCard();
+    } catch (e) {
+      statusEl.className = 'text-sm text-red-600';
+      statusEl.textContent = t('empty.qsFailed');
+      for (const id of buttons) $(id).disabled = false;
     }
   }
 
@@ -2235,6 +2417,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[name="ob-filter-mode"]').forEach(radio => {
     radio.addEventListener('change', () => { obFilterMode = radio.value; obRenderTagPills(); });
   });
+  $('ob-qs-hsk1').addEventListener('click', () => obQuickImport(['hsk1']));
+  $('ob-qs-hsk23').addEventListener('click', () =>
+    obQuickImport(quickStartPlan((obAllTags || []).map(tg => tg.name)).hsk23));
+  $('ob-qs-custom').addEventListener('click', () => { hide('ob-quickstart'); show('ob-step1'); });
   $('ob-next-btn').addEventListener('click', () => obShowStep(2));
   $('ob-back1-btn').addEventListener('click', () => obShowStep(1));
   $('ob-next2-btn').addEventListener('click', () => obShowStep(3));

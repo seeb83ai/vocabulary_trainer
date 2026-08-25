@@ -3,7 +3,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon.svg">
   <title>{{.Title}}</title>
   <script src="/tailwind.js"></script>
   {{.ExtraHead}}
@@ -12,7 +18,7 @@
 
   <!-- Navigation -->
   <nav class="bg-white shadow-sm border-b border-gray-200">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between relative">
+    <div class="max-w-4xl mx-auto px-4 py-2 sm:py-3 flex items-center justify-between relative">
       <span class="text-xl font-bold text-gray-800" data-i18n="nav.title">词汇训练 · Vocab Trainer</span>
       <button id="nav-menu-btn" class="sm:hidden p-1 rounded text-gray-500 hover:text-gray-800 transition" aria-label="Open navigation menu">☰</button>
       <div id="nav-menu" class="hidden sm:flex sm:flex-row sm:items-center sm:gap-4 sm:static absolute top-full right-0 bg-white shadow-md rounded-b-lg px-4 py-3 flex-col gap-3 z-50 sm:shadow-none sm:rounded-none sm:px-0 sm:py-0">
@@ -43,6 +49,15 @@
     <span aria-hidden="true">🔇</span>
   </button>
   {{end}}
+
+  <!-- Floating fullscreen toggle. Hidden by default; app.js shows it only
+       when the Fullscreen API is available (mobile browsers can't be forced
+       into fullscreen on load — it requires a user gesture like this tap). -->
+  <button id="fullscreen-toggle-btn" type="button" aria-pressed="false"
+    class="hidden fixed bottom-5 left-5 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition" style="z-index:60"
+    aria-label="Toggle fullscreen" title="Enter fullscreen" data-i18n-title="fullscreen.enterTitle">
+    <span aria-hidden="true">⛶</span>
+  </button>
 
   <!-- Floating issue-report button + modal. Hidden until app.js confirms the
        GitHub issue-reporting feature is enabled (GET /api/github/config). -->

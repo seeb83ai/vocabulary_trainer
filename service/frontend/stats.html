@@ -73,7 +73,10 @@
 
         <!-- Accuracy Distribution -->
         <div class="bg-white rounded-2xl shadow p-6">
-          <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.accuracyDistribution">Accuracy Distribution</h2>
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+            <h2 class="text-lg font-semibold text-gray-800" data-i18n="stats.accuracyDistribution">Accuracy Distribution</h2>
+            <div id="bucket-tag-chips" class="flex flex-wrap gap-1.5"></div>
+          </div>
           <div class="flex flex-col sm:flex-row items-center gap-6">
             <div class="w-48 h-48 flex-shrink-0"><canvas id="accuracy-chart"></canvas></div>
             <div id="tier-legend" class="flex-1 text-sm w-full"></div>

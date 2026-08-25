@@ -37,4 +37,28 @@ func TestZeroSettingsProjectsEmpty(t *testing.T) {
 	if (s.NewWordConfig() != NewWordModeConfig{}) {
 		t.Errorf("zero settings NewWordConfig() should be empty, got %+v", s.NewWordConfig())
 	}
+	if (s.RandomModeConfig() != RandomModeConfig{}) {
+		t.Errorf("zero settings RandomModeConfig() should be empty, got %+v", s.RandomModeConfig())
+	}
+}
+
+func TestUserSettingsRandomModeConfig(t *testing.T) {
+	s := UserSettings{
+		RandomModeRangeTranslToZh:        "new,50-69",
+		RandomModeRangeZhToTransl:        "off",
+		RandomModeRangeZhPinyinToTransl:  "new,70-84",
+		RandomModeRangeZhToTranslNoSound: "50-69,85-100",
+		RandomModeRangeVoiceToTransl:     "70-84,85-100",
+	}
+	got := s.RandomModeConfig()
+	want := RandomModeConfig{
+		TranslToZh:        "new,50-69",
+		ZhToTransl:        "off",
+		ZhPinyinToTransl:  "new,70-84",
+		ZhToTranslNoSound: "50-69,85-100",
+		VoiceToTransl:     "70-84,85-100",
+	}
+	if got != want {
+		t.Errorf("RandomModeConfig() = %+v, want %+v", got, want)
+	}
 }

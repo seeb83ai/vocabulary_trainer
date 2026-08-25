@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1422,6 +1423,64 @@ func TestGetStats_FilterByTag(t *testing.T) {
 	}
 	if total != 1 {
 		t.Errorf("tag-filtered total: want 1, got %d", total)
+	}
+}
+
+func TestGetWordStats_AccBucketsFilterByTag(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	tagged := seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"vip"})
+	other := seedWordWithTags(t, s, "再见", "", []string{"bye"}, []string{"other"})
+
+	// Push both words into the "85-100" (mastered) accuracy bucket.
+	for _, id := range []int64{tagged, other} {
+		if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+			t.Fatal(err)
+		}
+		p, err := s.GetSM2Progress(ctx, id)
+		if err != nil || p == nil {
+			t.Fatalf("GetSM2Progress: %v / %v", err, p)
+		}
+		p.LearningNewWord = false
+		p.TotalAttempts = 10
+		p.TotalCorrect = 10
+		p.StreakBonus = 0
+		if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Regression: an empty/absent tag filter must be unchanged from current behavior.
+	all, err := s.GetWordStats(ctx, int64(2), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.AccBuckets["85-100"] != 2 {
+		t.Errorf("unfiltered 85-100 bucket: want 2, got %d", all.AccBuckets["85-100"])
+	}
+	if all.TotalSeen != 2 {
+		t.Errorf("unfiltered total_seen: want 2, got %d", all.TotalSeen)
+	}
+
+	// Tag-filtered: only the "vip"-tagged word should be counted in AccBuckets.
+	filtered, err := s.GetWordStats(ctx, int64(2), []string{"vip"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.AccBuckets["85-100"] != 1 {
+		t.Errorf("tag-filtered 85-100 bucket: want 1, got %d", filtered.AccBuckets["85-100"])
+	}
+	if filtered.AccBuckets["0-49"] != 0 {
+		t.Errorf("tag-filtered 0-49 bucket: want 0, got %d", filtered.AccBuckets["0-49"])
+	}
+
+	// Other stats sections must stay unaffected by the bucket-only tag filter.
+	if filtered.TotalSeen != all.TotalSeen {
+		t.Errorf("total_seen should be unaffected by tag filter: want %d, got %d", all.TotalSeen, filtered.TotalSeen)
+	}
+	if len(filtered.MostPract) != len(all.MostPract) {
+		t.Errorf("most_practiced should be unaffected by tag filter: want %d entries, got %d", len(all.MostPract), len(filtered.MostPract))
 	}
 }
 
@@ -4282,13 +4341,15 @@ func TestGetNextComponentCard_DoesNotServeFutureComponent(t *testing.T) {
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman; female")
 	seedHanziTranslation(t, s, "女", "en", "woman")
-	// Simulate a component whose due_date SM-2 pushed to tomorrow (interval=1
-	// day, the range used after a correct answer). GetNextComponentCard filters
-	// by calendar date, not elapsed hours, so the due_date must land on
-	// tomorrow's date regardless of what time this test happens to run —
-	// Add(23*time.Hour) only does that outside the last hour of the UTC day,
-	// which made this test flake right around midnight.
-	future := time.Now().AddDate(0, 0, 1)
+	// Simulate a component that comes due just after the next midnight — the
+	// earliest instant with tomorrow's date. This is within the 22-24h window
+	// SM-2 produces after a correct answer (interval=1 day + jitter), so the
+	// pre-fix datetime('now', '+1 day') comparison would have served it, while
+	// the fixed date('now', '+1 day') bound must not. A fixed clock offset like
+	// now+23h is wrong here: between 00:00 and 01:00 it still lands on today's
+	// date, which the date-based bound correctly serves, making the test flaky.
+	now := time.Now().UTC()
+	future := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 1, 0, time.UTC)
 	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", future)
 
 	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
@@ -4486,6 +4547,53 @@ func TestGetComponentList_BasicAndSearch(t *testing.T) {
 	}
 }
 
+// TestGetComponentList_UsesCharLangIndex guards against the search-is-slow
+// regression: the LEFT JOINs to hanzi_decomposition_translation must be able
+// to use an index on (character, lang), not fall back to a full table scan.
+// The v59 indexes are partial (WHERE user_id IS [NOT] NULL) and can't serve a
+// join that doesn't filter on user_id, so this needs its own plain index.
+func TestGetComponentList_UsesCharLangIndex(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'hanzi_decomposition_translation' AND sql LIKE '%(character, lang)%'`,
+	).Scan(&count); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("want a plain index on hanzi_decomposition_translation(character, lang)")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `EXPLAIN QUERY PLAN
+		SELECT cp.character
+		FROM component_progress cp
+		LEFT JOIN hanzi_decomposition_translation hdt_en
+		       ON hdt_en.character = cp.character AND hdt_en.lang = 'EN'
+		WHERE cp.user_id = ? AND LOWER(hdt_en.definition) LIKE LOWER(?)`,
+		int64(2), "%sun%",
+	)
+	if err != nil {
+		t.Fatalf("explain query plan: %v", err)
+	}
+	defer rows.Close()
+	var sawIndexedJoin bool
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatalf("scan plan row: %v", err)
+		}
+		if strings.Contains(detail, "hdt_en") && strings.Contains(detail, "idx_hanzi_trans_char_lang") {
+			sawIndexedJoin = true
+		}
+	}
+	if !sawIndexedJoin {
+		t.Error("want the hdt_en join to use idx_hanzi_trans_char_lang")
+	}
+}
+
 // ── User Settings ─────────────────────────────────────────────────────────────
 
 func TestGetUserSettings_Defaults(t *testing.T) {
@@ -4548,6 +4656,9 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.VoiceUnavailable {
 		t.Error("want voice_unavailable=false by default")
 	}
+	if st.RetypeOnWrong {
+		t.Error("want retype_on_wrong=false by default")
+	}
 }
 
 func TestUpdateUserSettings_RoundTrip(t *testing.T) {
@@ -4573,6 +4684,7 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 		NoAutoVoiceOnBlur:           true,
 		CelebrateBucketChange:       true,
 		VoiceUnavailable:            true,
+		RetypeOnWrong:               true,
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -4610,6 +4722,80 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if !out.VoiceUnavailable {
 		t.Error("voice_unavailable: want true after update")
+	}
+	if !out.RetypeOnWrong {
+		t.Error("retype_on_wrong: want true after update")
+	}
+}
+
+func TestGetUserSettings_RandomModeRangeDefaults(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.RandomModeRangeTranslToZh != "" {
+		t.Errorf("want random_mode_range_transl_to_zh='' by default, got %q", st.RandomModeRangeTranslToZh)
+	}
+	if st.RandomModeRangeZhToTransl != "" {
+		t.Errorf("want random_mode_range_zh_to_transl='' by default, got %q", st.RandomModeRangeZhToTransl)
+	}
+	if st.RandomModeRangeZhPinyinToTransl != "" {
+		t.Errorf("want random_mode_range_zh_pinyin_to_transl='' by default, got %q", st.RandomModeRangeZhPinyinToTransl)
+	}
+	if st.RandomModeRangeZhToTranslNoSound != "" {
+		t.Errorf("want random_mode_range_zh_to_transl_no_sound='' by default, got %q", st.RandomModeRangeZhToTranslNoSound)
+	}
+	if st.RandomModeRangeVoiceToTransl != "" {
+		t.Errorf("want random_mode_range_voice_to_transl='' by default, got %q", st.RandomModeRangeVoiceToTransl)
+	}
+}
+
+func TestUpdateUserSettings_RandomModeRangeRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	const userID = int64(2)
+
+	in := models.UserSettings{
+		PrimaryLang:                      "en",
+		ProgNew:                          "transl_to_zh",
+		ProgTierStruggling:               "transl_to_zh",
+		ProgTierLearning:                 "zh_pinyin_to_transl",
+		ProgTierPracticing:               "zh_to_transl",
+		ProgTierMastered:                 "random",
+		NewWordMode0:                     "transl_to_zh",
+		NewWordMode1:                     "transl_to_zh",
+		NewWordMode2:                     "zh_to_transl",
+		RandomModeRangeTranslToZh:        "new,50-69",
+		RandomModeRangeZhToTransl:        "off",
+		RandomModeRangeZhPinyinToTransl:  "new,70-84",
+		RandomModeRangeZhToTranslNoSound: "50-69,85-100",
+		RandomModeRangeVoiceToTransl:     "70-84,85-100",
+	}
+	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+	out, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings after update: %v", err)
+	}
+	if out.RandomModeRangeTranslToZh != "new,50-69" {
+		t.Errorf("random_mode_range_transl_to_zh: want %q, got %q", "new,50-69", out.RandomModeRangeTranslToZh)
+	}
+	if out.RandomModeRangeZhToTransl != "off" {
+		t.Errorf("random_mode_range_zh_to_transl: want %q, got %q", "off", out.RandomModeRangeZhToTransl)
+	}
+	if out.RandomModeRangeZhPinyinToTransl != "new,70-84" {
+		t.Errorf("random_mode_range_zh_pinyin_to_transl: want %q, got %q", "new,70-84", out.RandomModeRangeZhPinyinToTransl)
+	}
+	if out.RandomModeRangeZhToTranslNoSound != "50-69,85-100" {
+		t.Errorf("random_mode_range_zh_to_transl_no_sound: want %q, got %q", "50-69,85-100", out.RandomModeRangeZhToTranslNoSound)
+	}
+	if out.RandomModeRangeVoiceToTransl != "70-84,85-100" {
+		t.Errorf("random_mode_range_voice_to_transl: want %q, got %q", "70-84,85-100", out.RandomModeRangeVoiceToTransl)
 	}
 }
 
@@ -6159,5 +6345,370 @@ func TestClearAllDrillFlags_And_Count(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("expected 0 flagged after clear-all, got %d", n)
+	}
+}
+
+// ── Gamification match-game modes (issue #288) ─────────────────────────────────
+
+func setLastAttemptOffset(t *testing.T, s *Store, wordID int64, offset string) {
+	t.Helper()
+	if _, err := s.db.ExecContext(context.Background(),
+		`UPDATE sm2_progress SET last_attempt_at = datetime('now', ?) WHERE word_id = ?`, offset, wordID); err != nil {
+		t.Fatalf("setLastAttemptOffset(%d): %v", wordID, err)
+	}
+}
+
+func setLastWrongOffset(t *testing.T, s *Store, wordID int64, offset string) {
+	t.Helper()
+	if _, err := s.db.ExecContext(context.Background(),
+		`UPDATE sm2_progress SET last_wrong_at = datetime('now', ?) WHERE word_id = ?`, offset, wordID); err != nil {
+		t.Fatalf("setLastWrongOffset(%d): %v", wordID, err)
+	}
+}
+
+func setWordGameShownOffset(t *testing.T, s *Store, userID, wordID int64, mode, offset string) {
+	t.Helper()
+	if _, err := s.db.ExecContext(context.Background(), `
+		INSERT INTO word_game_shown (user_id, word_id, game_mode, last_shown_in_game)
+		VALUES (?, ?, ?, datetime('now', ?))
+		ON CONFLICT(user_id, word_id, game_mode) DO UPDATE SET last_shown_in_game = excluded.last_shown_in_game`,
+		userID, wordID, mode, offset); err != nil {
+		t.Fatalf("setWordGameShownOffset(%d): %v", wordID, err)
+	}
+}
+
+func TestUserSettings_GameModeColumns_DefaultOnAndRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.GameModeMismatch || !st.GameModeNewest || !st.GameModeHardest || !st.GameModeLastMistakes {
+		t.Fatalf("expected all 4 game modes enabled by default, got %+v", st)
+	}
+
+	st.GameModeMismatch = false
+	st.GameModeNewest = false
+	st.GameModeHardest = true
+	st.GameModeLastMistakes = false
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GameModeMismatch || got.GameModeNewest || !got.GameModeHardest || got.GameModeLastMistakes {
+		t.Errorf("game mode round-trip mismatch, got %+v", got)
+	}
+}
+
+func TestGetHardestWordsForGame_RanksByLowestAccuracy(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "一", "", []string{"one"}) // 10% accuracy -> hardest
+	b := seedWord(t, s, "二", "", []string{"two"}) // 90% accuracy
+	makeDifficult(t, s, a, 1, 10, 2.5, time.Hour)
+	makeDifficult(t, s, b, 9, 10, 2.5, time.Hour)
+
+	words, err := s.GetHardestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 2 {
+		t.Fatalf("expected 2 candidates, got %d: %+v", len(words), words)
+	}
+	if words[0].ZhWordID != a {
+		t.Errorf("expected hardest word %d ranked first, got %d", a, words[0].ZhWordID)
+	}
+}
+
+func TestGetHardestWordsForGame_RespectsAttemptsGuard(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	few := seedWord(t, s, "一", "", []string{"one"})
+	makeDifficult(t, s, few, 0, 2, 1.3, time.Hour) // ta=2, below the >=3 guard
+
+	words, err := s.GetHardestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 0 {
+		t.Errorf("expected 0 candidates below attempts guard, got %d", len(words))
+	}
+}
+
+// TestGetHardestWordsForGame_RepeatAvoidance covers issue #288 decision #4:
+// a word shown in this mode is suppressed until it has any newer attempt
+// (right or wrong) than when it was last shown.
+func TestGetHardestWordsForGame_RepeatAvoidance(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "一", "", []string{"one"})
+	b := seedWord(t, s, "二", "", []string{"two"})
+	makeDifficult(t, s, a, 1, 10, 2.5, time.Hour)
+	makeDifficult(t, s, b, 2, 10, 2.5, time.Hour)
+	setLastAttemptOffset(t, s, a, "-2 hours")
+	setLastAttemptOffset(t, s, b, "-2 hours")
+
+	words, err := s.GetHardestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 2 {
+		t.Fatalf("expected 2 candidates before shown, got %d", len(words))
+	}
+
+	setWordGameShownOffset(t, s, 2, a, "hardest", "-1 hour")
+	setWordGameShownOffset(t, s, 2, b, "hardest", "-1 hour")
+
+	words2, err := s.GetHardestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words2) != 0 {
+		t.Errorf("expected 0 candidates immediately after shown, got %d: %+v", len(words2), words2)
+	}
+
+	// b gets a fresh attempt (correct, doesn't matter) after being shown.
+	setLastAttemptOffset(t, s, b, "-30 minutes")
+
+	words3, err := s.GetHardestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words3) != 1 || words3[0].ZhWordID != b {
+		t.Errorf("expected only word %d re-eligible after new attempt, got %+v", b, words3)
+	}
+}
+
+func TestGetLastMistakesForGame_ExcludesWordsNeverWrong(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "一", "", []string{"one"}) // never wrong -> last_wrong_at NULL
+
+	words, err := s.GetLastMistakesForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 0 {
+		t.Errorf("expected 0 candidates (no recorded mistakes), got %d", len(words))
+	}
+}
+
+// TestGetLastMistakesForGame_OnlyNewWrongAnswerReEligible covers issue #288
+// decision #4: unlike hardest-words, a merely-correct re-attempt must NOT
+// re-include a word shown in this mode — only a fresh wrong answer does.
+func TestGetLastMistakesForGame_OnlyNewWrongAnswerReEligible(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "一", "", []string{"one"})
+	setLastWrongOffset(t, s, a, "-2 hours")
+
+	words, err := s.GetLastMistakesForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(words))
+	}
+
+	setWordGameShownOffset(t, s, 2, a, "last_mistakes", "-1 hour")
+
+	words2, err := s.GetLastMistakesForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words2) != 0 {
+		t.Fatalf("expected 0 candidates immediately after shown, got %d", len(words2))
+	}
+
+	// A correct re-attempt only touches last_attempt_at, not last_wrong_at —
+	// must NOT re-include the word.
+	setLastAttemptOffset(t, s, a, "-30 minutes")
+
+	words3, err := s.GetLastMistakesForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words3) != 0 {
+		t.Errorf("a correct re-attempt must not re-include the word, got %+v", words3)
+	}
+
+	// A fresh wrong answer re-includes it.
+	setLastWrongOffset(t, s, a, "-10 minutes")
+
+	words4, err := s.GetLastMistakesForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words4) != 1 || words4[0].ZhWordID != a {
+		t.Errorf("expected word %d re-eligible after new wrong answer, got %+v", a, words4)
+	}
+}
+
+func TestMarkWordsShownInGame_UpsertAndModeScoping(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "一", "", []string{"one"})
+
+	if err := s.MarkWordsShownInGame(ctx, int64(2), []int64{a}, "hardest"); err != nil {
+		t.Fatal(err)
+	}
+	// Upsert again must not error.
+	if err := s.MarkWordsShownInGame(ctx, int64(2), []int64{a}, "hardest"); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM word_game_shown WHERE user_id = 2 AND word_id = ? AND game_mode = 'hardest'`, a,
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 row after upsert, got %d", count)
+	}
+	// A different mode must get its own independent row.
+	var otherCount int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM word_game_shown WHERE user_id = 2 AND word_id = ? AND game_mode = 'last_mistakes'`, a,
+	).Scan(&otherCount); err != nil {
+		t.Fatal(err)
+	}
+	if otherCount != 0 {
+		t.Errorf("expected no last_mistakes row from a hardest-mode mark, got %d", otherCount)
+	}
+}
+
+func TestRecordAnswerTimestamps_SetsAttemptAlwaysAndWrongOnlyOnWrong(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "一", "", []string{"one"})
+
+	scan := func() (attemptAt, wrongAt sql.NullString) {
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT last_attempt_at, last_wrong_at FROM sm2_progress WHERE word_id = ?`, a,
+		).Scan(&attemptAt, &wrongAt); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+
+	if err := s.RecordAnswerTimestamps(ctx, a, true); err != nil {
+		t.Fatal(err)
+	}
+	attemptAt, wrongAt := scan()
+	if !attemptAt.Valid {
+		t.Error("expected last_attempt_at set after a correct answer")
+	}
+	if wrongAt.Valid {
+		t.Error("expected last_wrong_at to remain unset after a correct answer")
+	}
+
+	if err := s.RecordAnswerTimestamps(ctx, a, false); err != nil {
+		t.Fatal(err)
+	}
+	_, wrongAt2 := scan()
+	if !wrongAt2.Valid {
+		t.Error("expected last_wrong_at set after a wrong answer")
+	}
+}
+
+// newestWordsGamePoolSize mirrors the production constant so the pool-window
+// test can seed exactly one word beyond it without hardcoding two "30"s.
+const newestWordsGamePoolSizeForTest = 30
+
+func TestGetNewestWordsForGame_OnlyWithinPoolWindow(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	var ids []int64
+	for i := 0; i < newestWordsGamePoolSizeForTest+5; i++ {
+		ids = append(ids, seedWord(t, s, fmt.Sprintf("word%02d", i), "", []string{fmt.Sprintf("w%02d", i)}))
+	}
+	outsidePool := ids[:5] // oldest 5, created before the 30-newest window
+
+	counts := map[int64]int{}
+	for i := 0; i < 300; i++ {
+		words, err := s.GetNewestWordsForGame(ctx, int64(2), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(words) != 1 {
+			t.Fatalf("expected 1 word, got %d", len(words))
+		}
+		counts[words[0].ZhWordID]++
+	}
+	for _, id := range outsidePool {
+		if counts[id] != 0 {
+			t.Errorf("word %d is outside the 30-newest pool but was picked %d times", id, counts[id])
+		}
+	}
+}
+
+// TestGetNewestWordsForGame_WeightDecaysWithAge covers issue #288's weighted
+// decay requirement: within the pool, older words must be picked less often
+// than newer ones. weight(rank) = 1/(rank+1) makes this an extreme (30x) skew
+// between the newest and oldest pool member, so it's safe to assert on a
+// statistical sample without flaking.
+func TestGetNewestWordsForGame_WeightDecaysWithAge(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	var ids []int64
+	for i := 0; i < newestWordsGamePoolSizeForTest; i++ {
+		ids = append(ids, seedWord(t, s, fmt.Sprintf("word%02d", i), "", []string{fmt.Sprintf("w%02d", i)}))
+	}
+	oldest := ids[0]
+	newest := ids[len(ids)-1]
+
+	counts := map[int64]int{}
+	for i := 0; i < 2000; i++ {
+		words, err := s.GetNewestWordsForGame(ctx, int64(2), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		counts[words[0].ZhWordID]++
+	}
+	if counts[newest] <= counts[oldest] {
+		t.Errorf("expected newest word picked more often than oldest: newest=%d oldest=%d", counts[newest], counts[oldest])
+	}
+}
+
+func TestGetNewestWordsForGame_DistinctWithinRound(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		seedWord(t, s, fmt.Sprintf("word%02d", i), "", []string{fmt.Sprintf("w%02d", i)})
+	}
+
+	words, err := s.GetNewestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 4 {
+		t.Fatalf("expected 4 words, got %d", len(words))
+	}
+	seen := map[int64]bool{}
+	for _, w := range words {
+		if seen[w.ZhWordID] {
+			t.Errorf("duplicate word %d within a single round", w.ZhWordID)
+		}
+		seen[w.ZhWordID] = true
+	}
+}
+
+func TestGetNewestWordsForGame_FewerWordsThanRequested(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "一", "", []string{"one"})
+
+	words, err := s.GetNewestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 1 {
+		t.Errorf("expected 1 word (fewer than requested), got %d", len(words))
 	}
 }

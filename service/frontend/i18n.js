@@ -65,6 +65,12 @@ const I18N = {
     'empty.msg': 'Add some words to start training.',
     'empty.addBtn': 'Add Vocabulary',
     'empty.importMsg': 'Import a word list to get started — it only takes a moment.',
+    'empty.quickStartQuestion': 'How much Chinese do you know?',
+    'empty.qsBeginner': "I'm new — start with HSK 1",
+    'empty.qsBasics': 'I know the basics — HSK 2–3',
+    'empty.qsCustom': 'Let me choose word lists myself',
+    'empty.qsImporting': 'Importing your word list…',
+    'empty.qsFailed': 'Import failed. Please pick a list manually below.',
     'empty.howManyLabel': 'How many random words do you want to start training with today?',
     'empty.allWords': 'All',
     'success.title': 'All done for today!',
@@ -73,6 +79,9 @@ const I18N = {
     'success.difficultWords': 'Drill my hardest words instead',
     'success.noDifficult': 'No difficult words to drill yet — keep training!',
     'success.alsoNew': 'Also introduce new words today',
+    'success.dayStreak': 'Day streak:',
+    'success.comebackDue': 'words come due tomorrow — come back to keep them fresh.',
+    'success.comebackNoDue': 'words due tomorrow — a quick session tomorrow keeps your streak alive.',
     'success.introduceNew': 'Introduce new words',
     'error.icon': '⚠️',
 
@@ -408,6 +417,9 @@ const I18N = {
     'comp.sceneLabel': 'Mnemonic scene',
     'comp.scenePlaceholder': 'Write a memorable scene for this character…',
 
+    // Sentence fill-in-the-blank cards in word training
+    'sentence.modeLabel': 'Sentence',
+
     // HMM mnemonic cards in word training
     'hmm.modeLabel': 'Mnemonic',
     'hmm.type.actor': 'Actor',
@@ -425,6 +437,9 @@ const I18N = {
     'hmm.placeholder': 'Type your mnemonic name…',
     'hmm.submit': 'Submit',
     'hmm.next': 'Next →',
+
+    'fullscreen.enterTitle': 'Enter fullscreen',
+    'fullscreen.exitTitle': 'Exit fullscreen',
 
     // In-app issue reporting
     'issue.buttonTitle': 'Report an issue',
@@ -516,6 +531,12 @@ const I18N = {
     'empty.msg': '添加一些词汇开始训练吧。',
     'empty.addBtn': '添加词汇',
     'empty.importMsg': '导入一个词汇表开始学习——只需片刻。',
+    'empty.quickStartQuestion': '你的中文水平如何？',
+    'empty.qsBeginner': '我是新手——从 HSK 1 开始',
+    'empty.qsBasics': '我有基础——HSK 2–3',
+    'empty.qsCustom': '让我自己选择词汇表',
+    'empty.qsImporting': '正在导入词汇表……',
+    'empty.qsFailed': '导入失败，请在下方手动选择词汇表。',
     'empty.howManyLabel': '今天想从多少个随机词汇开始训练？',
     'empty.allWords': '全部',
     'success.title': '今天全部完成！',
@@ -524,6 +545,9 @@ const I18N = {
     'success.difficultWords': '改为练习我最难的词',
     'success.noDifficult': '暂时没有可练习的难词——继续学习吧！',
     'success.alsoNew': '同时引入今天的新词',
+    'success.dayStreak': '连续学习天数：',
+    'success.comebackDue': '个词明天到期——记得回来复习，保持记忆新鲜。',
+    'success.comebackNoDue': '个词明天到期——明天来一小节，保持连续纪录。',
     'success.introduceNew': '引入新词',
     'error.icon': '⚠️',
 
@@ -857,6 +881,9 @@ const I18N = {
     'comp.sceneLabel': '记忆场景',
     'comp.scenePlaceholder': '为这个字写一个印象深刻的场景…',
 
+    // Sentence fill-in-the-blank cards in word training
+    'sentence.modeLabel': '句子',
+
     // HMM mnemonic cards in word training
     'hmm.modeLabel': '记忆法',
     'hmm.type.actor': '演员',
@@ -874,6 +901,9 @@ const I18N = {
     'hmm.placeholder': '输入记忆法名称…',
     'hmm.submit': '提交',
     'hmm.next': '下一个 →',
+
+    'fullscreen.enterTitle': '进入全屏',
+    'fullscreen.exitTitle': '退出全屏',
 
     // In-app issue reporting
     'issue.buttonTitle': '报告问题',

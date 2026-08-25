@@ -167,8 +167,80 @@ func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]model
 	return stats, rows.Err()
 }
 
+// classifyAccBucket returns the AccBuckets key for a word's SM-2 progress, or
+// "" if the word hasn't been attempted yet and should be excluded from the
+// breakdown. Mirrors wordTier (frontend/app.js) and tierFilter (db/words.go).
+func classifyAccBucket(learningNewWord bool, attempts int, accuracy float64) string {
+	if learningNewWord {
+		return "new"
+	}
+	if attempts == 0 {
+		return ""
+	}
+	switch {
+	case attempts >= 10 && accuracy >= 85:
+		return "85-100"
+	case attempts >= 10 && accuracy >= 70:
+		return "70-84"
+	case attempts >= 3 && accuracy >= 50:
+		return "50-69"
+	default:
+		return "0-49"
+	}
+}
+
+// wordAccBucketsForTags computes the accuracy-bucket breakdown restricted to
+// zh words carrying at least one of the given tags. Used by GetWordStats so
+// the bucket breakdown alone can be tag-filtered while every other section
+// (hardest, most-practiced) keeps counting all of the user's words.
+func (s *Store) wordAccBucketsForTags(ctx context.Context, userID int64, tags []string) (map[string]int, error) {
+	placeholders := make([]string, len(tags))
+	args := make([]any, 0, len(tags)+1)
+	args = append(args, userID)
+	for i, t := range tags {
+		placeholders[i] = "?"
+		args = append(args, t)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
+		FROM sm2_progress p
+		JOIN words w ON w.id = p.word_id
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL
+		  AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (`+strings.Join(placeholders, ",")+`))`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("get word acc buckets for tags: %w", err)
+	}
+	defer rows.Close()
+
+	buckets := map[string]int{"new": 0, "0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0}
+	for rows.Next() {
+		var correct, attempts, streakBonus, learningInt int
+		if err := rows.Scan(&correct, &attempts, &streakBonus, &learningInt); err != nil {
+			return nil, fmt.Errorf("scan word acc bucket: %w", err)
+		}
+		var accuracy float64
+		if attempts > 0 {
+			accuracy = float64(correct+streakBonus) / float64(attempts) * 100
+		}
+		if key := classifyAccBucket(learningInt == 1, attempts, accuracy); key != "" {
+			buckets[key]++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return buckets, nil
+}
+
 // GetWordStats returns aggregate statistics for all words seen at least once.
-func (s *Store) GetWordStats(ctx context.Context, userID int64) (*models.WordStatsResponse, error) {
+// When tags is non-empty, the accuracy-bucket breakdown (AccBuckets) is
+// restricted to words carrying at least one of the given tags; every other
+// section (Hardest, MostPract, TotalSeen) still covers all of the user's words.
+func (s *Store) GetWordStats(ctx context.Context, userID int64, tags []string) (*models.WordStatsResponse, error) {
 	// Fetch per-word stats for all seen zh words in a single query.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id, w.text, w.pinyin,
@@ -223,19 +295,16 @@ func (s *Store) GetWordStats(ctx context.Context, userID int64) (*models.WordSta
 		return resp, nil
 	}
 
-	for _, r := range all {
-		if r.learning {
-			resp.AccBuckets["new"]++
-		} else if r.attempts > 0 {
-			switch {
-			case r.attempts >= 10 && r.accuracy >= 85:
-				resp.AccBuckets["85-100"]++
-			case r.attempts >= 10 && r.accuracy >= 70:
-				resp.AccBuckets["70-84"]++
-			case r.attempts >= 3 && r.accuracy >= 50:
-				resp.AccBuckets["50-69"]++
-			default:
-				resp.AccBuckets["0-49"]++
+	if len(tags) > 0 {
+		buckets, err := s.wordAccBucketsForTags(ctx, userID, tags)
+		if err != nil {
+			return nil, err
+		}
+		resp.AccBuckets = buckets
+	} else {
+		for _, r := range all {
+			if key := classifyAccBucket(r.learning, r.attempts, r.accuracy); key != "" {
+				resp.AccBuckets[key]++
 			}
 		}
 	}

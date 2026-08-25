@@ -402,19 +402,16 @@ describe('buildAddTranslationLangOptions', () => {
 // ── New word input validation ──────────────────────────────────────────────────
 // Mirrors the pure helpers added to train.js for the new-word input fields.
 
-function normalizeNewWordInput(s) {
-  return s.trim().toLowerCase();
-}
-
 function isZhCorrect(inputVal, prompt) {
-  return inputVal.trim() === prompt.trim();
+  if (!inputVal || !inputVal.trim()) return false;
+  return expandVariants(prompt).includes(normalizeAnswer(inputVal));
 }
 
 function isTransCorrect(inputVal, translations) {
-  const normalized = normalizeNewWordInput(inputVal);
-  if (!normalized) return false;
+  if (!inputVal || !inputVal.trim()) return false;
+  const norm = normalizeAnswer(inputVal);
   const allTrans = Object.values(translations || {}).flat();
-  return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+  return allTrans.some(t => expandVariants(t).includes(norm));
 }
 
 describe('isZhCorrect', () => {
@@ -432,6 +429,14 @@ describe('isZhCorrect', () => {
 
   it('returns false for empty input', () => {
     expect(isZhCorrect('', '你好')).toBe(false);
+  });
+
+  it('accepts input without a bracketed annotation present in the prompt', () => {
+    expect(isZhCorrect('过', '过（动词）')).toBe(true);
+  });
+
+  it('still accepts the full form including the bracketed annotation', () => {
+    expect(isZhCorrect('过（动词）', '过（动词）')).toBe(true);
   });
 });
 
@@ -464,6 +469,10 @@ describe('isTransCorrect', () => {
     expect(isTransCorrect('  hello  ', { en: ['hello'] })).toBe(true);
   });
 
+  it('accepts input without a bracketed annotation present in the translation', () => {
+    expect(isTransCorrect('pass', { en: ['(to) pass'] })).toBe(true);
+  });
+
   it('handles empty translations object', () => {
     expect(isTransCorrect('hello', {})).toBe(false);
   });
@@ -471,6 +480,33 @@ describe('isTransCorrect', () => {
   it('handles null/undefined translations', () => {
     expect(isTransCorrect('hello', null)).toBe(false);
     expect(isTransCorrect('hello', undefined)).toBe(false);
+  });
+});
+
+// ── Retype-on-wrong gate ─────────────────────────────────────────────────────
+// Mirrors the pure helper added to train.js that decides whether the retype
+// gate shown after a wrong answer is satisfied (reuses isZhCorrect/isTransCorrect,
+// the same helpers the new-word introduction screen uses).
+
+function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations) {
+  return isZhCorrect(zhVal, correctZh) && isTransCorrect(transVal, translations);
+}
+
+describe('wrongRetypeSatisfied', () => {
+  it('returns true when both the Chinese word and translation are typed correctly', () => {
+    expect(wrongRetypeSatisfied('你好', 'hello', '你好', { en: ['hello', 'hi'] })).toBe(true);
+  });
+
+  it('returns false when only the Chinese word is correct', () => {
+    expect(wrongRetypeSatisfied('你好', 'nope', '你好', { en: ['hello'] })).toBe(false);
+  });
+
+  it('returns false when only the translation is correct', () => {
+    expect(wrongRetypeSatisfied('错', 'hello', '你好', { en: ['hello'] })).toBe(false);
+  });
+
+  it('returns false when both are wrong', () => {
+    expect(wrongRetypeSatisfied('错', 'nope', '你好', { en: ['hello'] })).toBe(false);
   });
 });
 
@@ -787,7 +823,7 @@ function stripParens(s) {
   let prev;
   do {
     prev = s;
-    s = s.replace(/\s*\([^()]*\)\s*/g, ' ').trim();
+    s = s.replace(/\s*[(（][^()（）]*[)）]\s*/g, ' ').trim();
   } while (s !== prev);
   return s;
 }
@@ -855,6 +891,9 @@ describe('stripParens', () => {
   it('handles nested parens iteratively', () => {
     expect(stripParens('a (b (c))')).toBe('a');
   });
+  it('removes a fullwidth-parenthesised segment', () => {
+    expect(stripParens('过（动词）')).toBe('过');
+  });
 });
 
 describe('expandVariants', () => {
@@ -863,6 +902,9 @@ describe('expandVariants', () => {
   });
   it('includes the paren-stripped form', () => {
     expect(expandVariants('Morgen (5 Uhr bis 9 Uhr)')).toContain('morgen');
+  });
+  it('includes the fullwidth-paren-stripped form', () => {
+    expect(expandVariants('过（动词）')).toContain('过');
   });
   it('splits on slash', () => {
     const vs = expandVariants('hi/hello');
@@ -1074,5 +1116,122 @@ describe('matchGameOutcome', () => {
   it('is correct via shared translation when two words have the exact same single translation', () => {
     expect(matchGameOutcome(1, 0, 'hello', ['hello'], new Set())).toBe('blocked');
     expect(matchGameOutcome(1, 0, 'hello', ['hello'], new Set([1]))).toBe('correct');
+  });
+});
+
+// ── One-button onboarding quick start ─────────────────────────────────────────
+// Mirrors quickStartPlan in train.js.
+
+function quickStartPlan(tagNames) {
+  const has = n => tagNames.includes(n);
+  return { hsk1: has('hsk1'), hsk23: ['hsk2', 'hsk3'].filter(has) };
+}
+
+describe('quickStartPlan', () => {
+  it('offers both buttons when all HSK lists exist', () => {
+    expect(quickStartPlan(['hsk1', 'hsk2', 'hsk3', 'food'])).toEqual({
+      hsk1: true,
+      hsk23: ['hsk2', 'hsk3'],
+    });
+  });
+
+  it('offers only HSK 1 when higher lists are missing', () => {
+    expect(quickStartPlan(['hsk1', 'travel'])).toEqual({ hsk1: true, hsk23: [] });
+  });
+
+  it('offers a partial basics import when only HSK 2 exists', () => {
+    expect(quickStartPlan(['hsk2'])).toEqual({ hsk1: false, hsk23: ['hsk2'] });
+  });
+
+  it('offers nothing without HSK library tags', () => {
+    expect(quickStartPlan(['food', 'travel'])).toEqual({ hsk1: false, hsk23: [] });
+  });
+
+  it('handles an empty tag list', () => {
+    expect(quickStartPlan([])).toEqual({ hsk1: false, hsk23: [] });
+  });
+});
+
+// ── End-of-session comeback info ──────────────────────────────────────────────
+// Mirror computeDayStreak and dueTomorrowCount in train.js.
+
+function computeDayStreak(days, today) {
+  const trained = new Set((days || []).filter(d => d.attempts > 0).map(d => d.date));
+  let streak = 0;
+  const cur = new Date(today + 'T00:00:00Z');
+  while (trained.has(cur.toISOString().slice(0, 10))) {
+    streak++;
+    cur.setUTCDate(cur.getUTCDate() - 1);
+  }
+  return streak;
+}
+
+function dueTomorrowCount(dates, tomorrow) {
+  const hit = (dates || []).find(d => d.date === tomorrow);
+  return hit ? hit.count : 0;
+}
+
+describe('computeDayStreak', () => {
+  it('counts consecutive days ending today', () => {
+    const days = [
+      { date: '2026-08-13', attempts: 5 },
+      { date: '2026-08-14', attempts: 2 },
+      { date: '2026-08-15', attempts: 9 },
+    ];
+    expect(computeDayStreak(days, '2026-08-15')).toBe(3);
+  });
+
+  it('breaks the streak at a gap', () => {
+    const days = [
+      { date: '2026-08-12', attempts: 5 },
+      { date: '2026-08-14', attempts: 2 },
+      { date: '2026-08-15', attempts: 1 },
+    ];
+    expect(computeDayStreak(days, '2026-08-15')).toBe(2);
+  });
+
+  it('ignores zero-attempt days', () => {
+    const days = [
+      { date: '2026-08-14', attempts: 0 },
+      { date: '2026-08-15', attempts: 1 },
+    ];
+    expect(computeDayStreak(days, '2026-08-15')).toBe(1);
+  });
+
+  it('returns 0 when today has no training', () => {
+    expect(computeDayStreak([{ date: '2026-08-14', attempts: 3 }], '2026-08-15')).toBe(0);
+  });
+
+  it('handles unordered input and month boundaries', () => {
+    const days = [
+      { date: '2026-09-01', attempts: 1 },
+      { date: '2026-08-31', attempts: 4 },
+    ];
+    expect(computeDayStreak(days, '2026-09-01')).toBe(2);
+  });
+
+  it('handles empty and missing input', () => {
+    expect(computeDayStreak([], '2026-08-15')).toBe(0);
+    expect(computeDayStreak(null, '2026-08-15')).toBe(0);
+  });
+});
+
+describe('dueTomorrowCount', () => {
+  const dates = [
+    { date: '2026-08-15', count: 4 },
+    { date: '2026-08-16', count: 7 },
+  ];
+
+  it('finds the count for tomorrow', () => {
+    expect(dueTomorrowCount(dates, '2026-08-16')).toBe(7);
+  });
+
+  it('returns 0 when tomorrow has no due words', () => {
+    expect(dueTomorrowCount(dates, '2026-08-17')).toBe(0);
+  });
+
+  it('handles empty and missing input', () => {
+    expect(dueTomorrowCount([], '2026-08-16')).toBe(0);
+    expect(dueTomorrowCount(null, '2026-08-16')).toBe(0);
   });
 });

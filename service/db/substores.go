@@ -57,6 +57,11 @@ type QuizStore interface {
 	GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error)
 	GetRecentMismatches(ctx context.Context, userID int64, since time.Time, limit int) ([]models.ConfusionDetail, error)
 	MarkConfusionsShownInGame(ctx context.Context, pairs []ConfusionPairKey) error
+	GetNewestWordsForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error)
+	GetHardestWordsForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error)
+	GetLastMistakesForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error)
+	MarkWordsShownInGame(ctx context.Context, userID int64, wordIDs []int64, mode string) error
+	RecordAnswerTimestamps(ctx context.Context, wordID int64, correct bool) error
 	SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2Progress) error
 	GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2Progress, error)
 	ClearSM2PrevState(ctx context.Context, wordID int64) error
@@ -64,7 +69,7 @@ type QuizStore interface {
 	EnsureDueTodaySnapshot(ctx context.Context, userID int64) (int, error)
 	RecordTrainingTime(ctx context.Context, userID int64, seconds int) error
 	GetDailyStatsHistory(ctx context.Context, userID int64) ([]models.DailyStat, error)
-	GetWordStats(ctx context.Context, userID int64) (*models.WordStatsResponse, error)
+	GetWordStats(ctx context.Context, userID int64, tags []string) (*models.WordStatsResponse, error)
 	GetTodaySessionInfo(ctx context.Context, userID int64) (attempts, mistakes, availableToAdvance int, err error)
 	AdvanceDueDates(ctx context.Context, userID int64, n int) (int, error)
 	SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error)
@@ -73,6 +78,7 @@ type QuizStore interface {
 	ClearAllDrillFlags(ctx context.Context, userID int64) error
 	CountDrillFlags(ctx context.Context, userID int64) (int, error)
 	GetNextDrillCard(ctx context.Context, userID int64) (*models.Word, *models.SM2Progress, error)
+	NextSentenceBlankCard(ctx context.Context, userID int64, cfg models.ProgressiveModeConfig, nwCfg models.NewWordModeConfig, langs []string) (*models.QuizCard, error)
 }
 
 // MnemonicStore: HMM actor/location/room/prop library, scene storage, and the HMM quiz.
@@ -152,6 +158,7 @@ type ComponentStore interface {
 	ClearComponentPrevState(ctx context.Context, userID int64, character string) error
 	UpdateComponentProgress(ctx context.Context, userID int64, character string, p models.SM2Progress) error
 	GetComponentList(ctx context.Context, userID int64, search string, page, perPage int, reviewOnly bool) ([]ComponentListItem, int, error)
+	GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageComponent, map[int64]int, int, error)
 	GetComponentPinyin(ctx context.Context, character string) string
 	GetComponentCounts(ctx context.Context, userID int64, langs []string) (dueToday, total int, err error)
 	GetComponentCountByDueDate(ctx context.Context, userID int64) ([]models.DueDateCount, error)

@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { captureForPR } from './helpers/screenshot.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Main user — 3 acknowledged words (total_attempts=1, learning_new_word=1)
@@ -197,6 +198,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 
     const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
     await expect(yellowBox).toBeVisible();
+    await captureForPR(page, 'train-mismatch');
 
     const redSize = await page.locator('#word-breakdown .bg-red-50 .text-red-700')
       .evaluate(el => getComputedStyle(el).fontSize);
@@ -1204,6 +1206,16 @@ test.describe('Quiz – auto-play sound toggle', () => {
   });
 });
 
+test.describe('Quiz – fullscreen toggle', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('fullscreen toggle button is visible and off by default', async ({ page }) => {
+    await page.goto('/train');
+    await expect(page.locator('#fullscreen-toggle-btn')).toBeVisible();
+    await expect(page.locator('#fullscreen-toggle-btn')).toHaveAttribute('aria-pressed', 'false');
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Group: Chinese (no sound) → Translation mode
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1362,9 +1374,11 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     });
   }
 
-  async function submitAnswerAndWait(page, answer) {
-    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
-    const card = await cardRes.json();
+  async function submitAnswerAndWait(page, answer, card = null) {
+    if (!card) {
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+      card = await cardRes.json();
+    }
 
     await useZhToTranslMode(page);
     await page.goto('/train');
@@ -1380,7 +1394,7 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     const card = await cardRes.json();
     const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
     expect(correctAnswer).toBeTruthy();
-    await submitAnswerAndWait(page, correctAnswer);
+    await submitAnswerAndWait(page, correctAnswer, card);
   }
 
   test('celebration screen appears before the result screen, then reveals it after Continue', async ({ page }) => {
@@ -1440,6 +1454,79 @@ test.describe('Quiz – celebrate bucket change setting', () => {
       // The icon still appears on a wrong-answer result screen.
       await expect(page.locator('#bucket-info')).toBeVisible();
       await expect(page.locator('#bucket-info .tier-icon')).toHaveCount(1);
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Retype required after a wrong answer (retype_on_wrong setting)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – retype on wrong answer', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  async function useZhToTranslMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('retype gate is not shown when the setting is disabled (default)', async ({ page }) => {
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    await expect(page.locator('#wrong-retype-area')).not.toBeVisible();
+    await expect(page.locator('#next-btn')).toBeEnabled();
+  });
+
+  test('wrong answer requires retyping the Chinese word and translation before Next is enabled', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+
+    try {
+      await useZhToTranslMode(page);
+
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+      expect(cardRes.ok()).toBe(true);
+      const card = await cardRes.json();
+      const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+      expect(correctAnswer).toBeTruthy();
+
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+      await page.locator('#answer-input').fill('xxxxxxxxxxx');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+      // The retype gate must appear and block Next until resolved.
+      await expect(page.locator('#wrong-retype-area')).toBeVisible();
+      await expect(page.locator('#next-btn')).toBeDisabled();
+
+      // Typing a wrong word/translation must not unlock it.
+      await page.locator('#wrong-retype-zh-input').fill('xxx');
+      await page.locator('#wrong-retype-trans-input').fill('xxx');
+      await expect(page.locator('#next-btn')).toBeDisabled();
+
+      // Typing the correct Chinese word and translation unlocks Next.
+      await page.locator('#wrong-retype-zh-input').fill(card.prompt);
+      await page.locator('#wrong-retype-trans-input').fill(correctAnswer);
+      await expect(page.locator('#next-btn')).toBeEnabled();
+
+      await page.locator('#next-btn').click();
+      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
     } finally {
       await page.request.patch('/api/settings', { data: originalSettings });
     }
