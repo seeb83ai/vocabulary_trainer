@@ -150,7 +150,6 @@ test.describe('Gamification — match game', () => {
 
     await newest.uncheck();
     await lastMistakes.uncheck();
-    await page.locator('#gamification-save-btn').click();
     await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
 
     await page.reload();
@@ -162,7 +161,6 @@ test.describe('Gamification — match game', () => {
     // Restore defaults so later specs in this file see the standard state.
     await newest.check();
     await lastMistakes.check();
-    await page.locator('#gamification-save-btn').click();
     await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
   });
 
@@ -231,7 +229,6 @@ test.describe('Gamification — match game', () => {
     // Enable gamification
     await checkbox.check();
     await page.locator('#gamification-frequency').fill('2');
-    await page.locator('#gamification-save-btn').click();
 
     await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
 
@@ -241,24 +238,28 @@ test.describe('Gamification — match game', () => {
     await expect(page.locator('#gamification-frequency')).toHaveValue('2');
   });
 
-  // Regression: saving a *different* settings card must not silently disable
-  // gamification. settings.js only sends gamification_enabled from the
-  // Gamification card's own save button — every other card (Daily Learning,
-  // Training Mode, Cycle Mode, Language, Accept-as-correct) omits it, and the
-  // PATCH handler used to decode a missing boolean field as false and write
-  // it straight through.
+  // Regression: auto-saving a *different* settings card must not silently
+  // disable gamification. Every card's auto-save sends the full settings
+  // payload (built fresh from the whole page's current DOM state) precisely
+  // because the PATCH handler decodes a missing boolean field as false and
+  // writes it straight through — a partial payload from any one card would
+  // silently wipe fields owned by the others.
   test('enabling gamification survives saving the Daily Learning card', async ({ page }) => {
     await page.goto(`${BASE_URL}/settings`);
     const checkbox = page.locator('#gamification-enabled');
     await expect(checkbox).toBeVisible();
 
-    await checkbox.check();
-    await page.locator('#gamification-save-btn').click();
-    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+    // This suite leaves gamification enabled between tests (see the file-level
+    // comment above), so the checkbox may already be checked here — check()
+    // is then a no-op that fires no change event, so only wait for the
+    // autosave banner when an actual transition happens.
+    if (!(await checkbox.isChecked())) {
+      await checkbox.check();
+      await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+    }
 
     // Save a wholly unrelated card, whose payload doesn't mention gamification.
     await page.locator('#max-new-words').fill('5');
-    await page.locator('#daily-save-btn').click();
     await expect(page.locator('#daily-success')).toBeVisible({ timeout: 5000 });
 
     await page.reload();

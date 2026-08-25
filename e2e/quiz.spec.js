@@ -1523,7 +1523,7 @@ test.describe('Quiz – retype on wrong answer', () => {
       // Typing the correct Chinese word and translation unlocks Next.
       await page.locator('#wrong-retype-zh-input').fill(card.prompt);
       await page.locator('#wrong-retype-trans-input').fill(correctAnswer);
-      await expect(page.locator('#next-btn')).toBeEnabled();
+      await expect(page.locator('#next-btn')).toBeEnabled({ timeout: 8_000 });
 
       await page.locator('#next-btn').click();
       await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });

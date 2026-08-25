@@ -288,7 +288,7 @@ The default ladder increases difficulty (fewer hints) for higher buckets:
 
 ## User settings
 
-Each user has a personal settings page (`/settings`) with these sections:
+Each user has a personal settings page (`/settings`) with these sections. Every section below saves automatically as you change a field — there's no Save button. Change Password and API Keys are the exception: both require an explicit action since they touch credentials.
 
 - **Language preferences.** Choose a primary and a secondary language. The app shows the primary language first in the vocabulary list, and uses it as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode.** Customize the quiz format for each proficiency tier, for progressive mode, and for each step in the new-word introduction phase. This section includes "Blur pinyin until tapped", "Celebrate bucket changes" (a level-up interstitial when a word's accuracy tier advances), and "Sentence fill-in-the-blank" with a frequency percentage, under Quiz Display, and "Require retyping correctly before continuing" under Wrong Answer Retry.
@@ -599,6 +599,7 @@ vocabulary_trainer/
 │   │   ├── words.go         # CRUD /api/words + POST /api/words/{id}/translations
 │   │   ├── hmm.go           # Hanzi Movie Method — library CRUD, scene builder, pinyin parsing
 │   │   ├── mismatches.go    # GET /api/mismatches
+│   │   ├── admin.go         # GET /api/admin/overview — cross-user usage insights (admin role only)
 │   │   ├── translate.go     # POST /api/translate, GET /api/config — DeepL proxy + pinyin
 │   │   ├── audio.go         # GET /api/audio/{id} — serve/generate cached MP3; GET /api/audio/component/{char} — component TTS
 │   │   └── hanzi.go         # GET /api/hanzi/decompose — character decomposition
@@ -610,6 +611,7 @@ vocabulary_trainer/
 │   ├── db/
 │   │   ├── migrate.go       # Version-based schema migrations
 │   │   ├── db.go            # Data access layer (Store) — vocabulary
+│   │   ├── admin.go         # Cross-user aggregate queries for the admin dashboard
 │   │   └── pinyin.go        # Data access layer — pinyin listening
 │   ├── cmd/import/main.go   # Standalone vocabulary import tool (text file)
 │   ├── cmd/import-hsk/main.go # HSK vocabulary import from mandarinbean.com
@@ -621,6 +623,7 @@ vocabulary_trainer/
 │       ├── vocab.html       # Vocabulary management page
 │       ├── mnemonics.html   # HMM mnemonic library settings page
 │       ├── mismatches.html  # Confusion pairs page
+│       ├── admin-dashboard.html # Admin usage-insights dashboard (admin role only)
 │       ├── stats.html       # Training stats page
 │       ├── app.js           # Shared fetch utilities and DOM helpers
 │       ├── train-*.js       # Training page logic (answer/audio/settings/stats/result/matchgame/card)
@@ -629,6 +632,7 @@ vocabulary_trainer/
 │       ├── hmm-builder.js   # Reusable HMM scene builder component
 │       ├── mnemonics.js     # HMM library settings page logic
 │       ├── mismatches.js    # Confusion pairs page logic
+│       ├── admin-dashboard.js # Admin usage-insights dashboard logic
 │       └── stats.js         # Training stats page logic
 ├── deploy/
 │   ├── nginx.conf           # Sample nginx reverse-proxy config
@@ -638,7 +642,19 @@ vocabulary_trainer/
 
 ## Usage tracking
 
-The app records every request internally, in the `usage_events` table (`user_id`, `name`, `count`, `last_seen`). This lets admins see which pages and endpoints are actually used. The `name` field holds the HTTP method plus the matched route, for example `GET /train` or `POST /api/quiz/answer`. Hits for the same user and route aggregate into one row, with an incrementing `count` and a refreshed `last_seen`. The app records anonymous requests with `user_id = 0`. It excludes static asset requests and audio-streaming routes (`/api/audio/*`, `/api/pinyin-quiz/audio/*`) as noise. There is currently no UI or API endpoint for viewing this data. You must query the database directly.
+The app records every request internally, in the `usage_events` table (`user_id`, `name`, `count`, `last_seen`). This lets admins see which pages and endpoints are actually used. The `name` field holds the HTTP method plus the matched route, for example `GET /train` or `POST /api/quiz/answer`. Hits for the same user and route aggregate into one row, with an incrementing `count` and a refreshed `last_seen`. The app records anonymous requests with `user_id = 0`. It excludes static asset requests and audio-streaming routes (`/api/audio/*`, `/api/pinyin-quiz/audio/*`) as noise.
+
+## Admin dashboard
+
+Users with the `admin` role can view cross-user usage insights at `/admin-dashboard` (non-admins are redirected to `/`). It shows:
+
+- **Account overview** — total users, role breakdown (admin/plus/free), email verification status.
+- **Activity** — how many registered users trained in the last 7/30 days, and how many are dormant.
+- **Signups** — daily registration counts for the last 30 days.
+- **Quiz volume** — daily attempts/mistakes summed across all users for the last 30 days.
+- **Guest activity** — failed login attempts against unknown or wrong-password accounts (`user_id = 0` in `audit_log`), by day.
+- **DeepL / LLM usage** — total calls and unique users for `/api/translate` and the HMM scene-generation endpoints, drawn from `usage_events`.
+- **Page views / feature usage** — every tracked route from `usage_events`, split into page navigations and API calls, each with total hits, unique users, and last-seen timestamp.
 
 ### Funnel report
 
@@ -718,6 +734,7 @@ Stages: **registered** (accounts created) → **verified email** → **activated
 | `PATCH` | `/api/settings` | Update language preferences and per-tier quiz mode configuration |
 | `PATCH` | `/api/training-filters` | Persist training page filter state (mode, tier, langs, tags, mnemonics, components) server-side for cross-device sync |
 | `PUT` | `/api/settings/api-keys` | Encrypt and store personal DeepL / LLM API keys |
+| `GET` | `/api/admin/overview` | Cross-user usage insights: account/activity stats, signup and quiz-volume trends, guest activity, DeepL/LLM usage, page/feature usage (admin role only) |
 
 ## License
 

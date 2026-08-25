@@ -726,3 +726,51 @@ type FunnelReport struct {
 	Returned     int `json:"returned"`       // users with at least two distinct training days
 	ReturnedDay1 int `json:"returned_day_1"` // users who trained again the day after their first session
 }
+
+type AdminUserStats struct {
+	Total      int `json:"total"`
+	Admins     int `json:"admins"`
+	Plus       int `json:"plus"`
+	Free       int `json:"free"`
+	Verified   int `json:"verified"`
+	Unverified int `json:"unverified"`
+}
+
+type AdminActivityStats struct {
+	ActiveLast7Days  int `json:"active_last_7_days"`
+	ActiveLast30Days int `json:"active_last_30_days"`
+	Dormant          int `json:"dormant"`
+}
+
+type AdminQuizDay struct {
+	Date     string `json:"date"`
+	Attempts int    `json:"attempts"`
+	Mistakes int    `json:"mistakes"`
+}
+
+type AdminFeatureUsage struct {
+	Name        string `json:"name"`
+	TotalCount  int    `json:"total_count"`
+	UniqueUsers int    `json:"unique_users"`
+	LastSeen    string `json:"last_seen"`
+}
+
+type AdminAPIUsage struct {
+	TotalCalls  int `json:"total_calls"`
+	UniqueUsers int `json:"unique_users"`
+}
+
+// AdminOverview is the aggregate, cross-user payload served by
+// GET /api/admin/overview. It never contains per-user identifying data
+// beyond counts.
+type AdminOverview struct {
+	Users         AdminUserStats      `json:"users"`
+	Signups       []DueDateCount      `json:"signups"`
+	Activity      AdminActivityStats  `json:"activity"`
+	QuizVolume    []AdminQuizDay      `json:"quiz_volume"`
+	GuestActivity []DueDateCount      `json:"guest_activity"`
+	PageViews     []AdminFeatureUsage `json:"page_views"`
+	FeatureUsage  []AdminFeatureUsage `json:"feature_usage"`
+	DeepLUsage    AdminAPIUsage       `json:"deepl_usage"`
+	LLMUsage      AdminAPIUsage       `json:"llm_usage"`
+}
