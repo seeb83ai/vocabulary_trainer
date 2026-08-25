@@ -32,6 +32,7 @@ type PageData struct {
 	ActiveNav   string
 	ExtraHead   template.HTML
 	PageScripts []string
+	IsAdmin     bool
 }
 
 var templateCache map[string]*template.Template
@@ -58,6 +59,11 @@ func renderTemplate(w http.ResponseWriter, name string, data PageData) {
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
 		log.Printf("template execute error %s: %v", name, err)
 	}
+}
+
+func checkIsAdmin(r *http.Request, store *db.Store) bool {
+	role, err := store.GetUserRole(r.Context(), handlers.UserIDFromContext(r.Context()))
+	return err == nil && role == "admin"
 }
 
 func main() {
@@ -390,6 +396,7 @@ func main() {
 			Title:       "Vocabulary — Vocab Trainer",
 			ActiveNav:   "vocab",
 			PageScripts: []string{"hmm-builder.js", "vocab.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/mismatches", func(w http.ResponseWriter, r *http.Request) {
@@ -397,6 +404,7 @@ func main() {
 			Title:       "Mismatches — Vocab Trainer",
 			ActiveNav:   "mismatches",
 			PageScripts: []string{"mismatches.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
@@ -405,6 +413,7 @@ func main() {
 			ActiveNav:   "stats",
 			ExtraHead:   template.HTML(`<script src="chart.js"></script>`),
 			PageScripts: []string{"stats.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/mnemonics", func(w http.ResponseWriter, r *http.Request) {
@@ -412,6 +421,7 @@ func main() {
 			Title:       "Mnemonics — Vocab Trainer",
 			ActiveNav:   "mnemonics",
 			PageScripts: []string{"mnemonics.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/train", func(w http.ResponseWriter, r *http.Request) {
@@ -419,6 +429,7 @@ func main() {
 			Title:       "Train — Vocab Trainer",
 			ActiveNav:   "train",
 			PageScripts: []string{"hmm-builder.js", "train.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
@@ -426,6 +437,7 @@ func main() {
 			Title:       "Settings — Vocab Trainer",
 			ActiveNav:   "settings",
 			PageScripts: []string{"settings.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
@@ -437,6 +449,7 @@ func main() {
 			ActiveNav:   "admin-dashboard",
 			ExtraHead:   template.HTML(`<script src="chart.js"></script>`),
 			PageScripts: []string{"admin-dashboard.js"},
+			IsAdmin:     true,
 		})
 	})
 	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
@@ -444,6 +457,7 @@ func main() {
 			Title:       "Pinyin Listening · Vocab Trainer",
 			ActiveNav:   "pinyin",
 			PageScripts: []string{"pinyin.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
