@@ -385,9 +385,17 @@ func main() {
 	})
 	r.Get("/vocab", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "vocab", PageData{
-			Title:       "Vocabulary — Vocab Trainer",
-			ActiveNav:   "vocab",
-			PageScripts: []string{"hmm-builder.js", "vocab.js"},
+			Title:     "Vocabulary — Vocab Trainer",
+			ActiveNav: "vocab",
+			PageScripts: []string{
+				"hmm-builder.js",
+				"vocab-list.js",
+				"vocab-form.js",
+				"vocab-tags.js",
+				"vocab-import.js",
+				"vocab-download.js",
+				"vocab-components.js",
+			},
 		})
 	})
 	r.Get("/mismatches", func(w http.ResponseWriter, r *http.Request) {
@@ -414,9 +422,18 @@ func main() {
 	})
 	r.Get("/train", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "train", PageData{
-			Title:       "Train — Vocab Trainer",
-			ActiveNav:   "train",
-			PageScripts: []string{"hmm-builder.js", "train.js"},
+			Title:     "Train — Vocab Trainer",
+			ActiveNav: "train",
+			PageScripts: []string{
+				"hmm-builder.js",
+				"train-answer.js",
+				"train-audio.js",
+				"train-settings.js",
+				"train-stats.js",
+				"train-result.js",
+				"train-matchgame.js",
+				"train-card.js",
+			},
 		})
 	})
 	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {

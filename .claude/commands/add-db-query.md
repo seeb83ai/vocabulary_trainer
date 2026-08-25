@@ -13,7 +13,7 @@ Work through these steps **in order**:
    - Dropping columns is allowed via `ALTER TABLE ... DROP COLUMN` with an existence guard
    - Never rename or drop tables
 
-3. **Unit test** — Add a test in `service/db/db_test.go`:
+3. **Unit test** — Add a test in the corresponding `service/db/<domain>_test.go` file (e.g. `words_test.go`, `quiz_test.go`):
    - Use `db.Open(":memory:")` — never touch `data/vocab.db`
    - Use only the standard `testing` package (no testify)
    - Test both the happy path and relevant error/edge cases

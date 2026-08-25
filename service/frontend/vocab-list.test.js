@@ -148,70 +148,6 @@ describe('pagination logic', () => {
   });
 });
 
-// ── buildFormPayload (DOM-based) ───────────────────────────────────────────────
-// Simulate the DOM structure that vocab.html provides.
-
-function buildFormPayload(zhValue, pinyinValue, enValues, deValues = [], tags = [], startTraining = false) {
-  // Mirrors the vocab.js buildFormPayload logic
-  return {
-    zh_text: zhValue.trim(),
-    pinyin: pinyinValue.trim(),
-    translations: {
-      en: enValues.map(v => v.trim()).filter(Boolean),
-      de: deValues.map(v => v.trim()).filter(Boolean),
-    },
-    tags: [...tags],
-    start_training: startTraining,
-  };
-}
-
-describe('buildFormPayload', () => {
-  it('trims whitespace from zh_text', () => {
-    const p = buildFormPayload('  你好  ', '', ['hello']);
-    expect(p.zh_text).toBe('你好');
-  });
-
-  it('trims whitespace from pinyin', () => {
-    const p = buildFormPayload('你好', '  nǐ hǎo  ', ['hello']);
-    expect(p.pinyin).toBe('nǐ hǎo');
-  });
-
-  it('filters empty en translations', () => {
-    const p = buildFormPayload('你好', '', ['hello', '  ', '']);
-    expect(p.translations.en).toEqual(['hello']);
-  });
-
-  it('allows multiple en translations', () => {
-    const p = buildFormPayload('你好', '', ['hello', 'hi', 'hey']);
-    expect(p.translations.en).toHaveLength(3);
-  });
-
-  it('returns empty pinyin when not provided', () => {
-    const p = buildFormPayload('你好', '', ['hello']);
-    expect(p.pinyin).toBe('');
-  });
-
-  it('includes tags array', () => {
-    const p = buildFormPayload('你好', '', ['hello'], [], ['HSK1', 'greetings']);
-    expect(p.tags).toEqual(['HSK1', 'greetings']);
-  });
-
-  it('defaults to empty tags', () => {
-    const p = buildFormPayload('你好', '', ['hello']);
-    expect(p.tags).toEqual([]);
-  });
-
-  it('defaults start_training to false', () => {
-    const p = buildFormPayload('你好', '', ['hello']);
-    expect(p.start_training).toBe(false);
-  });
-
-  it('includes start_training when true', () => {
-    const p = buildFormPayload('你好', '', ['hello'], [], [], true);
-    expect(p.start_training).toBe(true);
-  });
-});
-
 // ── renderDue ─────────────────────────────────────────────────────────────────
 // Inlined from vocab.js (without i18n/HTML, using plain strings for logic).
 
@@ -290,97 +226,11 @@ describe('missingLangFilter state', () => {
   });
 });
 
-// ── buildImportPayload ────────────────────────────────────────────────────────
-// Inline the payload-building logic from vocab.js import flow.
-
-function buildImportPayload(tag, importEn, importDe, applyTags) {
-  return {
-    tag: tag.trim(),
-    import_en: importEn,
-    import_de: importDe,
-    apply_tags: [...applyTags],
-  };
-}
-
-describe('buildImportPayload', () => {
-  it('trims whitespace from tag', () => {
-    const p = buildImportPayload('  HSK1  ', true, false, []);
-    expect(p.tag).toBe('HSK1');
-  });
-
-  it('includes import_en and import_de flags', () => {
-    const p = buildImportPayload('HSK1', true, false, []);
-    expect(p.import_en).toBe(true);
-    expect(p.import_de).toBe(false);
-  });
-
-  it('copies apply_tags without mutating the source array', () => {
-    const src = ['a', 'b'];
-    const p = buildImportPayload('HSK1', true, false, src);
-    p.apply_tags.push('c');
-    expect(src).toEqual(['a', 'b']);
-  });
-
-  it('passes apply_tags through', () => {
-    const p = buildImportPayload('HSK1', true, true, ['foo', 'bar']);
-    expect(p.apply_tags).toEqual(['foo', 'bar']);
-  });
-});
-
-// ── summarizeImportResult ────────────────────────────────────────────────────
-// Inline the result summary function from vocab.js import flow.
-
-function summarizeImportResult(imported, skipped) {
-  const wordLabel = imported === 1 ? 'word' : 'words';
-  if (skipped === 0) {
-    return `Imported ${imported} ${wordLabel}.`;
-  }
-  return `Imported ${imported} ${wordLabel}, skipped ${skipped} already in your vocabulary.`;
-}
-
-describe('summarizeImportResult', () => {
-  it('uses singular "word" when imported is 1', () => {
-    expect(summarizeImportResult(1, 0)).toBe('Imported 1 word.');
-  });
-
-  it('uses plural "words" when imported is 0', () => {
-    expect(summarizeImportResult(0, 5)).toContain('0 words');
-  });
-
-  it('uses plural "words" when imported > 1', () => {
-    expect(summarizeImportResult(5, 0)).toBe('Imported 5 words.');
-  });
-
-  it('includes skipped count when skipped > 0', () => {
-    const s = summarizeImportResult(3, 2);
-    expect(s).toContain('3 words');
-    expect(s).toContain('skipped 2');
-  });
-
-  it('omits skipped note when skipped is 0', () => {
-    const s = summarizeImportResult(5, 0);
-    expect(s).not.toContain('skipped');
-  });
-});
-
-// ── renderComponentRow pinyin column ──────────────────────────────────────────
-// Inlined from vocab.js renderComponentTable row logic.
-
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function renderComponentRow(comp) {
-  return `
-    <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}</td>
-    <td class="py-3 px-4 text-gray-500 text-sm">${comp.pinyin ? escHtml(comp.pinyin) : '<span class="text-gray-400">—</span>'}</td>
-    <td class="py-3 px-4 text-gray-600">${comp.definition_en ? escHtml(comp.definition_en) : '<span class="text-gray-400">—</span>'}</td>
-    <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>`;
-}
 
-// Cross-reference badge shown on the Words tab when a word's character is
-// also tracked as a component, and on the Components tab when a component's
-// character is also stored as a word.
 function crossRefBadge(show, label) {
   return show
     ? `<span class="inline-block bg-purple-100 text-purple-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(label)}</span>`
@@ -399,29 +249,6 @@ describe('crossRefBadge', () => {
 
   it('escapes the label', () => {
     const html = crossRefBadge(true, '<b>x</b>');
-    expect(html).not.toContain('<b>');
-    expect(html).toContain('&lt;b&gt;');
-  });
-});
-
-describe('renderComponentRow pinyin column', () => {
-  it('shows pinyin when present', () => {
-    const html = renderComponentRow({ character: '女', pinyin: 'nǚ', definition_en: 'woman', definition_de: 'Frau' });
-    expect(html).toContain('nǚ');
-  });
-
-  it('shows dash when pinyin is absent', () => {
-    const html = renderComponentRow({ character: '女', definition_en: 'woman', definition_de: 'Frau' });
-    expect(html).toContain('—');
-  });
-
-  it('shows dash when pinyin is empty string', () => {
-    const html = renderComponentRow({ character: '女', pinyin: '', definition_en: 'woman' });
-    expect(html).toContain('—');
-  });
-
-  it('escapes special chars in pinyin', () => {
-    const html = renderComponentRow({ character: '女', pinyin: '<b>test</b>' });
     expect(html).not.toContain('<b>');
     expect(html).toContain('&lt;b&gt;');
   });

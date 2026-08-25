@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 	"vocabulary_trainer/handlers"
 	"vocabulary_trainer/models"
 
@@ -252,5 +253,77 @@ func TestHMMQuizAnswer_OptionalParensInline(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if !resp.Correct {
 		t.Error("expected answer without inline bracketed segments to be correct")
+	}
+}
+
+func TestHMMQuizSkip_DaysOne(t *testing.T) {
+	s := openTestDB(t)
+	seedHMMCard(t, s)
+	ctx := context.Background()
+
+	prog, err := s.GetHMMProgress(ctx, int64(2), models.HMMEntityActor, "n")
+	if err != nil || prog == nil {
+		// fall back: pick any actor with a progress row
+		actors, _ := s.GetHMMActors(ctx, int64(2))
+		var key string
+		for _, a := range actors {
+			if a.ActorName != "" {
+				key = a.Initial
+				break
+			}
+		}
+		if key == "" {
+			t.Skip("no named actor available")
+		}
+		prog, _ = s.GetHMMProgress(ctx, int64(2), models.HMMEntityActor, key)
+	}
+	if prog == nil {
+		t.Skip("no hmm progress row available")
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
+		"entity_type": models.HMMEntityActor,
+		"entity_key":  prog.EntityKey,
+		"days":        1,
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	after, err := s.GetHMMProgress(ctx, int64(2), models.HMMEntityActor, prog.EntityKey)
+	if err != nil || after == nil {
+		t.Fatalf("GetHMMProgress after skip: %v", err)
+	}
+	if after.TotalAttempts != prog.TotalAttempts {
+		t.Error("skip should not change total_attempts")
+	}
+	delta := after.DueDate.Sub(time.Now())
+	if delta < 23*time.Hour || delta > 25*time.Hour {
+		t.Errorf("days=1 should move due_date ~24h ahead, got delta=%v", delta)
+	}
+}
+
+func TestHMMQuizSkip_NotFound(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
+		"entity_type": models.HMMEntityActor,
+		"entity_key":  "zzz",
+		"days":        1,
+	})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
+func TestHMMQuizSkip_BadEntityType(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
+		"entity_type": "garbage",
+		"entity_key":  "x",
+		"days":        1,
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rec.Code)
 	}
 }

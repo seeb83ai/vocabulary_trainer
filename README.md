@@ -623,9 +623,9 @@ vocabulary_trainer/
 │       ├── mismatches.html  # Confusion pairs page
 │       ├── stats.html       # Training stats page
 │       ├── app.js           # Shared fetch utilities and DOM helpers
-│       ├── train.js         # Training page logic
+│       ├── train-*.js       # Training page logic (answer/audio/settings/stats/result/matchgame/card)
 │       ├── pinyin.js        # Pinyin listening training logic
-│       ├── vocab.js         # Vocabulary management logic
+│       ├── vocab-*.js       # Vocabulary management logic (list/form/tags/import/download/components)
 │       ├── hmm-builder.js   # Reusable HMM scene builder component
 │       ├── mnemonics.js     # HMM library settings page logic
 │       ├── mismatches.js    # Confusion pairs page logic

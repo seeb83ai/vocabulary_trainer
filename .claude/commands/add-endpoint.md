@@ -8,7 +8,7 @@ Work through these steps **in order**:
    - Scan datetime columns as `string`, parse with `parseDateTime()`
    - Call `rows.Close()` before any follow-up query in the same function
 
-3. **DB test** — Add a unit test in `service/db/db_test.go` using an in-memory SQLite DB (`db.Open(":memory:")`).
+3. **DB test** — Add a unit test in the corresponding `service/db/<domain>_test.go` file using an in-memory SQLite DB (`db.Open(":memory:")`).
 
 4. **Handler** — Add the handler function in the appropriate `service/handlers/*.go` file. Use the shared helpers from `words.go`:
    - `writeJSON(w, status, payload)` for success responses
@@ -18,9 +18,9 @@ Work through these steps **in order**:
 
 5. **Route — main.go** — Register the route in `service/main.go` inside the appropriate router group.
 
-6. **Route — test router** — Register the **same** route in `newRouter()` inside `service/handlers/handlers_test.go`. Forgetting this is the most common cause of test 404s.
+6. **Route — test router** — Register the **same** route in `newRouter()` inside `service/handlers/router_test.go`. Forgetting this is the most common cause of test 404s.
 
-7. **Handler test** — Add an integration test in `service/handlers/handlers_test.go`.
+7. **Handler test** — Add an integration test in the corresponding `service/handlers/<domain>_test.go` file.
 
 8. **Verify** — Run `cd service && go test ./... -count=1` and confirm all tests pass.
 

@@ -44,8 +44,19 @@ echo "$screenshots_changed" | sed 's/^/  /'
 # Best-effort per-page nudge — page-specific frontend file -> expected keyword
 # in a changed screenshot's filename. Purely informational: naming is free-form.
 declare -A page_keywords=(
-  [train.js]=train
-  [vocab.js]=vocab
+  [train-answer.js]=train
+  [train-audio.js]=train
+  [train-settings.js]=train
+  [train-stats.js]=train
+  [train-result.js]=train
+  [train-matchgame.js]=train
+  [train-card.js]=train
+  [vocab-list.js]=vocab
+  [vocab-form.js]=vocab
+  [vocab-tags.js]=vocab
+  [vocab-import.js]=vocab
+  [vocab-download.js]=vocab
+  [vocab-components.js]=vocab
   [stats.js]=stats
   [pinyin.js]=pinyin
   [mnemonics.js]=mnemonic

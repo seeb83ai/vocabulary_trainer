@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"testing"
+	"time"
 	"vocabulary_trainer/models"
 )
 
@@ -256,5 +257,50 @@ func TestAcknowledgePinyinSound(t *testing.T) {
 	}
 	if due != 1 {
 		t.Errorf("expected due=1 after acknowledging, got %d", due)
+	}
+}
+
+func TestInitPinyinProgressForUser(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Create a real user (openTestDB seeds users 1 and 2; create user 3 here)
+	userID, err := s.CreateUser(ctx, "pinyin-test@example.com", "hash", "tok-pinyin", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert two pinyin sounds directly
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO pinyin_sounds (initial, final, tone, syllable, filename, tag) VALUES
+		 ('b', 'a', 1, 'ba', 'ba1.mp3', ''),
+		 ('p', 'a', 2, 'pa', 'pa2.mp3', '')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.InitPinyinProgressForUser(ctx, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pinyin_progress WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 progress rows, got %d", count)
+	}
+
+	// Calling again must be idempotent
+	if err := s.InitPinyinProgressForUser(ctx, userID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pinyin_progress WHERE user_id = ?`, userID).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("idempotent: expected 2 progress rows, got %d", count)
 	}
 }
