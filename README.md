@@ -288,7 +288,7 @@ The default ladder increases difficulty (fewer hints) for higher buckets:
 
 ## User settings
 
-Each user has a personal settings page (`/settings`) with these sections:
+Each user has a personal settings page (`/settings`) with these sections. Every section below saves automatically as you change a field — there's no Save button. Change Password and API Keys are the exception: both require an explicit action since they touch credentials.
 
 - **Language preferences.** Choose a primary and a secondary language. The app shows the primary language first in the vocabulary list, and uses it as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode.** Customize the quiz format for each proficiency tier, for progressive mode, and for each step in the new-word introduction phase. This section includes "Blur pinyin until tapped", "Celebrate bucket changes" (a level-up interstitial when a word's accuracy tier advances), and "Sentence fill-in-the-blank" with a frequency percentage, under Quiz Display, and "Require retyping correctly before continuing" under Wrong Answer Retry.
