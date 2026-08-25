@@ -378,6 +378,32 @@ function renderComponentRow(comp) {
     <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>`;
 }
 
+// Cross-reference badge shown on the Words tab when a word's character is
+// also tracked as a component, and on the Components tab when a component's
+// character is also stored as a word.
+function crossRefBadge(show, label) {
+  return show
+    ? `<span class="inline-block bg-purple-100 text-purple-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(label)}</span>`
+    : '';
+}
+
+describe('crossRefBadge', () => {
+  it('renders the badge with the given label when show is true', () => {
+    const html = crossRefBadge(true, 'also a component');
+    expect(html).toContain('also a component');
+  });
+
+  it('renders nothing when show is false', () => {
+    expect(crossRefBadge(false, 'also a component')).toBe('');
+  });
+
+  it('escapes the label', () => {
+    const html = crossRefBadge(true, '<b>x</b>');
+    expect(html).not.toContain('<b>');
+    expect(html).toContain('&lt;b&gt;');
+  });
+});
+
 describe('renderComponentRow pinyin column', () => {
   it('shows pinyin when present', () => {
     const html = renderComponentRow({ character: '女', pinyin: 'nǚ', definition_en: 'woman', definition_de: 'Frau' });

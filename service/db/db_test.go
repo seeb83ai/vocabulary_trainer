@@ -197,6 +197,29 @@ func TestGetWords_SearchByZh(t *testing.T) {
 	}
 }
 
+func TestGetWords_IsAlsoComponent(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "关", "guān", []string{"close"})
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	s.InsertComponentProgressForTest(ctx, int64(2), "关", time.Now())
+
+	words, _, err := s.GetWords(ctx, int64(2), "", 1, 20, "zh", "asc", nil, false, false, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byText := map[string]bool{}
+	for _, w := range words {
+		byText[w.ZhText] = w.IsAlsoComponent
+	}
+	if !byText["关"] {
+		t.Error("want 关 flagged as also a component")
+	}
+	if byText["你好"] {
+		t.Error("你好 should not be flagged as also a component")
+	}
+}
+
 func TestGetWords_SearchByEnText(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
@@ -2745,6 +2768,45 @@ func TestIsZhWordForUser_DifferentUser(t *testing.T) {
 	}
 }
 
+func TestIsComponentForUser_True(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now())
+
+	ok, err := s.IsComponentForUser(ctx, 2, "女")
+	if err != nil {
+		t.Fatalf("IsComponentForUser: %v", err)
+	}
+	if !ok {
+		t.Error("want true for existing component")
+	}
+}
+
+func TestIsComponentForUser_False(t *testing.T) {
+	s := openTestDB(t)
+	ok, err := s.IsComponentForUser(context.Background(), 2, "女")
+	if err != nil {
+		t.Fatalf("IsComponentForUser: %v", err)
+	}
+	if ok {
+		t.Error("want false for non-existent component")
+	}
+}
+
+func TestIsComponentForUser_DifferentUser(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now())
+
+	ok, err := s.IsComponentForUser(ctx, 99, "女")
+	if err != nil {
+		t.Fatalf("IsComponentForUser: %v", err)
+	}
+	if ok {
+		t.Error("want false for component owned by a different user")
+	}
+}
+
 func TestAcknowledgeRandomWords_InitComponents(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
@@ -4616,6 +4678,32 @@ func TestGetComponentList_UsesCharLangIndex(t *testing.T) {
 	}
 	if !sawIndexedJoin {
 		t.Error("want the hdt_en join to use idx_hanzi_trans_char_lang")
+	}
+}
+
+func TestGetComponentList_IsAlsoWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "关", "close")
+	seedHanziDef(t, s, "女", "woman")
+	past := time.Now().Add(-time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "关", past)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	seedWord(t, s, "关", "guān", []string{"close"})
+
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 20, false)
+	if err != nil {
+		t.Fatalf("GetComponentList: %v", err)
+	}
+	byChar := map[string]bool{}
+	for _, it := range items {
+		byChar[it.Character] = it.IsAlsoWord
+	}
+	if !byChar["关"] {
+		t.Error("want 关 flagged as also a word")
+	}
+	if byChar["女"] {
+		t.Error("女 should not be flagged as also a word")
 	}
 }
 

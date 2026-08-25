@@ -119,9 +119,11 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		       COALESCE(p.due_date, CURRENT_TIMESTAMP),
 		       COALESCE(w.needs_review, 0),
 		       COALESCE(p.learning_new_word, 1),
+		       cp.character IS NOT NULL AS is_also_component,
 		       COUNT(*) OVER() AS total
 		FROM words w
 		LEFT JOIN sm2_progress p ON p.word_id = w.id
+		LEFT JOIN component_progress cp ON cp.character = w.text AND cp.user_id = w.user_id
 		WHERE w.language = 'zh'
 		  AND w.user_id = ?
 		  AND (? = '' OR w.text LIKE '%' || ? || '%'
@@ -154,7 +156,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
 			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
-			&dueDate, &needsReview, &learning,
+			&dueDate, &needsReview, &learning, &wd.IsAlsoComponent,
 			&total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
@@ -303,6 +305,16 @@ func (s *Store) IsZhWordForUser(ctx context.Context, userID int64, text string) 
 	var count int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM words WHERE user_id = ? AND text = ? AND language = 'zh'`,
+		userID, text).Scan(&count)
+	return count > 0, err
+}
+
+// IsComponentForUser reports whether text is tracked as a hanzi component in
+// the user's component_progress — the reciprocal of IsZhWordForUser.
+func (s *Store) IsComponentForUser(ctx context.Context, userID int64, text string) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM component_progress WHERE user_id = ? AND character = ?`,
 		userID, text).Scan(&count)
 	return count > 0, err
 }
