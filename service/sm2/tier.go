@@ -47,6 +47,26 @@ func (tr Tier) String() string {
 	}
 }
 
+// BucketKey returns the tierFilter/TIERS bucket key string ("new", "0-49",
+// "50-69", "70-84", "85-100") for a Tier value. TierNone (never attempted)
+// has no corresponding bucket key and returns "".
+func (tr Tier) BucketKey() string {
+	switch tr {
+	case TierNew:
+		return "new"
+	case TierStruggling:
+		return "0-49"
+	case TierLearning:
+		return "50-69"
+	case TierPracticing:
+		return "70-84"
+	case TierMastered:
+		return "85-100"
+	default:
+		return ""
+	}
+}
+
 // ClassifyTier returns the accuracy/attempt bucket for a progress record.
 // A word with no attempts is TierNone; a word still in the learning phase is
 // TierNew; otherwise it is bucketed by accuracy and attempt count.

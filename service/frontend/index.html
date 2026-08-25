@@ -3,7 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vocabulary Trainer</title>
+  <title>Learn Chinese Vocabulary Online · 词汇训练 Vocab Trainer</title>
+  <meta name="description" content="Free Chinese vocabulary trainer with SM-2 spaced repetition: seven quiz modes, native audio on every word, pinyin listening drills, and Hanzi Movie Method mnemonics. HSK 1–6 word lists included.">
+  <meta property="og:title" content="词汇训练 · Vocab Trainer — Chinese vocabulary that sticks">
+  <meta property="og:description" content="Free spaced-repetition trainer for Chinese: every word is scheduled for review right before you would forget it.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://chinese.appace.de/">
   <script src="/tailwind.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
@@ -20,8 +25,42 @@
   </nav>
 
   <!-- Main content -->
-  <main class="flex-1 flex items-center justify-center px-4 py-10">
-    <div class="w-full max-w-md">
+  <main class="flex-1 px-4 py-10 md:py-16">
+    <!--
+      Mobile (flex-col): order-* stacks login on top, the hero value
+      proposition below it, and the demo quiz last.
+      Desktop (md:grid): explicit row/col placement restores the original
+      two-column layout — hero spans the full left column, login and the
+      demo quiz stack in the right column.
+    -->
+    <div class="max-w-5xl mx-auto flex flex-col gap-10 md:grid md:grid-cols-2 md:items-start">
+
+    <!-- Hero / value proposition -->
+    <section id="hero" class="order-2 md:order-none md:col-start-1 md:row-start-1 md:row-span-2">
+      <h1 id="hero-title" class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Learn Chinese vocabulary that sticks.</h1>
+      <p class="text-gray-600 text-lg mb-6">A free spaced-repetition trainer: every word comes back for review right before you would forget it. A few minutes a day is enough.</p>
+      <ul id="hero-features" class="space-y-3 text-gray-700 mb-8">
+        <li class="flex gap-3">
+          <span aria-hidden="true">🔁</span>
+          <span><strong>SM-2 spaced repetition</strong> with seven quiz modes, from hanzi recognition to listening-only recall.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true">🔊</span>
+          <span><strong>Native audio on every word</strong>, plus pinyin listening drills across ~1,600 syllable-and-tone combinations.</span>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true">🎬</span>
+          <span><strong>Character breakdowns and movie-method mnemonics</strong> that make characters memorable instead of arbitrary.</span>
+        </li>
+      </ul>
+      <button id="hero-cta" type="button" data-show-tab="register"
+        class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 px-8 rounded-xl text-base transition">
+        Create free account
+      </button>
+      <p class="mt-3 text-sm text-gray-500">Free · Open source · HSK 1–6 word lists included</p>
+    </section>
+
+    <div class="order-1 md:order-none w-full max-w-md md:col-start-2 md:row-start-1 md:justify-self-end" id="auth-column">
 
       <!-- HIBP warning banner (shown after login with compromised password) -->
       <div id="hibp-warning" class="hidden mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4">
@@ -111,8 +150,50 @@
 
       </div>
     </div>
+
+    <!-- Try-it demo quiz (no account needed) -->
+    <div id="demo-section-wrap" class="order-3 md:order-none w-full max-w-md md:col-start-2 md:row-start-2 md:justify-self-end">
+      <div id="demo-section" class="bg-white rounded-2xl shadow p-8">
+        <h2 class="text-lg font-semibold text-gray-800 mb-1">Try it — no account needed</h2>
+        <p class="text-sm text-gray-500 mb-6">Translate five Chinese words to see how the trainer works.</p>
+
+        <div id="demo-card">
+          <div class="mb-4">
+            <span id="demo-progress" class="text-xs font-medium uppercase tracking-wide text-gray-400"></span>
+          </div>
+          <div id="demo-question" class="text-center mb-6">
+            <div id="demo-zh" class="text-5xl font-bold text-gray-900 mb-2"></div>
+            <div id="demo-pinyin" class="text-gray-500"></div>
+          </div>
+          <form id="demo-form" class="flex gap-2">
+            <input id="demo-input" type="text" autocomplete="off" placeholder="Type the English meaning…"
+              class="flex-1 min-w-0 border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button type="submit" id="demo-submit"
+              class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-5 rounded-xl transition">Check</button>
+          </form>
+          <!-- Mirrors the real quiz's result screen (#result-icon / #word-breakdown in train.html). -->
+          <div id="demo-feedback" class="hidden text-center">
+            <div id="demo-icon" class="text-3xl font-bold mb-4"></div>
+            <div id="demo-breakdown" class="text-left space-y-2"></div>
+          </div>
+          <button id="demo-next" type="button"
+            class="hidden mt-4 w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition">Next word</button>
+        </div>
+
+        <div id="demo-done" class="hidden text-center py-4">
+          <div class="text-4xl mb-3" aria-hidden="true">🎉</div>
+          <p class="font-semibold text-gray-800 mb-1">That's the demo — <span id="demo-score"></span> correct.</p>
+          <p class="text-sm text-gray-500 mb-4">With a free account, the trainer schedules each word for review right before you would forget it.</p>
+          <button id="demo-done-cta" type="button" data-show-tab="register"
+            class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 px-6 rounded-xl transition">Create free account</button>
+        </div>
+      </div>
+    </div>
+
+    </div>
   </main>
 
   <script src="index.js"></script>
+  <script src="demo.js"></script>
 </body>
 </html>

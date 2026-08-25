@@ -66,6 +66,10 @@ import-pinyin:
 	mkdir -p data
 	cd service && go run ./cmd/import-pinyin -db $(or $(DB),../data/vocab.db) -source ../$(or $(SOURCE),mp3) -audio-dir ../$(or $(PINYIN_AUDIO_DIR),data/pinyin-audio)
 
+## funnel: print the signup → activation → retention funnel (DB=data/vocab.db MIN_ATTEMPTS=20)
+funnel:
+	cd service && go run ./cmd/funnel -db $(or $(DB),../data/vocab.db) -min-attempts $(or $(MIN_ATTEMPTS),20)
+
 ## fill-translations: fill missing EN/DE translations via DeepL (DEEPL_API_KEY required, DB=data/vocab.db)
 fill-translations:
 	mkdir -p data
