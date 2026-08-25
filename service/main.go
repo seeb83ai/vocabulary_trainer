@@ -32,13 +32,14 @@ type PageData struct {
 	ActiveNav   string
 	ExtraHead   template.HTML
 	PageScripts []string
+	IsAdmin     bool
 }
 
 var templateCache map[string]*template.Template
 
 func initTemplates(fsys fs.FS) {
 	templateCache = make(map[string]*template.Template)
-	pages := []string{"train", "vocab", "stats", "mnemonics", "mismatches", "pinyin", "settings"}
+	pages := []string{"train", "vocab", "stats", "mnemonics", "mismatches", "pinyin", "settings", "admin-dashboard"}
 	for _, name := range pages {
 		t, err := template.ParseFS(fsys, "layout.html", name+".html")
 		if err != nil {
@@ -58,6 +59,11 @@ func renderTemplate(w http.ResponseWriter, name string, data PageData) {
 	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
 		log.Printf("template execute error %s: %v", name, err)
 	}
+}
+
+func checkIsAdmin(r *http.Request, store *db.Store) bool {
+	role, err := store.GetUserRole(r.Context(), handlers.UserIDFromContext(r.Context()))
+	return err == nil && role == "admin"
 }
 
 func main() {
@@ -178,6 +184,7 @@ func main() {
 	hmmQuizH := &handlers.HMMQuizHandler{Store: store}
 	pinyinQuizH := &handlers.PinyinQuizHandler{Store: store, PinyinAudioDirs: pinyinAudioDirs}
 	componentH := &handlers.ComponentHandler{Store: store}
+	adminH := &handlers.AdminHandler{Store: store}
 
 	llmClient := llm.NewClientFromEnv()
 	var llmH *handlers.LLMHandler
@@ -359,6 +366,7 @@ func main() {
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
 		r.With(expensiveLimit).Post("/translate", translateH.Translate)
 		r.Get("/github/config", githubH.ConfigFlag)
+		r.With(handlers.RequireAdmin(store)).Get("/admin/overview", adminH.Overview)
 	})
 
 	// Issue submission is registered outside the /api group so it can carry a
@@ -388,6 +396,7 @@ func main() {
 			Title:       "Vocabulary — Vocab Trainer",
 			ActiveNav:   "vocab",
 			PageScripts: []string{"hmm-builder.js", "vocab.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/mismatches", func(w http.ResponseWriter, r *http.Request) {
@@ -395,6 +404,7 @@ func main() {
 			Title:       "Mismatches — Vocab Trainer",
 			ActiveNav:   "mismatches",
 			PageScripts: []string{"mismatches.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/stats", func(w http.ResponseWriter, r *http.Request) {
@@ -403,6 +413,7 @@ func main() {
 			ActiveNav:   "stats",
 			ExtraHead:   template.HTML(`<script src="chart.js"></script>`),
 			PageScripts: []string{"stats.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/mnemonics", func(w http.ResponseWriter, r *http.Request) {
@@ -410,6 +421,7 @@ func main() {
 			Title:       "Mnemonics — Vocab Trainer",
 			ActiveNav:   "mnemonics",
 			PageScripts: []string{"mnemonics.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/train", func(w http.ResponseWriter, r *http.Request) {
@@ -417,6 +429,7 @@ func main() {
 			Title:       "Train — Vocab Trainer",
 			ActiveNav:   "train",
 			PageScripts: []string{"hmm-builder.js", "train.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
@@ -424,16 +437,27 @@ func main() {
 			Title:       "Settings — Vocab Trainer",
 			ActiveNav:   "settings",
 			PageScripts: []string{"settings.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
+	})
+	r.With(handlers.RequireAdmin(store)).Get("/admin-dashboard", func(w http.ResponseWriter, r *http.Request) {
+		renderTemplate(w, "admin-dashboard", PageData{
+			Title:       "Admin Dashboard — Vocab Trainer",
+			ActiveNav:   "admin-dashboard",
+			ExtraHead:   template.HTML(`<script src="chart.js"></script>`),
+			PageScripts: []string{"admin-dashboard.js"},
+			IsAdmin:     true,
+		})
 	})
 	r.Get("/pinyin", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "pinyin", PageData{
 			Title:       "Pinyin Listening · Vocab Trainer",
 			ActiveNav:   "pinyin",
 			PageScripts: []string{"pinyin.js"},
+			IsAdmin:     checkIsAdmin(r, store),
 		})
 	})
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {

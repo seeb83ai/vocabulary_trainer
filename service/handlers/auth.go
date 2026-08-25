@@ -66,6 +66,27 @@ func WithUserID(id int64) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireAdmin restricts access to users with role "admin". It must run
+// after AuthHandler.Middleware, which has already authenticated the request
+// and injected the user ID. API requests receive 403 JSON; page requests
+// redirect to /.
+func RequireAdmin(store *db.Store) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role, err := store.GetUserRole(r.Context(), UserIDFromContext(r.Context()))
+			if err != nil || role != "admin" {
+				if strings.HasPrefix(r.URL.Path, "/api/") {
+					writeError(w, http.StatusForbidden, "admin access required")
+					return
+				}
+				http.Redirect(w, r, "/", http.StatusFound)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // AuthHandler handles login/logout/registration and provides middleware.
 type AuthHandler struct {
 	store         authStore
