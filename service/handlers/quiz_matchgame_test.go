@@ -330,6 +330,76 @@ func TestMatchGame_NewestMode_MarksShownAndHidesUntilWrongAnswer(t *testing.T) {
 	}
 }
 
+// TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold covers issue #349: the
+// default gamification_hide_pinyin_from_bucket ("70-84" / Practicing) blanks
+// the pinyin hint for a word whose SM-2 bucket has reached Practicing, while
+// leaving it shown for a word still below that bucket.
+func TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "newest")
+	practicedID := seedWord(t, s, "会", "huì", []string{"can"})
+	newID := seedWord(t, s, "去", "qù", []string{"go"})
+	// 10 attempts, 80% accuracy → Practicing tier (>= default threshold).
+	makeDifficultForTest(t, s, practicedID, 8, 10)
+	_ = newID // left at 0 attempts → TierNone, below threshold, pinyin stays.
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 2 {
+		t.Fatalf("expected 2 newest-mode candidates, got %d: %+v", len(resp.Words), resp.Words)
+	}
+	for _, w := range resp.Words {
+		switch w.ZhWordID {
+		case practicedID:
+			if w.Pinyin != "" {
+				t.Errorf("practicing-tier word should have pinyin hidden, got %q", w.Pinyin)
+			}
+		case newID:
+			if w.Pinyin == "" {
+				t.Error("below-threshold word should still show pinyin")
+			}
+		}
+	}
+}
+
+// TestMatchGame_PinyinHideThreshold_ConfigurableToMastered verifies raising
+// the threshold to "85-100" (Mastered) leaves a Practicing-tier word's pinyin
+// visible — only Mastered-and-above should be hidden.
+func TestMatchGame_PinyinHideThreshold_ConfigurableToMastered(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	enableOnlyGameMode(t, s, "newest")
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.GamificationHidePinyinFromBucket = "85-100"
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+	practicedID := seedWord(t, s, "会", "huì", []string{"can"})
+	makeDifficultForTest(t, s, practicedID, 8, 10) // Practicing tier, not Mastered
+
+	r := newRouter(s)
+	seedWord(t, s, "去", "qù", []string{"go"})
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	for _, w := range resp.Words {
+		if w.ZhWordID == practicedID && w.Pinyin == "" {
+			t.Error("Practicing-tier word should keep pinyin when threshold is set to Mastered")
+		}
+	}
+}
+
 func TestMatchAnswer_ComponentKind_RecordsComponentProgress(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

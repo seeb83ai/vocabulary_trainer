@@ -379,6 +379,17 @@
           <span class="text-sm text-gray-700">Last mistakes — words you recently answered wrong</span>
         </label>
       </div>
+      <div class="flex items-center gap-3 flex-wrap mb-1">
+        <label for="gamification-hide-pinyin-bucket" class="text-sm text-gray-700">Hide pinyin hint once a word reaches</label>
+        <select id="gamification-hide-pinyin-bucket" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="new">New</option>
+          <option value="0-49">Struggling</option>
+          <option value="50-69">Learning</option>
+          <option value="70-84">Practicing</option>
+          <option value="85-100">Mastered</option>
+        </select>
+      </div>
+      <p class="text-xs text-gray-500 mb-4">Words in this bucket or higher show only the hanzi in the match-the-pairs game, no pinyin.</p>
     </div>
 
     <!-- Component Training -->

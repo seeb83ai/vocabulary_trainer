@@ -56,6 +56,7 @@ type UserSettings struct {
 	GameModeNewest                   bool     `json:"game_mode_newest"`
 	GameModeHardest                  bool     `json:"game_mode_hardest"`
 	GameModeLastMistakes             bool     `json:"game_mode_last_mistakes"`
+	GamificationHidePinyinFromBucket string   `json:"gamification_hide_pinyin_from_bucket"`
 	TrainMode                        string   `json:"train_mode"`
 	TrainBucket                      string   `json:"train_bucket"`
 	TrainLangs                       []string `json:"train_langs"`

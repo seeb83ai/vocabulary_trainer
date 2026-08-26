@@ -69,6 +69,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GameModeNewest                   bool     `json:"game_mode_newest"`
 		GameModeHardest                  bool     `json:"game_mode_hardest"`
 		GameModeLastMistakes             bool     `json:"game_mode_last_mistakes"`
+		GamificationHidePinyinFromBucket string   `json:"gamification_hide_pinyin_from_bucket"`
 		BlurPinyin                       bool     `json:"blur_pinyin"`
 		NoAutoVoiceOnBlur                bool     `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange            bool     `json:"celebrate_bucket_change"`
@@ -135,6 +136,14 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidAcceptCorrectMode(req.AcceptCorrectMode) {
 		writeError(w, http.StatusBadRequest, "invalid accept_correct_mode: must be never, typo, or always")
+		return
+	}
+
+	if req.GamificationHidePinyinFromBucket == "" {
+		req.GamificationHidePinyinFromBucket = "70-84"
+	}
+	if !isValidGamificationHidePinyinBucket(req.GamificationHidePinyinFromBucket) {
+		writeError(w, http.StatusBadRequest, "invalid gamification_hide_pinyin_from_bucket: must be new, 0-49, 50-69, 70-84, or 85-100")
 		return
 	}
 
@@ -275,6 +284,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GameModeNewest:                   req.GameModeNewest,
 		GameModeHardest:                  req.GameModeHardest,
 		GameModeLastMistakes:             req.GameModeLastMistakes,
+		GamificationHidePinyinFromBucket: req.GamificationHidePinyinFromBucket,
 		BlurPinyin:                       req.BlurPinyin,
 		NoAutoVoiceOnBlur:                req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:            req.CelebrateBucketChange,
@@ -486,4 +496,16 @@ var validAcceptCorrectModes = map[string]bool{
 
 func isValidAcceptCorrectMode(m string) bool {
 	return validAcceptCorrectModes[m]
+}
+
+var validGamificationHidePinyinBuckets = map[string]bool{
+	"new":    true,
+	"0-49":   true,
+	"50-69":  true,
+	"70-84":  true,
+	"85-100": true,
+}
+
+func isValidGamificationHidePinyinBucket(m string) bool {
+	return validGamificationHidePinyinBuckets[m]
 }

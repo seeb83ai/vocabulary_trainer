@@ -74,12 +74,45 @@ func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 		if len(words) < matchGameMinCandidates {
 			continue
 		}
+		words, err = h.hidePinyinAboveThreshold(ctx, words, st.GamificationHidePinyinFromBucket)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
 		markShown()
 		writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: words})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: []models.MatchGameWord{}})
+}
+
+// hidePinyinAboveThreshold blanks the pinyin hint on any word tile (issue
+// #349) whose current SM-2 bucket is at or above the user's configured
+// gamification_hide_pinyin_from_bucket threshold, using the same tier
+// ordering as tierFilter/TIERS (sm2.TierFromBucketKey). Component-kind tiles
+// (mismatch mode) aren't word-tiered and are left untouched.
+func (h *QuizHandler) hidePinyinAboveThreshold(ctx context.Context, words []models.MatchGameWord, thresholdBucket string) ([]models.MatchGameWord, error) {
+	threshold := sm2.TierFromBucketKey(thresholdBucket)
+	if threshold == sm2.TierNone {
+		return words, nil
+	}
+	for i, word := range words {
+		if word.Kind != models.ConfusionKindWord || word.ZhWordID <= 0 || word.Pinyin == "" {
+			continue
+		}
+		progress, err := h.Store.GetSM2Progress(ctx, word.ZhWordID)
+		if err != nil {
+			return nil, err
+		}
+		if progress == nil {
+			continue
+		}
+		if sm2.ClassifyTier(*progress) >= threshold {
+			words[i].Pinyin = ""
+		}
+	}
+	return words, nil
 }
 
 // matchGameCandidates fetches the eligible word list for one game mode along

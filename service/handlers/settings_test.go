@@ -1236,3 +1236,57 @@ func TestSettingsPatch_GameModeFields(t *testing.T) {
 		t.Errorf("game mode fields after update: %+v", st)
 	}
 }
+
+func TestSettingsPatch_GamificationHidePinyinFromBucket(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["gamification_hide_pinyin_from_bucket"] != "70-84" {
+		t.Errorf("default gamification_hide_pinyin_from_bucket: want %q, got %v", "70-84", st["gamification_hide_pinyin_from_bucket"])
+	}
+
+	body := baseSettingsPatch()
+	body["gamification_hide_pinyin_from_bucket"] = "85-100"
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["gamification_hide_pinyin_from_bucket"] != "85-100" {
+		t.Errorf("gamification_hide_pinyin_from_bucket after update: %v", st["gamification_hide_pinyin_from_bucket"])
+	}
+}
+
+func TestSettingsPatch_GamificationHidePinyinFromBucket_Invalid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["gamification_hide_pinyin_from_bucket"] = "bogus"
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid bucket, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettingsPatch_GamificationHidePinyinFromBucket_EmptyDefaultsToPracticing(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["gamification_hide_pinyin_from_bucket"] = ""
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec2, &st)
+	if st["gamification_hide_pinyin_from_bucket"] != "70-84" {
+		t.Errorf("empty gamification_hide_pinyin_from_bucket should default to 70-84, got %v", st["gamification_hide_pinyin_from_bucket"])
+	}
+}
