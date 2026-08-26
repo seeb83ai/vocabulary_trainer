@@ -177,3 +177,22 @@ func (s *Store) ClearComponentPrevState(ctx context.Context, userID int64, chara
 		userID, character)
 	return err
 }
+
+// SeedDailyStatBucketsForTest inserts (or overwrites) a daily_stats row's
+// bucket snapshot for the given user/date, so tests can simulate a prior
+// day's proficiency-bucket state without waiting for real elapsed time.
+// dateExpr is a SQLite date()-compatible expression, e.g. "date('now', '-1 day')".
+// Intended for use in tests only.
+func (s *Store) SeedDailyStatBucketsForTest(ctx context.Context, userID int64, dateExpr string, bNew, bStruggling, bLearning, bPracticing, bMastered int) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO daily_stats (user_id, date, bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
+		VALUES (?, `+dateExpr+`, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, date) DO UPDATE SET
+			bucket_new        = excluded.bucket_new,
+			bucket_struggling = excluded.bucket_struggling,
+			bucket_learning   = excluded.bucket_learning,
+			bucket_practicing = excluded.bucket_practicing,
+			bucket_mastered   = excluded.bucket_mastered`,
+		userID, bNew, bStruggling, bLearning, bPracticing, bMastered)
+	return err
+}

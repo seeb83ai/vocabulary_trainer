@@ -401,6 +401,89 @@ func TestAdvanceDueDates_FewerThanN(t *testing.T) {
 	}
 }
 
+// GetWordsImprovedToday must return 0 (not error) when there is no prior
+// day's daily_stats row to compare against — e.g. a brand-new user's first
+// training day.
+func TestGetWordsImprovedToday_NoPriorDay_ReturnsZero(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "猫", "", []string{"cat"})
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
+		t.Fatal(err)
+	}
+
+	improved, err := s.GetWordsImprovedToday(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if improved != 0 {
+		t.Errorf("want 0 (no prior day snapshot), got %d", improved)
+	}
+}
+
+// GetWordsImprovedToday sums the positive per-bucket deltas between today's
+// and the closest prior day's bucket snapshot, across the struggling/
+// learning/practicing/mastered buckets only — growth in bucket_new (new
+// words being added/started) must not count as "improvement".
+func TestGetWordsImprovedToday_SumsPositiveBucketDeltas(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Yesterday: 2 words struggling, 1 learning, 0 practicing/mastered.
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO daily_stats (user_id, date, bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
+		VALUES (?, date('now', '-1 day'), 0, 2, 1, 0, 0)`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Today: one word graduated struggling->learning (struggling 2->1,
+	// learning stays net 1 because another word left learning->practicing),
+	// and 3 brand-new words were added (bucket_new 0->3, must be ignored).
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO daily_stats (user_id, date, bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
+		VALUES (?, date('now'), 3, 1, 1, 1, 0)`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	improved, err := s.GetWordsImprovedToday(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// deltas: new +3 (ignored), struggling -1, learning 0, practicing +1, mastered 0
+	// -> sum of positive deltas = 1
+	if improved != 1 {
+		t.Errorf("want 1, got %d", improved)
+	}
+}
+
+// A day where every non-new bucket count is flat or dropped (no word entered
+// a better bucket net) must report 0, not a negative sum.
+func TestGetWordsImprovedToday_NoRegressionBelowZero(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO daily_stats (user_id, date, bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
+		VALUES (?, date('now', '-1 day'), 0, 0, 2, 0, 5)`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO daily_stats (user_id, date, bucket_new, bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered)
+		VALUES (?, date('now'), 0, 0, 1, 0, 5)`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	improved, err := s.GetWordsImprovedToday(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if improved != 0 {
+		t.Errorf("want 0, got %d", improved)
+	}
+}
+
 func TestAdvanceDueDates_ClusteredDueDates_OnlyAdvancesN(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

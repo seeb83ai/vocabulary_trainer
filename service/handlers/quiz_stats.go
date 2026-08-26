@@ -128,6 +128,11 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	wordsImproved, err := h.Store.GetWordsImprovedToday(r.Context(), userID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]int{
 		"due_today":            due,
 		"total":                total,
@@ -142,6 +147,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"components_due_today": compDueToday,
 		"components_total":     compTotal,
 		"difficult_remaining":  difficultRemaining,
+		"words_improved_today": wordsImproved,
 	})
 }
 
