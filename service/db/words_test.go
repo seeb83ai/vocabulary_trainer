@@ -1771,3 +1771,102 @@ func TestCreateWord_NoStartTraining(t *testing.T) {
 		t.Errorf("StartTraining=false should create no component rows, got %d", comps)
 	}
 }
+
+// setWordFrequency inserts (or replaces) a row in word_frequency for use in
+// ordering tests — mirrors what cmd/import-frequency would populate.
+func setWordFrequency(t *testing.T, s *Store, word string, rank int) {
+	t.Helper()
+	if _, err := s.db.ExecContext(context.Background(),
+		`INSERT INTO word_frequency (word, rank) VALUES (?, ?)
+		 ON CONFLICT(word) DO UPDATE SET rank = excluded.rank`, word, rank); err != nil {
+		t.Fatalf("setWordFrequency(%q, %d): %v", word, rank, err)
+	}
+}
+
+// TestGetNextCard_PrefersComponentWordsOverCompound verifies the compound-prerequisite
+// rule from issue #340: when an unseen compound word (e.g. 还可以) is made up of
+// substrings that are themselves existing, not-yet-introduced zh words for the same
+// user (还 and 可以), GetNextCard should introduce a component word first rather than
+// the compound.
+func TestGetNextCard_PrefersComponentWordsOverCompound(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	compoundID := seedWord(t, s, "还可以", "hái kěyǐ", []string{"okay"})
+	part1ID := seedWord(t, s, "还", "hái", []string{"still"})
+	part2ID := seedWord(t, s, "可以", "kěyǐ", []string{"can"})
+
+	w, _, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a card, got nil")
+	}
+	if w.ID == compoundID {
+		t.Errorf("expected a component word to be introduced before the compound, got compound %q", w.Text)
+	}
+	if w.ID != part1ID && w.ID != part2ID {
+		t.Errorf("expected one of the compound's component words (id=%d or id=%d), got id=%d (%q)", part1ID, part2ID, w.ID, w.Text)
+	}
+}
+
+// TestGetNextCard_IntroducesCompoundOnceComponentsAreSeen verifies that once all
+// of a compound word's component words have been introduced (first_seen_at set),
+// the compound is no longer deprioritized.
+func TestGetNextCard_IntroducesCompoundOnceComponentsAreSeen(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	compoundID := seedWord(t, s, "还可以", "hái kěyǐ", []string{"okay"})
+	part1ID := seedWord(t, s, "还", "hái", []string{"still"})
+	part2ID := seedWord(t, s, "可以", "kěyǐ", []string{"can"})
+	s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_at = datetime('now') WHERE word_id IN (?, ?)`, part1ID, part2ID)
+
+	w, _, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.ID != compoundID {
+		t.Fatalf("expected the compound word (id=%d) once components are seen, got %v", compoundID, w)
+	}
+}
+
+// TestGetNextCard_FrequencyRankTiebreak verifies that among unseen words with no
+// compound-prerequisite relationship, the word with the lower (more frequent)
+// frequency_rank is introduced first.
+func TestGetNextCard_FrequencyRankTiebreak(t *testing.T) {
+	s := openTestDB(t)
+
+	rareID := seedWord(t, s, "罕见词", "hǎn jiàn cí", []string{"rare word"})
+	commonID := seedWord(t, s, "常见词", "cháng jiàn cí", []string{"common word"})
+	setWordFrequency(t, s, "罕见词", 5000)
+	setWordFrequency(t, s, "常见词", 10)
+
+	w, _, _, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.ID != commonID {
+		t.Fatalf("expected the more frequent word (id=%d) to be introduced first, got %v (rare id=%d)", commonID, w, rareID)
+	}
+}
+
+// TestGetNextCard_UnrankedWordsSortAfterRankedWords verifies that a word with no
+// frequency_rank entry (e.g. not present in the imported frequency list) is not
+// preferred over a ranked word.
+func TestGetNextCard_UnrankedWordsSortAfterRankedWords(t *testing.T) {
+	s := openTestDB(t)
+
+	unrankedID := seedWord(t, s, "生僻字", "shēng pì zì", []string{"obscure character"})
+	rankedID := seedWord(t, s, "常见词", "cháng jiàn cí", []string{"common word"})
+	setWordFrequency(t, s, "常见词", 42)
+
+	w, _, _, err := s.GetNextCard(context.Background(), int64(2), nil, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.ID != rankedID {
+		t.Fatalf("expected the ranked word (id=%d) before the unranked word (id=%d), got %v", rankedID, unrankedID, w)
+	}
+}

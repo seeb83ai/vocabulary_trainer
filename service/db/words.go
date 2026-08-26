@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -669,6 +670,154 @@ func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, target
 	return words, rows.Err()
 }
 
+// unseenCandidate holds one never-presented zh word considered by nextUnseenCard,
+// along with the data needed to rank it: its optional frequency rank (lower is
+// more frequent; nil means "not in the imported frequency list") and whether it
+// is a multi-character compound built from component words the user already has
+// in their vocabulary but has not yet introduced (see issue #340).
+type unseenCandidate struct {
+	word    models.Word
+	prog    models.SM2Progress
+	rank    *int
+	blocked bool // has an un-introduced component word as a substring
+}
+
+// nextUnseenCard picks the best never-presented zh word to introduce next for
+// userID, implementing the ordering from issue #340:
+//  1. A multi-character word whose text contains a substring that is itself an
+//     existing, not-yet-introduced zh word in the user's vocabulary is
+//     deprioritized in favor of introducing that component word first
+//     (e.g. 还 and 可以 before 还可以).
+//  2. Among words with the same priority, the one with the lower (more
+//     frequent) frequency_rank is preferred; words absent from the imported
+//     frequency list sort last.
+//  3. Ties are broken by due_date, preserving prior behavior.
+//
+// Returns (nil, nil, nil) if there are no unseen candidates.
+func (s *Store) nextUnseenCard(ctx context.Context, userID int64, tagFilter string, tagArgs []any) (*models.Word, *models.SM2Progress, error) {
+	candQuery := `
+		SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
+		       p.repetitions, p.easiness, p.interval_days, p.due_date,
+		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word,
+		       wf.rank
+		FROM words w
+		JOIN sm2_progress p ON p.word_id = w.id
+		LEFT JOIN word_frequency wf ON wf.word = w.text
+		WHERE w.language = 'zh' AND w.user_id = ?` + tagFilter + `
+		  AND p.first_seen_at IS NULL
+		ORDER BY p.due_date ASC`
+	args := append([]any{userID}, tagArgs...)
+	rows, err := s.db.QueryContext(ctx, candQuery, args...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get unseen candidates: %w", err)
+	}
+	var candidates []unseenCandidate
+	for rows.Next() {
+		var c unseenCandidate
+		var createdAt, dueDate string
+		var learning int
+		var rank sql.NullInt64
+		if err := rows.Scan(
+			&c.word.ID, &c.word.Text, &c.word.Language, &c.word.Pinyin, &createdAt,
+			&c.prog.Repetitions, &c.prog.Easiness, &c.prog.IntervalDays, &dueDate,
+			&c.prog.TotalCorrect, &c.prog.TotalAttempts, &c.prog.StreakBonus, &learning,
+			&rank,
+		); err != nil {
+			rows.Close()
+			return nil, nil, fmt.Errorf("scan unseen candidate: %w", err)
+		}
+		c.word.CreatedAt = parseDateTime(createdAt)
+		c.prog.DueDate = parseDateTime(dueDate)
+		c.prog.LearningNewWord = learning == 1
+		c.prog.WordID = c.word.ID
+		if rank.Valid {
+			r := int(rank.Int64)
+			c.rank = &r
+		}
+		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, nil, err
+	}
+	rows.Close()
+	if len(candidates) == 0 {
+		return nil, nil, nil
+	}
+
+	// Only bother loading the user's full vocab (for the substring check) when
+	// at least one candidate is a multi-character word that could be a compound.
+	needsVocab := false
+	for _, c := range candidates {
+		if len([]rune(c.word.Text)) > 1 {
+			needsVocab = true
+			break
+		}
+	}
+	if needsVocab {
+		vocabRows, err := s.db.QueryContext(ctx,
+			`SELECT w.text, p.first_seen_at IS NOT NULL FROM words w
+			 JOIN sm2_progress p ON p.word_id = w.id
+			 WHERE w.language = 'zh' AND w.user_id = ?`, userID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get vocab for compound check: %w", err)
+		}
+		var vocab []struct {
+			text       string
+			introduced bool
+		}
+		for vocabRows.Next() {
+			var v struct {
+				text       string
+				introduced bool
+			}
+			if err := vocabRows.Scan(&v.text, &v.introduced); err != nil {
+				vocabRows.Close()
+				return nil, nil, fmt.Errorf("scan vocab for compound check: %w", err)
+			}
+			vocab = append(vocab, v)
+		}
+		if err := vocabRows.Err(); err != nil {
+			vocabRows.Close()
+			return nil, nil, err
+		}
+		vocabRows.Close()
+
+		for i := range candidates {
+			text := candidates[i].word.Text
+			if len([]rune(text)) <= 1 {
+				continue
+			}
+			for _, v := range vocab {
+				if v.text == "" || v.text == text || v.introduced {
+					continue
+				}
+				if strings.Contains(text, v.text) {
+					candidates[i].blocked = true
+					break
+				}
+			}
+		}
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		if a.blocked != b.blocked {
+			return !a.blocked // unblocked (component-ready) words come first
+		}
+		if (a.rank == nil) != (b.rank == nil) {
+			return a.rank != nil // ranked words come before unranked ones
+		}
+		if a.rank != nil && b.rank != nil && *a.rank != *b.rank {
+			return *a.rank < *b.rank // lower rank = more frequent = first
+		}
+		return a.prog.DueDate.Before(b.prog.DueDate)
+	})
+
+	best := candidates[0]
+	return &best.word, &best.prog, nil
+}
+
 // tierFilter returns the SQL WHERE fragment (prefixed with AND) that restricts
 // rows to the given accuracy/attempt bucket. The alias "p" must refer to
 // sm2_progress in the enclosing query. Returns "" for an empty/unknown key.
@@ -906,36 +1055,12 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 			return nil, nil, false, fmt.Errorf("count learning due: %w", err)
 		}
 		if learningDue == 0 {
-			unseenQuery := `
-				SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
-				       p.repetitions, p.easiness, p.interval_days, p.due_date,
-				       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
-				FROM words w
-				JOIN sm2_progress p ON p.word_id = w.id
-				WHERE w.language = 'zh' AND w.user_id = ?` + tagFilter + `
-				  AND p.first_seen_at IS NULL
-				ORDER BY p.due_date ASC
-				LIMIT 1`
-			args := append([]any{userID}, tagArgs...)
-			row := s.db.QueryRowContext(ctx, unseenQuery, args...)
-			var uw models.Word
-			var up models.SM2Progress
-			var createdAt, dueDate string
-			var learning int
-			err := row.Scan(
-				&uw.ID, &uw.Text, &uw.Language, &uw.Pinyin, &createdAt,
-				&up.Repetitions, &up.Easiness, &up.IntervalDays, &dueDate,
-				&up.TotalCorrect, &up.TotalAttempts, &up.StreakBonus, &learning,
-			)
-			if err != nil && err != sql.ErrNoRows {
-				return nil, nil, false, fmt.Errorf("get next unseen card: %w", err)
+			uw, up, err := s.nextUnseenCard(ctx, userID, tagFilter, tagArgs)
+			if err != nil {
+				return nil, nil, false, err
 			}
-			if err == nil {
-				uw.CreatedAt = parseDateTime(createdAt)
-				up.DueDate = parseDateTime(dueDate)
-				up.LearningNewWord = learning == 1
-				up.WordID = uw.ID
-				return &uw, &up, false, nil
+			if uw != nil {
+				return uw, up, false, nil
 			}
 		}
 	}
