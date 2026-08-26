@@ -193,12 +193,26 @@
           <select id="cycle-step-5" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
       </div>
-      <div class="mb-5">
+      <div class="space-y-3 mb-5">
         <label class="flex items-start gap-3 cursor-pointer">
-          <input type="checkbox" id="cycle-advance-on-success-only" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <input type="radio" name="cycle-advance-mode" id="cycle-advance-every" value="every_attempt" class="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">
+            <span class="font-medium">Advance on every attempt</span>
+            <span class="block text-gray-500 text-xs mt-0.5">The default. The next step in the cycle is loaded after every attempt, correct or wrong.</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3 cursor-pointer">
+          <input type="radio" name="cycle-advance-mode" id="cycle-advance-success" value="success" class="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
           <span class="text-sm text-gray-700">
             <span class="font-medium">Advance only on success</span>
-            <span class="block text-gray-500 text-xs mt-0.5">When enabled, the next step in the cycle is loaded only after a correct answer. When disabled (default), the step advances after every attempt.</span>
+            <span class="block text-gray-500 text-xs mt-0.5">The next step in the cycle is loaded only after a correct answer, however many attempts it took to get there.</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3 cursor-pointer">
+          <input type="radio" name="cycle-advance-mode" id="cycle-advance-known" value="known" class="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-700">
+            <span class="font-medium">Advance only if known</span>
+            <span class="block text-gray-500 text-xs mt-0.5">Stricter: the next step is loaded only when you got the answer right on the first try — a wrong guess before the correct answer keeps the step the same next time.</span>
           </span>
         </label>
       </div>

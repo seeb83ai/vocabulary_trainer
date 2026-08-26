@@ -200,7 +200,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		return nil, "", "", "", err
 	}
 	var st models.UserSettings
-	var gamificationEnabledInt, cycleAdvanceOnSuccessOnlyInt int
+	var gamificationEnabledInt, cycleAdvanceOnSuccessOnlyInt, cycleAdvanceOnKnownOnlyInt int
 	var trainMnemonicsInt, trainComponentsInt int
 	var trainLangsJSON, trainTagsJSON string
 	err = s.db.QueryRowContext(ctx, `
@@ -227,6 +227,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(gamification_enabled, 0),
 		       COALESCE(gamification_frequency, 5),
 		       COALESCE(cycle_advance_on_success_only, 0),
+		       COALESCE(cycle_advance_on_known_only, 0),
 		       COALESCE(train_mode, 'random'),
 		       COALESCE(train_bucket, ''),
 		       COALESCE(train_langs, '["en"]'),
@@ -276,6 +277,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&gamificationEnabledInt,
 		&st.GamificationFrequency,
 		&cycleAdvanceOnSuccessOnlyInt,
+		&cycleAdvanceOnKnownOnlyInt,
 		&st.TrainMode,
 		&st.TrainBucket,
 		&trainLangsJSON,
@@ -304,6 +306,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
+	st.CycleAdvanceOnKnownOnly = cycleAdvanceOnKnownOnlyInt == 1
 	st.TrainMnemonics = trainMnemonicsInt != 0
 	st.TrainComponents = trainComponentsInt != 0
 	if err != nil {
@@ -383,6 +386,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			new_word_mode_2                 = ?,
 			cycle_sequence                  = ?,
 			cycle_advance_on_success_only   = ?,
+			cycle_advance_on_known_only     = ?,
 			new_word_require_zh             = ?,
 			new_word_require_trans          = ?,
 			accept_correct_mode             = ?,
@@ -426,6 +430,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.NewWordMode0, st.NewWordMode1, st.NewWordMode2,
 		st.CycleSequence,
 		st.CycleAdvanceOnSuccessOnly,
+		st.CycleAdvanceOnKnownOnly,
 		st.NewWordRequireZh, st.NewWordRequireTrans,
 		st.AcceptCorrectMode,
 		st.MaxNewWordsPerDay,

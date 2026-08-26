@@ -29,6 +29,7 @@ type UserSettings struct {
 	NewWordMode2                     string   `json:"new_word_mode_2"`      // TotalCorrect>=2
 	CycleSequence                    string   `json:"cycle_sequence"`
 	CycleAdvanceOnSuccessOnly        bool     `json:"cycle_advance_on_success_only"`
+	CycleAdvanceOnKnownOnly          bool     `json:"cycle_advance_on_known_only"`
 	NewWordRequireZh                 bool     `json:"new_word_require_zh"`
 	NewWordRequireTrans              bool     `json:"new_word_require_trans"`
 	MaxNewWordsPerDay                int      `json:"max_new_words_per_day"`
@@ -174,6 +175,10 @@ type SM2Progress struct {
 	TotalAttempts   int
 	StreakBonus     int
 	LearningNewWord bool
+	// KnownCorrectCount counts answers that were correct on the first try of
+	// their encounter (no wrong attempt preceded them before the correct one).
+	// Used as the cycle-position counter when CycleAdvanceOnKnownOnly is set.
+	KnownCorrectCount int
 }
 
 // API request/response structs

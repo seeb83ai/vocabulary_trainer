@@ -19,10 +19,10 @@ func (s *Store) GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Pr
 	var dueDate string
 	var learning int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus, learning_new_word
+		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus, learning_new_word, known_correct_count
 		 FROM sm2_progress WHERE word_id = ?`, wordID).
 		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning)
+			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning, &p.KnownCorrectCount)
 	p.DueDate = parseDateTime(dueDate)
 	p.LearningNewWord = learning == 1
 	if err == sql.ErrNoRows {
@@ -43,11 +43,11 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress
 		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
-		     total_correct = ?, total_attempts = ?, streak_bonus = ?, learning_new_word = ?
+		     total_correct = ?, total_attempts = ?, streak_bonus = ?, learning_new_word = ?, known_correct_count = ?
 		 WHERE word_id = ?`,
 		p.Repetitions, p.Easiness, p.IntervalDays,
 		p.DueDate.UTC().Format("2006-01-02 15:04:05"),
-		p.TotalCorrect, p.TotalAttempts, p.StreakBonus, learningInt, p.WordID)
+		p.TotalCorrect, p.TotalAttempts, p.StreakBonus, learningInt, p.KnownCorrectCount, p.WordID)
 	if err != nil {
 		return fmt.Errorf("update sm2: %w", err)
 	}
@@ -382,13 +382,14 @@ func (s *Store) GetWordCountByDueDate(ctx context.Context, userID int64, tags []
 
 // sm2PrevState is the internal JSON encoding for SaveSM2PrevState.
 type sm2PrevState struct {
-	Easiness        float64 `json:"ef"`
-	Repetitions     int     `json:"reps"`
-	IntervalDays    int     `json:"iv"`
-	TotalCorrect    int     `json:"tc"`
-	TotalAttempts   int     `json:"ta"`
-	StreakBonus     int     `json:"sb"`
-	LearningNewWord bool    `json:"lnw"`
+	Easiness          float64 `json:"ef"`
+	Repetitions       int     `json:"reps"`
+	IntervalDays      int     `json:"iv"`
+	TotalCorrect      int     `json:"tc"`
+	TotalAttempts     int     `json:"ta"`
+	StreakBonus       int     `json:"sb"`
+	LearningNewWord   bool    `json:"lnw"`
+	KnownCorrectCount int     `json:"kcc"`
 }
 
 // SaveSM2PrevState serialises p to JSON and stores it in the prev_state column
@@ -396,13 +397,14 @@ type sm2PrevState struct {
 // AcceptCorrect can restore the pre-answer state without trusting client data.
 func (s *Store) SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2Progress) error {
 	blob, err := json.Marshal(sm2PrevState{
-		Easiness:        p.Easiness,
-		Repetitions:     p.Repetitions,
-		IntervalDays:    p.IntervalDays,
-		TotalCorrect:    p.TotalCorrect,
-		TotalAttempts:   p.TotalAttempts,
-		StreakBonus:     p.StreakBonus,
-		LearningNewWord: p.LearningNewWord,
+		Easiness:          p.Easiness,
+		Repetitions:       p.Repetitions,
+		IntervalDays:      p.IntervalDays,
+		TotalCorrect:      p.TotalCorrect,
+		TotalAttempts:     p.TotalAttempts,
+		StreakBonus:       p.StreakBonus,
+		LearningNewWord:   p.LearningNewWord,
+		KnownCorrectCount: p.KnownCorrectCount,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal prev state: %w", err)
@@ -432,14 +434,15 @@ func (s *Store) GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2P
 		return nil, fmt.Errorf("unmarshal prev state: %w", err)
 	}
 	return &models.SM2Progress{
-		WordID:          wordID,
-		Easiness:        prev.Easiness,
-		Repetitions:     prev.Repetitions,
-		IntervalDays:    prev.IntervalDays,
-		TotalCorrect:    prev.TotalCorrect,
-		TotalAttempts:   prev.TotalAttempts,
-		StreakBonus:     prev.StreakBonus,
-		LearningNewWord: prev.LearningNewWord,
+		WordID:            wordID,
+		Easiness:          prev.Easiness,
+		Repetitions:       prev.Repetitions,
+		IntervalDays:      prev.IntervalDays,
+		TotalCorrect:      prev.TotalCorrect,
+		TotalAttempts:     prev.TotalAttempts,
+		StreakBonus:       prev.StreakBonus,
+		LearningNewWord:   prev.LearningNewWord,
+		KnownCorrectCount: prev.KnownCorrectCount,
 	}, nil
 }
 
