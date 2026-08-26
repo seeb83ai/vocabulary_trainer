@@ -170,20 +170,23 @@ function renderWordAnswerResult(result, answer) {
       // Retype-on-wrong gate: block Next until the user retypes the correct
       // Chinese word and translation (same input-validation pattern as the
       // new-word introduction screen — see updateGotItState/isZhCorrect/isTransCorrect).
-      // "Accept as correct" (issue #373) and "Add as translation" (issue #372)
-      // both stay visible alongside the gate — clicking either accepts the
-      // answer and advances immediately, intentionally bypassing the retype
-      // requirement, since accepting the answer already confirms it without
-      // needing a retype.
-      if (retypeOnWrong) {
-        wrongRetypeTarget = { zhText: result.zh_text, translations: result.translations };
+      // "Add as translation" and "Accept as correct" also advance to the next
+      // card, so they're suppressed here too — otherwise they'd bypass the gate.
+      if (wrongAnswerRetryMode !== 'off') {
+        const { requireZh, requireTrans } = wrongRetypeFieldsForCard(wrongAnswerRetryMode, currentCard.mode);
+        wrongRetypeTarget = { zhText: result.zh_text, translations: result.translations, requireZh, requireTrans };
         $('wrong-retype-zh-input').value = '';
         $('wrong-retype-trans-input').value = '';
         $('wrong-retype-zh-check').textContent = '';
         $('wrong-retype-trans-check').textContent = '';
+        requireZh ? show('wrong-retype-zh-group') : hide('wrong-retype-zh-group');
+        requireTrans ? show('wrong-retype-trans-group') : hide('wrong-retype-trans-group');
         show('wrong-retype-area');
         $('next-btn').disabled = true;
-        setTimeout(() => $('wrong-retype-zh-input').focus(), 50);
+        hide('add-translation-row');
+        hide('add-translation-lang-select');
+        hide('accept-correct-btn');
+        setTimeout(() => $(requireZh ? 'wrong-retype-zh-input' : 'wrong-retype-trans-input').focus(), 50);
       } else {
         wrongRetypeTarget = null;
         hide('wrong-retype-area');

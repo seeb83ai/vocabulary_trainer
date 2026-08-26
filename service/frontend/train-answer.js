@@ -69,10 +69,25 @@ function isTransCorrect(inputVal, translations) {
 }
 
 // wrongRetypeSatisfied decides whether the retype-on-wrong gate (shown after
-// a wrong answer when the retype_on_wrong setting is enabled) is satisfied —
-// the user must retype both the correct Chinese word and a correct translation.
-function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations) {
-  return isZhCorrect(zhVal, correctZh) && isTransCorrect(transVal, translations);
+// a wrong answer when the wrong_answer_retry_mode setting is not "off") is
+// satisfied. requireZh/requireTrans (from wrongRetypeFieldsForCard below)
+// say which of the two fields actually need to be retyped correctly.
+function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations, requireZh = true, requireTrans = true) {
+  if (requireZh && !isZhCorrect(zhVal, correctZh)) return false;
+  if (requireTrans && !isTransCorrect(transVal, translations)) return false;
+  return true;
+}
+
+// wrongRetypeFieldsForCard decides which field(s) the retype-on-wrong gate
+// requires for the card that was just answered incorrectly. "both" always
+// requires both fields (the original all-or-nothing behaviour); "matched"
+// requires only the field(s) the card's direction actually tested — the
+// Chinese word for transl_to_zh cards, the translation for every other
+// (zh_to_transl-family) card mode.
+function wrongRetypeFieldsForCard(retryMode, cardMode) {
+  if (retryMode === 'both') return { requireZh: true, requireTrans: true };
+  if (cardMode === 'transl_to_zh') return { requireZh: true, requireTrans: false };
+  return { requireZh: false, requireTrans: true };
 }
 
 // Returns true if a wrong answer should be offered as "accept as typo".

@@ -129,8 +129,10 @@ describe('isTransCorrect', () => {
 // gate shown after a wrong answer is satisfied (reuses isZhCorrect/isTransCorrect,
 // the same helpers the new-word introduction screen uses).
 
-function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations) {
-  return isZhCorrect(zhVal, correctZh) && isTransCorrect(transVal, translations);
+function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations, requireZh = true, requireTrans = true) {
+  if (requireZh && !isZhCorrect(zhVal, correctZh)) return false;
+  if (requireTrans && !isTransCorrect(transVal, translations)) return false;
+  return true;
 }
 
 describe('wrongRetypeSatisfied', () => {
@@ -156,6 +158,46 @@ describe('wrongRetypeSatisfied', () => {
   // is enough, the annotation is optional (mirrors expandVariants/isZhCorrect).
   it('returns true for a word with a parenthesised annotation when the bare word is retyped', () => {
     expect(wrongRetypeSatisfied('花', 'ausgeben', '花（动词）', { en: ['spend'], de: ['ausgeben'] })).toBe(true);
+  });
+
+  it('ignores the Chinese field when requireZh is false', () => {
+    expect(wrongRetypeSatisfied('anything', 'hello', '你好', { en: ['hello'] }, false, true)).toBe(true);
+  });
+
+  it('ignores the translation field when requireTrans is false', () => {
+    expect(wrongRetypeSatisfied('你好', 'anything', '你好', { en: ['hello'] }, true, false)).toBe(true);
+  });
+});
+
+// ── wrongRetypeFieldsForCard ─────────────────────────────────────────────────
+// Mirrors the pure helper that decides which field(s) the retype gate should
+// require, given the user's wrong_answer_retry_mode setting and the direction
+// the current card actually tested (issue #346): "both" always requires both
+// fields; "matched" (or any other/default value) requires only the field(s)
+// that direction tested — the Chinese word for transl_to_zh cards, the
+// translation for every other (zh_to_transl-family) card mode.
+
+function wrongRetypeFieldsForCard(retryMode, cardMode) {
+  if (retryMode === 'both') return { requireZh: true, requireTrans: true };
+  if (cardMode === 'transl_to_zh') return { requireZh: true, requireTrans: false };
+  return { requireZh: false, requireTrans: true };
+}
+
+describe('wrongRetypeFieldsForCard', () => {
+  it('requires both fields in "both" mode regardless of card direction', () => {
+    expect(wrongRetypeFieldsForCard('both', 'transl_to_zh')).toEqual({ requireZh: true, requireTrans: true });
+    expect(wrongRetypeFieldsForCard('both', 'zh_to_transl')).toEqual({ requireZh: true, requireTrans: true });
+  });
+
+  it('requires only the Chinese word in "matched" mode for a transl_to_zh card', () => {
+    expect(wrongRetypeFieldsForCard('matched', 'transl_to_zh')).toEqual({ requireZh: true, requireTrans: false });
+  });
+
+  it('requires only the translation in "matched" mode for a zh_to_transl-family card', () => {
+    expect(wrongRetypeFieldsForCard('matched', 'zh_to_transl')).toEqual({ requireZh: false, requireTrans: true });
+    expect(wrongRetypeFieldsForCard('matched', 'zh_pinyin_to_transl')).toEqual({ requireZh: false, requireTrans: true });
+    expect(wrongRetypeFieldsForCard('matched', 'zh_to_transl_no_sound')).toEqual({ requireZh: false, requireTrans: true });
+    expect(wrongRetypeFieldsForCard('matched', 'voice_to_transl')).toEqual({ requireZh: false, requireTrans: true });
   });
 });
 

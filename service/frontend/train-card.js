@@ -139,7 +139,7 @@ let questionAutoPlayed = false;
 let skipNewWords = false;
 let requireNewWordZh = true;
 let requireNewWordTrans = true;
-let retypeOnWrong = false;
+let wrongAnswerRetryMode = 'off';
 // Holds { zhText, translations } for the currently rendered wrong-answer
 // result while the retype-on-wrong gate is active; read by the top-level
 // wrong-retype input listeners set up in DOMContentLoaded.
@@ -778,6 +778,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // shared #next-btn instead of a dedicated "Got it" button.
   function updateWrongRetypeState() {
     if (!wrongRetypeTarget) return;
+    const { requireZh, requireTrans } = wrongRetypeTarget;
     const zhVal    = $('wrong-retype-zh-input').value;
     const transVal = $('wrong-retype-trans-input').value;
     const zhCorrect    = isZhCorrect(zhVal, wrongRetypeTarget.zhText);
@@ -786,7 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('wrong-retype-zh-check').className   = 'text-xl w-6 text-center ' + (zhCorrect ? 'text-green-500' : 'text-red-400');
     $('wrong-retype-trans-check').textContent = transVal.trim() ? (transCorrect ? '✓' : '✗') : '';
     $('wrong-retype-trans-check').className   = 'text-xl w-6 text-center ' + (transCorrect ? 'text-green-500' : 'text-red-400');
-    $('next-btn').disabled = !wrongRetypeSatisfied(zhVal, transVal, wrongRetypeTarget.zhText, wrongRetypeTarget.translations);
+    $('next-btn').disabled = !wrongRetypeSatisfied(zhVal, transVal, wrongRetypeTarget.zhText, wrongRetypeTarget.translations, requireZh, requireTrans);
   }
   $('wrong-retype-zh-input').addEventListener('input', updateWrongRetypeState);
   $('wrong-retype-trans-input').addEventListener('input', updateWrongRetypeState);

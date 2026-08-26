@@ -79,7 +79,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhPinyinToTransl  string   `json:"random_mode_range_zh_pinyin_to_transl"`
 		RandomModeRangeZhToTranslNoSound string   `json:"random_mode_range_zh_to_transl_no_sound"`
 		RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
-		RetypeOnWrong                    bool     `json:"retype_on_wrong"`
+		WrongAnswerRetryMode             string   `json:"wrong_answer_retry_mode"`
 		ComponentCoverageThreshold       *float64 `json:"component_coverage_threshold"`
 		SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 		SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
@@ -144,6 +144,14 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidGamificationHidePinyinBucket(req.GamificationHidePinyinFromBucket) {
 		writeError(w, http.StatusBadRequest, "invalid gamification_hide_pinyin_from_bucket: must be new, 0-49, 50-69, 70-84, or 85-100")
+		return
+	}
+
+	if req.WrongAnswerRetryMode == "" {
+		req.WrongAnswerRetryMode = "off"
+	}
+	if !isValidWrongAnswerRetryMode(req.WrongAnswerRetryMode) {
+		writeError(w, http.StatusBadRequest, "invalid wrong_answer_retry_mode: must be off, matched, or both")
 		return
 	}
 
@@ -294,7 +302,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhPinyinToTransl:  randCfg.ZhPinyinToTransl,
 		RandomModeRangeZhToTranslNoSound: randCfg.ZhToTranslNoSound,
 		RandomModeRangeVoiceToTransl:     randCfg.VoiceToTransl,
-		RetypeOnWrong:                    req.RetypeOnWrong,
+		WrongAnswerRetryMode:             req.WrongAnswerRetryMode,
 		ComponentCoverageThreshold:       resolvedComponentThreshold,
 		SentenceBlankEnabled:             req.SentenceBlankEnabled,
 		SentenceBlankRatio:               req.SentenceBlankRatio,
@@ -508,4 +516,14 @@ var validGamificationHidePinyinBuckets = map[string]bool{
 
 func isValidGamificationHidePinyinBucket(m string) bool {
 	return validGamificationHidePinyinBuckets[m]
+}
+
+var validWrongAnswerRetryModes = map[string]bool{
+	"off":     true,
+	"matched": true,
+	"both":    true,
+}
+
+func isValidWrongAnswerRetryMode(m string) bool {
+	return validWrongAnswerRetryModes[m]
 }

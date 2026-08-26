@@ -264,8 +264,8 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.VoiceUnavailable {
 		t.Error("want voice_unavailable=false by default")
 	}
-	if st.RetypeOnWrong {
-		t.Error("want retype_on_wrong=false by default")
+	if st.WrongAnswerRetryMode != "off" {
+		t.Errorf("want wrong_answer_retry_mode=off by default, got %q", st.WrongAnswerRetryMode)
 	}
 }
 
@@ -292,7 +292,7 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 		NoAutoVoiceOnBlur:           true,
 		CelebrateBucketChange:       true,
 		VoiceUnavailable:            true,
-		RetypeOnWrong:               true,
+		WrongAnswerRetryMode:        "matched",
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -331,8 +331,8 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	if !out.VoiceUnavailable {
 		t.Error("voice_unavailable: want true after update")
 	}
-	if !out.RetypeOnWrong {
-		t.Error("retype_on_wrong: want true after update")
+	if out.WrongAnswerRetryMode != "matched" {
+		t.Errorf("wrong_answer_retry_mode: want matched after update, got %q", out.WrongAnswerRetryMode)
 	}
 }
 

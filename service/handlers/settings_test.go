@@ -1188,27 +1188,41 @@ func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	}
 }
 
-func TestSettingsPatch_RetypeOnWrong(t *testing.T) {
+func TestSettingsPatch_WrongAnswerRetryMode(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
 
 	rec := do(t, r, "GET", "/api/settings", nil)
 	var st map[string]any
 	decodeJSON(t, rec, &st)
-	if st["retype_on_wrong"] != false {
-		t.Errorf("retype_on_wrong: want false by default, got %v", st["retype_on_wrong"])
+	if st["wrong_answer_retry_mode"] != "off" {
+		t.Errorf("wrong_answer_retry_mode: want %q by default, got %v", "off", st["wrong_answer_retry_mode"])
 	}
 
-	body := baseSettingsPatch()
-	body["retype_on_wrong"] = true
-	rec = do(t, r, "PATCH", "/api/settings", body)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	for _, mode := range []string{"matched", "both", "off"} {
+		body := baseSettingsPatch()
+		body["wrong_answer_retry_mode"] = mode
+		rec = do(t, r, "PATCH", "/api/settings", body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+		}
+		rec2 := do(t, r, "GET", "/api/settings", nil)
+		decodeJSON(t, rec2, &st)
+		if st["wrong_answer_retry_mode"] != mode {
+			t.Errorf("wrong_answer_retry_mode: want %q after update, got %v", mode, st["wrong_answer_retry_mode"])
+		}
 	}
-	rec2 := do(t, r, "GET", "/api/settings", nil)
-	decodeJSON(t, rec2, &st)
-	if st["retype_on_wrong"] != true {
-		t.Errorf("retype_on_wrong: want true after update, got %v", st["retype_on_wrong"])
+}
+
+func TestSettingsPatchWrongAnswerRetryModeInvalid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["wrong_answer_retry_mode"] = "banana"
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for invalid wrong_answer_retry_mode, got %d", rec.Code)
 	}
 }
 
