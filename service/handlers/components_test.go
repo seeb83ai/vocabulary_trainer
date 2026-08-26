@@ -585,6 +585,51 @@ func TestComponentCoverage_ReturnsWordIDSets(t *testing.T) {
 	}
 }
 
+func TestComponentCoverage_ReturnsTrainedCharacters(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionWithDecompForTest(ctx, "明", "bright", "⿰日月"); err != nil {
+		t.Fatalf("seed 明: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "日", "sun; day"); err != nil {
+		t.Fatalf("seed 日: %v", err)
+	}
+	if err := s.SeedHanziDecompositionForTest(ctx, "月", "moon; month"); err != nil {
+		t.Fatalf("seed 月: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:        "明",
+		Translations:  map[string][]string{"en": {"bright"}},
+		StartTraining: true,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create word: want 201, got %d: %s", rec.Code, rec.Body)
+	}
+	// Default threshold is 0 (train every component), and start_training
+	// initialises component_progress rows immediately, so both 日 and 月 are
+	// already in training from word creation.
+
+	rec2 := do(t, r, http.MethodGet, "/api/components/coverage", nil)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+	var resp map[string]any
+	decodeJSON(t, rec2, &resp)
+	trained, _ := resp["trained_characters"].([]any)
+	if len(trained) != 2 {
+		t.Fatalf("want 2 trained characters (日, 月), got %d: %v", len(trained), trained)
+	}
+	got := map[string]bool{}
+	for _, c := range trained {
+		got[c.(string)] = true
+	}
+	if !got["日"] || !got["月"] {
+		t.Errorf("want trained_characters = [日 月], got %v", trained)
+	}
+}
+
 func TestComponentCoverage_Empty(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodGet, "/api/components/coverage", nil)

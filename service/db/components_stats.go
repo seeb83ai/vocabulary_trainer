@@ -73,14 +73,17 @@ type ComponentCoverageComponent struct {
 // GetComponentCoverage returns every qualifying component across userID's
 // current zh vocabulary — not just components already in component_progress —
 // together with the zh word IDs that require each one, the total zh word
-// count, and a per-word trainable-component count (word ID → count). Used by
-// the Settings page to preview how many components a candidate coverage-target
-// threshold would select (see selectComponentsForCoverage /
-// getComponentCoverageThreshold). Sorted by character for stability.
-func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageComponent, map[int64]int, int, error) {
+// count, a per-word trainable-component count (word ID → count), and the set
+// of those qualifying components that already have a component_progress row
+// for the user (i.e. are already actively in training). Used by the Settings
+// page to preview how many components a candidate coverage-target threshold
+// would select (see selectComponentsForCoverage / getComponentCoverageThreshold)
+// and how many already-trained components are already in training or would be
+// out of scope at that target (#352). Sorted by character for stability.
+func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]ComponentCoverageComponent, map[int64]int, int, map[string]bool, error) {
 	wordSets, wordComponentCounts, totalWords, err := componentWordSets(ctx, s.db, userID)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, nil, err
 	}
 
 	items := make([]ComponentCoverageComponent, 0, len(wordSets))
@@ -93,5 +96,25 @@ func (s *Store) GetComponentCoverage(ctx context.Context, userID int64) ([]Compo
 		items = append(items, ComponentCoverageComponent{Character: char, WordIDs: ids})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Character < items[j].Character })
-	return items, wordComponentCounts, totalWords, nil
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT character FROM component_progress WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, nil, 0, nil, fmt.Errorf("list trained components: %w", err)
+	}
+	trained := make(map[string]bool)
+	for rows.Next() {
+		var char string
+		if err := rows.Scan(&char); err != nil {
+			rows.Close()
+			return nil, nil, 0, nil, fmt.Errorf("scan trained component: %w", err)
+		}
+		trained[char] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, nil, 0, nil, fmt.Errorf("trained components rows: %w", err)
+	}
+
+	return items, wordComponentCounts, totalWords, trained, nil
 }
