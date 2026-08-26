@@ -1027,11 +1027,11 @@ document.addEventListener('DOMContentLoaded', () => {
           apply_tags: [...obApplyTags],
         }),
       });
-      const startCount = parseInt($('ob-start-count').value) || result.imported;
-      await apiFetch('/api/quiz/acknowledge-random', {
-        method: 'POST',
-        body: JSON.stringify({ count: startCount }),
-      }).catch(() => {});
+      // Imported words are left unseen (not force-acknowledged) so they are
+      // introduced one at a time through the normal new-word pacing cap,
+      // exactly like a manually-added word or the quick-start import — see
+      // issue #344 (bulk import used to flood the first session by marking
+      // every imported word as immediately due/already-seen).
       const skippedNote = result.skipped > 0 ? `, ${t('vocab.importSkipped')} ${result.skipped} ${t('vocab.importAlreadyOwned')}` : '';
       statusEl.className = 'mt-3 text-sm text-green-600';
       statusEl.textContent = `${t('vocab.importDone')} ${result.imported} ${t('vocab.importWords2')}${skippedNote}.`;

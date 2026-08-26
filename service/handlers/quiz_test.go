@@ -380,6 +380,51 @@ func TestAcknowledgeRandomHandler_CapsAtAvailable(t *testing.T) {
 	}
 }
 
+// TestAcknowledgeRandomHandler_RespectsNewWordCap reproduces issue #344: bulk
+// onboarding import (which drives acknowledge-random with a large count, e.g.
+// the "start training with 20 words" onboarding option) must not bypass the
+// same daily new-word pacing cap that governs manually-added words. Only up
+// to the user's max_new_words_per_day should be force-acknowledged as
+// immediately due; the rest must stay unseen so GetNextCard introduces them
+// gradually, exactly like organically-created new words.
+func TestAcknowledgeRandomHandler_RespectsNewWordCap(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+
+	// Seed 20 unseen words for user 2 — mirroring a bulk HSK1 import.
+	for i := 0; i < 20; i++ {
+		zh := string(rune('一' + i))
+		if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+			ZhText:       zh,
+			Translations: map[string][]string{"en": {"word"}},
+		}); err != nil {
+			t.Fatalf("CreateWord %s: %v", zh, err)
+		}
+	}
+
+	// The default per-user daily new-word cap is 5 (see ensureUserSettings).
+	rec := do(t, r, "POST", "/api/quiz/acknowledge-random", map[string]any{"count": 20})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["acknowledged"] != 5 {
+		t.Errorf("want acknowledged capped at the daily new-word limit (5), got %d", resp["acknowledged"])
+	}
+
+	stats := do(t, r, "GET", "/api/quiz/stats", nil)
+	var s1 map[string]int
+	decodeJSON(t, stats, &s1)
+	if s1["due_today"] != 5 {
+		t.Errorf("want due_today=5 (not all 20 flooding the session), got %d", s1["due_today"])
+	}
+	if s1["new_today"] != 5 {
+		t.Errorf("want new_today=5, got %d", s1["new_today"])
+	}
+}
+
 func TestAcknowledgeRandomHandler_InvalidCount(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

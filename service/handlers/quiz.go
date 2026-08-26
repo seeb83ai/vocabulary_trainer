@@ -753,8 +753,13 @@ func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// AcknowledgeRandom marks up to n random unseen zh words as due now, bypassing
-// the new-word introduction flow. Used after onboarding import.
+// AcknowledgeRandom marks up to n random unseen zh words as due now, skipping
+// the one-at-a-time new-word introduction card. Used after onboarding import
+// so a brand-new user isn't stuck waiting through the intro flow. The count is
+// still capped at the same daily new-word pacing limit that governs
+// manually-added words (see issue #344): a bulk import must not flood the
+// first session with dozens of never-practiced words at once — the rest stay
+// unseen and get introduced gradually like any other new word.
 func (h *QuizHandler) AcknowledgeRandom(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Count int `json:"count"`
@@ -767,7 +772,43 @@ func (h *QuizHandler) AcknowledgeRandom(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "count must be positive")
 		return
 	}
-	n, err := h.Store.AcknowledgeRandomWords(r.Context(), UserIDFromContext(r.Context()), req.Count)
+
+	userID := UserIDFromContext(r.Context())
+	maxNew := h.MaxNewPerDay
+	userSettings, _ := h.Store.GetUserSettings(r.Context(), userID)
+	if userSettings != nil && h.MaxNewPerDay > 0 && userSettings.MaxNewWordsPerDay >= 1 {
+		maxNew = userSettings.MaxNewWordsPerDay
+	}
+	h.mu.Lock()
+	cap := maxNew
+	if h.capResetDate == time.Now().Format("2006-01-02") {
+		extra := maxNew
+		if extra < 1 {
+			extra = 1
+		}
+		cap = h.newCapBase + extra
+	}
+	h.mu.Unlock()
+
+	_, _, newToday, err := h.Store.GetStats(r.Context(), userID, nil, "")
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	remaining := cap - newToday
+	if remaining < 0 {
+		remaining = 0
+	}
+	count := req.Count
+	if count > remaining {
+		count = remaining
+	}
+	if count <= 0 {
+		writeJSON(w, http.StatusOK, map[string]int{"acknowledged": 0})
+		return
+	}
+
+	n, err := h.Store.AcknowledgeRandomWords(r.Context(), userID, count)
 	if err != nil {
 		internalError(w, err)
 		return
