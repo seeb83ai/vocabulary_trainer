@@ -114,25 +114,6 @@ function populateModeSelect(el, value) {
   }
 }
 
-function showMsg(id, text, isError) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.textContent = text || el.textContent;
-  el.classList.remove('hidden');
-  if (isError) {
-    el.classList.add('text-red-600', 'bg-red-50', 'border-red-200');
-    el.classList.remove('text-green-700', 'bg-green-50', 'border-green-200');
-  } else {
-    el.classList.add('text-green-700', 'bg-green-50', 'border-green-200');
-    el.classList.remove('text-red-600', 'bg-red-50', 'border-red-200');
-  }
-}
-
-function hideMsg(id) {
-  const el = document.getElementById(id);
-  if (el) el.classList.add('hidden');
-}
-
 // Load account info
 fetch('/api/me').then(r => {
   if (r.status === 401) { window.location.replace('/'); return null; }
@@ -412,7 +393,6 @@ document.getElementById('llm-provider')?.addEventListener('change', e => {
 });
 
 async function saveAPIKeys(clearAll) {
-  hideMsg('apikey-success'); hideMsg('apikey-error');
   const payload = clearAll ? {
     deepl_key: '', llm_provider: '', llm_key: '', llm_local_url: '',
   } : {
@@ -429,11 +409,11 @@ async function saveAPIKeys(clearAll) {
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      showMsg('apikey-error', d.error || 'Failed to save API keys.', true);
+      showToastError(d.error || 'Failed to save API keys.');
       return;
     }
     const st = await res.json();
-    showMsg('apikey-success', clearAll ? 'API keys cleared.' : 'API keys saved.', false);
+    showSaved(clearAll ? 'API keys cleared.' : 'API keys saved.');
 
     // Update masked status
     const deeplStatusEl = document.getElementById('deepl-key-status');
@@ -466,7 +446,7 @@ async function saveAPIKeys(clearAll) {
       if (localEl) localEl.value = '';
     }
   } catch {
-    showMsg('apikey-error', 'Network error.', true);
+    showToastError('Network error.');
   }
 }
 
@@ -477,10 +457,6 @@ document.getElementById('apikey-clear-btn')?.addEventListener('click', () => sav
 
 document.getElementById('pw-form').addEventListener('submit', async e => {
   e.preventDefault();
-  const errEl = document.getElementById('pw-error');
-  const okEl = document.getElementById('pw-success');
-  errEl.classList.add('hidden');
-  okEl.classList.add('hidden');
 
   const btn = document.getElementById('pw-btn');
   const currentPw = document.getElementById('pw-current').value;
@@ -488,13 +464,11 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
   const confirmPw = document.getElementById('pw-confirm').value;
 
   if (newPw !== confirmPw) {
-    errEl.textContent = 'New passwords do not match.';
-    errEl.classList.remove('hidden');
+    showToastError('New passwords do not match.');
     return;
   }
   if (newPw.length < 8) {
-    errEl.textContent = 'New password must be at least 8 characters.';
-    errEl.classList.remove('hidden');
+    showToastError('New password must be at least 8 characters.');
     return;
   }
 
@@ -503,8 +477,7 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
 
   const pwned = await isPasswordPwned(newPw);
   if (pwned) {
-    errEl.textContent = 'This password has appeared in a data breach. Please choose a different password.';
-    errEl.classList.remove('hidden');
+    showToastError('This password has appeared in a data breach. Please choose a different password.');
     btn.disabled = false;
     btn.textContent = 'Update Password';
     return;
@@ -521,15 +494,13 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
     const data = await res.json();
 
     if (!res.ok) {
-      errEl.textContent = data.error || 'Failed to update password.';
-      errEl.classList.remove('hidden');
+      showToastError(data.error || 'Failed to update password.');
     } else {
-      okEl.classList.remove('hidden');
+      showSaved('Password changed successfully.');
       document.getElementById('pw-form').reset();
     }
   } catch {
-    errEl.textContent = 'Network error. Please try again.';
-    errEl.classList.remove('hidden');
+    showToastError('Network error. Please try again.');
   }
 
   btn.disabled = false;
@@ -681,12 +652,11 @@ function scheduleAutoSave(group) {
 }
 
 async function autoSaveSettings(group) {
-  hideMsg(group + '-success'); hideMsg(group + '-error');
   const payload = buildFullSettingsPayload();
 
   const localErr = localValidationError(group, payload);
   if (localErr) {
-    showMsg(group + '-error', localErr, true);
+    showToastError(localErr);
     return;
   }
 
@@ -698,13 +668,12 @@ async function autoSaveSettings(group) {
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      showMsg(group + '-error', d.error || 'Failed to save.', true);
+      showToastError(d.error || 'Failed to save.');
       return;
     }
-    showMsg(group + '-success', 'Saved.', false);
-    setTimeout(() => hideMsg(group + '-success'), 2500);
+    showSaved('Saved.');
   } catch {
-    showMsg(group + '-error', 'Network error.', true);
+    showToastError('Network error.');
   }
 }
 

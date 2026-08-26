@@ -290,6 +290,8 @@ The default ladder increases difficulty (fewer hints) for higher buckets:
 
 Each user has a personal settings page (`/settings`) with these sections. Every section below saves automatically as you change a field — there's no Save button. Change Password and API Keys are the exception: both require an explicit action since they touch credentials.
 
+Save confirmations and error messages appear as a small hovering toast in the bottom-right corner, rather than an inline message on the card you edited — so the page never jumps as one is shown or dismissed. It auto-dismisses after a couple of seconds. Saving multiple cards in quick succession doesn't stack up separate messages: the toast replaces its own text and restarts its timer, and if the same message repeats while it's still visible, it appends a "(×N)" counter so each save still registers.
+
 - **Language preferences.** Choose a primary and a secondary language. The app shows the primary language first in the vocabulary list, and uses it as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode.** Customize the quiz format for each proficiency tier, for progressive mode, and for each step in the new-word introduction phase. This section includes "Blur pinyin until tapped", "Celebrate bucket changes" (a level-up interstitial when a word's accuracy tier advances), and "Sentence fill-in-the-blank" with a frequency percentage, under Quiz Display, and "Require retyping correctly before continuing" under Wrong Answer Retry.
 - **Cycle mode.** Configure the 3-step direction sequence used by the Cycle quiz mode. Choose whether the cycle advances on every attempt (the default) or only after a correct answer.
