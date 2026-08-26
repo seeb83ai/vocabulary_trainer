@@ -206,8 +206,10 @@ async function loadSettings() {
     if (requireZhEl) requireZhEl.checked = st.new_word_require_zh !== false;
     const requireTransEl = document.getElementById('require-trans');
     if (requireTransEl) requireTransEl.checked = st.new_word_require_trans !== false;
-    const retypeOnWrongEl = document.getElementById('retype-on-wrong');
-    if (retypeOnWrongEl) retypeOnWrongEl.checked = !!st.retype_on_wrong;
+    const wrongAnswerRetryModeValue = st.wrong_answer_retry_mode || 'off';
+    document.querySelectorAll('input[name="wrong-answer-retry-mode"]').forEach(el => {
+      el.checked = el.value === wrongAnswerRetryModeValue;
+    });
     const blurPinyinEl = document.getElementById('blur-pinyin');
     if (blurPinyinEl) blurPinyinEl.checked = !!st.blur_pinyin;
     const noAutoVoiceOnBlurEl = document.getElementById('no-auto-voice-on-blur');
@@ -340,7 +342,7 @@ function buildModePayload() {
     cycle_advance_on_success_only:  !!(document.getElementById('cycle-advance-on-success-only')?.checked),
     new_word_require_zh:            !!(document.getElementById('require-zh')?.checked),
     new_word_require_trans: !!(document.getElementById('require-trans')?.checked),
-    retype_on_wrong:        !!(document.getElementById('retype-on-wrong')?.checked),
+    wrong_answer_retry_mode: (document.querySelector('input[name="wrong-answer-retry-mode"]:checked') || {}).value || 'off',
     blur_pinyin:            !!(document.getElementById('blur-pinyin')?.checked),
     no_auto_voice_on_blur:  !!(document.getElementById('no-auto-voice-on-blur')?.checked),
     celebrate_bucket_change: !!(document.getElementById('celebrate-bucket-change')?.checked),

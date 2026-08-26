@@ -202,6 +202,43 @@ test.describe('Settings – Blur pinyin (issue #201)', () => {
   });
 });
 
+// Wrong answer retry: choose whether/what to require retyping after a wrong
+// answer (issue #346) — off / only the tested field(s) ("matched") / always
+// both the Chinese word and translation ("both").
+test.describe('Settings – Wrong answer retry mode (issue #346)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('defaults to "off" and offers the three options', async ({ page }) => {
+    await page.goto('/settings');
+    const off = page.locator('input[name="wrong-answer-retry-mode"][value="off"]');
+    const matched = page.locator('input[name="wrong-answer-retry-mode"][value="matched"]');
+    const both = page.locator('input[name="wrong-answer-retry-mode"][value="both"]');
+    await expect(off).toBeVisible();
+    await expect(matched).toBeVisible();
+    await expect(both).toBeVisible();
+    await expect(off).toBeChecked();
+    await captureForPR(page, 'wrong-answer-retry-settings');
+  });
+
+  test('choosing "matched" persists without clicking anything', async ({ page }) => {
+    await page.goto('/settings');
+    const matched = page.locator('input[name="wrong-answer-retry-mode"][value="matched"]');
+    await matched.check();
+    await expect(page.locator('#mode-success')).toBeVisible();
+
+    await page.reload();
+    await expect(matched).toBeChecked();
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.wrong_answer_retry_mode).toBe('matched');
+
+    // Reset to default.
+    await page.locator('input[name="wrong-answer-retry-mode"][value="off"]').check();
+    await expect(page.locator('#mode-success')).toBeVisible();
+  });
+});
+
 // Component training threshold: skip low-value hanzi components (ones that
 // appear in only a small share of the user's zh vocabulary) when deciding
 // what gets added to the component training rotation.

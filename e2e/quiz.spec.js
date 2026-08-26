@@ -1461,7 +1461,9 @@ test.describe('Quiz – celebrate bucket change setting', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Group: Retype required after a wrong answer (retype_on_wrong setting)
+// Group: Retype required after a wrong answer (wrong_answer_retry_mode setting,
+// issue #346 — "off" / "matched" [only the field(s) the card direction tested]
+// / "both" [always retype Chinese and translation])
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Quiz – retype on wrong answer', () => {
   test.use({ storageState: 'e2e/.auth/user.json' });
@@ -1476,7 +1478,17 @@ test.describe('Quiz – retype on wrong answer', () => {
     });
   }
 
-  test('retype gate is not shown when the setting is disabled (default)', async ({ page }) => {
+  async function useTranslToZhMode(page) {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    return page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('retype gate is not shown when the setting is off (default)', async ({ page }) => {
     await useZhToTranslMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
@@ -1489,10 +1501,10 @@ test.describe('Quiz – retype on wrong answer', () => {
     await expect(page.locator('#next-btn')).toBeEnabled();
   });
 
-  test('wrong answer requires retyping the Chinese word and translation before Next is enabled', async ({ page }) => {
+  test('"both" mode requires retyping the Chinese word and translation before Next is enabled', async ({ page }) => {
     const settingsRes = await page.request.get('/api/settings');
     const originalSettings = await settingsRes.json();
-    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+    await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'both' } });
 
     try {
       await useZhToTranslMode(page);
@@ -1511,9 +1523,12 @@ test.describe('Quiz – retype on wrong answer', () => {
       await page.locator('#answer-form button[type="submit"]').click();
       await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
 
-      // The retype gate must appear and block Next until resolved.
+      // The retype gate must appear, showing BOTH fields, and block Next until resolved.
       await expect(page.locator('#wrong-retype-area')).toBeVisible();
+      await expect(page.locator('#wrong-retype-zh-group')).toBeVisible();
+      await expect(page.locator('#wrong-retype-trans-group')).toBeVisible();
       await expect(page.locator('#next-btn')).toBeDisabled();
+      await captureForPR(page, 'wrong-answer-retry-both-fields');
 
       // Typing a wrong word/translation must not unlock it.
       await page.locator('#wrong-retype-zh-input').fill('xxx');
@@ -1559,7 +1574,7 @@ test.describe('Quiz – retype on wrong answer', () => {
 
     const settingsRes = await page.request.get('/api/settings');
     const originalSettings = await settingsRes.json();
-    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+    await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'both' } });
 
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en', 'de'], bucket: '', mnemonics: true, components: true, tags: [] },
@@ -1603,13 +1618,10 @@ test.describe('Quiz – retype on wrong answer', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
-  // Regression test for issue #373: the retype gate used to force-hide the
-  // "Accept as correct (typo)" button, so a user who made a single-character
-  // typo had no shortcut — only the retype fields were shown.
-  test('"Accept as correct (typo)" stays available alongside the retype gate (issue #373)', async ({ page }) => {
+  test('"matched" mode only requires the translation for a zh_to_transl card (issue #346)', async ({ page }) => {
     const settingsRes = await page.request.get('/api/settings');
     const originalSettings = await settingsRes.json();
-    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+    await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'matched' } });
 
     try {
       await useZhToTranslMode(page);
@@ -1619,54 +1631,64 @@ test.describe('Quiz – retype on wrong answer', () => {
       const card = await cardRes.json();
       const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
       expect(correctAnswer).toBeTruthy();
-      const typoAnswer = correctAnswer.slice(0, -1); // single-character deletion → levenshtein distance 1
 
       await page.goto('/train');
       await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
       await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
 
-      await page.locator('#answer-input').fill(typoAnswer);
+      await page.locator('#answer-input').fill('xxxxxxxxxxx');
       await page.locator('#answer-form button[type="submit"]').click();
       await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
 
-      // The retype gate is shown, but so is the "Accept as correct (typo)" button.
+      // Only the translation field is shown/required — this card only tested the translation.
       await expect(page.locator('#wrong-retype-area')).toBeVisible();
-      await expect(page.locator('#accept-correct-btn')).toBeVisible();
-      await captureForPR(page, 'train-retype-gate-accept-typo-visible');
+      await expect(page.locator('#wrong-retype-zh-group')).not.toBeVisible();
+      await expect(page.locator('#wrong-retype-trans-group')).toBeVisible();
+      await expect(page.locator('#next-btn')).toBeDisabled();
+      await captureForPR(page, 'wrong-answer-retry-matched-translation-only');
 
-      // Clicking it accepts the answer and advances, bypassing the retype gate.
-      await page.locator('#accept-correct-btn').click();
+      await page.locator('#wrong-retype-trans-input').fill(correctAnswer);
+      await expect(page.locator('#next-btn')).toBeEnabled({ timeout: 8_000 });
+
+      await page.locator('#next-btn').click();
       await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
     } finally {
       await page.request.patch('/api/settings', { data: originalSettings });
     }
   });
 
-  // Regression test for issue #372: the retype gate used to force-hide the
-  // "Add as correct answer" row, so a user who mistyped a valid alternative
-  // translation had no way to add it — only the retype fields were shown.
-  test('"Add as correct answer" stays available alongside the retype gate (issue #372)', async ({ page }) => {
+  test('"matched" mode only requires the Chinese word for a transl_to_zh card (issue #346)', async ({ page }) => {
     const settingsRes = await page.request.get('/api/settings');
     const originalSettings = await settingsRes.json();
-    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+    await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'matched' } });
 
     try {
-      await useZhToTranslMode(page);
+      await useTranslToZhMode(page);
+
+      const cardRes = await page.request.get('/api/quiz/next?mode=transl_to_zh&langs=en');
+      expect(cardRes.ok()).toBe(true);
+      const card = await cardRes.json();
+      expect(card.mode).toBe('transl_to_zh');
+      const correctZh = card.zh_text;
+      expect(correctZh).toBeTruthy();
 
       await page.goto('/train');
       await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('#answer-input').fill('a brand new alternative translation');
+      await page.locator('#answer-input').fill('xxxxxxxxxxx');
       await page.locator('#answer-form button[type="submit"]').click();
       await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
 
-      // The retype gate is shown, but so is the "Add as correct" button.
+      // Only the Chinese-word field is shown/required — this card only tested the Chinese word.
       await expect(page.locator('#wrong-retype-area')).toBeVisible();
-      await expect(page.locator('#add-translation-btn')).toBeVisible();
-      await captureForPR(page, 'train-retype-gate-add-as-correct-visible');
+      await expect(page.locator('#wrong-retype-zh-group')).toBeVisible();
+      await expect(page.locator('#wrong-retype-trans-group')).not.toBeVisible();
+      await expect(page.locator('#next-btn')).toBeDisabled();
 
-      // Clicking it accepts the answer and advances, bypassing the retype gate.
-      await page.locator('#add-translation-btn').click();
+      await page.locator('#wrong-retype-zh-input').fill(correctZh);
+      await expect(page.locator('#next-btn')).toBeEnabled({ timeout: 8_000 });
+
+      await page.locator('#next-btn').click();
       await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
     } finally {
       await page.request.patch('/api/settings', { data: originalSettings });

@@ -80,7 +80,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhPinyinToTransl  string   `json:"random_mode_range_zh_pinyin_to_transl"`
 		RandomModeRangeZhToTranslNoSound string   `json:"random_mode_range_zh_to_transl_no_sound"`
 		RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
-		RetypeOnWrong                    bool     `json:"retype_on_wrong"`
+		WrongAnswerRetryMode             string   `json:"wrong_answer_retry_mode"`
 		ComponentCoverageThreshold       *float64 `json:"component_coverage_threshold"`
 		SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 		SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
@@ -153,6 +153,14 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidMatchGamePinyinReveal(req.MatchGamePinyinReveal) {
 		writeError(w, http.StatusBadRequest, "invalid match_game_pinyin_reveal: must be off, always, or after_correct")
+		return
+	}
+
+	if req.WrongAnswerRetryMode == "" {
+		req.WrongAnswerRetryMode = "off"
+	}
+	if !isValidWrongAnswerRetryMode(req.WrongAnswerRetryMode) {
+		writeError(w, http.StatusBadRequest, "invalid wrong_answer_retry_mode: must be off, matched, or both")
 		return
 	}
 
@@ -304,7 +312,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhPinyinToTransl:  randCfg.ZhPinyinToTransl,
 		RandomModeRangeZhToTranslNoSound: randCfg.ZhToTranslNoSound,
 		RandomModeRangeVoiceToTransl:     randCfg.VoiceToTransl,
-		RetypeOnWrong:                    req.RetypeOnWrong,
+		WrongAnswerRetryMode:             req.WrongAnswerRetryMode,
 		ComponentCoverageThreshold:       resolvedComponentThreshold,
 		SentenceBlankEnabled:             req.SentenceBlankEnabled,
 		SentenceBlankRatio:               req.SentenceBlankRatio,
@@ -528,4 +536,14 @@ var validMatchGamePinyinReveal = map[string]bool{
 
 func isValidMatchGamePinyinReveal(m string) bool {
 	return validMatchGamePinyinReveal[m]
+}
+
+var validWrongAnswerRetryModes = map[string]bool{
+	"off":     true,
+	"matched": true,
+	"both":    true,
+}
+
+func isValidWrongAnswerRetryMode(m string) bool {
+	return validWrongAnswerRetryModes[m]
 }
