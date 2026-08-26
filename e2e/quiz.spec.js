@@ -1723,3 +1723,66 @@ test.describe('Quiz – scroll to top on new card', () => {
     await captureForPR(page, 'train-new-card-scrolled-to-top');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Equivalent ellipsis forms accepted in training answers (issue #343)
+//
+// A zh word stored with ideographic ellipses ("……") must be accepted when the
+// user answers a transl_to_zh card by typing an equivalent ellipsis form
+// ("..." ASCII dots or "。。。" fullwidth periods) instead. A fresh, isolated
+// user with a single seeded word keeps the served card deterministic.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – equivalent ellipsis forms accepted (issue #343)', () => {
+  async function registerAndSeedEllipsisWord(page) {
+    const email = `e2e-ellipsis-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'EllipsisTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '虽然……但是……',
+        pinyin: 'suīrán... dànshì...',
+        translations: { en: ['although... but...'] },
+        tags: [],
+        start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  test('typing "..." for a word stored with "……" is accepted as correct', async ({ page }) => {
+    await registerAndSeedEllipsisWord(page);
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('虽然...但是...');
+    await page.locator('#answer-form button[type="submit"]').click();
+
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+  });
+
+  test('typing "。。。" (fullwidth periods) for a word stored with "……" is accepted as correct', async ({ page }) => {
+    await registerAndSeedEllipsisWord(page);
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('虽然。。。但是。。。');
+    await page.locator('#answer-form button[type="submit"]').click();
+
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+  });
+});
