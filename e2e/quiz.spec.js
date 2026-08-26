@@ -1531,4 +1531,67 @@ test.describe('Quiz – retype on wrong answer', () => {
       await page.request.patch('/api/settings', { data: originalSettings });
     }
   });
+
+  // Regression test for issue #348: words whose canonical zh text carries a
+  // parenthetical part-of-speech annotation (e.g. "花（动词）") show both
+  // retype fields as correct (✓) once the user retypes the bare word/
+  // translation, but the Next button stayed disabled — the checkmarks and
+  // the button-enable check used two different normalisation functions, and
+  // only the checkmark logic stripped the parenthesised annotation.
+  // A fresh isolated user guarantees this is the only due word in the queue.
+  test('Next button enables after correctly retyping a word with a parenthetical annotation (issue #348)', async ({ page }) => {
+    const email = `e2e-retype-annot-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'RetypeAnnotTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '花（动词）',
+        pinyin: 'huā',
+        translations: { en: ['spend'], de: ['ausgeben'] },
+        tags: [],
+        start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en', 'de'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en', 'de']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('花（动词）');
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    await expect(page.locator('#wrong-retype-area')).toBeVisible();
+    await expect(page.locator('#next-btn')).toBeDisabled();
+
+    // Retype the bare word (no parenthetical annotation) and a correct
+    // translation — both checkmarks must turn green ...
+    await page.locator('#wrong-retype-zh-input').fill('花');
+    await page.locator('#wrong-retype-trans-input').fill('ausgeben');
+    await expect(page.locator('#wrong-retype-zh-check')).toHaveText('✓');
+    await expect(page.locator('#wrong-retype-trans-check')).toHaveText('✓');
+
+    // ... and Next must become enabled (this is the part that regressed).
+    await expect(page.locator('#next-btn')).toBeEnabled({ timeout: 8_000 });
+    await captureForPR(page, 'train-retype-annotation-next-enabled');
+
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
 });

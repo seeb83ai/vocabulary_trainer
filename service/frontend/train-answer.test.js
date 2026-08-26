@@ -149,6 +149,14 @@ describe('wrongRetypeSatisfied', () => {
   it('returns false when both are wrong', () => {
     expect(wrongRetypeSatisfied('错', 'nope', '你好', { en: ['hello'] })).toBe(false);
   });
+
+  // Regression test for issue #348: a correct zh word with a parenthesised
+  // part-of-speech annotation must satisfy the gate the same way its
+  // checkmark indicates correctness — retyping just the bare word/translation
+  // is enough, the annotation is optional (mirrors expandVariants/isZhCorrect).
+  it('returns true for a word with a parenthesised annotation when the bare word is retyped', () => {
+    expect(wrongRetypeSatisfied('花', 'ausgeben', '花（动词）', { en: ['spend'], de: ['ausgeben'] })).toBe(true);
+  });
 });
 
 // ── wordModeLabel ────────────────────────────────────────────────────────────

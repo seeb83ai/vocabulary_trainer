@@ -47,22 +47,25 @@ function expandVariants(a) {
   return [...seen];
 }
 
-// normalizeNewWordInput/isZhCorrect/isTransCorrect back the "must type it
-// correctly to continue" gates — shared by the new-word introduction screen
-// and the retype-on-wrong-answer gate (see wrongRetypeSatisfied below).
-function normalizeNewWordInput(s) {
-  return s.trim().toLowerCase()
-    .replace(/[？！，。：；]/g, m => ({ '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';' }[m]))
-    .replace(/[\p{P}\p{S}\s]+$/u, '');
-}
+// isZhCorrect/isTransCorrect back the "must type it correctly to continue"
+// gates — shared by the new-word introduction screen and the
+// retype-on-wrong-answer gate (see wrongRetypeSatisfied below). They reuse
+// expandVariants/normalizeAnswer (same helpers backing shouldShowAcceptTypo
+// above and the backend's CheckAnswer) so that optional parenthesised
+// annotations on the zh word (e.g. "过（动词）") are stripped the same way
+// here as in the checkmark UI that renders alongside these gates — issue
+// #348: the Next button used to stay disabled even after both fields showed
+// a correct ✓ checkmark because this file's gate used a different,
+// stricter normalisation that did not strip such annotations.
 function isZhCorrect(inputVal, prompt) {
-  return normalizeNewWordInput(inputVal) === normalizeNewWordInput(prompt);
+  if (!inputVal || !inputVal.trim()) return false;
+  return expandVariants(prompt).includes(normalizeAnswer(inputVal));
 }
 function isTransCorrect(inputVal, translations) {
-  const normalized = normalizeNewWordInput(inputVal);
-  if (!normalized) return false;
+  if (!inputVal || !inputVal.trim()) return false;
+  const norm = normalizeAnswer(inputVal);
   const allTrans = Object.values(translations || {}).flat();
-  return allTrans.some(t => normalizeNewWordInput(t) === normalized);
+  return allTrans.some(t => expandVariants(t).includes(norm));
 }
 
 // wrongRetypeSatisfied decides whether the retype-on-wrong gate (shown after
