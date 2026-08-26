@@ -280,6 +280,59 @@ func TestGetNewestWordsForGame_FewerWordsThanRequested(t *testing.T) {
 	}
 }
 
+// TestGetNewestWordsForGame_RepeatAvoidance covers issue #350: a word shown
+// in this mode must not be shown again until the user makes an error
+// answering it in normal training (mirrors GetLastMistakesForGame's
+// last_wrong_at-based re-eligibility, not GetHardestWordsForGame's
+// any-attempt-based rule).
+func TestGetNewestWordsForGame_RepeatAvoidance(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "买牛奶", "", []string{"buy milk"})
+	b := seedWord(t, s, "喝水", "", []string{"drink water"})
+
+	words, err := s.GetNewestWordsForGame(ctx, int64(2), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 2 {
+		t.Fatalf("expected 2 candidates before shown, got %d: %+v", len(words), words)
+	}
+
+	setWordGameShownOffset(t, s, 2, a, "newest", "-1 hour")
+	setWordGameShownOffset(t, s, 2, b, "newest", "-1 hour")
+
+	words2, err := s.GetNewestWordsForGame(ctx, int64(2), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words2) != 0 {
+		t.Fatalf("expected 0 candidates immediately after shown, got %d: %+v", len(words2), words2)
+	}
+
+	// A correct re-attempt (last_attempt_at only) must NOT re-include the word.
+	setLastAttemptOffset(t, s, b, "-30 minutes")
+
+	words3, err := s.GetNewestWordsForGame(ctx, int64(2), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words3) != 0 {
+		t.Errorf("a correct re-attempt must not re-include the word, got %+v", words3)
+	}
+
+	// A wrong answer re-includes only that word.
+	setLastWrongOffset(t, s, a, "-10 minutes")
+
+	words4, err := s.GetNewestWordsForGame(ctx, int64(2), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words4) != 1 || words4[0].ZhWordID != a {
+		t.Errorf("expected only word %d re-eligible after a wrong answer, got %+v", a, words4)
+	}
+}
+
 func setLastAttemptOffset(t *testing.T, s *Store, wordID int64, offset string) {
 	t.Helper()
 	if _, err := s.db.ExecContext(context.Background(),

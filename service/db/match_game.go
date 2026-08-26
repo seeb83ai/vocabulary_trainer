@@ -81,16 +81,22 @@ const newestWordsGamePoolSize = 30
 
 // GetNewestWordsForGame returns up to `count` distinct zh words drawn from the
 // newestWordsGamePoolSize most recently created words for the user, via
-// weighted random sampling without replacement. Needs no "shown" bookkeeping
-// (unlike the other modes): a word simply ages out of the pool as newer words
-// are added, and even within the pool its own pick weight only ever falls, so
-// nothing needs to be recorded after a round is shown.
+// weighted random sampling without replacement, excluding any word shown in
+// this game mode more recently than its most recent wrong answer. As with
+// GetLastMistakesForGame, the qualifying re-eligibility event is specifically
+// a new wrong answer in normal training — a correct re-attempt alone does not
+// resurface the word (issue #350).
 func (s *Store) GetNewestWordsForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id FROM words
-		WHERE language = 'zh' AND user_id = ?
-		ORDER BY created_at DESC, id DESC
-		LIMIT ?`, userID, newestWordsGamePoolSize)
+		SELECT w.id FROM words w
+		LEFT JOIN sm2_progress p ON p.word_id = w.id
+		LEFT JOIN word_game_shown g
+		  ON g.user_id = ? AND g.word_id = w.id AND g.game_mode = 'newest'
+		WHERE w.language = 'zh' AND w.user_id = ?
+		  AND (g.last_shown_in_game IS NULL
+		       OR (p.last_wrong_at IS NOT NULL AND p.last_wrong_at > g.last_shown_in_game))
+		ORDER BY w.created_at DESC, w.id DESC
+		LIMIT ?`, userID, userID, newestWordsGamePoolSize)
 	if err != nil {
 		return nil, fmt.Errorf("get newest words pool: %w", err)
 	}
