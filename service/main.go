@@ -138,6 +138,10 @@ func main() {
 		translateH.TargetLang = strings.ToUpper(lang)
 		log.Printf("DeepL translation enabled: target=%s", strings.ToUpper(lang))
 	}
+	if base := os.Getenv("DEEPL_API_BASE_URL"); base != "" {
+		translateH.BaseURL = base
+		log.Printf("DeepL API base URL overridden: %s", base)
+	}
 
 	maxNewWords := 5
 	if v := os.Getenv("MAX_NEW_WORDS"); v != "" {

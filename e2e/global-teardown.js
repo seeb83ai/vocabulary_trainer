@@ -19,6 +19,14 @@ export default async function globalTeardown() {
     } catch { /* ignore */ }
   }
 
+  // Close the mock DeepL API started in globalSetup, if present.
+  if (globalThis.__mockDeepLServer) {
+    try {
+      globalThis.__mockDeepLServer.close();
+      console.log('[E2E] Mock DeepL API closed.');
+    } catch { /* ignore */ }
+  }
+
   if (!existsSync(STATE_FILE)) {
     console.warn('[E2E] No server state file found — skipping teardown.');
     return;

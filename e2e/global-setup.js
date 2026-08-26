@@ -24,6 +24,50 @@ export const BASE_URL = `http://localhost:${E2E_PORT}`;
 // required — Playwright page.route only intercepts browser requests.
 export const MOCK_GITHUB_PORT = 18081;
 export const MOCK_GITHUB_URL = `http://localhost:${MOCK_GITHUB_PORT}`;
+// Mock DeepL translate endpoint for the /vocab Auto-translate feature — no
+// real DeepL key is available in CI, so the Go server is pointed at this
+// stub via DEEPL_API_BASE_URL instead of api.deepl.com.
+export const MOCK_DEEPL_PORT = 18082;
+export const MOCK_DEEPL_URL = `http://localhost:${MOCK_DEEPL_PORT}`;
+
+/**
+ * Start a minimal mock of the DeepL /v2/translate endpoint. Returns
+ * deterministic, distinguishable EN/DE text for zh_text "工具" (used by the
+ * auto-translate E2E regression test for issue #342 — EN/DE swapped fields)
+ * and a generic per-language fallback for anything else.
+ */
+function startMockDeepL() {
+  const server = createServer((req, res) => {
+    let body = '';
+    req.on('data', c => (body += c));
+    req.on('end', () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        parsed = {};
+      }
+      const text = (parsed.text && parsed.text[0]) || '';
+      const targetLang = (parsed.target_lang || '').toUpperCase();
+      let translated;
+      if (text === '工具' && targetLang === 'EN') {
+        translated = 'Tools / Instruments / Equipment';
+      } else if (text === '工具' && targetLang === 'DE') {
+        translated = 'Werkzeuge';
+      } else if (targetLang === 'ZH') {
+        translated = '你好';
+      } else {
+        translated = `${text} (${targetLang})`;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ translations: [{ text: translated }] }));
+    });
+  });
+  server.listen(MOCK_DEEPL_PORT);
+  server.unref();
+  globalThis.__mockDeepLServer = server;
+  console.log(`[E2E] Mock DeepL API listening on ${MOCK_DEEPL_URL}`);
+}
 
 /**
  * Start a minimal mock of the GitHub REST endpoints the issue handler uses:
@@ -97,8 +141,9 @@ async function waitForServer(url, timeoutMs = 20_000) {
 }
 
 export default async function globalSetup() {
-  // ── 0. Start the mock GitHub API ────────────────────────────────────────────
+  // ── 0. Start the mock GitHub API and mock DeepL API ─────────────────────────
   startMockGitHub();
+  startMockDeepL();
 
   // ── 1. Build Go binary ──────────────────────────────────────────────────────
   console.log('[E2E] Building Go server binary…');
@@ -148,6 +193,9 @@ export default async function globalSetup() {
       GITHUB_TOKEN: 'e2e-test-token',
       GITHUB_ISSUE_REPO: 'owner/repo',
       GITHUB_API_BASE_URL: MOCK_GITHUB_URL,
+      // Enable Auto-translate against the mock DeepL API (no real key needed).
+      DEEPL_API_KEY: 'e2e-test-deepl-key',
+      DEEPL_API_BASE_URL: MOCK_DEEPL_URL,
     },
     stdio: 'pipe',
     detached: false,

@@ -372,19 +372,24 @@ async function handleTranslate() {
   btn.disabled = true;
 
   try {
-    // Translate zh → EN if en field is empty
+    // Translate zh → primary language (en-inputs-container) if that field is empty.
+    // Uses the user's actual primary_lang setting, not a hardcoded 'EN' — the
+    // primary/secondary language pair is user-configurable and can be swapped
+    // (e.g. German as primary), so the target language must follow the field
+    // it's about to fill, not the field's fixed DOM id (issue #342).
     const enPromise = (zh && !en)
       ? apiFetch('/api/translate', {
           method: 'POST',
-          body: JSON.stringify({ zh_text: zh, target_lang: 'EN' }),
+          body: JSON.stringify({ zh_text: zh, target_lang: primaryLang }),
         }).catch(() => null)
       : Promise.resolve(null);
 
-    // Translate zh → DE if de field is empty
-    const dePromise = (zh && !de)
+    // Translate zh → secondary language (de-inputs-container) if that field
+    // is empty and a secondary language is configured.
+    const dePromise = (zh && !de && secondaryLang)
       ? apiFetch('/api/translate', {
           method: 'POST',
-          body: JSON.stringify({ zh_text: zh, target_lang: 'DE' }),
+          body: JSON.stringify({ zh_text: zh, target_lang: secondaryLang }),
         }).catch(() => null)
       : Promise.resolve(null);
 

@@ -313,11 +313,12 @@ Set `DEEPL_API_KEY` in your `.env` file to enable the auto-translate button on t
 ```bash
 DEEPL_API_KEY=your-deepl-api-key
 DEEPL_TARGET_LANGUAGE=de   # any DeepL language code; default: en
+DEEPL_API_BASE_URL=        # override the DeepL API base (tests); default https://api(-free).deepl.com/v2/translate
 ```
 
 When you enable this feature, an **Auto-translate** button appears in the Add/Edit Word form. The button detects direction automatically, based on which fields are filled:
 
-- **Chinese filled, translation empty** → the app translates Chinese to the target language and generates pinyin. The backend uses DeepL's `custom_instructions` to request up to 3 distinct meanings, and each meaning fills a separate translation field automatically.
+- **Chinese filled, translation empty** → the app translates Chinese into your primary and secondary languages (per your language settings — not hardcoded to English/German) and generates pinyin. The backend uses DeepL's `custom_instructions` to request up to 3 distinct meanings, and each meaning fills a separate translation field automatically.
 - **Translation filled, Chinese empty** → the app translates to Chinese and generates pinyin.
 - **Both filled** → the app generates pinyin only.
 

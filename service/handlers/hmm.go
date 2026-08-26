@@ -232,7 +232,7 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				if len(missingEN) > 0 {
-					if translated, err := deeplTranslate(missingEN, "EN", "ZH", h.DeepLAPIKey, nil); err == nil {
+					if translated, err := deeplTranslate("", missingEN, "EN", "ZH", h.DeepLAPIKey, nil); err == nil {
 						for i, ch := range missingEN {
 							if translated[i] != "" {
 								radicalDefs[ch] = translated[i]
@@ -242,7 +242,7 @@ func (h *HMMHandler) GetSceneContext(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				if len(missingDE) > 0 {
-					if translated, err := deeplTranslate(missingDE, "DE", "ZH", h.DeepLAPIKey, nil); err == nil {
+					if translated, err := deeplTranslate("", missingDE, "DE", "ZH", h.DeepLAPIKey, nil); err == nil {
 						for i, ch := range missingDE {
 							if translated[i] != "" {
 								radicalDeDefs[ch] = translated[i]

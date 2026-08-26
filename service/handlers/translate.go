@@ -18,6 +18,10 @@ type TranslateHandler struct {
 	TargetLang      string
 	Store           translateStore
 	SettingsHandler *SettingsHandler // may be nil when auth is disabled
+	// BaseURL overrides the DeepL API endpoint. Empty uses the real DeepL
+	// endpoints (selected by API key suffix); tests point it at a local
+	// httptest server instead of calling out to DeepL.
+	BaseURL string
 }
 
 type translateRequest struct {
@@ -89,7 +93,7 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		instructions := []string{
 			"If this word has multiple distinct meanings in the target language, list up to 3 translations separated by ' / '. Only include genuinely different meanings, not synonyms.",
 		}
-		translated, err := deeplTranslate([]string{req.ZhText}, targetLang, "ZH", apiKey, instructions)
+		translated, err := deeplTranslate(h.BaseURL, []string{req.ZhText}, targetLang, "ZH", apiKey, instructions)
 		if err != nil {
 			log.Printf("deepl translate: %v", err) // full upstream detail stays server-side
 			writeError(w, http.StatusBadGateway, "translation service unavailable")
@@ -101,7 +105,7 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		resp.Pinyin = toPinyin(req.ZhText)
 	} else if req.SourceText != "" && req.ZhText == "" {
 		// Source language text provided → translate to Chinese
-		translated, err := deeplTranslate([]string{req.SourceText}, "ZH", "", apiKey, nil)
+		translated, err := deeplTranslate(h.BaseURL, []string{req.SourceText}, "ZH", "", apiKey, nil)
 		if err != nil {
 			log.Printf("deepl translate: %v", err) // full upstream detail stays server-side
 			writeError(w, http.StatusBadGateway, "translation service unavailable")
@@ -249,10 +253,13 @@ func splitTranslations(text string) []string {
 	return out
 }
 
-func deeplTranslate(texts []string, targetLang, sourceLang, apiKey string, customInstructions []string) ([]string, error) {
+func deeplTranslate(baseURL string, texts []string, targetLang, sourceLang, apiKey string, customInstructions []string) ([]string, error) {
 	base := "https://api.deepl.com/v2/translate"
 	if strings.HasSuffix(apiKey, ":fx") {
 		base = "https://api-free.deepl.com/v2/translate"
+	}
+	if baseURL != "" {
+		base = baseURL
 	}
 
 	type reqBody struct {
