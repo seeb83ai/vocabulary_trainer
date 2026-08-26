@@ -137,7 +137,7 @@ func Pinyin(w http.ResponseWriter, r *http.Request) {
 // *_configured: whether the API key/service is set up server-side.
 // *_available:  configured AND the user's role allows access (plus or admin).
 // user_*_key_set: the user has a personal key stored in settings.
-func (h *TranslateHandler) Config(deeplConfigured, llmConfigured bool) http.HandlerFunc {
+func (h *TranslateHandler) Config(deeplConfigured, llmConfigured, imagesConfigured bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		userID := UserIDFromContext(r.Context())
 		role, _ := h.Store.GetUserRole(r.Context(), userID)
@@ -158,6 +158,7 @@ func (h *TranslateHandler) Config(deeplConfigured, llmConfigured bool) http.Hand
 			"llm_available":      (llmConfigured || userLLMSet) && canUse,
 			"user_deepl_key_set": userDeeplSet,
 			"user_llm_key_set":   userLLMSet,
+			"images_configured":  imagesConfigured,
 		})
 	}
 }

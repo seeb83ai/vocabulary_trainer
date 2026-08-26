@@ -249,7 +249,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(retype_on_wrong, 0),
 		       COALESCE(component_coverage_threshold, 0),
 		       COALESCE(sentence_blank_enabled, 0),
-		       COALESCE(sentence_blank_ratio, 20)
+		       COALESCE(sentence_blank_ratio, 20),
+		       COALESCE(show_images_with_chinese_text, 0)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -297,6 +298,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.ComponentCoverageThreshold,
 		&st.SentenceBlankEnabled,
 		&st.SentenceBlankRatio,
+		&st.ShowImagesWithChineseText,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
@@ -412,7 +414,8 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			retype_on_wrong                 = ?,
 			component_coverage_threshold    = ?,
 			sentence_blank_enabled          = ?,
-			sentence_blank_ratio            = ?
+			sentence_blank_ratio            = ?,
+			show_images_with_chinese_text   = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -453,6 +456,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.ComponentCoverageThreshold,
 		st.SentenceBlankEnabled,
 		st.SentenceBlankRatio,
+		st.ShowImagesWithChineseText,
 		userID,
 	)
 	if err == nil {

@@ -109,6 +109,14 @@ var (
 	testGitHubAPIBaseURL = ""
 )
 
+// Unsplash image handler config used by newRouter. Tests point
+// testUnsplashBaseURL at an httptest mock server and set testUnsplashAccessKey
+// before building the router; empty testUnsplashAccessKey disables the feature.
+var (
+	testUnsplashAccessKey = ""
+	testUnsplashBaseURL   = ""
+)
+
 func newRouter(s *db.Store) http.Handler {
 	return newRouterWithUserID(s, 2)
 }
@@ -127,6 +135,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	llmH := &handlers.LLMHandler{Store: s}
 	hmmQuizH := &handlers.HMMQuizHandler{Store: s}
 	hanziH := &handlers.HanziHandler{Store: s}
+	imagesH := &handlers.ImagesHandler{Store: s, AccessKey: testUnsplashAccessKey, BaseURL: testUnsplashBaseURL}
 
 	r := chi.NewRouter()
 	r.Use(handlers.WithUserID(userID))
@@ -167,6 +176,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 			r.Post("/translations", wordsH.AddTranslation)
 			r.Post("/review", wordsH.MarkReview)
 			r.Post("/reset", wordsH.ResetProgress)
+			r.Get("/image", imagesH.GetImage)
 		})
 	})
 	uploadCSVH := &handlers.UploadCSVHandler{Store: s}
@@ -176,7 +186,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/import", importH.Import)
 	r.Get("/api/tags/details", tagsH.Details)
 	r.Put("/api/tags/{name}", tagsH.Update)
-	r.Get("/api/config", translateH.Config(true, true))
+	r.Get("/api/config", translateH.Config(true, true, testUnsplashAccessKey != ""))
 	r.Post("/api/translate", translateH.Translate)
 	ghH := &handlers.GitHubHandler{Store: s, Token: testGitHubToken, Repo: testGitHubRepo, APIBaseURL: testGitHubAPIBaseURL, Labels: []string{"from-app"}}
 	r.Post("/api/github/issues", ghH.Create)

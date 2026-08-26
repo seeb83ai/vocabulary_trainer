@@ -96,6 +96,10 @@ type audioStore interface {
 	db.WordStore
 }
 
+type imagesStore interface {
+	db.WordStore
+}
+
 type adminStore interface {
 	db.AdminStore
 }
