@@ -315,3 +315,46 @@ func defaultNWCfg() models.NewWordModeConfig {
 		Step2: models.ModeZhToTransl,
 	}
 }
+
+// TestSegmentSentence_InternalPunctuationIsIgnored reproduces the production
+// symptom from issue #351: real-world multi-clause sentences almost always
+// contain internal punctuation (commas, colons, quotation marks — not just
+// the trailing full stop stripSentencePunctuation already handles). Before
+// the fix, segmentSentence had no notion of punctuation at all, so a single
+// internal comma between two otherwise fully-known clauses made the whole
+// sentence unsegmentable forever, regardless of how complete the known-word
+// set was — silently starving the feature of any eligible sentence on a
+// realistic vocabulary. Punctuation characters must be skipped (not counted
+// as blank-worthy "words") rather than breaking coverage.
+func TestSegmentSentence_InternalPunctuationIsIgnored(t *testing.T) {
+	known := map[string]int64{"我": 1, "买": 2, "牛奶": 3, "你": 4, "喜欢": 5, "茶": 6}
+	// "I buy milk, you like tea" — every real word is known; only the comma
+	// between the two clauses is not itself a "known word".
+	segs, ok := segmentSentence("我买牛奶，你喜欢茶", known)
+	if !ok {
+		t.Fatalf("expected fullyCovered=true once internal punctuation is skipped, got segments %+v", segs)
+	}
+	want := []wordSegment{
+		{Text: "我", WordID: 1}, {Text: "买", WordID: 2}, {Text: "牛奶", WordID: 3},
+		{Text: "你", WordID: 4}, {Text: "喜欢", WordID: 5}, {Text: "茶", WordID: 6},
+	}
+	if len(segs) != len(want) {
+		t.Fatalf("want %d segments, got %d: %+v", len(want), len(segs), segs)
+	}
+	for i, w := range want {
+		if segs[i] != w {
+			t.Errorf("segment %d: want %+v, got %+v", i, w, segs[i])
+		}
+	}
+}
+
+// TestSegmentSentence_UnknownNonPunctuationStillBreaksCoverage guards against
+// an overly-broad fix: a genuinely unknown word/character (not punctuation)
+// must still make the sentence ineligible.
+func TestSegmentSentence_UnknownNonPunctuationStillBreaksCoverage(t *testing.T) {
+	known := map[string]int64{"我": 1, "买": 2} // 牛奶 deliberately missing
+	segs, ok := segmentSentence("我买牛奶，你好", known)
+	if ok {
+		t.Fatalf("expected fullyCovered=false for a genuinely unknown word, got segments %+v", segs)
+	}
+}

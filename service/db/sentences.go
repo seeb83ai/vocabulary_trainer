@@ -42,10 +42,25 @@ func stripSentencePunctuation(s string) string {
 	return strings.TrimRight(strings.TrimSpace(s), sentencePunctuationCutset)
 }
 
+// sentenceInternalPunctuation is punctuation segmentSentence skips over
+// (mid-sentence, not just the trailing terminator stripSentencePunctuation
+// handles) rather than treating as an unmatched, coverage-breaking
+// character. Real sentences are usually multiple clauses joined by a comma,
+// enumeration mark, colon, semicolon, or quotation marks — without this, a
+// sentence containing any of them could never reach 100% word coverage no
+// matter how complete the known-word set was (issue #351).
+const sentenceInternalPunctuation = "，,。.！!？?；;：:、…—-—–　 \t\n\"'“”‘’（）()《》〈〉"
+
+func isSentenceInternalPunctuation(r rune) bool {
+	return strings.ContainsRune(sentenceInternalPunctuation, r)
+}
+
 // segmentSentence greedily tokenizes text against known (a map of zh word
 // text -> word_id, e.g. the user's own reviewed vocabulary) using
-// longest-match-first at each position. fullyCovered is false if any
-// character of text could not be matched to a known word.
+// longest-match-first at each position. Punctuation (see
+// sentenceInternalPunctuation) is skipped rather than matched. fullyCovered
+// is false if any non-punctuation character of text could not be matched to
+// a known word.
 func segmentSentence(text string, known map[string]int64) (segments []wordSegment, fullyCovered bool) {
 	runes := []rune(text)
 	if len(runes) == 0 {
@@ -62,6 +77,10 @@ func segmentSentence(text string, known map[string]int64) (segments []wordSegmen
 	}
 	i := 0
 	for i < len(runes) {
+		if isSentenceInternalPunctuation(runes[i]) {
+			i++
+			continue
+		}
 		limit := maxLen
 		if i+limit > len(runes) {
 			limit = len(runes) - i
