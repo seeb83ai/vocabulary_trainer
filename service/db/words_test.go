@@ -316,8 +316,14 @@ func TestGetNextCard_DoesNotStampFirstSeenDate(t *testing.T) {
 
 func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	s := openTestDB(t)
-	id1 := seedWord(t, s, "一", "", []string{"one"})
-	id2 := seedWord(t, s, "二", "", []string{"two"})
+	// Use words absent from the (now auto-imported, see issue #340) bundled
+	// word_frequency list — "一"/"二" would otherwise be picked by frequency
+	// rank regardless of due_date, since unseen-word ordering prefers a lower
+	// frequency rank over due_date (see TestGetNextCard_FrequencyRankTiebreak).
+	// This test is specifically about the due_date fallback when neither
+	// candidate has a frequency ranking.
+	id1 := seedWord(t, s, "罕见词甲", "", []string{"rare word a"})
+	id2 := seedWord(t, s, "罕见词乙", "", []string{"rare word b"})
 
 	// Set id2's due_date far in the past so it's more overdue
 	ctx := context.Background()

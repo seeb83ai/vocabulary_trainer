@@ -175,7 +175,7 @@ The training page stats bar shows **New today: X / Y**, so you can see how many 
 When more than one never-seen word is eligible to be introduced, the app picks which one first using two rules, in order:
 
 1. **Compound prerequisites.** If an unseen multi-character word is made up of substrings that are themselves existing, not-yet-introduced words in your vocabulary, the app introduces those component words first. For example, if your vocabulary contains 还, 可以, and 还可以, the app introduces 还 and 可以 before 还可以. Once every component word has been introduced, the compound is no longer held back.
-2. **Word frequency.** Among words with the same priority under rule 1, the app prefers the more frequently used word, using an optional imported frequency ranking (see [Word-frequency import](#word-frequency-import) below). Words without a frequency ranking sort after ranked ones. Ties fall back to the existing due-date ordering.
+2. **Word frequency.** Among words with the same priority under rule 1, the app prefers the more frequently used word, using a bundled frequency ranking that's imported automatically (see [Word-frequency import](#word-frequency-import) below). Words without a frequency ranking sort after ranked ones. Ties fall back to the existing due-date ordering.
 
 Both rules only reorder *which* new word is shown next — they never change the [daily new-word cap](#daily-new-word-cap), [baseline gates](#baseline-gates), or [cooldown](#cooldown-between-new-words) behavior.
 
@@ -388,7 +388,7 @@ When you configure a local model, it takes precedence over any cloud API keys th
 | `make import` | Import vocabulary from a text file (see below) |
 | `make import-hsk` | Fetch and import HSK 1-6 vocabulary from mandarinbean.com (see below) |
 | `make import-pinyin` | Import pinyin audio files for listening training (see below) |
-| `make import-frequency` | Import the bundled Chinese word-frequency list used to order new-word introduction (see below) |
+| `make import-frequency` | Import an alternative/updated Chinese word-frequency list used to order new-word introduction — the bundled list is already auto-imported on startup (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
 | `make funnel` | Print the signup → activation → retention funnel (see below) |
 | `make test` | Run all Go and JS tests |
@@ -454,12 +454,14 @@ When you set `-lang` to anything other than `en`, the tool translates each Engli
 
 ## Word-frequency import
 
-This tool populates a standalone `word_frequency(word, rank)` reference table (rank 1 = most frequent) used to order [new-word introduction](#new-word-introduction-order) — it does not create or modify any vocabulary words, and a ranked word that isn't in a user's vocabulary is simply unused.
+A standalone `word_frequency(word, rank)` reference table (rank 1 = most frequent) is used to order [new-word introduction](#new-word-introduction-order) — it does not create or modify any vocabulary words, and a ranked word that isn't in a user's vocabulary is simply unused.
 
-The repo bundles `service/cmd/import-frequency/frequency_data.txt`, an 8,000-entry list derived from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords) (MIT license), `content/2018/zh_cn/zh_cn_50k.txt` (an OpenSubtitles-based corpus) — filtered to entries made up solely of CJK ideographs, deduplicated, and truncated to the top 8,000 by frequency.
+An 8,000-entry list derived from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords) (MIT license), `content/2018/zh_cn/zh_cn_50k.txt` (an OpenSubtitles-based corpus) — filtered to entries made up solely of CJK ideographs, deduplicated, and truncated to the top 8,000 by frequency — is bundled with the app and **imported automatically by the schema migration on startup**. No manual step is required; this is unlike the optional `import-hanzi`/`import-cedict` tools, since without it the frequency-ordering rule above would silently do nothing.
+
+A `make import-frequency` CLI tool remains available for importing an alternative or updated frequency list, or to force a re-import of the bundled one:
 
 ```bash
-# Import the bundled list
+# Re-import the bundled list
 make import-frequency
 
 # Custom DB path or data file

@@ -61,6 +61,26 @@ func TestParse_BundledDataFile(t *testing.T) {
 	}
 }
 
+// TestBundledFrequencyDataMatchesMigrationCopy guards against drift: since
+// go:embed requires a migration's data file to live within the migrate
+// package's own directory (see service/db/migrate/v20260826120000_add_word_frequency.go,
+// which auto-imports this same list on every fresh deploy), this file is
+// necessarily duplicated rather than shared. This test fails loudly if the
+// two copies are ever edited independently.
+func TestBundledFrequencyDataMatchesMigrationCopy(t *testing.T) {
+	here, err := os.ReadFile("frequency_data.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	migrationCopy, err := os.ReadFile("../../db/migrate/frequency_data.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(here) != string(migrationCopy) {
+		t.Error("service/cmd/import-frequency/frequency_data.txt and service/db/migrate/frequency_data.txt have drifted apart — keep them byte-identical")
+	}
+}
+
 func TestImportEntries_WritesWordFrequencyTable(t *testing.T) {
 	os.Setenv("ADMIN_EMAIL", "admin@example.de")
 	os.Setenv("ADMIN_PASSWORD", "I am the admin")

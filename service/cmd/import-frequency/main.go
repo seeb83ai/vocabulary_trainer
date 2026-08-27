@@ -12,6 +12,12 @@
 // content/2018/zh_cn/zh_cn_50k.txt, based on an OpenSubtitles 2018 corpus — filtered
 // to entries consisting solely of CJK ideographs, deduplicated, top 8000 by frequency.
 //
+// NOTE: this bundled list is imported automatically by the schema migration
+// in service/db/migrate/v20260826120000_add_word_frequency.go — every fresh
+// or upgraded database gets it on startup with no manual step. This CLI tool
+// remains available for importing an alternative or updated frequency list
+// (pass -file), or for re-running the bundled import explicitly.
+//
 // Usage:
 //
 //	go run ./cmd/import-frequency [-db data/vocab.db] [-file frequency_data.txt] [-dry-run]
