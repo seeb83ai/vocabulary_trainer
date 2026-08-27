@@ -596,3 +596,28 @@ func TestUserSettings_GameModeColumns_DefaultOnAndRoundTrip(t *testing.T) {
 		t.Errorf("game mode round-trip mismatch, got %+v", got)
 	}
 }
+
+func TestGamificationHidePinyinFromBucket_DefaultAndRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.GamificationHidePinyinFromBucket != "70-84" {
+		t.Errorf("default GamificationHidePinyinFromBucket: want %q, got %q", "70-84", st.GamificationHidePinyinFromBucket)
+	}
+
+	st.GamificationHidePinyinFromBucket = "85-100"
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GamificationHidePinyinFromBucket != "85-100" {
+		t.Errorf("GamificationHidePinyinFromBucket round-trip: want %q, got %q", "85-100", got.GamificationHidePinyinFromBucket)
+	}
+}

@@ -306,6 +306,8 @@ Save confirmations and error messages appear as a small hovering toast in the bo
   - **Last mistakes** — words you've recently answered wrong. A word is suppressed after being shown until you answer it wrong again (a correct re-attempt alone does not bring it back).
 
   When the game triggers, it picks uniformly at random among your enabled modes that currently have enough eligible words, and falls back to another enabled mode if the first pick comes up short.
+
+  A **"Hide pinyin hint once a word reaches"** setting (default **Practicing**) picks the minimum accuracy bucket — New, Struggling, Learning, Practicing, or Mastered, the same buckets used elsewhere in the app — at and above which a word's tile stops showing its pinyin under the hanzi, so the game gets harder to rely on rote pinyin recall as you improve. Words below the chosen bucket keep showing pinyin as before.
 - **API keys.** Store a personal DeepL API key and an LLM provider key (OpenAI, Anthropic, Gemini, or a local OpenAI-compatible server). The app encrypts these keys with a key derived from your login password, using PBKDF2-SHA256 and AES-GCM, and makes them accessible only while you are logged in. Users with a personal key can use DeepL translation and LLM scene generation without a plus account. A user-supplied local LLM URL must be a public `http(s)` address. The app rejects and blocks internal, loopback, and link-local targets, to prevent server-side request forgery. If you run a trusted local model on loopback, configure it with the server-side `LOCAL_LLM_URL` environment variable instead.
 
 ## Auto-translate (DeepL)

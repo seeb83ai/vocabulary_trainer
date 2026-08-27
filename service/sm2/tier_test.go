@@ -119,3 +119,32 @@ func TestPinJSBoundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestTierFromBucketKey(t *testing.T) {
+	cases := []struct {
+		key  string
+		want Tier
+	}{
+		{"new", TierNew},
+		{"0-49", TierStruggling},
+		{"50-69", TierLearning},
+		{"70-84", TierPracticing},
+		{"85-100", TierMastered},
+		{"", TierNone},
+		{"bogus", TierNone},
+	}
+	for _, c := range cases {
+		if got := TierFromBucketKey(c.key); got != c.want {
+			t.Errorf("TierFromBucketKey(%q) = %v, want %v", c.key, got, c.want)
+		}
+	}
+}
+
+func TestTierFromBucketKey_RoundTripsWithBucketKey(t *testing.T) {
+	for _, tr := range []Tier{TierNew, TierStruggling, TierLearning, TierPracticing, TierMastered} {
+		key := tr.BucketKey()
+		if got := TierFromBucketKey(key); got != tr {
+			t.Errorf("TierFromBucketKey(BucketKey(%v)=%q) = %v, want %v", tr, key, got, tr)
+		}
+	}
+}

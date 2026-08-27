@@ -67,6 +67,26 @@ func (tr Tier) BucketKey() string {
 	}
 }
 
+// TierFromBucketKey is the inverse of BucketKey: it maps a tierFilter/TIERS
+// bucket key string back to its Tier. An unrecognized key (including "")
+// returns TierNone, which callers treat as "no threshold configured".
+func TierFromBucketKey(key string) Tier {
+	switch key {
+	case "new":
+		return TierNew
+	case "0-49":
+		return TierStruggling
+	case "50-69":
+		return TierLearning
+	case "70-84":
+		return TierPracticing
+	case "85-100":
+		return TierMastered
+	default:
+		return TierNone
+	}
+}
+
 // ClassifyTier returns the accuracy/attempt bucket for a progress record.
 // A word with no attempts is TierNone; a word still in the learning phase is
 // TierNew; otherwise it is bucketed by accuracy and attempt count.

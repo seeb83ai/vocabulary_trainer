@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { BASE_URL } from './global-setup.js';
+import { captureForPR } from './helpers/screenshot.js';
 
 test.use({ storageState: 'e2e/.auth/user.json' });
 
@@ -53,6 +54,7 @@ test.describe('Gamification — match game', () => {
         game_mode_newest: true,
         game_mode_hardest: true,
         game_mode_last_mistakes: true,
+        gamification_hide_pinyin_from_bucket: '70-84',
       },
       headers: { 'Content-Type': 'application/json' },
     });
@@ -126,6 +128,58 @@ test.describe('Gamification — match game', () => {
     await expect(page.getByText('Gamification')).toBeVisible();
     await expect(page.locator('#gamification-enabled')).toBeVisible();
     await expect(page.locator('#gamification-frequency')).toBeVisible();
+  });
+
+  // Issue #349: a select letting the user choose the minimum bucket at and
+  // above which the match game stops showing pinyin, default "Practicing".
+  test('settings page shows and saves the hide-pinyin-from-bucket select, default Practicing', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings`);
+    const select = page.locator('#gamification-hide-pinyin-bucket');
+    await expect(select).toBeVisible();
+    await expect(select).toHaveValue('70-84'); // Practicing
+
+    await captureForPR(page, 'settings-gamification-hide-pinyin');
+
+    await select.selectOption('85-100');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
+
+    await page.reload();
+    await expect(page.locator('#gamification-hide-pinyin-bucket')).toHaveValue('85-100');
+
+    // Restore the default so later specs see the standard state.
+    await select.selectOption('70-84');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
+  });
+
+  // Issue #349: once a word's SM-2 bucket reaches the configured threshold
+  // (default Practicing), the match game stops showing its pinyin hint; a
+  // word still below the threshold keeps showing pinyin as before. The
+  // server-side tier classification/cutoff itself is covered by the Go
+  // handler tests (TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold et al.
+  // in quiz_matchgame_test.go); this renders the exact shape GET
+  // /api/quiz/match-game now returns for an at/above-threshold word (empty
+  // pinyin) and a below-threshold word (pinyin present) to verify the UI
+  // reflects that omission rather than re-deriving tier state end-to-end.
+  test('match game hides pinyin for a word at/above the threshold bucket, keeps it below', async ({ page }) => {
+    await page.goto(`${BASE_URL}/train`);
+    const words = [
+      { zh_word_id: 9001, zh_text: '会', pinyin: '', translations: { en: ['can'] } },
+      { zh_word_id: 9002, zh_text: '去', pinyin: 'qù', translations: { en: ['go'] } },
+    ];
+    await page.evaluate((w) => {
+      // @ts-ignore
+      window.showMatchGame(w);
+    }, words);
+    await expect(page.locator('#match-game-overlay')).toBeVisible();
+
+    const huiBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('会', { exact: true }) });
+    const quBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('去', { exact: true }) });
+    await expect(huiBox.getByText('huì')).toHaveCount(0);
+    await expect(quBox.getByText('qù')).toBeVisible();
+
+    await captureForPR(page, 'match-game-pinyin-hidden-above-threshold');
+
+    await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
   });
 
   // Issue #288: 4 individual game-mode toggles (mismatch/newest/hardest/last
