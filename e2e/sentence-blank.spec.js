@@ -114,6 +114,62 @@ test.describe('Sentence-blank training mode', () => {
     await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
   });
 
+  test('a multi-clause sentence joined by a comma is still eligible (issue #351)', async ({ page }) => {
+    // Regression test for issue #351: real sentences are usually more than
+    // one clause joined by punctuation (a comma here), and every word in
+    // both clauses has been reviewed — the comma itself must not block
+    // full-coverage segmentation.
+    const email = `e2e-sentence-comma-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'SentenceTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const words = [
+      { zh: '我', pinyin: 'wǒ', en: ['I'] },
+      { zh: '买', pinyin: 'mǎi', en: ['buy'] },
+      { zh: '牛奶', pinyin: 'niú nǎi', en: ['milk'] },
+      { zh: '你', pinyin: 'nǐ', en: ['you'] },
+      { zh: '喜欢', pinyin: 'xǐhuan', en: ['like'] },
+      { zh: '茶', pinyin: 'chá', en: ['tea'] },
+    ];
+    const idToZh = {};
+    for (const w of words) {
+      const res = await page.request.post('/api/words', {
+        data: { zh_text: w.zh, pinyin: w.pinyin, translations: { en: w.en }, tags: [], start_training: true },
+      });
+      expect(res.ok()).toBeTruthy();
+      const body = await res.json();
+      idToZh[body.id] = w.zh;
+    }
+
+    const sentenceRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '我买牛奶，你喜欢茶',
+        pinyin: 'wǒ mǎi niú nǎi, nǐ xǐhuan chá',
+        translations: { en: ['I buy milk, you like tea'] },
+        tags: ['s_test'],
+        start_training: false,
+      },
+    });
+    expect(sentenceRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    const settings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...settings, sentence_blank_enabled: true, sentence_blank_ratio: 100 },
+    });
+    expect(patchRes.ok()).toBeTruthy();
+
+    const cardRes = await page.request.get('/api/quiz/next?langs=en');
+    expect(cardRes.ok()).toBeTruthy();
+    const card = await cardRes.json();
+
+    expect(card.card_type).toBe('sentence');
+    expect(Object.keys(idToZh).map(Number)).toContain(card.word_id);
+    expect(card.sentence_blank).toContain('___');
+  });
+
   test('sentence-blank mode is never attempted when disabled in settings', async ({ page }) => {
     const { idToZh } = await registerUserWithSentence(page);
 
