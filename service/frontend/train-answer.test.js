@@ -79,6 +79,25 @@ describe('isZhCorrect', () => {
   it('still accepts the full form including the bracketed annotation', () => {
     expect(isZhCorrect('过（动词）', '过（动词）')).toBe(true);
   });
+
+  // Issue #343: the new-word-confirmation input never round-trips through the
+  // backend — it's checked entirely client-side via this function — so any
+  // ellipsis form the backend's normalize() would accept must also be
+  // accepted here. Regression: this file's normalizeAnswer only stripped a
+  // TRAILING punctuation run, so a mid-string ellipsis like "虽然……但是……"
+  // was left untouched and never matched an equivalent "..." or "。。。" typed
+  // answer.
+  it('accepts an ASCII-dots ellipsis in place of the ideographic ellipsis mid-string', () => {
+    expect(isZhCorrect('虽然...但是...', '虽然……但是……')).toBe(true);
+  });
+
+  it('accepts a fullwidth-period ellipsis in place of the ideographic ellipsis mid-string', () => {
+    expect(isZhCorrect('虽然。。。但是。。。', '虽然……但是……')).toBe(true);
+  });
+
+  it('accepts the ideographic ellipsis when the prompt uses ASCII dots', () => {
+    expect(isZhCorrect('虽然……但是……', '虽然...但是...')).toBe(true);
+  });
 });
 
 describe('isTransCorrect', () => {
@@ -288,10 +307,19 @@ describe('shouldShowAcceptBtn', () => {
 // ── normalizeAnswer / stripParens / expandVariants / shouldShowAcceptTypo ──────
 // New helpers and the quiz-mode-aware typo gate; inlined per project convention.
 
+const FULLWIDTH_TO_HALFWIDTH = {
+  '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';',
+};
+
 function normalizeAnswer(s) {
   s = s.toLowerCase().trim();
+  s = s.replace(/[？！，。：；]/g, ch => FULLWIDTH_TO_HALFWIDTH[ch]);
+  // Mirrors service/sm2/sm2.go's reDotsRun (issue #343): collapse any run of
+  // halfwidth periods and/or ideographic ellipsis characters (U+2026),
+  // anywhere in the string, into a single space.
+  s = s.replace(/[.…]+/g, ' ');
   s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
-  return s;
+  return s.trim().split(/\s+/).join(' ');
 }
 
 function stripParens(s) {

@@ -1785,4 +1785,41 @@ test.describe('Quiz – equivalent ellipsis forms accepted (issue #343)', () => 
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
   });
+
+  // The "new word confirmation" typing gate (require typing the Chinese word
+  // before "Got it!" is enabled) is checked entirely client-side in
+  // train-answer.js's isZhCorrect and never round-trips through the backend
+  // CheckAnswer this describe block's other two tests exercise — so it needs
+  // its own regression coverage. This reproduces the exact report: a word
+  // stored with "……" rejected an "..." retype on the new-word screen.
+  test('typing "..." for an unseen word stored with "……" satisfies the new-word-confirmation gate', async ({ page }) => {
+    const email = `e2e-ellipsis-new-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'EllipsisTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '虽然……但是……',
+        pinyin: 'suīrán... dànshì...',
+        translations: { en: ['although... but...'] },
+        tags: [],
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    await page.goto('/train');
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#new-word-zh')).toHaveText('虽然……但是……');
+
+    await page.locator('#new-word-zh-input').fill('虽然...但是...');
+    await page.locator('#new-word-zh-input').dispatchEvent('input');
+    await expect(page.locator('#new-word-zh-check')).toHaveText('✓');
+
+    await page.locator('#new-word-trans-input').fill('although... but...');
+    await page.locator('#new-word-trans-input').dispatchEvent('input');
+
+    await expect(page.locator('#new-word-got-it-btn')).toBeEnabled();
+  });
 });
