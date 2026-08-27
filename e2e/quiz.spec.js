@@ -1581,9 +1581,17 @@ test.describe('Quiz – retype on wrong answer', () => {
     await expect(page.locator('#next-btn')).toBeDisabled();
 
     // Retype the bare word (no parenthetical annotation) and a correct
-    // translation — both checkmarks must turn green ...
+    // translation — both checkmarks must turn green. The explicit
+    // dispatchEvent('input') after fill() mirrors the same defensive pattern
+    // used for the analogous new-word-confirmation gate above (see
+    // '"Got it!" acknowledges the word...' test): fill() alone can race
+    // against the page's own setTimeout(..., 50)-based auto-focus of this
+    // input (see train-result.js), which was the suspected cause of an
+    // observed CI flake on this exact assertion.
     await page.locator('#wrong-retype-zh-input').fill('花');
+    await page.locator('#wrong-retype-zh-input').dispatchEvent('input');
     await page.locator('#wrong-retype-trans-input').fill('ausgeben');
+    await page.locator('#wrong-retype-trans-input').dispatchEvent('input');
     await expect(page.locator('#wrong-retype-zh-check')).toHaveText('✓');
     await expect(page.locator('#wrong-retype-trans-check')).toHaveText('✓');
 
