@@ -2,9 +2,15 @@ package handlers_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"vocabulary_trainer/handlers"
 )
 
 // This file holds handlers_test-package integration tests for the /api/config
@@ -107,5 +113,69 @@ func TestTranslate_PlusUserAllowed(t *testing.T) {
 	rec := do(t, r, http.MethodPost, "/api/translate", map[string]string{"zh_text": "你好"})
 	if rec.Code == http.StatusForbidden {
 		t.Fatal("plus user should not be forbidden from translate")
+	}
+}
+
+// TestTranslate_TargetLangNotSwapped is a regression test for issue #342:
+// a request with target_lang=EN must come back with English text and a
+// request with target_lang=DE must come back with German text — the two
+// must never be swapped. It stubs DeepL with an httptest server (wired via
+// TranslateHandler.BaseURL) so the assertion doesn't depend on a real key.
+func TestTranslate_TargetLangNotSwapped(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Text       []string `json:"text"`
+			TargetLang string   `json:"target_lang"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("mock deepl: decode request: %v", err)
+		}
+		text := "Tools / Instruments / Equipment"
+		if body.TargetLang == "DE" {
+			text = "Werkzeuge"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"translations": []map[string]string{{"text": text}},
+		})
+	}))
+	defer mock.Close()
+
+	s := openTestDB(t)
+	authH, _ := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
+	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
+	translateH := &handlers.TranslateHandler{
+		Store:           s,
+		APIKey:          "test-key",
+		TargetLang:      "EN",
+		SettingsHandler: settingsH,
+		BaseURL:         mock.URL,
+	}
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2)) // user 2 is plus (see router_test.go)
+	r.Post("/api/translate", translateH.Translate)
+
+	enRec := do(t, r, http.MethodPost, "/api/translate", map[string]string{"zh_text": "工具", "target_lang": "EN"})
+	if enRec.Code != http.StatusOK {
+		t.Fatalf("EN translate: want 200, got %d", enRec.Code)
+	}
+	var enResp struct {
+		Translations []string `json:"translations"`
+	}
+	decodeJSON(t, enRec, &enResp)
+	if len(enResp.Translations) == 0 || enResp.Translations[0] != "Tools" {
+		t.Fatalf("EN translate: want first translation %q, got %v", "Tools", enResp.Translations)
+	}
+
+	deRec := do(t, r, http.MethodPost, "/api/translate", map[string]string{"zh_text": "工具", "target_lang": "DE"})
+	if deRec.Code != http.StatusOK {
+		t.Fatalf("DE translate: want 200, got %d", deRec.Code)
+	}
+	var deResp struct {
+		Translations []string `json:"translations"`
+	}
+	decodeJSON(t, deRec, &deResp)
+	if len(deResp.Translations) != 1 || deResp.Translations[0] != "Werkzeuge" {
+		t.Fatalf("DE translate: want [%q], got %v", "Werkzeuge", deResp.Translations)
 	}
 }
