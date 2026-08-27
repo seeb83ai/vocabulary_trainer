@@ -70,8 +70,10 @@ function localDateStr(offsetDays) {
 }
 
 // loadComebackInfo fills the "come back tomorrow" block on the success
-// screen: current day streak and how many reviews come due tomorrow.
-async function loadComebackInfo() {
+// screen: current day streak, how many reviews come due tomorrow, and (when
+// wordsImproved is a positive number) how many words moved up a proficiency
+// bucket today.
+async function loadComebackInfo(wordsImproved) {
   if (!$('success-comeback')) return;
   try {
     const params = selectedTags.length ? '?tags=' + encodeURIComponent(selectedTags.join(',')) : '';
@@ -84,6 +86,12 @@ async function loadComebackInfo() {
     setText('success-streak', String(streak));
     setText('success-due-tomorrow', String(due));
     setText('success-comeback-msg', t(due > 0 ? 'success.comebackDue' : 'success.comebackNoDue'));
+    if (wordsImproved > 0) {
+      setText('success-improved-count', String(wordsImproved));
+      show('success-improved');
+    } else {
+      hide('success-improved');
+    }
     show('success-comeback');
   } catch (e) {
     hide('success-comeback');

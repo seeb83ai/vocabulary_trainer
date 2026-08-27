@@ -77,6 +77,7 @@ type QuizStore interface {
 	ClearDrillFlag(ctx context.Context, wordID int64) error
 	ClearAllDrillFlags(ctx context.Context, userID int64) error
 	CountDrillFlags(ctx context.Context, userID int64) (int, error)
+	GetWordsImprovedToday(ctx context.Context, userID int64) (int, error)
 	GetNextDrillCard(ctx context.Context, userID int64) (*models.Word, *models.SM2Progress, error)
 	NextSentenceBlankCard(ctx context.Context, userID int64, cfg models.ProgressiveModeConfig, nwCfg models.NewWordModeConfig, langs []string) (*models.QuizCard, error)
 }

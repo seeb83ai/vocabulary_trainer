@@ -167,6 +167,53 @@ func (s *Store) GetDailyStatsHistory(ctx context.Context, userID int64) ([]model
 	return stats, rows.Err()
 }
 
+// GetWordsImprovedToday returns how many words moved up a proficiency bucket
+// today, computed as the sum of the positive per-bucket deltas between
+// today's daily_stats bucket snapshot and the closest prior day's snapshot,
+// across the struggling/learning/practicing/mastered buckets. bucket_new is
+// excluded: growth there reflects new words being added/started, not
+// improvement of existing ones. Returns 0 (not an error) when today's row or
+// a prior day's row doesn't exist yet.
+func (s *Store) GetWordsImprovedToday(ctx context.Context, userID int64) (int, error) {
+	var tStruggling, tLearning, tPracticing, tMastered int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered
+		FROM daily_stats WHERE user_id = ? AND date = date('now')`, userID).
+		Scan(&tStruggling, &tLearning, &tPracticing, &tMastered)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get today buckets: %w", err)
+	}
+
+	var yStruggling, yLearning, yPracticing, yMastered int
+	err = s.db.QueryRowContext(ctx, `
+		SELECT bucket_struggling, bucket_learning, bucket_practicing, bucket_mastered
+		FROM daily_stats WHERE user_id = ? AND date < date('now')
+		ORDER BY date DESC LIMIT 1`, userID).
+		Scan(&yStruggling, &yLearning, &yPracticing, &yMastered)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get prior day buckets: %w", err)
+	}
+
+	improved := 0
+	for _, delta := range [4]int{
+		tStruggling - yStruggling,
+		tLearning - yLearning,
+		tPracticing - yPracticing,
+		tMastered - yMastered,
+	} {
+		if delta > 0 {
+			improved += delta
+		}
+	}
+	return improved, nil
+}
+
 // classifyAccBucket returns the AccBuckets key for a word's SM-2 progress, or
 // "" if the word hasn't been attempted yet and should be excluded from the
 // breakdown. Mirrors wordTier (frontend/app.js) and tierFilter (db/words.go).

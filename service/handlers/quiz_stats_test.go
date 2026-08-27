@@ -278,10 +278,36 @@ func TestStatsHandlerNewFields(t *testing.T) {
 	var resp map[string]int
 	decodeJSON(t, rec, &resp)
 
-	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available", "hmm_due_today"} {
+	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available", "hmm_due_today", "words_improved_today"} {
 		if _, ok := resp[key]; !ok {
 			t.Errorf("stats response missing key %q", key)
 		}
+	}
+}
+
+// The Stats endpoint reports how many words moved up a proficiency bucket
+// today relative to the closest prior day's daily_stats snapshot.
+func TestStatsHandler_WordsImprovedToday(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	if err := s.SeedDailyStatBucketsForTest(ctx, userID, "date('now', '-1 day')", 0, 2, 0, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedDailyStatBucketsForTest(ctx, userID, "date('now')", 0, 1, 1, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["words_improved_today"] != 1 {
+		t.Errorf("words_improved_today: want 1, got %d", resp["words_improved_today"])
 	}
 }
 

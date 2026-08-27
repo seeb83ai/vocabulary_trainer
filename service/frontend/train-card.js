@@ -224,7 +224,7 @@ async function loadNextCard(trackCurrent = false) {
         hide('introduce-new-btn');
       }
       show('success-state');
-      loadComebackInfo();
+      loadComebackInfo(latestStats.words_improved_today);
       return;
     }
   }
@@ -275,7 +275,7 @@ async function loadNextCard(trackCurrent = false) {
         });
         updateAdvanceButtonsForDifficult();
         show('success-state');
-        loadComebackInfo();
+        loadComebackInfo(stats.words_improved_today);
       }
     } else {
       show('error-state');

@@ -82,6 +82,7 @@ const I18N = {
     'success.dayStreak': 'Day streak:',
     'success.comebackDue': 'words come due tomorrow — come back to keep them fresh.',
     'success.comebackNoDue': 'words due tomorrow — a quick session tomorrow keeps your streak alive.',
+    'success.wordsImproved': 'words moved up a level today!',
     'success.introduceNew': 'Introduce new words',
     'error.icon': '⚠️',
 
@@ -551,6 +552,7 @@ const I18N = {
     'success.dayStreak': '连续学习天数：',
     'success.comebackDue': '个词明天到期——记得回来复习，保持记忆新鲜。',
     'success.comebackNoDue': '个词明天到期——明天来一小节，保持连续纪录。',
+    'success.wordsImproved': '个词今天提升了一个等级！',
     'success.introduceNew': '引入新词',
     'error.icon': '⚠️',
 
