@@ -150,7 +150,7 @@ test.describe('Gamification — match game', () => {
 
     await newest.uncheck();
     await lastMistakes.uncheck();
-    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
 
     await page.reload();
     await expect(mismatch).toBeChecked();
@@ -161,7 +161,7 @@ test.describe('Gamification — match game', () => {
     // Restore defaults so later specs in this file see the standard state.
     await newest.check();
     await lastMistakes.check();
-    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
   });
 
   test('shared-translation claim is blocked (yellow) instead of stealing the true owner\'s box (issue #215)', async ({ page, request }) => {
@@ -230,7 +230,7 @@ test.describe('Gamification — match game', () => {
     await checkbox.check();
     await page.locator('#gamification-frequency').fill('2');
 
-    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
 
     // Reload and verify the setting persisted
     await page.reload();
@@ -351,12 +351,12 @@ test.describe('Gamification — match game', () => {
     // autosave banner when an actual transition happens.
     if (!(await checkbox.isChecked())) {
       await checkbox.check();
-      await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
     }
 
     // Save a wholly unrelated card, whose payload doesn't mention gamification.
     await page.locator('#max-new-words').fill('5');
-    await expect(page.locator('#daily-success')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
 
     await page.reload();
     await expect(page.locator('#gamification-enabled')).toBeChecked({ timeout: 5000 });

@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { captureForPR } from './helpers/screenshot.js';
 
 // Settings cards save automatically as fields change — no explicit Save
 // buttons for language/mode/cycle/random-mode/daily/accept-mode/gamification/
@@ -22,7 +23,7 @@ test.describe('Settings – Auto-save', () => {
     await page.goto('/settings');
     const always = page.locator('input[name="accept-correct-mode"][value="always"]');
     await always.check();
-    await expect(page.locator('#accept-mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(always).toBeChecked();
@@ -33,7 +34,7 @@ test.describe('Settings – Auto-save', () => {
 
     // Reset to default.
     await page.locator('input[name="accept-correct-mode"][value="typo"]').check();
-    await expect(page.locator('#accept-mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 });
 
@@ -51,7 +52,7 @@ test.describe('Settings – Daily Learning', () => {
     await page.goto('/settings');
     const input = page.locator('#max-new-words');
     await input.fill('3');
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     // Reload page and verify value persists
     await page.reload();
@@ -59,7 +60,7 @@ test.describe('Settings – Daily Learning', () => {
 
     // Reset to default
     await input.fill('5');
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
   test('skip new words visible toggle saves and persists', async ({ page }) => {
@@ -77,14 +78,14 @@ test.describe('Settings – Daily Learning', () => {
 
     // Uncheck (hide skip button)
     await toggle.uncheck();
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#skip-new-visible')).not.toBeChecked();
 
     // Re-enable
     await toggle.check();
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
   test('skip button hidden in quiz when skip_new_words_visible is false', async ({ page }) => {
@@ -113,7 +114,7 @@ test.describe('Settings – Daily Learning', () => {
 
     await page.locator('#baseline-due-today-enabled').check();
     await page.locator('#baseline-due-today-value').fill('15');
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#baseline-due-today-enabled')).toBeChecked();
@@ -121,7 +122,7 @@ test.describe('Settings – Daily Learning', () => {
 
     // Disable and reset
     await page.locator('#baseline-due-today-enabled').uncheck();
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
   test('baseline new-bucket can be enabled with a threshold', async ({ page }) => {
@@ -129,7 +130,7 @@ test.describe('Settings – Daily Learning', () => {
 
     await page.locator('#baseline-new-bucket-enabled').check();
     await page.locator('#baseline-new-bucket-value').fill('3');
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#baseline-new-bucket-enabled')).toBeChecked();
@@ -137,7 +138,7 @@ test.describe('Settings – Daily Learning', () => {
 
     // Disable and reset
     await page.locator('#baseline-new-bucket-enabled').uncheck();
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
   test('extend-session toggle is visible and defaults to checked', async ({ page }) => {
@@ -154,7 +155,7 @@ test.describe('Settings – Daily Learning', () => {
 
     // Disable: user opts out of session-extension with extra (not-yet-due) words.
     await toggle.uncheck();
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#extend-session-extra-words')).not.toBeChecked();
@@ -166,7 +167,7 @@ test.describe('Settings – Daily Learning', () => {
 
     // Re-enable and restore default.
     await toggle.check();
-    await expect(page.locator('#daily-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 });
 
@@ -186,7 +187,7 @@ test.describe('Settings – Blur pinyin (issue #201)', () => {
     const toggle = page.locator('#blur-pinyin');
 
     await toggle.check();
-    await expect(page.locator('#mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#blur-pinyin')).toBeChecked();
@@ -197,7 +198,7 @@ test.describe('Settings – Blur pinyin (issue #201)', () => {
 
     // Reset to default.
     await toggle.uncheck();
-    await expect(page.locator('#mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 });
 
@@ -221,7 +222,7 @@ test.describe('Settings – Component training threshold', () => {
     await expect(input).toHaveValue('0');
 
     await input.fill('5');
-    await expect(page.locator('#component-threshold-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#component-coverage-threshold')).toHaveValue('5');
@@ -232,7 +233,7 @@ test.describe('Settings – Component training threshold', () => {
 
     // Reset to default.
     await input.fill('0');
-    await expect(page.locator('#component-threshold-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
   test('rejects an out-of-range threshold', async ({ page }) => {
@@ -243,7 +244,7 @@ test.describe('Settings – Component training threshold', () => {
     await expect(input).toHaveValue('0');
 
     await input.fill('150');
-    await expect(page.locator('#component-threshold-error')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 });
 
@@ -273,7 +274,7 @@ test.describe('Settings – Chinese (no sound) mode', () => {
   test('selecting it for the Learning tier saves and persists across reload', async ({ page }) => {
     await page.goto('/settings');
     await page.locator('#mode-prog-learning').selectOption('zh_to_transl_no_sound');
-    await expect(page.locator('#mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#mode-prog-learning')).toHaveValue('zh_to_transl_no_sound');
@@ -284,20 +285,20 @@ test.describe('Settings – Chinese (no sound) mode', () => {
 
     // Reset to default.
     await page.locator('#mode-prog-learning').selectOption('zh_pinyin_to_transl');
-    await expect(page.locator('#mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
   test('selecting it for a cycle step saves and persists across reload', async ({ page }) => {
     await page.goto('/settings');
     await page.locator('#cycle-step-0').selectOption('zh_to_transl_no_sound');
-    await expect(page.locator('#cycle-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#cycle-step-0')).toHaveValue('zh_to_transl_no_sound');
 
     // Reset to default.
     await page.locator('#cycle-step-0').selectOption('zh_pinyin_to_transl');
-    await expect(page.locator('#cycle-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 });
 
@@ -320,7 +321,7 @@ test.describe('Settings – Random/Cycle Mode by Bucket (issue #287)', () => {
 
     await page.locator('#random-mode-zh_to_transl-from').selectOption('50-69');
     await page.locator('#random-mode-zh_to_transl-to').selectOption('70-84');
-    await expect(page.locator('#random-mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(page.locator('#random-mode-zh_to_transl-from')).toHaveValue('50-69');
@@ -333,7 +334,7 @@ test.describe('Settings – Random/Cycle Mode by Bucket (issue #287)', () => {
     // Reset to default.
     await page.locator('#random-mode-zh_to_transl-from').selectOption('0-49');
     await page.locator('#random-mode-zh_to_transl-to').selectOption('85-100');
-    await expect(page.locator('#random-mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
   test('turning off every mode is rejected with an inline error and not persisted', async ({ page }) => {
@@ -345,7 +346,7 @@ test.describe('Settings – Random/Cycle Mode by Bucket (issue #287)', () => {
     for (const mode of ['transl_to_zh', 'zh_pinyin_to_transl', 'zh_to_transl', 'zh_to_transl_no_sound', 'voice_to_transl']) {
       await page.locator(`#random-mode-${mode}-off`).check();
     }
-    await expect(page.locator('#random-mode-error')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     const after = await page.request.get('/api/settings');
     const afterSettings = await after.json();
@@ -353,5 +354,77 @@ test.describe('Settings – Random/Cycle Mode by Bucket (issue #287)', () => {
 
     // Restore the UI (uncheck the boxes) so subsequent tests start clean.
     await page.reload();
+  });
+});
+
+// Issue #347: save/error messages used to render inline (different position
+// per card, causing layout jumps as they were shown/hidden). They now render
+// as a single fixed-position hovering toast that never shifts page layout.
+test.describe('Settings – Toast notifications (issue #347)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('a save shows a hovering toast without shifting the page layout, then auto-dismisses', async ({ page }) => {
+    await page.goto('/settings');
+    // Let the page's own async loads (settings, languages, component coverage
+    // table) finish and the layout settle before taking the "before" reading,
+    // so only the toast itself is under test.
+    await page.waitForLoadState('networkidle');
+    const anchor = page.locator('#daily-learning-section');
+    // Anchor the comparison on the input itself (rather than the section),
+    // and pin scroll position explicitly — fill() auto-scrolls its target
+    // into view, which would otherwise move every element's viewport-relative
+    // boundingBox() regardless of whether the toast affected layout at all.
+    const input = page.locator('#max-new-words');
+    await input.scrollIntoViewIfNeeded();
+    const before = await anchor.boundingBox();
+
+    await input.fill('7');
+    const toast = page.locator('[data-testid="toast"]');
+    await expect(toast).toBeVisible();
+    await expect(toast).toContainText('Saved');
+    await captureForPR(page, 'settings-toast-saved');
+
+    await input.scrollIntoViewIfNeeded();
+    const after = await anchor.boundingBox();
+    expect(after?.y).toBe(before?.y);
+    expect(after?.x).toBe(before?.x);
+
+    // Auto-dismisses on its own after a few seconds.
+    await expect(toast).toBeHidden({ timeout: 6000 });
+
+    // Reset.
+    await input.fill('5');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
+
+  test('rapid successive saves collapse into a single visible toast', async ({ page }) => {
+    await page.goto('/settings');
+
+    const maxNew = page.locator('#max-new-words');
+    const cooldown = page.locator('#new-word-cooldown');
+
+    await maxNew.fill('8');
+    await cooldown.fill('2');
+
+    // Only one toast element should ever be present/visible at a time, even
+    // though two saves fired back-to-back.
+    await expect(page.locator('[data-testid="toast"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+
+    // Reset.
+    await maxNew.fill('5');
+    await cooldown.fill('1');
+    await expect(page.locator('[data-testid="toast"]')).toHaveCount(1);
+  });
+
+  test('inline per-card success/error message elements are gone from the DOM', async ({ page }) => {
+    await page.goto('/settings');
+    for (const id of ['lang-success', 'lang-error', 'mode-success', 'mode-error',
+      'cycle-success', 'cycle-error', 'random-mode-success', 'random-mode-error',
+      'daily-success', 'daily-error', 'accept-mode-success', 'accept-mode-error',
+      'gamification-success', 'gamification-error',
+      'component-threshold-success', 'component-threshold-error']) {
+      await expect(page.locator(`#${id}`)).toHaveCount(0);
+    }
   });
 });
