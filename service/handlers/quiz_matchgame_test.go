@@ -286,6 +286,50 @@ func TestMatchGame_OnlyNewestEnabled_ReturnsNewestCandidates(t *testing.T) {
 	}
 }
 
+// TestMatchGame_NewestMode_MarksShownAndHidesUntilWrongAnswer covers issue
+// #350: a word shown in newest mode must not reappear on the very next call
+// (unlike before the fix, where the mode had no shown-bookkeeping at all),
+// and only becomes eligible again after a wrong answer in normal training.
+func TestMatchGame_NewestMode_MarksShownAndHidesUntilWrongAnswer(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "newest")
+	a := seedWord(t, s, "买牛奶", "", []string{"buy milk"})
+	b := seedWord(t, s, "喝水", "", []string{"drink water"})
+	r := newRouter(s)
+
+	// First call returns both words and marks them shown.
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp1 models.MatchGameResponse
+	decodeJSON(t, rec, &resp1)
+	if len(resp1.Words) != 2 {
+		t.Fatalf("first call: expected 2 words, got %d: %+v", len(resp1.Words), resp1.Words)
+	}
+
+	// Second call returns empty — both words are suppressed until a wrong answer.
+	rec2 := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp2 models.MatchGameResponse
+	decodeJSON(t, rec2, &resp2)
+	if len(resp2.Words) != 0 {
+		t.Errorf("second call: expected 0 words, got %d: %+v", len(resp2.Words), resp2.Words)
+	}
+
+	// Wrong answers on both words in normal training re-eligible them (the
+	// mode needs at least matchGameMinCandidates=2 eligible words to trigger
+	// at all, so a single re-eligible word alone would not be enough here).
+	for _, id := range []int64{a, b} {
+		if _, err := s.ExecForTest(`UPDATE sm2_progress SET last_wrong_at = datetime('now', '+1 minute') WHERE word_id = ?`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rec3 := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp3 models.MatchGameResponse
+	decodeJSON(t, rec3, &resp3)
+	if len(resp3.Words) != 2 {
+		t.Errorf("expected 2 words re-eligible after wrong answers, got %+v", resp3.Words)
+	}
+}
+
 func TestMatchAnswer_ComponentKind_RecordsComponentProgress(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

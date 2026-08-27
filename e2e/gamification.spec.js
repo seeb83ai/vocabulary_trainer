@@ -244,6 +244,102 @@ test.describe('Gamification — match game', () => {
   // because the PATCH handler decodes a missing boolean field as false and
   // writes it straight through — a partial payload from any one card would
   // silently wipe fields owned by the others.
+  // Issue #350: a word shown in "newest words" match-game mode must not
+  // reappear until the user makes an error answering it in normal training —
+  // it previously had no anti-repeat bookkeeping at all and could reappear
+  // on the very next round. Proven deterministically against the running
+  // server/DB (per CLAUDE.md's E2E-first cycle, preferred here over a
+  // probabilistic UI-driven repro) rather than only at the DB-query layer,
+  // since this exercises the real handler wiring end-to-end.
+  test('newest-mode match game does not repeat a word until it is answered wrong (issue #350)', async ({ request }) => {
+    // Isolate this test to only the "newest" mode so mismatch/hardest/
+    // last_mistakes candidates can't interfere with the round contents.
+    await request.patch(`${BASE_URL}/api/settings`, {
+      data: {
+        primary_lang: 'en',
+        prog_new: 'zh_to_transl',
+        prog_tier_struggling: 'transl_to_zh',
+        prog_tier_learning: 'zh_pinyin_to_transl',
+        prog_tier_practicing: 'zh_to_transl',
+        prog_tier_mastered: 'random',
+        new_word_mode_0: 'transl_to_zh',
+        new_word_mode_1: 'zh_pinyin_to_transl',
+        new_word_mode_2: 'zh_to_transl',
+        extend_session_with_extra_words: true,
+        gamification_enabled: true,
+        gamification_frequency: 1,
+        game_mode_mismatch: false,
+        game_mode_newest: true,
+        game_mode_hardest: false,
+        game_mode_last_mistakes: false,
+      },
+    });
+
+    const wA = await api(request, 'POST', '/api/words', {
+      zh_text: '买牛奶', pinyin: 'mǎi niú nǎi', translations: { en: ['buy milk'] }, tags: [], start_training: true,
+    });
+    const wB = await api(request, 'POST', '/api/words', {
+      zh_text: '喝水', pinyin: 'hē shuǐ', translations: { en: ['drink water'] }, tags: [], start_training: true,
+    });
+
+    try {
+      // First round: both freshly-created words are eligible and shown.
+      const round1 = await api(request, 'GET', '/api/quiz/match-game');
+      const ids1 = round1.words.map((w) => w.zh_word_id);
+      expect(ids1).toContain(wA.id);
+      expect(ids1).toContain(wB.id);
+
+      // Second round, immediately after: both must now be suppressed.
+      const round2 = await api(request, 'GET', '/api/quiz/match-game');
+      const ids2 = round2.words.map((w) => w.zh_word_id);
+      expect(ids2).not.toContain(wA.id);
+      expect(ids2).not.toContain(wB.id);
+
+      // Shown/wrong-answer timestamps have second granularity, so wait past
+      // the second round1's markShown landed in — otherwise a wrong answer
+      // recorded in the very same second would tie rather than strictly
+      // exceed last_shown_in_game and the re-eligibility check would never
+      // pass (mirrors the same granularity in hardest/last_mistakes mode).
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      // Answer wA wrong in *normal* training — the qualifying re-eligibility
+      // event the issue asks for. wB is answered correctly and must stay
+      // suppressed.
+      await api(request, 'POST', '/api/quiz/answer', {
+        word_id: wA.id, mode: 'zh_to_transl', answer: 'definitely not milk',
+      });
+      await api(request, 'POST', '/api/quiz/answer', {
+        word_id: wB.id, mode: 'zh_to_transl', answer: 'drink water',
+      });
+
+      // wA alone would be a single eligible candidate at this point, below
+      // matchGameMinCandidates (2) — the mode would never trigger and every
+      // round would come back empty regardless of the fix. Add a second,
+      // never-shown word so the mode can actually trigger, then poll a
+      // bounded number of times until wA is drawn (re-eligible words re-enter
+      // the weighted-random pool rather than being guaranteed on the very
+      // next round) while asserting wB never appears in the meantime.
+      const wC = await api(request, 'POST', '/api/words', {
+        zh_text: '吃饭', pinyin: 'chī fàn', translations: { en: ['eat a meal'] }, tags: [], start_training: true,
+      });
+      try {
+        let sawA = false;
+        for (let i = 0; i < 30 && !sawA; i++) {
+          const round = await api(request, 'GET', '/api/quiz/match-game');
+          const ids = round.words.map((w) => w.zh_word_id);
+          expect(ids).not.toContain(wB.id);
+          if (ids.includes(wA.id)) sawA = true;
+        }
+        expect(sawA).toBe(true);
+      } finally {
+        await request.delete(`${BASE_URL}/api/words/${wC.id}`);
+      }
+    } finally {
+      await request.delete(`${BASE_URL}/api/words/${wA.id}`);
+      await request.delete(`${BASE_URL}/api/words/${wB.id}`);
+    }
+  });
+
   test('enabling gamification survives saving the Daily Learning card', async ({ page }) => {
     await page.goto(`${BASE_URL}/settings`);
     const checkbox = page.locator('#gamification-enabled');

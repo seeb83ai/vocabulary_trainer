@@ -299,7 +299,7 @@ Each user has a personal settings page (`/settings`) with these sections. Every 
 
   Four game modes supply the words for a round, each with its own on/off toggle (all enabled by default):
   - **Mismatch** — recently confused word or hanzi-component pairs (needs at least 2 confusion pairs from the last 7 days). A pair is suppressed after being shown until it is confused again.
-  - **Newest words** — drawn from your 30 most-recently-added words, picked with a weighted random selection that favors more recently added words.
+  - **Newest words** — drawn from your 30 most-recently-added words, picked with a weighted random selection that favors more recently added words. A word is suppressed after being shown until you answer it wrong in normal training (a correct re-attempt alone does not bring it back).
   - **Hardest words** — your lowest-accuracy words (same ranking as the "flag hardest words" drill). A word is suppressed after being shown until you attempt it again (right or wrong).
   - **Last mistakes** — words you've recently answered wrong. A word is suppressed after being shown until you answer it wrong again (a correct re-attempt alone does not bring it back).
 

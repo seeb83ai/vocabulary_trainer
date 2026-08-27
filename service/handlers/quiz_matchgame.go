@@ -113,7 +113,10 @@ func (h *QuizHandler) matchGameCandidates(ctx context.Context, userID int64, mod
 		return words, markShown, nil
 	case gameModeNewest:
 		words, err := h.Store.GetNewestWordsForGame(ctx, userID, matchGameRoundSize)
-		return words, noop, err // no shown-bookkeeping needed — see GetNewestWordsForGame
+		if err != nil {
+			return nil, noop, err
+		}
+		return words, h.markWordsShownFunc(ctx, userID, words, gameModeNewest), nil
 	case gameModeHardest:
 		words, err := h.Store.GetHardestWordsForGame(ctx, userID, matchGameRoundSize)
 		if err != nil {
