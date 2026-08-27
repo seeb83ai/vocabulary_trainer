@@ -141,14 +141,14 @@ test.describe('Gamification — match game', () => {
     await captureForPR(page, 'settings-gamification-hide-pinyin');
 
     await select.selectOption('85-100');
-    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
 
     await page.reload();
     await expect(page.locator('#gamification-hide-pinyin-bucket')).toHaveValue('85-100');
 
     // Restore the default so later specs see the standard state.
     await select.selectOption('70-84');
-    await expect(page.locator('#gamification-success')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
   });
 
   // Issue #349: once a word's SM-2 bucket reaches the configured threshold
