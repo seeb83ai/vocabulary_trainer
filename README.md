@@ -293,7 +293,7 @@ Each user has a personal settings page (`/settings`) with these sections. Every 
 Save confirmations and error messages appear as a small hovering toast in the bottom-right corner, rather than an inline message on the card you edited — so the page never jumps as one is shown or dismissed. It auto-dismisses after a couple of seconds. Saving multiple cards in quick succession doesn't stack up separate messages: the toast replaces its own text and restarts its timer, and if the same message repeats while it's still visible, it appends a "(×N)" counter so each save still registers.
 
 - **Language preferences.** Choose a primary and a secondary language. The app shows the primary language first in the vocabulary list, and uses it as the default quiz language. Both languages are accepted as quiz answers.
-- **Training mode.** Customize the quiz format for each proficiency tier, for progressive mode, and for each step in the new-word introduction phase. This section includes "Blur pinyin until tapped", "Celebrate bucket changes" (a level-up interstitial when a word's accuracy tier advances), and "Sentence fill-in-the-blank" with a frequency percentage, under Quiz Display, and "Require retyping correctly before continuing" under Wrong Answer Retry.
+- **Training mode.** Customize the quiz format for each proficiency tier, for progressive mode, and for each step in the new-word introduction phase. This section includes "Blur pinyin until tapped", "Celebrate bucket changes" (a level-up interstitial when a word's accuracy tier advances), "Show images with Chinese text" (see [Vocabulary images (Unsplash)](#vocabulary-images-unsplash)), and "Sentence fill-in-the-blank" with a frequency percentage, under Quiz Display, and "Require retyping correctly before continuing" under Wrong Answer Retry.
 - **Cycle mode.** Configure the 3-step direction sequence used by the Cycle quiz mode. Choose whether the cycle advances on every attempt (the default) or only after a correct answer.
 - **Random / Cycle Mode by Bucket.** Restrict which quiz formats Random and Cycle mode may pick, per accuracy tier. See "Random / Cycle mode by bucket" above.
 - **Daily Learning.** Set the number of new words per day, set a cooldown between new-word introductions, toggle the skip button for new words, and toggle session extension (which serves an extra not-yet-due word at the end of a session instead of repeating one right away). You can also configure baseline gates (due-today, struggling, learning, new bucket) that pause introductions when the review load is high.
@@ -344,6 +344,18 @@ GITHUB_ISSUE_MAX_BODY_MB=6       # max request body for issue submission (screen
 This feature is optional. If `GITHUB_TOKEN` or `GITHUB_ISSUE_REPO` is unset, the report button stays hidden, and `POST /api/github/issues` returns `503`. Any authenticated user can submit a report. The app rate-limits submissions **per user and per IP**, using `RATE_LIMIT_GITHUB_ISSUE_PER_MIN`, with a default of 5 per minute.
 
 The token must be a fine-grained PAT, scoped to the single target repository, with **Issues: write** and **Contents: write** permissions. The token never reaches the browser. GitHub's Issues API cannot attach images, so the app uploads screenshots through the Contents API to `GITHUB_ASSETS_BRANCH`, which it creates automatically from the default branch if the branch is missing. The app embeds these screenshots in the issue body by URL. They accumulate as blobs on that branch, never on the default branch, and you can prune them periodically. Each report carries a random UUID embedded in the issue body. The app records the UUID-to-user mapping only in the private audit log, so no email address or internal account ID appears in the, potentially public, issue.
+
+## Vocabulary images (Unsplash)
+
+Set `UNSPLASH_ACCESS_KEY` in your `.env` file to enable stock-photo illustrations on the quiz card:
+
+```bash
+UNSPLASH_ACCESS_KEY=your-unsplash-access-key
+```
+
+When configured, and a user enables **Show images with Chinese text** in Settings → Quiz Display, the training page shows a relevant photo above the answer input on plain word cards (not on component, HMM, or sentence-blank cards, and not on the new-word intro screen). The app searches [Unsplash](https://unsplash.com/developers) using the word's English translation, falling back to the German translation when no English translation exists. The first result's image URL is cached on the word (`words.image_url` / `words.image_fetched_at`), fetched lazily on first use, so repeat views of the same word don't call Unsplash again.
+
+This feature is optional. If `UNSPLASH_ACCESS_KEY` is unset, `/api/config` reports `images_configured: false`, the settings checkbox has no visible effect, and `GET /api/words/{id}/image` returns `503`.
 
 ## LLM scene generation
 
@@ -705,6 +717,7 @@ Stages: **registered** (accounts created) → **verified email** → **activated
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 | `POST` | `/api/words/{id}/review` | Flag a word for review |
 | `POST` | `/api/words/{id}/reset` | Reset a word's SM-2 progress to unseen — removes it from every bucket and reintroduces it as new |
+| `GET` | `/api/words/{id}/image` | Get a cached (or freshly fetched) Unsplash image URL for a word (only available when `UNSPLASH_ACCESS_KEY` is set) |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
 | `GET` | `/api/audio/component/{char}` | Serve cached MP3 for a single component character (generated on demand); files stored as `c_{hex}.mp3` |
 | `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |

@@ -83,6 +83,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		ComponentCoverageThreshold       *float64 `json:"component_coverage_threshold"`
 		SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 		SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
+		ShowImagesWithChineseText        bool     `json:"show_images_with_chinese_text"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -298,6 +299,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		ComponentCoverageThreshold:       resolvedComponentThreshold,
 		SentenceBlankEnabled:             req.SentenceBlankEnabled,
 		SentenceBlankRatio:               req.SentenceBlankRatio,
+		ShowImagesWithChineseText:        req.ShowImagesWithChineseText,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

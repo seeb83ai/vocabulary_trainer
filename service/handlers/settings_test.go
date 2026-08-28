@@ -1183,6 +1183,30 @@ func TestSettingsPatch_RetypeOnWrong(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_ShowImagesWithChineseText(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["show_images_with_chinese_text"] != false {
+		t.Errorf("show_images_with_chinese_text: want false by default, got %v", st["show_images_with_chinese_text"])
+	}
+
+	body := baseSettingsPatch()
+	body["show_images_with_chinese_text"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["show_images_with_chinese_text"] != true {
+		t.Errorf("show_images_with_chinese_text: want true after update, got %v", st["show_images_with_chinese_text"])
+	}
+}
+
 func TestSettingsPatch_VoiceUnavailable(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

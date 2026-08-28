@@ -143,6 +143,14 @@ func main() {
 		log.Printf("DeepL API base URL overridden: %s", base)
 	}
 
+	imagesH := &handlers.ImagesHandler{Store: store}
+	if key := os.Getenv("UNSPLASH_ACCESS_KEY"); key != "" {
+		imagesH.AccessKey = key
+		log.Printf("Unsplash images enabled")
+	} else {
+		log.Printf("Unsplash images disabled: UNSPLASH_ACCESS_KEY not set")
+	}
+
 	maxNewWords := 5
 	if v := os.Getenv("MAX_NEW_WORDS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
@@ -313,6 +321,7 @@ func main() {
 				r.Put("/hmm", hmmH.SaveScene)
 				r.Delete("/hmm", hmmH.DeleteScene)
 				r.With(expensiveLimit).Post("/hmm/generate-scene", llmH.GenerateScene)
+				r.Get("/image", imagesH.GetImage)
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
@@ -367,7 +376,7 @@ func main() {
 		r.Patch("/settings", settingsH.Patch)
 		r.Put("/settings/api-keys", settingsH.PutAPIKeys)
 		r.Patch("/training-filters", settingsH.PatchTrainingFilters)
-		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))
+		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil, imagesH.AccessKey != ""))
 		r.With(expensiveLimit).Post("/translate", translateH.Translate)
 		r.Get("/github/config", githubH.ConfigFlag)
 		r.With(handlers.RequireAdmin(store)).Get("/admin/overview", adminH.Overview)

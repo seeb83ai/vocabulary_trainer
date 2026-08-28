@@ -36,6 +36,8 @@ type WordStore interface {
 	GetTagDetails(ctx context.Context, userID int64) ([]models.TagDetail, error)
 	UpsertTagMeta(ctx context.Context, userID int64, name, description string, importable bool) error
 	GetImportableSourceTags(ctx context.Context, userID int64) ([]models.TagDetail, error)
+	GetWordImageURL(ctx context.Context, userID, wordID int64) (*string, error)
+	SetWordImageURL(ctx context.Context, userID, wordID int64, url string) error
 }
 
 // QuizStore: SM-2 progress, confusion pairs, and daily stats.

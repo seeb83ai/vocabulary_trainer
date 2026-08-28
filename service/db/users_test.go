@@ -267,6 +267,9 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.RetypeOnWrong {
 		t.Error("want retype_on_wrong=false by default")
 	}
+	if st.ShowImagesWithChineseText {
+		t.Error("want show_images_with_chinese_text=false by default")
+	}
 }
 
 func TestUpdateUserSettings_RoundTrip(t *testing.T) {
@@ -293,6 +296,7 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 		CelebrateBucketChange:       true,
 		VoiceUnavailable:            true,
 		RetypeOnWrong:               true,
+		ShowImagesWithChineseText:   true,
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -333,6 +337,9 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if !out.RetypeOnWrong {
 		t.Error("retype_on_wrong: want true after update")
+	}
+	if !out.ShowImagesWithChineseText {
+		t.Error("show_images_with_chinese_text: want true after update")
 	}
 }
 

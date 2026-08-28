@@ -11,6 +11,8 @@ let blurPinyin = false;
 let noAutoVoiceOnBlur = false;
 let celebrateBucketChange = false;
 let voiceUnavailable = false; // session-only flag, set when user skips a voice card and opts out
+let showImagesWithChineseText = false;
+let imagesConfigured = false;
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
@@ -22,6 +24,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   blurPinyin = !!st?.blur_pinyin;
   noAutoVoiceOnBlur = !!st?.no_auto_voice_on_blur;
   celebrateBucketChange = !!st?.celebrate_bucket_change;
+  showImagesWithChineseText = !!st?.show_images_with_chinese_text;
   _gamificationEnabled = !!st?.gamification_enabled;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   const btn = document.getElementById('new-word-skip-btn');
@@ -44,6 +47,10 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
     localStorage.setItem('quizComponents', includeComponents ? 'true' : 'false');
     localStorage.setItem('quizTags', JSON.stringify(selectedTags));
   }
+}).catch(() => {});
+
+const _configPromise = fetch('/api/config').then(r => r.ok ? r.json() : null).then(cfg => {
+  imagesConfigured = !!cfg?.images_configured;
 }).catch(() => {});
 
 const HMM_TYPE_COLORS = {
@@ -459,7 +466,41 @@ function showCard() {
 
   applyPinyinBlur();
   autoPlayCard(currentCard);
+  updateCardImage(currentCard);
   $('answer-input').focus();
+}
+
+// cardImageEligible decides whether the current card should attempt to show
+// an Unsplash image: only plain word cards (not component/hmm/sentence cards
+// or the new_word intro screen) with the user setting on and the server
+// feature configured.
+function cardImageEligible(currentCard, showImagesWithChineseText, imagesConfigured) {
+  if (!showImagesWithChineseText || !imagesConfigured) return false;
+  if (!currentCard || !currentCard.word_id) return false;
+  if (currentCard.card_type) return false;
+  if (currentCard.mode === 'new_word') return false;
+  return true;
+}
+
+let _cardImageRequestID = 0;
+
+// updateCardImage shows or hides the card image, fetching it lazily from the
+// (server-cached) /api/words/{id}/image endpoint when eligible.
+function updateCardImage(currentCard) {
+  const img = $('card-image');
+  if (!img) return;
+  hide('card-image');
+  img.src = '';
+  if (!cardImageEligible(currentCard, showImagesWithChineseText, imagesConfigured)) return;
+
+  const requestID = ++_cardImageRequestID;
+  const wordID = currentCard.word_id;
+  apiFetch(`/api/words/${wordID}/image`).then(resp => {
+    // Ignore stale responses from a card the user has already moved past.
+    if (requestID !== _cardImageRequestID || !resp?.image_url) return;
+    img.src = resp.image_url;
+    show('card-image');
+  }).catch(() => { /* no image available — leave hidden */ });
 }
 
 async function submitAnswer(e) {
