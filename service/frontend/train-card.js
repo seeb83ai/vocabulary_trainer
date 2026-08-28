@@ -14,6 +14,7 @@ let voiceUnavailable = false; // session-only flag, set when user skips a voice 
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
+let _matchGamePinyinReveal = 'always';
 const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
@@ -24,6 +25,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   celebrateBucketChange = !!st?.celebrate_bucket_change;
   _gamificationEnabled = !!st?.gamification_enabled;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
+  _matchGamePinyinReveal = st?.match_game_pinyin_reveal || 'always';
   const btn = document.getElementById('new-word-skip-btn');
   if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
   // Restore server-persisted training filter settings (overrides localStorage).

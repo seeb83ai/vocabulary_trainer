@@ -1290,3 +1290,57 @@ func TestSettingsPatch_GamificationHidePinyinFromBucket_EmptyDefaultsToPracticin
 		t.Errorf("empty gamification_hide_pinyin_from_bucket should default to 70-84, got %v", st["gamification_hide_pinyin_from_bucket"])
 	}
 }
+
+func TestSettingsPatch_MatchGamePinyinReveal(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["match_game_pinyin_reveal"] != "always" {
+		t.Errorf("default match_game_pinyin_reveal: want %q, got %v", "always", st["match_game_pinyin_reveal"])
+	}
+
+	body := baseSettingsPatch()
+	body["match_game_pinyin_reveal"] = "after_correct"
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["match_game_pinyin_reveal"] != "after_correct" {
+		t.Errorf("match_game_pinyin_reveal after update: %v", st["match_game_pinyin_reveal"])
+	}
+}
+
+func TestSettingsPatch_MatchGamePinyinReveal_Invalid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["match_game_pinyin_reveal"] = "bogus"
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid match_game_pinyin_reveal, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettingsPatch_MatchGamePinyinReveal_EmptyDefaultsToAlways(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["match_game_pinyin_reveal"] = ""
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec2, &st)
+	if st["match_game_pinyin_reveal"] != "always" {
+		t.Errorf("empty match_game_pinyin_reveal should default to always, got %v", st["match_game_pinyin_reveal"])
+	}
+}

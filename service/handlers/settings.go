@@ -70,6 +70,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GameModeHardest                  bool     `json:"game_mode_hardest"`
 		GameModeLastMistakes             bool     `json:"game_mode_last_mistakes"`
 		GamificationHidePinyinFromBucket string   `json:"gamification_hide_pinyin_from_bucket"`
+		MatchGamePinyinReveal            string   `json:"match_game_pinyin_reveal"`
 		BlurPinyin                       bool     `json:"blur_pinyin"`
 		NoAutoVoiceOnBlur                bool     `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange            bool     `json:"celebrate_bucket_change"`
@@ -144,6 +145,14 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidGamificationHidePinyinBucket(req.GamificationHidePinyinFromBucket) {
 		writeError(w, http.StatusBadRequest, "invalid gamification_hide_pinyin_from_bucket: must be new, 0-49, 50-69, 70-84, or 85-100")
+		return
+	}
+
+	if req.MatchGamePinyinReveal == "" {
+		req.MatchGamePinyinReveal = "always"
+	}
+	if !isValidMatchGamePinyinReveal(req.MatchGamePinyinReveal) {
+		writeError(w, http.StatusBadRequest, "invalid match_game_pinyin_reveal: must be off, always, or after_correct")
 		return
 	}
 
@@ -285,6 +294,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GameModeHardest:                  req.GameModeHardest,
 		GameModeLastMistakes:             req.GameModeLastMistakes,
 		GamificationHidePinyinFromBucket: req.GamificationHidePinyinFromBucket,
+		MatchGamePinyinReveal:            req.MatchGamePinyinReveal,
 		BlurPinyin:                       req.BlurPinyin,
 		NoAutoVoiceOnBlur:                req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:            req.CelebrateBucketChange,
@@ -508,4 +518,14 @@ var validGamificationHidePinyinBuckets = map[string]bool{
 
 func isValidGamificationHidePinyinBucket(m string) bool {
 	return validGamificationHidePinyinBuckets[m]
+}
+
+var validMatchGamePinyinReveal = map[string]bool{
+	"off":           true,
+	"always":        true,
+	"after_correct": true,
+}
+
+func isValidMatchGamePinyinReveal(m string) bool {
+	return validMatchGamePinyinReveal[m]
 }

@@ -182,6 +182,95 @@ test.describe('Gamification — match game', () => {
     await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
   });
 
+  // Issue #375: a new gamification setting controlling when the match game
+  // reveals a word tile's pinyin hint — off / always (default, pre-existing
+  // behaviour) / only after a correct match.
+  test('settings page shows and saves the match-game pinyin-reveal select, default Always', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings`);
+    const select = page.locator('#match-game-pinyin-reveal');
+    await expect(select).toBeVisible();
+    await expect(select).toHaveValue('always');
+    await captureForPR(page, 'settings-match-game-pinyin-reveal');
+
+    await select.selectOption('after_correct');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
+
+    await page.reload();
+    await expect(page.locator('#match-game-pinyin-reveal')).toHaveValue('after_correct');
+
+    // Restore the default so later specs see the standard state.
+    await select.selectOption('always');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible({ timeout: 5000 });
+  });
+
+  // Issue #375: with the setting set to "off", pinyin must never appear, even
+  // after a correct match.
+  test('match game never shows pinyin when the reveal setting is "off"', async ({ page, request }) => {
+    const settingsRes = await request.get(`${BASE_URL}/api/settings`);
+    const originalSettings = await settingsRes.json();
+    await api(request, 'PATCH', '/api/settings', { ...originalSettings, match_game_pinyin_reveal: 'off' });
+    try {
+      await page.goto(`${BASE_URL}/train`);
+      const words = [
+        { zh_word_id: 9101, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
+        { zh_word_id: 9102, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+      ];
+      await page.evaluate((w) => {
+        // @ts-ignore
+        window.showMatchGame(w);
+      }, words);
+      await expect(page.locator('#match-game-overlay')).toBeVisible();
+
+      const maoBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('猫', { exact: true }) });
+      await expect(maoBox.getByText('māo')).toHaveCount(0);
+
+      // Correctly match 猫 → cat; pinyin must still not appear afterwards.
+      await maoBox.click();
+      await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('cat', { exact: true }) }).click();
+      await expect(maoBox.getByText('māo')).toHaveCount(0);
+
+      await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+    } finally {
+      await api(request, 'PATCH', '/api/settings', originalSettings);
+    }
+  });
+
+  // Issue #375: with the setting set to "after_correct", pinyin is hidden
+  // until the pair is matched correctly, then appears.
+  test('match game reveals pinyin only after a correct match when the reveal setting is "after_correct"', async ({ page, request }) => {
+    const settingsRes = await request.get(`${BASE_URL}/api/settings`);
+    const originalSettings = await settingsRes.json();
+    await api(request, 'PATCH', '/api/settings', { ...originalSettings, match_game_pinyin_reveal: 'after_correct' });
+    try {
+      await page.goto(`${BASE_URL}/train`);
+      const words = [
+        { zh_word_id: 9201, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
+        { zh_word_id: 9202, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+      ];
+      await page.evaluate((w) => {
+        // @ts-ignore
+        window.showMatchGame(w);
+      }, words);
+      await expect(page.locator('#match-game-overlay')).toBeVisible();
+
+      const maoBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('猫', { exact: true }) });
+      await expect(maoBox.getByText('māo')).toHaveCount(0);
+
+      await captureForPR(page, 'match-game-pinyin-reveal-after-correct-hidden');
+
+      // Correctly match 猫 → cat; pinyin should now appear.
+      await maoBox.click();
+      await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('cat', { exact: true }) }).click();
+      await expect(maoBox.getByText('māo')).toBeVisible();
+
+      await captureForPR(page, 'match-game-pinyin-reveal-after-correct-shown');
+
+      await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+    } finally {
+      await api(request, 'PATCH', '/api/settings', originalSettings);
+    }
+  });
+
   // Issue #288: 4 individual game-mode toggles (mismatch/newest/hardest/last
   // mistakes), all on by default, alongside the existing gamification toggle.
   test('settings page shows and saves the 4 game-mode toggles', async ({ page }) => {
