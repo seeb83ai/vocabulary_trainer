@@ -1602,4 +1602,43 @@ test.describe('Quiz – retype on wrong answer', () => {
     await page.locator('#next-btn').click();
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
+
+  // Regression test for issue #373: the retype gate used to force-hide the
+  // "Accept as correct (typo)" button, so a user who made a single-character
+  // typo had no shortcut — only the retype fields were shown.
+  test('"Accept as correct (typo)" stays available alongside the retype gate (issue #373)', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+
+    try {
+      await useZhToTranslMode(page);
+
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+      expect(cardRes.ok()).toBe(true);
+      const card = await cardRes.json();
+      const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+      expect(correctAnswer).toBeTruthy();
+      const typoAnswer = correctAnswer.slice(0, -1); // single-character deletion → levenshtein distance 1
+
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+      await page.locator('#answer-input').fill(typoAnswer);
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+      // The retype gate is shown, but so is the "Accept as correct (typo)" button.
+      await expect(page.locator('#wrong-retype-area')).toBeVisible();
+      await expect(page.locator('#accept-correct-btn')).toBeVisible();
+      await captureForPR(page, 'train-retype-gate-accept-typo-visible');
+
+      // Clicking it accepts the answer and advances, bypassing the retype gate.
+      await page.locator('#accept-correct-btn').click();
+      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
 });
