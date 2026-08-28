@@ -1603,3 +1603,53 @@ test.describe('Quiz – retype on wrong answer', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Scroll to top on new card (issue #374)
+//
+// The page used to rely on incidental scroll (e.g. input auto-focus) to bring
+// a freshly loaded card into view, so it only scrolled up sometimes. Loading
+// a new card must now always scroll #card-area to the top of the viewport.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – scroll to top on new card', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('loading a new card scrolls #card-area to the top of the viewport (issue #374)', async ({ page }) => {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.setViewportSize({ width: 375, height: 400 });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    // Append a tall spacer so the page has real scroll room below the next
+    // card regardless of exact content height on this viewport, then scroll
+    // all the way down — simulating a user who scrolled to read the result.
+    await page.evaluate(() => {
+      const spacer = document.createElement('div');
+      spacer.id = 'e2e-scroll-spacer';
+      spacer.style.height = '2000px';
+      document.body.appendChild(spacer);
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+
+    await page.locator('#next-btn').click();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+
+    // #card-area's top must now be aligned with the viewport's top edge.
+    const box = await page.locator('#card-area').boundingBox();
+    expect(box.y).toBeGreaterThanOrEqual(-1);
+    expect(box.y).toBeLessThanOrEqual(20);
+    await captureForPR(page, 'train-new-card-scrolled-to-top');
+  });
+});
