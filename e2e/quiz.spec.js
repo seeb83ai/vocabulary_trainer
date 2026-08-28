@@ -1641,6 +1641,37 @@ test.describe('Quiz – retype on wrong answer', () => {
       await page.request.patch('/api/settings', { data: originalSettings });
     }
   });
+
+  // Regression test for issue #372: the retype gate used to force-hide the
+  // "Add as correct answer" row, so a user who mistyped a valid alternative
+  // translation had no way to add it — only the retype fields were shown.
+  test('"Add as correct answer" stays available alongside the retype gate (issue #372)', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, retype_on_wrong: true } });
+
+    try {
+      await useZhToTranslMode(page);
+
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+      await page.locator('#answer-input').fill('a brand new alternative translation');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+      // The retype gate is shown, but so is the "Add as correct" button.
+      await expect(page.locator('#wrong-retype-area')).toBeVisible();
+      await expect(page.locator('#add-translation-btn')).toBeVisible();
+      await captureForPR(page, 'train-retype-gate-add-as-correct-visible');
+
+      // Clicking it accepts the answer and advances, bypassing the retype gate.
+      await page.locator('#add-translation-btn').click();
+      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
