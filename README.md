@@ -265,7 +265,7 @@ Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation
 | 3 | 2 | Chinese → Translation |
 | 4 | 0 (wraps) | Chinese + Pinyin → Translation |
 
-You can configure the 3-step sequence in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel has an **Advance only on success** toggle. This toggle switches the counter from `total_attempts` to `total_correct`.
+You can configure the sequence (2 to 6 steps) in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, *Voice → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel has an **Advance only on success** toggle. This toggle switches the counter from `total_attempts` to `total_correct`.
 
 ## Random / Cycle mode by bucket
 
@@ -294,7 +294,7 @@ Save confirmations and error messages appear as a small hovering toast in the bo
 
 - **Language preferences.** Choose a primary and a secondary language. The app shows the primary language first in the vocabulary list, and uses it as the default quiz language. Both languages are accepted as quiz answers.
 - **Training mode.** Customize the quiz format for each proficiency tier, for progressive mode, and for each step in the new-word introduction phase. This section includes "Blur pinyin until tapped", "Celebrate bucket changes" (a level-up interstitial when a word's accuracy tier advances), and "Sentence fill-in-the-blank" with a frequency percentage, under Quiz Display, and "Require retyping correctly before continuing" under Wrong Answer Retry.
-- **Cycle mode.** Configure the 3-step direction sequence used by the Cycle quiz mode. Choose whether the cycle advances on every attempt (the default) or only after a correct answer.
+- **Cycle mode.** Configure the direction sequence (2 to 6 steps) used by the Cycle quiz mode. Choose whether the cycle advances on every attempt (the default) or only after a correct answer.
 - **Random / Cycle Mode by Bucket.** Restrict which quiz formats Random and Cycle mode may pick, per accuracy tier. See "Random / Cycle mode by bucket" above.
 - **Daily Learning.** Set the number of new words per day, set a cooldown between new-word introductions, toggle the skip button for new words, and toggle session extension (which serves an extra not-yet-due word at the end of a session instead of repeating one right away). You can also configure baseline gates (due-today, struggling, learning, new bucket) that pause introductions when the review load is high.
 - **Gamification.** Enable a word-matching mini-game that appears during training. Configure how often, in minutes, the game may interrupt training. When the game triggers, it shows a Chinese column and a shuffled translation column. Click a Chinese word, then its translation, to match them. Correct pairs turn green, and wrong pairs flash red. If a word shares its translation text with another still-unmatched word, claiming that word's box alone does not complete the match. Instead, the box flashes yellow, so you cannot claim it out from under the word it actually belongs to. The game updates SM-2 progress for each matched word.

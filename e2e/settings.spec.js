@@ -302,6 +302,52 @@ test.describe('Settings – Chinese (no sound) mode', () => {
   });
 });
 
+// Issue #377: Cycle Mode settings only supported 5 steps; a 6th step lets a
+// user select every quiz mode in one cycle sequence.
+test.describe('Settings – Cycle Mode 6th step (issue #377)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('a 6th cycle-step select is shown, offering every mode', async ({ page }) => {
+    await page.goto('/settings');
+    const step6 = page.locator('#cycle-step-5');
+    await expect(step6).toBeVisible();
+    await expect(page.getByText('Step 6')).toBeVisible();
+
+    const values = await step6.locator('option').evaluateAll(els => els.map(el => el.value));
+    for (const mode of ['zh_pinyin_to_transl', 'transl_to_zh', 'zh_to_transl', 'zh_to_transl_no_sound', 'voice_to_transl', 'mask_pinyin']) {
+      expect(values, `#cycle-step-5 should offer ${mode}`).toContain(mode);
+    }
+  });
+
+  test('selecting all 6 modes across the 6 steps saves and persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+    const steps = ['zh_pinyin_to_transl', 'transl_to_zh', 'zh_to_transl', 'zh_to_transl_no_sound', 'voice_to_transl', 'mask_pinyin'];
+    for (let i = 0; i < steps.length; i++) {
+      await page.locator(`#cycle-step-${i}`).selectOption(steps[i]);
+    }
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+    await captureForPR(page, 'settings-cycle-mode-6-steps');
+
+    await page.reload();
+    for (let i = 0; i < steps.length; i++) {
+      await expect(page.locator(`#cycle-step-${i}`)).toHaveValue(steps[i]);
+    }
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.cycle_sequence).toBe(steps.join(','));
+
+    // Reset to the default 3-step sequence.
+    await page.locator('#cycle-step-0').selectOption('zh_pinyin_to_transl');
+    await page.locator('#cycle-step-1').selectOption('transl_to_zh');
+    await page.locator('#cycle-step-2').selectOption('zh_to_transl');
+    await page.locator('#cycle-step-3').selectOption('');
+    await page.locator('#cycle-step-4').selectOption('');
+    await page.locator('#cycle-step-5').selectOption('');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
+});
+
 // Issue #287: per-bucket eligibility for Random/Cycle mode selection.
 test.describe('Settings – Random/Cycle Mode by Bucket (issue #287)', () => {
   test.use({ storageState: 'e2e/.auth/user.json' });
