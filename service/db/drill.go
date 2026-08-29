@@ -146,7 +146,7 @@ func (s *Store) GetNextDrillCard(ctx context.Context, userID int64) (*models.Wor
 	row := s.db.QueryRowContext(ctx, `
 		SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
 		       p.repetitions, p.easiness, p.interval_days, p.due_date,
-		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
+		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word, p.known_correct_count
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh' AND w.user_id = ? AND p.drill_flag = 1
@@ -159,7 +159,7 @@ func (s *Store) GetNextDrillCard(ctx context.Context, userID int64) (*models.Wor
 	err := row.Scan(
 		&w.ID, &w.Text, &w.Language, &w.Pinyin, &createdAt,
 		&p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-		&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning,
+		&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning, &p.KnownCorrectCount,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil, nil
