@@ -152,22 +152,24 @@ test.describe('Gamification — match game', () => {
   });
 
   // Issue #349: once a word's SM-2 bucket reaches the configured threshold
-  // (default Practicing), the match game stops showing its pinyin hint at
-  // all — the server never sends it, so there's nothing to reveal even
-  // after a match. A word still below the threshold keeps its pinyin hint
-  // available to reveal (issue #375 governs when — see the reveal-setting
-  // tests below; the default "always" setting reveals it once the pair is
-  // attempted). The server-side tier classification/cutoff itself is
-  // covered by the Go handler tests (TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold
-  // et al. in quiz_matchgame_test.go); this renders the exact shape GET
-  // /api/quiz/match-game now returns for an at/above-threshold word (empty
-  // pinyin) and a below-threshold word (pinyin present) to verify the UI
-  // reflects that omission rather than re-deriving tier state end-to-end.
+  // (default Practicing), the server flags the tile hide_pinyin so the match
+  // game doesn't show its pinyin hint up front — but the pinyin value is
+  // still sent (issue #375), so it can be revealed once that pair is
+  // attempted, per the match_game_pinyin_reveal setting. A word still below
+  // the threshold isn't flagged and keeps showing its pinyin from the start,
+  // unaffected by that setting. The server-side tier classification/cutoff
+  // itself is covered by the Go handler tests
+  // (TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold et al. in
+  // quiz_matchgame_test.go); this renders the exact shape GET
+  // /api/quiz/match-game now returns for an at/above-threshold word
+  // (hide_pinyin: true) and a below-threshold word (hide_pinyin: false) to
+  // verify the UI reflects that flag rather than re-deriving tier state
+  // end-to-end.
   test('match game hides pinyin for a word at/above the threshold bucket, keeps it below', async ({ page }) => {
     await page.goto(`${BASE_URL}/train`);
     const words = [
-      { zh_word_id: 9001, zh_text: '会', pinyin: '', translations: { en: ['can'] } },
-      { zh_word_id: 9002, zh_text: '去', pinyin: 'qù', translations: { en: ['go'] } },
+      { zh_word_id: 9001, zh_text: '会', pinyin: 'huì', hide_pinyin: true, translations: { en: ['can'] } },
+      { zh_word_id: 9002, zh_text: '去', pinyin: 'qù', hide_pinyin: false, translations: { en: ['go'] } },
     ];
     await page.evaluate((w) => {
       // @ts-ignore
@@ -177,23 +179,18 @@ test.describe('Gamification — match game', () => {
 
     const huiBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('会', { exact: true }) });
     const quBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('去', { exact: true }) });
-    // Neither tile shows its pinyin up front — the default "always" reveal
-    // setting only shows it once that pair has been attempted (issue #375).
+    // The at/above-threshold tile (会) starts hidden; the below-threshold
+    // tile (去) shows its pinyin immediately, unaffected by this feature.
     await expect(huiBox.getByText('huì')).toHaveCount(0);
-    await expect(quBox.getByText('qù')).toHaveCount(0);
+    await expect(quBox.getByText('qù')).toBeVisible();
 
     await captureForPR(page, 'match-game-pinyin-hidden-above-threshold');
 
-    // Match both pairs correctly. 去/qù has pinyin below the threshold, so
-    // it reveals once attempted; 会 was blanked server-side (at/above the
-    // threshold) so there is nothing to reveal even after a correct match.
+    // Matching 会 correctly still reveals its pinyin — hide_pinyin only
+    // withholds it up front, per the default "always" reveal setting.
     await huiBox.click();
     await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('can', { exact: true }) }).click();
-    await quBox.click();
-    await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('go', { exact: true }) }).click();
-
-    await expect(huiBox.getByText('huì')).toHaveCount(0);
-    await expect(quBox.getByText('qù')).toBeVisible();
+    await expect(huiBox.getByText('huì')).toBeVisible();
   });
 
   // Issue #375: a new gamification setting controlling when the match game
@@ -226,8 +223,8 @@ test.describe('Gamification — match game', () => {
     try {
       await page.goto(`${BASE_URL}/train`);
       const words = [
-        { zh_word_id: 9101, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
-        { zh_word_id: 9102, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+        { zh_word_id: 9101, zh_text: '猫', pinyin: 'māo', hide_pinyin: true, translations: { en: ['cat'] } },
+        { zh_word_id: 9102, zh_text: '狗', pinyin: 'gǒu', hide_pinyin: true, translations: { en: ['dog'] } },
       ];
       await page.evaluate((w) => {
         // @ts-ignore
@@ -258,8 +255,8 @@ test.describe('Gamification — match game', () => {
     try {
       await page.goto(`${BASE_URL}/train`);
       const words = [
-        { zh_word_id: 9201, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
-        { zh_word_id: 9202, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+        { zh_word_id: 9201, zh_text: '猫', pinyin: 'māo', hide_pinyin: true, translations: { en: ['cat'] } },
+        { zh_word_id: 9202, zh_text: '狗', pinyin: 'gǒu', hide_pinyin: true, translations: { en: ['dog'] } },
       ];
       await page.evaluate((w) => {
         // @ts-ignore
@@ -294,8 +291,8 @@ test.describe('Gamification — match game', () => {
     try {
       await page.goto(`${BASE_URL}/train`);
       const words = [
-        { zh_word_id: 9301, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
-        { zh_word_id: 9302, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+        { zh_word_id: 9301, zh_text: '猫', pinyin: 'māo', hide_pinyin: true, translations: { en: ['cat'] } },
+        { zh_word_id: 9302, zh_text: '狗', pinyin: 'gǒu', hide_pinyin: true, translations: { en: ['dog'] } },
       ];
       await page.evaluate((w) => {
         // @ts-ignore
@@ -324,8 +321,8 @@ test.describe('Gamification — match game', () => {
     try {
       await page.goto(`${BASE_URL}/train`);
       const words = [
-        { zh_word_id: 9401, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
-        { zh_word_id: 9402, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+        { zh_word_id: 9401, zh_text: '猫', pinyin: 'māo', hide_pinyin: true, translations: { en: ['cat'] } },
+        { zh_word_id: 9402, zh_text: '狗', pinyin: 'gǒu', hide_pinyin: true, translations: { en: ['dog'] } },
       ];
       await page.evaluate((w) => {
         // @ts-ignore

@@ -48,6 +48,7 @@ function showMatchGame(words) {
       character: w.character,
       text: w.zh_text,
       pinyin: w.pinyin,
+      hidePinyin: !!w.hide_pinyin,
     }));
     const matchAnswerBody = (item, correct) => item.kind === 'component'
       ? { kind: 'component', character: item.character, correct }
@@ -102,12 +103,13 @@ function showMatchGame(words) {
     const grid = document.createElement('div');
     grid.className = 'grid grid-cols-2 gap-3 mb-4';
 
-    // Component tiles (issue #375) are never tier-blanked server-side (see
-    // hidePinyinAboveThreshold) and always show their pinyin from the start,
-    // independent of match_game_pinyin_reveal — only word tiles are gated by
-    // that setting and revealed once their pair is attempted.
+    // A tile shows its pinyin up front unless the server flagged it
+    // hide_pinyin (issue #349: word tier at/above the configured threshold).
+    // Component tiles are never flagged and always show pinyin from the
+    // start. A flagged word tile stays hidden until its pair is attempted,
+    // then reveals per match_game_pinyin_reveal (issue #375).
     const leftBoxes = leftItems.map(item =>
-      renderBox(item.text, item.kind === 'component' ? item.pinyin : null));
+      renderBox(item.text, item.hidePinyin ? null : item.pinyin));
     const rightBoxes = shuffledRight.map(item => renderBox(item.text));
 
     leftBoxes.forEach((box, lIdx) => {
