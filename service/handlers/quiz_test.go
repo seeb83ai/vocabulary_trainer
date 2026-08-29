@@ -795,6 +795,44 @@ func TestSkip_RejectsNewWordWhenHidden(t *testing.T) {
 	}
 }
 
+// TestQuizAnswer_EllipsisEquivalence covers issue #343: a zh word stored
+// with ideographic ellipses ("……") must be accepted when the user types an
+// equivalent ellipsis form ("..." or "。。。") while answering a training
+// card, in both directions (typing the zh word, and typing its
+// translation containing an ellipsis).
+func TestQuizAnswer_EllipsisEquivalence(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id := seedWord(t, s, "虽然……但是……", "suīrán... dànshì...", []string{"although... but..."})
+
+	for _, tc := range []struct {
+		name   string
+		mode   string
+		answer string
+	}{
+		{"zh word, ASCII dots", "transl_to_zh", "虽然...但是..."},
+		{"zh word, fullwidth periods", "transl_to_zh", "虽然。。。但是。。。"},
+		{"zh word, exact stored form", "transl_to_zh", "虽然……但是……"},
+		{"translation, ideographic ellipsis", "zh_to_transl", "although…but…"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+				"word_id": id, "mode": tc.mode, "answer": tc.answer,
+			})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var resp struct {
+				Correct bool `json:"correct"`
+			}
+			decodeJSON(t, rec, &resp)
+			if !resp.Correct {
+				t.Errorf("answer %q (mode %s) should be accepted as correct", tc.answer, tc.mode)
+			}
+		})
+	}
+}
+
 func TestFlagDifficult_FlagsServesAndClearsOnCorrect(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

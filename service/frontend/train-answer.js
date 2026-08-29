@@ -17,9 +17,23 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+// fullwidthToHalfwidth mirrors service/sm2/sm2.go's fullwidthToHalfwidth
+// Replacer so full-width punctuation is interchangeable with its ASCII form.
+const FULLWIDTH_TO_HALFWIDTH = {
+  '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';',
+};
+
 function normalizeAnswer(s) {
   s = s.toLowerCase().trim();
+  s = s.replace(/[？！，。：；]/g, ch => FULLWIDTH_TO_HALFWIDTH[ch]);
+  // Mirrors service/sm2/sm2.go's reDotsRun: collapse any run of halfwidth
+  // periods and/or ideographic ellipsis characters (U+2026), anywhere in the
+  // string, into a single space — so "……", "。。。" (after fullwidth
+  // conversion above), and "..." are all treated as equivalent regardless of
+  // position (issue #343).
+  s = s.replace(/[.…]+/g, ' ');
   s = s.replace(/[\p{P}\p{S}\s]+$/u, '');
+  s = s.trim().split(/\s+/).join(' ');
   return s;
 }
 
@@ -51,12 +65,11 @@ function expandVariants(a) {
 // gates — shared by the new-word introduction screen and the
 // retype-on-wrong-answer gate (see wrongRetypeSatisfied below). They reuse
 // expandVariants/normalizeAnswer (same helpers backing shouldShowAcceptTypo
-// above and the backend's CheckAnswer) so that optional parenthesised
-// annotations on the zh word (e.g. "过（动词）") are stripped the same way
-// here as in the checkmark UI that renders alongside these gates — issue
-// #348: the Next button used to stay disabled even after both fields showed
-// a correct ✓ checkmark because this file's gate used a different,
-// stricter normalisation that did not strip such annotations.
+// above and the backend's CheckAnswer) so that both the punctuation/ellipsis
+// handling (issue #343) and optional parenthesised annotations (e.g. "过（动词）")
+// are stripped the same way here as in the checkmark UI — issue #348: the
+// Next button used to stay disabled even after both fields showed a correct ✓
+// checkmark because this file's gate used a different, stricter normalisation.
 function isZhCorrect(inputVal, prompt) {
   if (!inputVal || !inputVal.trim()) return false;
   return expandVariants(prompt).includes(normalizeAnswer(inputVal));
