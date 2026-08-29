@@ -73,7 +73,7 @@ type UserSettings struct {
 	RandomModeRangeZhPinyinToTransl  string   `json:"random_mode_range_zh_pinyin_to_transl"`
 	RandomModeRangeZhToTranslNoSound string   `json:"random_mode_range_zh_to_transl_no_sound"`
 	RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
-	RetypeOnWrong                    bool     `json:"retype_on_wrong"`
+	WrongAnswerRetryMode             string   `json:"wrong_answer_retry_mode"` // "off", "matched" (retype only the field(s) the current card direction tested), or "both"
 	ComponentCoverageThreshold       float64  `json:"component_coverage_threshold"`
 	SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 	SentenceBlankRatio               int      `json:"sentence_blank_ratio"`

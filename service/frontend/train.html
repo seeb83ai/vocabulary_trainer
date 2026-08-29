@@ -359,19 +359,23 @@
 
           <div id="word-breakdown" class="hidden mb-2"></div>
           <div id="wrong-retype-area" class="hidden mb-4 space-y-3 text-left">
-            <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" data-i18n="newWord.typeZh">Type the Chinese</div>
-            <div class="flex items-center gap-2">
-              <input type="text" id="wrong-retype-zh-input"
-                     class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-base sm:text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
-                     autocomplete="off" spellcheck="false">
-              <span id="wrong-retype-zh-check" class="text-xl w-6 text-center"></span>
+            <div id="wrong-retype-zh-group">
+              <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" data-i18n="newWord.typeZh">Type the Chinese</div>
+              <div class="flex items-center gap-2">
+                <input type="text" id="wrong-retype-zh-input"
+                       class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-base sm:text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+                       autocomplete="off" spellcheck="false">
+                <span id="wrong-retype-zh-check" class="text-xl w-6 text-center"></span>
+              </div>
             </div>
-            <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" data-i18n="newWord.typeTrans">Type the translation</div>
-            <div class="flex items-center gap-2">
-              <input type="text" id="wrong-retype-trans-input"
-                     class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-sm sm:text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
-                     autocomplete="off">
-              <span id="wrong-retype-trans-check" class="text-xl w-6 text-center"></span>
+            <div id="wrong-retype-trans-group">
+              <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" data-i18n="newWord.typeTrans">Type the translation</div>
+              <div class="flex items-center gap-2">
+                <input type="text" id="wrong-retype-trans-input"
+                       class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-sm sm:text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
+                       autocomplete="off">
+                <span id="wrong-retype-trans-check" class="text-xl w-6 text-center"></span>
+              </div>
             </div>
           </div>
           <div id="add-translation-row" class="hidden mb-3 flex items-center gap-2">

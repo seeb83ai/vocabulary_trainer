@@ -106,7 +106,7 @@ async function loadTrainSettings() {
     const st = await apiFetch('/api/settings');
     requireNewWordZh    = st.new_word_require_zh    !== false;
     requireNewWordTrans = st.new_word_require_trans !== false;
-    retypeOnWrong        = !!st.retype_on_wrong;
+    wrongAnswerRetryMode = st.wrong_answer_retry_mode || 'off';
   } catch (_) { /* keep defaults */ }
   // Re-apply filter UI in case _settingsPromise updated state after DOMContentLoaded.
   applyModeButtons();

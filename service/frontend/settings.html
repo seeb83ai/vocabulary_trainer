@@ -146,11 +146,19 @@
 
       <!-- Wrong answer retry -->
       <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">Wrong Answer Retry</p>
-      <p class="text-sm text-gray-500 mb-3">After a wrong answer, require retyping the correct Chinese word and translation before continuing.</p>
+      <p class="text-sm text-gray-500 mb-3">After a wrong answer, optionally require retyping the correct answer before continuing.</p>
       <div class="space-y-2 mb-5">
         <label class="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" id="retype-on-wrong" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-600">Require retyping correctly before continuing</span>
+          <input type="radio" name="wrong-answer-retry-mode" value="off" class="accent-blue-600">
+          <span class="text-sm text-gray-700"><strong>Off</strong> (default) — continue immediately after a wrong answer</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="radio" name="wrong-answer-retry-mode" value="matched" class="accent-blue-600">
+          <span class="text-sm text-gray-700"><strong>Only what was tested</strong> — e.g. for Chinese → translation, retype just the translation</span>
+        </label>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="radio" name="wrong-answer-retry-mode" value="both" class="accent-blue-600">
+          <span class="text-sm text-gray-700"><strong>Chinese and translation</strong> — always retype both, regardless of the card's direction</span>
         </label>
       </div>
     </div>
