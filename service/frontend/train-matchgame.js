@@ -70,11 +70,21 @@ function showMatchGame(words) {
       div.appendChild(t);
       if (sub) {
         const s = document.createElement('div');
-        s.className = 'text-xs text-gray-500 mt-1';
+        s.className = 'match-pinyin-sub text-xs text-gray-500 mt-1';
         s.textContent = sub;
         div.appendChild(s);
       }
       return div;
+    }
+
+    // reveals a left box's pinyin hint after a correct match, when the
+    // match_game_pinyin_reveal setting is "after_correct" (issue #375).
+    function revealPinyin(box, pinyin) {
+      if (!pinyin || box.querySelector('.match-pinyin-sub')) return;
+      const s = document.createElement('div');
+      s.className = 'match-pinyin-sub text-xs text-gray-500 mt-1';
+      s.textContent = pinyin;
+      box.appendChild(s);
     }
 
     const modal = document.createElement('div');
@@ -84,7 +94,8 @@ function showMatchGame(words) {
     const grid = document.createElement('div');
     grid.className = 'grid grid-cols-2 gap-3 mb-4';
 
-    const leftBoxes = leftItems.map(item => renderBox(item.text, item.pinyin));
+    const leftBoxes = leftItems.map(item =>
+      renderBox(item.text, _matchGamePinyinReveal === 'always' ? item.pinyin : null));
     const rightBoxes = shuffledRight.map(item => renderBox(item.text));
 
     leftBoxes.forEach((box, lIdx) => {
@@ -113,6 +124,9 @@ function showMatchGame(words) {
           box.classList.add('border-green-500', 'bg-green-50', 'cursor-default');
           matched.add(lIdx);
           selectedLeft = null;
+          if (_matchGamePinyinReveal === 'after_correct') {
+            revealPinyin(leftBoxes[lIdx], leftItems[lIdx].pinyin);
+          }
           try {
             await apiFetch('/api/quiz/match-answer', {
               method: 'POST',
