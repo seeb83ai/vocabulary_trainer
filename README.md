@@ -4,7 +4,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Features
 
-- **One-button onboarding.** When a new account opens the training page with no vocabulary and the shared library offers HSK lists, the empty state asks "How much Chinese do you know?" and offers one-click starts: *I'm new — start with HSK 1* and *I know the basics — HSK 2–3*. One click imports the list and shows the first new-word introduction immediately. A third option, *Let me choose word lists myself*, opens the existing tag picker with language filters and preview.
+- **One-button onboarding.** When a new account opens the training page with no vocabulary and the shared library offers HSK lists, the empty state asks "How much Chinese do you know?" and offers one-click starts: *I'm new — start with HSK 1* and *I know the basics — HSK 2–3*. One click imports the list and shows the first new-word introduction immediately. A third option, *Let me choose word lists myself*, opens the existing tag picker with language filters and preview. Every import path (quick-start or custom) leaves the imported words unseen so they are introduced one at a time through the normal daily new-word cap, just like a manually-added word — a bulk import never floods the first session with dozens of never-practiced words at once.
 - **Landing page for signed-out visitors.** The root page (`/`) shows the value proposition — spaced repetition, native audio and pinyin drills, character mnemonics — next to the sign-in/register card, with a "Create free account" call to action. The page carries SEO and Open Graph meta tags so it can be found and shared.
 - **Try-before-signup demo quiz.** Signed-out visitors can answer five fixed demo cards (Chinese + pinyin → English) directly on the root page, with no account. Answers are checked server-side with the same flexible matching logic as the real quiz, wrong answers reveal the accepted translations, and finishing the demo leads to a "Create free account" prompt. The endpoints (`GET /api/demo/cards`, `POST /api/demo/answer`) are public, stateless, and store nothing.
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
@@ -686,7 +686,7 @@ Stages: **registered** (accounts created) → **verified email** → **activated
 | `GET` | `/api/quiz/langs` | List the distinct translation languages available |
 | `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7) |
 | `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |
-| `POST` | `/api/quiz/acknowledge-random` | Acknowledge a random subset of new words (start-training count) |
+| `POST` | `/api/quiz/acknowledge-random` | Acknowledge a random subset of new words as immediately due, capped at the caller's remaining daily new-word allowance (`max_new_words_per_day` minus words already introduced today) — never bypasses the daily new-word cap |
 | `POST` | `/api/quiz/advance` | Advance due dates / move past the current card |
 | `POST` | `/api/quiz/difficult` | Flag the user's hardest words for a focused drill (`count` body field — about half by lowest accuracy, half by lowest ease factor); returns `{flagged}` |
 | `POST` | `/api/quiz/difficult/clear` | End the difficult-words drill by clearing all drill flags |
