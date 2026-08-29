@@ -158,6 +158,14 @@ function showEmptyState() {
   }
 }
 
+// Scrolls the given card container to the top of the viewport. Called
+// whenever a new card/word/component is shown so the prompt is always
+// fully visible right away, instead of relying on incidental scrolling
+// (e.g. an input's auto-focus), which only happened sometimes (issue #374).
+function scrollCardIntoView(id) {
+  $(id)?.scrollIntoView({ behavior: 'auto', block: 'start' });
+}
+
 async function loadNextCard(trackCurrent = false) {
   _noCardsPaused = true;  // pause until we confirm a card is ready
   await _flushTime();
@@ -290,6 +298,7 @@ async function loadNextCard(trackCurrent = false) {
     hide('new-component-area');
     _noCardsPaused = false; _onFocusOrVisibility();
     show('new-word-area');
+    scrollCardIntoView('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
     const transLines = [];
@@ -310,7 +319,7 @@ async function loadNextCard(trackCurrent = false) {
     if (needsInput) {
       $('new-word-inputs').classList.remove('hidden');
       $('new-word-got-it-btn').disabled = true;
-      setTimeout(() => (requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input')).focus(), 50);
+      setTimeout(() => (requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input')).focus({ preventScroll: true }), 50);
     } else {
       $('new-word-inputs').classList.add('hidden');
       $('new-word-got-it-btn').disabled = false;
@@ -331,6 +340,7 @@ async function loadNextCard(trackCurrent = false) {
     hide('new-word-area');
     _noCardsPaused = false; _onFocusOrVisibility();
     show('new-component-area');
+    scrollCardIntoView('new-component-area');
     setText('new-component-char', currentCard.prompt);
     $('new-component-play-btn').onclick = () => playComponentAudio(currentCard.prompt);
     autoPlayCard(currentCard);
@@ -459,7 +469,10 @@ function showCard() {
 
   applyPinyinBlur();
   autoPlayCard(currentCard);
-  $('answer-input').focus();
+  // preventScroll: focus() otherwise scrolls just enough to reveal the input,
+  // which can fight the explicit scrollCardIntoView below (issue #374).
+  $('answer-input').focus({ preventScroll: true });
+  scrollCardIntoView('card-area');
 }
 
 async function submitAnswer(e) {
