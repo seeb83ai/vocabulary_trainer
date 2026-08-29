@@ -736,7 +736,7 @@ func TestGetComponentCoverage_ReturnsWordIDSetsSortedByCharacter(t *testing.T) {
 	seedZhWord(t, s, userID, "妈")
 	// 日 and 月 each cover 2 of the 3 words, 女 covers 1 (马 excluded — phonetic-only).
 
-	items, _, total, err := s.GetComponentCoverage(ctx, userID)
+	items, _, total, trained, err := s.GetComponentCoverage(ctx, userID)
 	if err != nil {
 		t.Fatalf("GetComponentCoverage: %v", err)
 	}
@@ -759,6 +759,36 @@ func TestGetComponentCoverage_ReturnsWordIDSetsSortedByCharacter(t *testing.T) {
 	}
 	if len(byChar["女"].WordIDs) != 1 {
 		t.Errorf("want 女 covering 1 word, got %v", byChar["女"].WordIDs)
+	}
+	if len(trained) != 0 {
+		t.Errorf("want no trained components (none added to component_progress yet), got %v", trained)
+	}
+}
+
+// TestGetComponentCoverage_ReturnsTrainedCharacters verifies that
+// GetComponentCoverage reports which qualifying components already have a
+// component_progress row for the user — used by the Settings page to show
+// how many components are already in training (issue #352).
+func TestGetComponentCoverage_ReturnsTrainedCharacters(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "明", "bright", "⿰日月", `{"type":"ideographic","hint":"sun+moon"}`, "日", "")
+	seedHanziDef(t, s, "日", "sun; day")
+	seedHanziDef(t, s, "月", "moon; month")
+
+	const userID = int64(2)
+	seedZhWord(t, s, userID, "明")
+	s.InsertComponentProgressForTest(ctx, userID, "日", time.Now())
+	// A trained row for a user's own component that no longer qualifies (or
+	// belongs to another user) must not leak into another user's set.
+	s.InsertComponentProgressForTest(ctx, int64(99), "月", time.Now())
+
+	_, _, _, trained, err := s.GetComponentCoverage(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetComponentCoverage: %v", err)
+	}
+	if len(trained) != 1 || !trained["日"] {
+		t.Errorf("want trained = {日}, got %v", trained)
 	}
 }
 

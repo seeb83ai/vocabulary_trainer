@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"vocabulary_trainer/db"
@@ -384,11 +385,14 @@ func (h *ComponentHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Coverage returns every qualifying component across the user's current zh
 // vocabulary (not just ones already in training), each with the zh word IDs
-// that require it — used by the Settings page to preview how many
-// components a candidate coverage-target percentage would select for
-// training (see db.selectComponentsForCoverage).
+// that require it, plus which of them already have a component_progress row
+// (i.e. are already actively in training) — used by the Settings page to
+// preview how many components a candidate coverage-target percentage would
+// select for training, how many components are already in training, and how
+// many of those would be out of scope at that target (see
+// db.selectComponentsForCoverage, #352).
 func (h *ComponentHandler) Coverage(w http.ResponseWriter, r *http.Request) {
-	items, wordComponentCounts, totalWords, err := h.Store.GetComponentCoverage(r.Context(), UserIDFromContext(r.Context()))
+	items, wordComponentCounts, totalWords, trained, err := h.Store.GetComponentCoverage(r.Context(), UserIDFromContext(r.Context()))
 	if err != nil {
 		internalError(w, err)
 		return
@@ -399,10 +403,16 @@ func (h *ComponentHandler) Coverage(w http.ResponseWriter, r *http.Request) {
 	if wordComponentCounts == nil {
 		wordComponentCounts = map[int64]int{}
 	}
+	trainedCharacters := make([]string, 0, len(trained))
+	for char := range trained {
+		trainedCharacters = append(trainedCharacters, char)
+	}
+	sort.Strings(trainedCharacters)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"components":            items,
 		"word_component_counts": wordComponentCounts,
 		"total_words":           totalWords,
+		"trained_characters":    trainedCharacters,
 	})
 }
 

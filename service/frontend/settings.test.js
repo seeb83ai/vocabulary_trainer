@@ -49,14 +49,14 @@ describe('modeRangeValue', () => {
 function computeCoverageSelection(components, totalWords, targetPct) {
   const totalComponents = components.length;
   if (totalWords <= 0 || targetPct <= 0 || totalComponents === 0) {
-    return { selectedCount: 0, totalComponents };
+    return { selectedCount: 0, totalComponents, selectedCharacters: new Set() };
   }
   const target = (targetPct / 100) * totalWords;
   const remaining = components
     .map(c => ({ character: c.character, wordIds: c.word_ids || [] }))
     .sort((a, b) => (a.character < b.character ? -1 : a.character > b.character ? 1 : 0));
   const covered = new Set();
-  let selectedCount = 0;
+  const selectedCharacters = new Set();
   while (covered.size < target && remaining.length > 0) {
     let bestIdx = -1;
     let bestGain = 0;
@@ -72,10 +72,18 @@ function computeCoverageSelection(components, totalWords, targetPct) {
     }
     if (bestIdx === -1) break;
     for (const wid of remaining[bestIdx].wordIds) covered.add(wid);
+    selectedCharacters.add(remaining[bestIdx].character);
     remaining.splice(bestIdx, 1);
-    selectedCount++;
   }
-  return { selectedCount, totalComponents };
+  return { selectedCount: selectedCharacters.size, totalComponents, selectedCharacters };
+}
+
+// outOfScopeCount is pure: of the currently-trained components, how many are
+// not in the selected set for the previewed target — i.e. already-trained
+// components that exceed what's needed to reach a (possibly lower) target
+// (#352). Informational only; the setting never removes trained components.
+function outOfScopeCount(trainedCharacters, selectedCharacters) {
+  return trainedCharacters.filter(c => !selectedCharacters.has(c)).length;
 }
 
 describe('computeCoverageSelection', () => {
@@ -87,25 +95,54 @@ describe('computeCoverageSelection', () => {
   ];
 
   it('selects nothing at target 0', () => {
-    expect(computeCoverageSelection(components, 5, 0)).toEqual({ selectedCount: 0, totalComponents: 3 });
+    const { selectedCount, totalComponents } = computeCoverageSelection(components, 5, 0);
+    expect({ selectedCount, totalComponents }).toEqual({ selectedCount: 0, totalComponents: 3 });
   });
 
   it('selects just the highest-gain component when it alone reaches the target', () => {
     // 60% of 5 = 3 -> 日 alone (covers 3) is enough.
-    expect(computeCoverageSelection(components, 5, 60)).toEqual({ selectedCount: 1, totalComponents: 3 });
+    const { selectedCount, totalComponents } = computeCoverageSelection(components, 5, 60);
+    expect({ selectedCount, totalComponents }).toEqual({ selectedCount: 1, totalComponents: 3 });
   });
 
   it('breaks gain ties by ascending character', () => {
     // 80% of 5 = 4 -> 日 (3) then a tie between 月 and 女 (each +1); 女 sorts first.
-    expect(computeCoverageSelection(components, 5, 80)).toEqual({ selectedCount: 2, totalComponents: 3 });
+    const { selectedCount, totalComponents } = computeCoverageSelection(components, 5, 80);
+    expect({ selectedCount, totalComponents }).toEqual({ selectedCount: 2, totalComponents: 3 });
   });
 
   it('selects every component to reach 100% coverage', () => {
-    expect(computeCoverageSelection(components, 5, 100)).toEqual({ selectedCount: 3, totalComponents: 3 });
+    const { selectedCount, totalComponents } = computeCoverageSelection(components, 5, 100);
+    expect({ selectedCount, totalComponents }).toEqual({ selectedCount: 3, totalComponents: 3 });
   });
 
   it('handles an empty component list', () => {
-    expect(computeCoverageSelection([], 0, 50)).toEqual({ selectedCount: 0, totalComponents: 0 });
+    const { selectedCount, totalComponents } = computeCoverageSelection([], 0, 50);
+    expect({ selectedCount, totalComponents }).toEqual({ selectedCount: 0, totalComponents: 0 });
+  });
+});
+
+describe('outOfScopeCount (issue #352)', () => {
+  // Same fixture as above: 80% target selects 日 and 女 (not 月).
+  const components = [
+    { character: '日', word_ids: [1, 2, 3] },
+    { character: '月', word_ids: [3, 4] },
+    { character: '女', word_ids: [5] },
+  ];
+
+  it('counts trained components that are not in the selected set', () => {
+    const { selectedCharacters } = computeCoverageSelection(components, 5, 80);
+    expect(outOfScopeCount(['日', '月', '女'], selectedCharacters)).toBe(1); // 月 is out of scope
+  });
+
+  it('is zero when every trained component is still selected', () => {
+    const { selectedCharacters } = computeCoverageSelection(components, 5, 100);
+    expect(outOfScopeCount(['日', '月'], selectedCharacters)).toBe(0);
+  });
+
+  it('is zero when no components are trained yet', () => {
+    const { selectedCharacters } = computeCoverageSelection(components, 5, 80);
+    expect(outOfScopeCount([], selectedCharacters)).toBe(0);
   });
 });
 

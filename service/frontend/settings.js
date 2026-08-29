@@ -514,17 +514,20 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
 let componentCoverageData = [];
 let componentCoverageTotalWords = 0;
 let componentCoverageWordCounts = {}; // word_id (string) -> number of trainable components
+let componentCoverageTrainedCharacters = []; // characters already in training (component_progress rows)
 
 // computeCoverageSelection is pure: given the fetched per-component word-ID
 // sets, the per-word trainable-component counts, and a candidate coverage-target
 // percentage, greedily picks components — always the one that immediately fully
 // covers the most additional words next (a word is fully covered when all its
 // trainable components are selected; words with 0 components are auto-covered).
-// Mirrors selectComponentsForCoverage in service/db/components.go.
+// Mirrors selectComponentsForCoverage in service/db/components.go. Returns the
+// selected character set too, so callers can check which already-trained
+// components (#352) fall outside it at the previewed target.
 function computeCoverageSelection(components, wordComponentCounts, totalWords, targetPct) {
   const totalComponents = components.length;
   if (totalWords <= 0 || targetPct <= 0) {
-    return { selectedCount: 0, totalComponents };
+    return { selectedCount: 0, totalComponents, selectedCharacters: new Set() };
   }
   const target = Math.ceil((targetPct / 100) * totalWords);
 
@@ -538,13 +541,13 @@ function computeCoverageSelection(components, wordComponentCounts, totalWords, t
       remaining[wid] = cnt;
     }
   }
-  if (coveredCount >= target) return { selectedCount: 0, totalComponents };
+  if (coveredCount >= target) return { selectedCount: 0, totalComponents, selectedCharacters: new Set() };
 
   const candidates = components
     .map(c => ({ character: c.character, wordIds: c.word_ids || [] }))
     .sort((a, b) => (a.character < b.character ? -1 : a.character > b.character ? 1 : 0));
 
-  let selectedCount = 0;
+  const selectedCharacters = new Set();
   while (coveredCount < target && candidates.length > 0) {
     let bestIdx = -1, bestGain = 0;
     for (let i = 0; i < candidates.length; i++) {
@@ -565,27 +568,33 @@ function computeCoverageSelection(components, wordComponentCounts, totalWords, t
         }
       }
     }
+    selectedCharacters.add(candidates[bestIdx].character);
     candidates.splice(bestIdx, 1);
-    selectedCount++;
   }
-  return { selectedCount, totalComponents };
+  return { selectedCount: selectedCharacters.size, totalComponents, selectedCharacters };
 }
 
 function updateComponentCoverageSummary() {
   const raw = parseFloat(document.getElementById('component-coverage-threshold')?.value || '0');
   const targetPct = isNaN(raw) ? 0 : raw;
-  const { selectedCount, totalComponents } = computeCoverageSelection(componentCoverageData, componentCoverageWordCounts, componentCoverageTotalWords, targetPct);
+  const { selectedCount, totalComponents, selectedCharacters } = computeCoverageSelection(componentCoverageData, componentCoverageWordCounts, componentCoverageTotalWords, targetPct);
   const summaryEl = document.getElementById('component-coverage-summary');
   if (!summaryEl) return;
+  const trainedTotal = componentCoverageTrainedCharacters.length;
   if (totalComponents === 0) {
     summaryEl.textContent = 'No components found in your vocabulary yet.';
-  } else if (targetPct <= 0) {
-    summaryEl.textContent = 'All ' + totalComponents + ' components would be added to training (no coverage target set).';
-  } else {
-    const pct = Math.round((selectedCount / totalComponents) * 100);
-    summaryEl.textContent = selectedCount + ' of ' + totalComponents + ' components (' + pct +
-      '%) would be added to training to cover ' + targetPct + '% of your ' + componentCoverageTotalWords + ' Chinese words.';
+    return;
   }
+  const trainedLine = 'You are currently training ' + trainedTotal + ' component' + (trainedTotal === 1 ? '' : 's') + '.';
+  if (targetPct <= 0) {
+    summaryEl.textContent = trainedLine + ' All ' + totalComponents + ' components would be added to training (no coverage target set).';
+    return;
+  }
+  const pct = Math.round((selectedCount / totalComponents) * 100);
+  const outOfScope = componentCoverageTrainedCharacters.filter(c => !selectedCharacters.has(c)).length;
+  summaryEl.textContent = trainedLine + ' ' + selectedCount + ' of ' + totalComponents + ' components (' + pct +
+    '%) would be added to training to cover ' + targetPct + '% of your ' + componentCoverageTotalWords + ' Chinese words. ' +
+    outOfScope + ' of your currently-trained components would not have been needed to reach that target — they stay in training; this setting never removes already-trained components.';
 }
 
 async function loadComponentCoverage() {
@@ -596,6 +605,7 @@ async function loadComponentCoverage() {
     componentCoverageData = data.components || [];
     componentCoverageWordCounts = data.word_component_counts || {};
     componentCoverageTotalWords = data.total_words || 0;
+    componentCoverageTrainedCharacters = data.trained_characters || [];
     updateComponentCoverageSummary();
   } catch { /* ignore */ }
 }

@@ -248,6 +248,70 @@ test.describe('Settings – Component training threshold', () => {
   });
 });
 
+// Issue #352: the coverage-preview line should also show how many components
+// are already being trained today, and — for the currently-typed target —
+// how many of those already-trained components exceed what's needed to reach
+// it ("out of scope", informational only; never removed).
+test.describe('Settings – Component coverage preview enrichment (issue #352)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  // 日 and 月 together cover all 4 words; 女 covers only one. Of the 3
+  // components, 日 and 月 are already "in training" (component_progress
+  // rows exist for them); 女 is not.
+  const components = [
+    { character: '日', word_ids: [1, 2, 3] },
+    { character: '月', word_ids: [3, 4] },
+    { character: '女', word_ids: [4] },
+  ];
+
+  async function mockCoverage(page) {
+    await page.route('**/api/components/coverage', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          components,
+          word_component_counts: { 1: 1, 2: 1, 3: 2, 4: 2 },
+          total_words: 4,
+          trained_characters: ['日', '月'],
+        }),
+      });
+    });
+  }
+
+  test('shows how many components are already in training, and how many of them are out of scope at the previewed target', async ({ page }) => {
+    await mockCoverage(page);
+    await page.goto('/settings');
+
+    const summary = page.locator('#component-coverage-summary');
+    await expect(summary).toContainText('currently training 2 components');
+    await summary.scrollIntoViewIfNeeded();
+    await captureForPR(page, 'settings-component-coverage-initial');
+
+    // Target 50% of 4 words = 2 words. 日 alone covers {1,2,3} = 3 words,
+    // which already reaches the target, so only 日 would be selected — 月
+    // (already trained) is not needed at this lower target and is reported
+    // as out of scope; 女 was never trained so it doesn't count.
+    await page.locator('#component-coverage-threshold').fill('50');
+    await expect(summary).toContainText('currently training 2 components');
+    await expect(summary).toContainText('1 of 3 components');
+    await expect(summary).toContainText('1 of your currently-trained components');
+    await expect(summary).toContainText('never removes already-trained components');
+    await summary.scrollIntoViewIfNeeded();
+    await captureForPR(page, 'settings-component-coverage-out-of-scope');
+
+    // Raising the target back to 100% needs every component (word 4 requires
+    // both of its trainable components, 月 and 女) — nothing already trained
+    // falls out of scope any more.
+    await page.locator('#component-coverage-threshold').fill('100');
+    await expect(summary).toContainText('3 of 3 components');
+    await expect(summary).toContainText('0 of your currently-trained components');
+
+    await page.locator('#component-coverage-threshold').fill('0');
+    await expect(summary).toContainText('currently training 2 components');
+  });
+});
+
 // "Chinese (no sound) → Translation" mode: selectable per proficiency tier,
 // per new-word step, and as a cycle-mode step, alongside the existing modes.
 test.describe('Settings – Chinese (no sound) mode', () => {
