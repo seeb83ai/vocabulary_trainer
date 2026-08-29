@@ -87,11 +87,14 @@ func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: []models.MatchGameWord{}})
 }
 
-// hidePinyinAboveThreshold blanks the pinyin hint on any word tile (issue
-// #349) whose current SM-2 bucket is at or above the user's configured
+// hidePinyinAboveThreshold flags (via HidePinyin) any word tile (issue #349)
+// whose current SM-2 bucket is at or above the user's configured
 // gamification_hide_pinyin_from_bucket threshold, using the same tier
-// ordering as tierFilter/TIERS (sm2.TierFromBucketKey). Component-kind tiles
-// (mismatch mode) aren't word-tiered and are left untouched.
+// ordering as tierFilter/TIERS (sm2.TierFromBucketKey). The pinyin itself is
+// still sent — the client hides it up front for a flagged tile but can
+// reveal it once that pair is attempted, per match_game_pinyin_reveal (issue
+// #375). Component-kind tiles (mismatch mode) aren't word-tiered and are
+// left untouched — they always show their pinyin from the start.
 func (h *QuizHandler) hidePinyinAboveThreshold(ctx context.Context, words []models.MatchGameWord, thresholdBucket string) ([]models.MatchGameWord, error) {
 	threshold := sm2.TierFromBucketKey(thresholdBucket)
 	if threshold == sm2.TierNone {
@@ -109,7 +112,7 @@ func (h *QuizHandler) hidePinyinAboveThreshold(ctx context.Context, words []mode
 			continue
 		}
 		if sm2.ClassifyTier(*progress) >= threshold {
-			words[i].Pinyin = ""
+			words[i].HidePinyin = true
 		}
 	}
 	return words, nil

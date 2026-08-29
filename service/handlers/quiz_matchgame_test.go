@@ -331,9 +331,11 @@ func TestMatchGame_NewestMode_MarksShownAndHidesUntilWrongAnswer(t *testing.T) {
 }
 
 // TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold covers issue #349: the
-// default gamification_hide_pinyin_from_bucket ("70-84" / Practicing) blanks
-// the pinyin hint for a word whose SM-2 bucket has reached Practicing, while
-// leaving it shown for a word still below that bucket.
+// default gamification_hide_pinyin_from_bucket ("70-84" / Practicing) flags
+// HidePinyin for a word whose SM-2 bucket has reached Practicing, while
+// leaving it unflagged for a word still below that bucket. The pinyin value
+// itself is always sent (issue #375) — HidePinyin only tells the client
+// whether to show it up front or wait for the word tile to be attempted.
 func TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold(t *testing.T) {
 	s := openTestDB(t)
 	enableOnlyGameMode(t, s, "newest")
@@ -341,7 +343,7 @@ func TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold(t *testing.T) {
 	newID := seedWord(t, s, "去", "qù", []string{"go"})
 	// 10 attempts, 80% accuracy → Practicing tier (>= default threshold).
 	makeDifficultForTest(t, s, practicedID, 8, 10)
-	_ = newID // left at 0 attempts → TierNone, below threshold, pinyin stays.
+	_ = newID // left at 0 attempts → TierNone, below threshold, pinyin stays shown.
 
 	r := newRouter(s)
 	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
@@ -354,22 +356,25 @@ func TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold(t *testing.T) {
 		t.Fatalf("expected 2 newest-mode candidates, got %d: %+v", len(resp.Words), resp.Words)
 	}
 	for _, w := range resp.Words {
+		if w.Pinyin == "" {
+			t.Errorf("word %d should always have pinyin sent, got empty", w.ZhWordID)
+		}
 		switch w.ZhWordID {
 		case practicedID:
-			if w.Pinyin != "" {
-				t.Errorf("practicing-tier word should have pinyin hidden, got %q", w.Pinyin)
+			if !w.HidePinyin {
+				t.Error("practicing-tier word should be flagged HidePinyin")
 			}
 		case newID:
-			if w.Pinyin == "" {
-				t.Error("below-threshold word should still show pinyin")
+			if w.HidePinyin {
+				t.Error("below-threshold word should not be flagged HidePinyin")
 			}
 		}
 	}
 }
 
 // TestMatchGame_PinyinHideThreshold_ConfigurableToMastered verifies raising
-// the threshold to "85-100" (Mastered) leaves a Practicing-tier word's pinyin
-// visible — only Mastered-and-above should be hidden.
+// the threshold to "85-100" (Mastered) leaves a Practicing-tier word
+// unflagged — only Mastered-and-above should be flagged HidePinyin.
 func TestMatchGame_PinyinHideThreshold_ConfigurableToMastered(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
@@ -394,8 +399,13 @@ func TestMatchGame_PinyinHideThreshold_ConfigurableToMastered(t *testing.T) {
 	var resp models.MatchGameResponse
 	decodeJSON(t, rec, &resp)
 	for _, w := range resp.Words {
-		if w.ZhWordID == practicedID && w.Pinyin == "" {
-			t.Error("Practicing-tier word should keep pinyin when threshold is set to Mastered")
+		if w.ZhWordID == practicedID {
+			if w.Pinyin == "" {
+				t.Error("Practicing-tier word should keep pinyin value when threshold is set to Mastered")
+			}
+			if w.HidePinyin {
+				t.Error("Practicing-tier word should not be flagged HidePinyin when threshold is set to Mastered")
+			}
 		}
 	}
 }

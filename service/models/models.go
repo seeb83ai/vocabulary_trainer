@@ -57,6 +57,7 @@ type UserSettings struct {
 	GameModeHardest                  bool     `json:"game_mode_hardest"`
 	GameModeLastMistakes             bool     `json:"game_mode_last_mistakes"`
 	GamificationHidePinyinFromBucket string   `json:"gamification_hide_pinyin_from_bucket"`
+	MatchGamePinyinReveal            string   `json:"match_game_pinyin_reveal"`
 	TrainMode                        string   `json:"train_mode"`
 	TrainBucket                      string   `json:"train_bucket"`
 	TrainLangs                       []string `json:"train_langs"`
@@ -695,6 +696,7 @@ type MatchGameWord struct {
 	Character    string              `json:"character,omitempty"`
 	ZhText       string              `json:"zh_text"`
 	Pinyin       string              `json:"pinyin"`
+	HidePinyin   bool                `json:"hide_pinyin,omitempty"` // true once the word's tier reaches gamification_hide_pinyin_from_bucket (issue #349); pinyin is still sent so the client can reveal it per match_game_pinyin_reveal (issue #375)
 	Translations map[string][]string `json:"translations"`
 }
 

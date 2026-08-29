@@ -48,6 +48,7 @@ function showMatchGame(words) {
       character: w.character,
       text: w.zh_text,
       pinyin: w.pinyin,
+      hidePinyin: !!w.hide_pinyin,
     }));
     const matchAnswerBody = (item, correct) => item.kind === 'component'
       ? { kind: 'component', character: item.character, correct }
@@ -70,11 +71,29 @@ function showMatchGame(words) {
       div.appendChild(t);
       if (sub) {
         const s = document.createElement('div');
-        s.className = 'text-xs text-gray-500 mt-1';
+        s.className = 'match-pinyin-sub text-xs text-gray-500 mt-1';
         s.textContent = sub;
         div.appendChild(s);
       }
       return div;
+    }
+
+    // reveals a left box's pinyin hint once that pair has been attempted,
+    // per the match_game_pinyin_reveal setting (issue #375): "always" reveals
+    // it after any attempt (correct, wrong, or blocked); "after_correct"
+    // only once the attempt was correct; "off" never reveals it.
+    function revealPinyin(box, pinyin) {
+      if (!pinyin || box.querySelector('.match-pinyin-sub')) return;
+      const s = document.createElement('div');
+      s.className = 'match-pinyin-sub text-xs text-gray-500 mt-1';
+      s.textContent = pinyin;
+      box.appendChild(s);
+    }
+
+    function maybeRevealPinyin(box, item, outcome) {
+      if (_matchGamePinyinReveal === 'off') return;
+      if (_matchGamePinyinReveal === 'after_correct' && outcome !== 'correct') return;
+      revealPinyin(box, item.pinyin);
     }
 
     const modal = document.createElement('div');
@@ -84,7 +103,13 @@ function showMatchGame(words) {
     const grid = document.createElement('div');
     grid.className = 'grid grid-cols-2 gap-3 mb-4';
 
-    const leftBoxes = leftItems.map(item => renderBox(item.text, item.pinyin));
+    // A tile shows its pinyin up front unless the server flagged it
+    // hide_pinyin (issue #349: word tier at/above the configured threshold).
+    // Component tiles are never flagged and always show pinyin from the
+    // start. A flagged word tile stays hidden until its pair is attempted,
+    // then reveals per match_game_pinyin_reveal (issue #375).
+    const leftBoxes = leftItems.map(item =>
+      renderBox(item.text, item.hidePinyin ? null : item.pinyin));
     const rightBoxes = shuffledRight.map(item => renderBox(item.text));
 
     leftBoxes.forEach((box, lIdx) => {
@@ -105,6 +130,7 @@ function showMatchGame(words) {
         const rightText = shuffledRight[rIdx].text;
         const leftTransls = Object.values(words[lIdx].translations || {}).flat();
         const outcome = matchGameOutcome(rightIdx, lIdx, rightText, leftTransls, matched);
+        maybeRevealPinyin(leftBoxes[lIdx], leftItems[lIdx], outcome);
 
         if (outcome === 'correct') {
           // Correct match
