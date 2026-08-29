@@ -704,6 +704,13 @@ func tierFilter(bucket string) string {
 	return ""
 }
 
+// newLearnerCooldownBypassThreshold: below this many introduced zh words,
+// the cooldown baseline (NewWordBaselines.CooldownMinutes) is skipped. It
+// exists to pace new-word introduction for an established learner; for a
+// brand-new account it only stalls onboarding, since there is nothing yet
+// to space the new word out from.
+const newLearnerCooldownBypassThreshold = 20
+
 // NewWordBaselines controls optional gates that prevent new words from being
 // introduced. Each baseline is independently enabled; all enabled baselines
 // must pass for a new word to be shown.
@@ -795,18 +802,28 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 			}
 		}
 		if newWordFilter == "" && baselines.CooldownMinutes > 0 {
-			var recentCount int
+			var introduced int
 			if err := s.db.QueryRowContext(ctx,
 				`SELECT COUNT(*) FROM sm2_progress p
 				 JOIN words w ON w.id = p.word_id
-				 WHERE w.language = 'zh' AND w.user_id = ?
-				   AND p.first_seen_at >= datetime('now', ?)`,
-				userID, fmt.Sprintf("-%d minutes", baselines.CooldownMinutes)).Scan(&recentCount); err != nil {
-				return nil, nil, false, fmt.Errorf("check cooldown: %w", err)
+				 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL`,
+				userID).Scan(&introduced); err != nil {
+				return nil, nil, false, fmt.Errorf("count introduced words: %w", err)
 			}
-			if recentCount > 0 {
-				newWordFilter = " AND p.first_seen_at IS NOT NULL"
-				newWordsBlocked = true
+			if introduced >= newLearnerCooldownBypassThreshold {
+				var recentCount int
+				if err := s.db.QueryRowContext(ctx,
+					`SELECT COUNT(*) FROM sm2_progress p
+					 JOIN words w ON w.id = p.word_id
+					 WHERE w.language = 'zh' AND w.user_id = ?
+					   AND p.first_seen_at >= datetime('now', ?)`,
+					userID, fmt.Sprintf("-%d minutes", baselines.CooldownMinutes)).Scan(&recentCount); err != nil {
+					return nil, nil, false, fmt.Errorf("check cooldown: %w", err)
+				}
+				if recentCount > 0 {
+					newWordFilter = " AND p.first_seen_at IS NOT NULL"
+					newWordsBlocked = true
+				}
 			}
 		}
 		if newWordFilter == "" && baselines.LearningEnabled {
