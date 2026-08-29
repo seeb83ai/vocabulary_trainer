@@ -554,11 +554,11 @@ func TestSettingsCycleSequence_TooManySteps(t *testing.T) {
 		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
 		"prog_tier_mastered": "random",
 		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
-		"cycle_sequence": "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,transl_to_zh,zh_to_transl",
+		"cycle_sequence": "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,transl_to_zh,zh_to_transl,zh_pinyin_to_transl",
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("want 400 for cycle_sequence with 6 steps, got %d", rec.Code)
+		t.Errorf("want 400 for cycle_sequence with 7 steps, got %d", rec.Code)
 	}
 }
 
@@ -586,6 +586,35 @@ func TestSettingsCycleSequence_FiveSteps(t *testing.T) {
 	decodeJSON(t, rec, &st)
 	if st.CycleSequence != fiveStep {
 		t.Errorf("after PATCH 5-step cycle_sequence: want %q, got %q", fiveStep, st.CycleSequence)
+	}
+}
+
+// Issue #377: Cycle Mode settings only supported 5 steps; a 6th step lets a
+// user select every quiz mode in one cycle sequence.
+func TestSettingsCycleSequence_SixSteps(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	sixStep := "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,voice_to_transl,zh_to_transl_no_sound"
+	payload := map[string]string{
+		"primary_lang":   "en",
+		"secondary_lang": "",
+		"prog_new":       "transl_to_zh", "prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered": "random",
+		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
+		"cycle_sequence": sixStep,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 for 6-step cycle_sequence, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st6 models.UserSettings
+	decodeJSON(t, rec, &st6)
+	if st6.CycleSequence != sixStep {
+		t.Errorf("after PATCH 6-step cycle_sequence: want %q, got %q", sixStep, st6.CycleSequence)
 	}
 }
 
