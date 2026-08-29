@@ -224,7 +224,7 @@ test.describe('Settings – Wrong answer retry mode (issue #346)', () => {
     await page.goto('/settings');
     const matched = page.locator('input[name="wrong-answer-retry-mode"][value="matched"]');
     await matched.check();
-    await expect(page.locator('#mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
     await expect(matched).toBeChecked();
@@ -235,7 +235,7 @@ test.describe('Settings – Wrong answer retry mode (issue #346)', () => {
 
     // Reset to default.
     await page.locator('input[name="wrong-answer-retry-mode"][value="off"]').check();
-    await expect(page.locator('#mode-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 });
 
