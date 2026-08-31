@@ -480,7 +480,7 @@ test.describe('Settings – Cycle advance if known (issue #339)', () => {
     await page.goto('/settings');
 
     await page.locator('#cycle-advance-known').check();
-    await expect(page.locator('#cycle-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
     await captureForPR(page, 'cycle-advance-known-selected');
 
     await page.reload();
@@ -495,7 +495,7 @@ test.describe('Settings – Cycle advance if known (issue #339)', () => {
 
     // Reset to default.
     await page.locator('#cycle-advance-every').check();
-    await expect(page.locator('#cycle-success')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
   test('switching from "Advance only on success" to "Advance only if known" clears the success flag', async ({ page }) => {
