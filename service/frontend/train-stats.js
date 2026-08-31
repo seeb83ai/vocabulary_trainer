@@ -34,11 +34,21 @@ function updateAdvanceButtonsForDifficult() {
     if (checked) {
       btn.disabled = false;
     } else if (latestStats) {
-      btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);
+      btn.disabled = latestStats.available_to_advance === 0;
     }
   });
   const label = document.getElementById('success-amount-label');
   if (label) label.textContent = checked ? t('success.difficultAmount') : t('success.learnMore');
+}
+
+// successAdvanceState computes the "learn more words" advance-button and
+// introduce-new-word-button state shown on the success screen, from the
+// latest /api/quiz/stats response. Shared by both success-screen render
+// paths in train-card.js so they can't drift out of sync with each other.
+function successAdvanceState(stats) {
+  const allAdvanceDisabled = (stats?.available_to_advance || 0) === 0;
+  const hasUnseen = (stats?.has_unseen || 0) > 0 || (stats?.new_available || 0) > 0;
+  return { allAdvanceDisabled, showIntroduceNew: allAdvanceDisabled && hasUnseen };
 }
 
 // computeDayStreak returns the number of consecutive training days

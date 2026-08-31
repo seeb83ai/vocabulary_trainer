@@ -110,4 +110,74 @@ test.describe('One-button onboarding', () => {
     expect(stats.due_today).toBeLessThanOrEqual(stats.max_new_per_day);
     expect(stats.due_today).toBeLessThan(20);
   });
+
+  // Regression test for a reported bug: a brand-new account graduates its
+  // very first word, then hits a dead end — the daily-new-word cooldown
+  // (default 1 minute) blocks the next new word, the "learn more" advance
+  // buttons stay disabled (they need 10+ already-seen words to ever enable),
+  // and the "Introduce new words" button wasn't wired up on the code path
+  // that renders after a failed /api/quiz/next fetch. New learners (few
+  // introduced words) must not be cooldown-gated, and even if they were,
+  // the success screen must always offer *some* way to keep going.
+  test('a brand-new account can keep learning right after graduating its first word', async ({ page }) => {
+    await page.route('https://api.pwnedpasswords.com/**', route => {
+      route.fulfill({ status: 200, body: '' });
+    });
+    const email = `e2e-onboard-cooldown-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
+    await page.goto('/#register');
+    await page.locator('#reg-email').fill(email);
+    await page.locator('#reg-password').fill(PASSWORD);
+    await page.locator('#reg-confirm').fill(PASSWORD);
+    await page.locator('#register-btn').click();
+    await expect(page).toHaveURL('/train', { timeout: 10_000 });
+
+    const word1Res = await page.request.post('/api/words', {
+      data: { zh_text: '我', pinyin: 'wǒ', translations: { en: ['I'] }, tags: [], start_training: true },
+    });
+    expect(word1Res.ok()).toBe(true);
+    const word2Res = await page.request.post('/api/words', {
+      data: { zh_text: '你', pinyin: 'nǐ', translations: { en: ['you'] }, tags: [], start_training: false },
+    });
+    expect(word2Res.ok()).toBe(true);
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+
+    // Wait for whichever of the due-word card or the new-word screen the app
+    // lands on next (loadNextCard() is async after each transition).
+    async function waitForCardOrNewWord() {
+      await page.waitForFunction(() => {
+        const card = document.getElementById('card-area');
+        const nw = document.getElementById('new-word-area');
+        return (card && !card.classList.contains('hidden')) || (nw && !nw.classList.contains('hidden'));
+      }, { timeout: 12_000 });
+    }
+
+    // Answer the first (already-acknowledged) word correctly, repeating up to
+    // 3 times (as it takes to graduate it out of today's queue per
+    // session-end.spec.js) or until the second, never-seen word is offered —
+    // whichever the SM2 due-date progression reaches first.
+    await waitForCardOrNewWord();
+    for (let i = 0; i < 3 && !(await page.locator('#new-word-area').isVisible()); i++) {
+      await expect(page.locator('#card-area')).toBeVisible();
+      await page.locator('#answer-input').fill('I');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+      await page.locator('#next-btn').click();
+      await waitForCardOrNewWord();
+    }
+
+    // The second, never-seen word must be offered — not a dead-end success
+    // screen with every button disabled.
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#new-word-zh')).toHaveText('你');
+    await captureForPR(page, 'onboarding-second-word-after-first-graduation');
+  });
 });

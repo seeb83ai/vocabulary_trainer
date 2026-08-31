@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
@@ -1045,7 +1046,52 @@ func TestGetNextCard_Cooldown_BlocksSecondNewWord(t *testing.T) {
 	ctx := context.Background()
 	userID := int64(2)
 
-	// Create and acknowledge first word — stamps first_seen_at = now.
+	// Seed and acknowledge enough words to be past the new-learner cooldown
+	// bypass threshold, so the cooldown baseline actually applies below.
+	seedIntroducedWords(t, s, userID, newLearnerCooldownBypassThreshold)
+
+	// Create one more unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// With a 60-minute cooldown, the new unseen word should be blocked.
+	baselines := &NewWordBaselines{CooldownMinutes: 60}
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil && w.Text == "火" {
+		t.Error("cooldown should have blocked the new unseen word 火")
+	}
+}
+
+// seedIntroducedWords creates and acknowledges n distinct zh words for userID,
+// used to push the account past newLearnerCooldownBypassThreshold in tests.
+func seedIntroducedWords(t *testing.T, s *Store, userID int64, n int) {
+	t.Helper()
+	ctx := context.Background()
+	for i := 0; i < n; i++ {
+		id, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+			ZhText: fmt.Sprintf("字%d", i), Translations: map[string][]string{"en": {fmt.Sprintf("char%d", i)}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.AcknowledgeWord(ctx, userID, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGetNextCard_Cooldown_BypassedForNewLearner(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Only one introduced word — well under newLearnerCooldownBypassThreshold.
 	id1, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
 		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
 	})
@@ -1053,6 +1099,13 @@ func TestGetNextCard_Cooldown_BlocksSecondNewWord(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := s.AcknowledgeWord(ctx, userID, id1); err != nil {
+		t.Fatal(err)
+	}
+	// Push 水's due date into the future so it isn't itself due for review —
+	// otherwise GetNextCard would return it regardless of the cooldown baseline,
+	// since a due learning card always takes priority over an unseen word.
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = datetime('now', '+1 day') WHERE word_id = ?`, id1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1063,14 +1116,15 @@ func TestGetNextCard_Cooldown_BlocksSecondNewWord(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// With a 60-minute cooldown, the second unseen word should be blocked.
+	// Even with a 60-minute cooldown, a new learner (few introduced words)
+	// should not be blocked from seeing the next new word.
 	baselines := &NewWordBaselines{CooldownMinutes: 60}
 	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if w != nil && w.Text == "火" {
-		t.Error("cooldown should have blocked the second unseen word 火")
+	if w == nil || w.Text != "火" {
+		t.Errorf("expected cooldown to be bypassed for a new learner and return 火, got %v", w)
 	}
 }
 

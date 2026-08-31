@@ -222,17 +222,12 @@ async function loadNextCard(trackCurrent = false) {
     if (!difficultDrill && latestStats.due_today === 0 && (latestStats.hmm_due_today || 0) === 0 && (latestStats.components_due_today || 0) === 0 && (!latestStats.new_available || skipNewWords)) {
       skipNewWords = false;
       setText('success-stats', t('stats.attemptsAndMistakes', { attempts: latestStats.today_attempts, mistakes: latestStats.today_mistakes }));
-      const allAdvanceDisabled = latestStats.available_to_advance < 10;
       document.querySelectorAll('.advance-btn').forEach(btn => {
-        btn.disabled = latestStats.available_to_advance < parseInt(btn.dataset.advance);
+        btn.disabled = latestStats.available_to_advance === 0;
       });
       updateAdvanceButtonsForDifficult();
-      const hasUnseen = (latestStats.new_available || 0) > 0;
-      if (allAdvanceDisabled && hasUnseen) {
-        show('introduce-new-btn');
-      } else {
-        hide('introduce-new-btn');
-      }
+      const { showIntroduceNew } = successAdvanceState(latestStats);
+      showIntroduceNew ? show('introduce-new-btn') : hide('introduce-new-btn');
       show('success-state');
       loadComebackInfo(latestStats.words_improved_today);
       return;
@@ -281,9 +276,11 @@ async function loadNextCard(trackCurrent = false) {
       } else {
         setText('success-stats', t('stats.attemptsAndMistakes', { attempts: stats.today_attempts, mistakes: stats.today_mistakes }));
         document.querySelectorAll('.advance-btn').forEach(btn => {
-          btn.disabled = stats.available_to_advance < parseInt(btn.dataset.advance);
+          btn.disabled = stats.available_to_advance === 0;
         });
         updateAdvanceButtonsForDifficult();
+        const { showIntroduceNew } = successAdvanceState(stats);
+        showIntroduceNew ? show('introduce-new-btn') : hide('introduce-new-btn');
         show('success-state');
         loadComebackInfo(stats.words_improved_today);
       }
@@ -834,7 +831,8 @@ document.addEventListener('DOMContentLoaded', () => {
         loadNextCard();
         return;
       }
-      const resetNewCap = $('reset-cap-checkbox').checked;
+      // ponytail: auto-reset cap when fewer seen words than requested, so new words fill the gap
+      const resetNewCap = $('reset-cap-checkbox').checked || (latestStats && latestStats.available_to_advance < count);
       try {
         await apiFetch('/api/quiz/advance', {
           method: 'POST',

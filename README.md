@@ -194,6 +194,8 @@ In **Settings → Daily Learning**, each user can enable optional gates. These g
 
 In **Settings → Daily Learning**, the **Cooldown between new words** field sets the minimum time between new-word introductions. The default is 1 minute. During the cooldown window, the app serves only review cards. Set the value to **0** to disable the cooldown and allow new words back-to-back.
 
+The cooldown is automatically skipped while you have fewer than 20 introduced words — it exists to pace new-word introduction for an established vocabulary, and would otherwise just stall onboarding for a brand-new account.
+
 ### Skip button for new words
 
 By default, a **Skip** button appears on the new-word introduction screen. It lets you defer a word for 7 days. In **Settings → Daily Learning**, you can hide this button. When you hide it, you cannot skip new words, and you must review them.

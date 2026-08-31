@@ -267,6 +267,50 @@ func TestWordStats_AccBucketsFilterByTag(t *testing.T) {
 	}
 }
 
+// TestStatsHasUnseen verifies that has_unseen is 1 even when the daily new-word
+// cap is fully consumed, so the success screen can still show the
+// "introduce new words today" button.
+func TestStatsHasUnseen_CapExhausted(t *testing.T) {
+	s := openTestDB(t)
+
+	// Seed 6 words; acknowledge 5 (default cap) leaving 1 unseen.
+	words := []int64{
+		seedWord(t, s, "一", "", []string{"one"}),
+		seedWord(t, s, "二", "", []string{"two"}),
+		seedWord(t, s, "三", "", []string{"three"}),
+		seedWord(t, s, "四", "", []string{"four"}),
+		seedWord(t, s, "五", "", []string{"five"}),
+	}
+	seedWord(t, s, "六", "", []string{"six"}) // unseen — beyond cap
+
+	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 5}
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Post("/api/quiz/acknowledge", quizH.Acknowledge)
+	r.Get("/api/quiz/stats", quizH.Stats)
+
+	for _, id := range words {
+		rec := do(t, r, "POST", "/api/quiz/acknowledge", map[string]any{"word_id": id})
+		if rec.Code != http.StatusNoContent && rec.Code != http.StatusOK {
+			t.Fatalf("acknowledge %d: want 2xx, got %d: %s", id, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+
+	if resp["new_available"] != 0 {
+		t.Errorf("new_available: want 0 (cap exhausted), got %d", resp["new_available"])
+	}
+	if resp["has_unseen"] != 1 {
+		t.Errorf("has_unseen: want 1 (三 is still unseen), got %d", resp["has_unseen"])
+	}
+}
+
 func TestStatsHandlerNewFields(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
@@ -278,7 +322,7 @@ func TestStatsHandlerNewFields(t *testing.T) {
 	var resp map[string]int
 	decodeJSON(t, rec, &resp)
 
-	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available", "hmm_due_today", "words_improved_today"} {
+	for _, key := range []string{"today_attempts", "today_mistakes", "available_to_advance", "new_available", "has_unseen", "hmm_due_today", "words_improved_today"} {
 		if _, ok := resp[key]; !ok {
 			t.Errorf("stats response missing key %q", key)
 		}
