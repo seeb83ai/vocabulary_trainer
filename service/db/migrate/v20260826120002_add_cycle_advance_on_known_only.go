@@ -7,7 +7,7 @@ import (
 
 func init() {
 	register(migration{
-		version: 20260826120000,
+		version: 20260826120002,
 		fn: func(db *sql.DB) error {
 			var count int
 			if err := db.QueryRow(
