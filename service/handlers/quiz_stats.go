@@ -89,17 +89,23 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	}
 	h.mu.Unlock()
 	newAvailable := 0
+	hasUnseen := 0
 	// When drilling a specific tier, don't introduce new words (they have no tier yet).
-	if bucket == "" && newToday < cap {
+	if bucket == "" {
 		n, err := h.Store.CountUnseenZhWords(r.Context(), UserIDFromContext(r.Context()), tags)
 		if err != nil {
 			internalError(w, err)
 			return
 		}
-		if remaining := cap - newToday; n > remaining {
-			n = remaining
+		if n > 0 {
+			hasUnseen = 1
 		}
-		newAvailable = n
+		if newToday < cap {
+			if remaining := cap - newToday; n > remaining {
+				n = remaining
+			}
+			newAvailable = n
+		}
 	}
 	mnemonics := r.URL.Query().Get("mnemonics") != "false"
 	hmmDueToday := 0
@@ -142,6 +148,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"today_mistakes":       todayMistakes,
 		"available_to_advance": availableToAdvance,
 		"new_available":        newAvailable,
+		"has_unseen":           hasUnseen,
 		"hmm_due_today":        hmmDueToday,
 		"hmm_total":            hmmTotal,
 		"components_due_today": compDueToday,

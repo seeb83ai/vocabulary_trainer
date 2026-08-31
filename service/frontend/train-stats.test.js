@@ -54,29 +54,39 @@ describe('dueDisplayCount', () => {
 // vocabulary was too small for the 10/20/30 advance buttons to ever enable.
 
 function successAdvanceState(stats) {
-  const allAdvanceDisabled = (stats?.available_to_advance || 0) < 10;
-  const hasUnseen = (stats?.new_available || 0) > 0;
+  const allAdvanceDisabled = (stats?.available_to_advance || 0) === 0;
+  const hasUnseen = (stats?.has_unseen || 0) > 0 || (stats?.new_available || 0) > 0;
   return { allAdvanceDisabled, showIntroduceNew: allAdvanceDisabled && hasUnseen };
 }
 
 describe('successAdvanceState', () => {
-  it('shows introduce-new when advance buttons are all disabled and a new word is available', () => {
-    const stats = { available_to_advance: 1, new_available: 5 };
-    expect(successAdvanceState(stats)).toEqual({ allAdvanceDisabled: true, showIntroduceNew: true });
+  it('enables advance buttons when seen words exist (even fewer than 10)', () => {
+    const stats = { available_to_advance: 5, new_available: 0 };
+    expect(successAdvanceState(stats)).toEqual({ allAdvanceDisabled: false, showIntroduceNew: false });
   });
 
-  it('hides introduce-new when a 10+ advance button is usable, even with new words available', () => {
+  it('enables advance buttons with many seen words available', () => {
     const stats = { available_to_advance: 12, new_available: 5 };
     expect(successAdvanceState(stats)).toEqual({ allAdvanceDisabled: false, showIntroduceNew: false });
   });
 
-  it('hides introduce-new when advance is disabled but no new word is available', () => {
+  it('shows introduce-new when no seen words to advance but unseen words exist', () => {
+    const stats = { available_to_advance: 0, new_available: 3 };
+    expect(successAdvanceState(stats)).toEqual({ allAdvanceDisabled: true, showIntroduceNew: true });
+  });
+
+  it('hides introduce-new when nothing at all is available', () => {
     const stats = { available_to_advance: 0, new_available: 0 };
     expect(successAdvanceState(stats)).toEqual({ allAdvanceDisabled: true, showIntroduceNew: false });
   });
 
   it('treats missing fields as zero (small brand-new account)', () => {
     expect(successAdvanceState({})).toEqual({ allAdvanceDisabled: true, showIntroduceNew: false });
+  });
+
+  it('shows introduce-new via has_unseen when cap is exhausted and no seen words remain', () => {
+    const stats = { available_to_advance: 0, new_available: 0, has_unseen: 1 };
+    expect(successAdvanceState(stats)).toEqual({ allAdvanceDisabled: true, showIntroduceNew: true });
   });
 });
 
