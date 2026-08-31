@@ -792,6 +792,7 @@ func TestQuizCycle_AdvanceOnKnownOnly(t *testing.T) {
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
 	// KnownCorrectCount=1 → (1-1)%3=0 → zh_pinyin_to_transl (step 0)
+	// TotalAttempts=5 would give (5-1)%3=1, TotalCorrect=3 would give (3-1)%3=2 — both wrong
 	if card.Mode != models.ModeZhPinyinToTransl {
 		t.Errorf("advance_on_known_only: want %s (pos 0), got %s", models.ModeZhPinyinToTransl, card.Mode)
 	}
