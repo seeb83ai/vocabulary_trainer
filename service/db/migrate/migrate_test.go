@@ -327,3 +327,54 @@ func TestMigrate_Idempotent(t *testing.T) {
 		t.Fatalf("max applied version after re-run = %d, want %d", got, want)
 	}
 }
+
+// TestMigrate_AutoImportsBundledWordFrequency verifies issue #340's word
+// frequency reference table is populated automatically by Migrate — no
+// separate manual "make import-frequency" step should be required for the
+// new-word-ordering feature to work on a fresh deploy.
+func TestMigrate_AutoImportsBundledWordFrequency(t *testing.T) {
+	db := openRawDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM word_frequency`).Scan(&count); err != nil {
+		t.Fatalf("count word_frequency rows: %v", err)
+	}
+	if count < 1000 {
+		t.Fatalf("expected the bundled frequency list to be auto-imported (thousands of rows), got %d", count)
+	}
+
+	var rank int
+	if err := db.QueryRow(`SELECT rank FROM word_frequency WHERE word = ?`, "的").Scan(&rank); err != nil {
+		t.Fatalf("expected a known common word ('的') to be present after auto-import: %v", err)
+	}
+	if rank != 1 {
+		t.Errorf("expected '的' to be the most frequent entry (rank 1), got rank %d", rank)
+	}
+}
+
+// TestMigrate_WordFrequencyAutoImportDoesNotReRun verifies the (relatively
+// expensive, ~8000-row) import only executes once, not on every Migrate call —
+// migrations are tracked by version in schema_migrations and never re-run.
+func TestMigrate_WordFrequencyAutoImportDoesNotReRun(t *testing.T) {
+	db := openRawDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("first Migrate: %v", err)
+	}
+	// Simulate an operator/import-frequency-tool override of one entry.
+	if _, err := db.Exec(`UPDATE word_frequency SET rank = 999999 WHERE word = ?`, "的"); err != nil {
+		t.Fatalf("override rank: %v", err)
+	}
+	if err := Migrate(db); err != nil {
+		t.Fatalf("second Migrate: %v", err)
+	}
+	var rank int
+	if err := db.QueryRow(`SELECT rank FROM word_frequency WHERE word = ?`, "的").Scan(&rank); err != nil {
+		t.Fatal(err)
+	}
+	if rank != 999999 {
+		t.Errorf("expected the override to survive a second Migrate call (import must not re-run), got rank %d", rank)
+	}
+}

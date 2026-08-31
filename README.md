@@ -170,6 +170,15 @@ A *new word* is one that has never appeared as a quiz card before. The app track
 
 The training page stats bar shows **New today: X / Y**, so you can see how many new words you have left for the day.
 
+### New-word introduction order
+
+When more than one never-seen word is eligible to be introduced, the app picks which one first using two rules, in order:
+
+1. **Compound prerequisites.** If an unseen multi-character word is made up of substrings that are themselves existing, not-yet-introduced words in your vocabulary, the app introduces those component words first. For example, if your vocabulary contains 还, 可以, and 还可以, the app introduces 还 and 可以 before 还可以. Once every component word has been introduced, the compound is no longer held back.
+2. **Word frequency.** Among words with the same priority under rule 1, the app prefers the more frequently used word, using a bundled frequency ranking that's imported automatically (see [Word-frequency import](#word-frequency-import) below). Words without a frequency ranking sort after ranked ones. Ties fall back to the existing due-date ordering.
+
+Both rules only reorder *which* new word is shown next — they never change the [daily new-word cap](#daily-new-word-cap), [baseline gates](#baseline-gates), or [cooldown](#cooldown-between-new-words) behavior.
+
 ### Baseline gates
 
 In **Settings → Daily Learning**, each user can enable optional gates. These gates pause new-word introductions when the review load is high. You enable each gate independently, with its own numeric threshold. All active gates must pass before the app shows a new word. When you train a specific tag filter, each gate's count only includes words matching that filter — words tagged outside your current session (for example, an untrained HSK level) never count against the threshold.
@@ -386,6 +395,7 @@ When you configure a local model, it takes precedence over any cloud API keys th
 | `make import` | Import vocabulary from a text file (see below) |
 | `make import-hsk` | Fetch and import HSK 1-6 vocabulary from mandarinbean.com (see below) |
 | `make import-pinyin` | Import pinyin audio files for listening training (see below) |
+| `make import-frequency` | Import an alternative/updated Chinese word-frequency list used to order new-word introduction — the bundled list is already auto-imported on startup (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
 | `make funnel` | Print the signup → activation → retention funnel (see below) |
 | `make test` | Run all Go and JS tests |
@@ -448,6 +458,35 @@ Flags:
 | `-dry-run` | false | Parse and check duplicates without writing |
 
 When you set `-lang` to anything other than `en`, the tool translates each English translation from the source table with the [DeepL API](https://www.deepl.com/en/products/api) before storing it. The tool always stores translations as `language='en'` rows, so the existing quiz logic works unchanged. If `DEEPL_API_KEY` is not set, the tool uses the original English text and prints a warning.
+
+## Word-frequency import
+
+A standalone `word_frequency(word, rank)` reference table (rank 1 = most frequent) is used to order [new-word introduction](#new-word-introduction-order) — it does not create or modify any vocabulary words, and a ranked word that isn't in a user's vocabulary is simply unused.
+
+An 8,000-entry list derived from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords) (MIT license), `content/2018/zh_cn/zh_cn_50k.txt` (an OpenSubtitles-based corpus) — filtered to entries made up solely of CJK ideographs, deduplicated, and truncated to the top 8,000 by frequency — is bundled with the app and **imported automatically by the schema migration on startup**. No manual step is required; this is unlike the optional `import-hanzi`/`import-cedict` tools, since without it the frequency-ordering rule above would silently do nothing.
+
+A `make import-frequency` CLI tool remains available for importing an alternative or updated frequency list, or to force a re-import of the bundled one:
+
+```bash
+# Re-import the bundled list
+make import-frequency
+
+# Custom DB path or data file
+make import-frequency DB=/path/to/vocab.db FILE=/path/to/frequency_data.txt
+
+# Preview without writing
+go run ./service/cmd/import-frequency -dry-run
+```
+
+Flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-file` | `frequency_data.txt` | Path to a `word<TAB>rank` list (lines starting with `#` are treated as comments) |
+| `-dry-run` | false | Parse and validate without writing |
+
+Re-running the import updates the rank of any word already present rather than duplicating it, so it's safe to re-run after refreshing the data file.
 
 ### Character decomposition import (makemeahanzi)
 
@@ -624,6 +663,7 @@ vocabulary_trainer/
 │   ├── cmd/import-hsk/main.go # HSK vocabulary import from mandarinbean.com
 │   ├── cmd/import-hanzi/main.go # makemeahanzi character decomposition import
 │   ├── cmd/import-pinyin/main.go # Pinyin audio import tool
+│   ├── cmd/import-frequency/main.go # Chinese word-frequency list import tool
 │   └── frontend/
 │       ├── index.html       # Training page
 │       ├── pinyin.html      # Pinyin listening training page

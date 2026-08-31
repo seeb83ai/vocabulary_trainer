@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-hsk import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -56,6 +56,11 @@ import-pinyin:
 	mkdir -p data
 	cd service && go run ./cmd/import-pinyin -db $(or $(DB),../data/vocab.db) -source ../$(or $(SOURCE),mp3) -audio-dir ../$(or $(PINYIN_AUDIO_DIR),data/pinyin-audio)
 
+## import-frequency: import a Chinese word-frequency list used to order new-word introduction (see issue #340) — the bundled list is already auto-imported by the schema migration on startup; use this to import an alternative/updated list (FILE=frequency_data.txt DB=data/vocab.db)
+import-frequency:
+	mkdir -p data
+	cd service && go run ./cmd/import-frequency -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),cmd/import-frequency/frequency_data.txt)
+
 ## funnel: print the signup → activation → retention funnel (DB=data/vocab.db MIN_ATTEMPTS=20)
 funnel:
 	cd service && go run ./cmd/funnel -db $(or $(DB),../data/vocab.db) -min-attempts $(or $(MIN_ATTEMPTS),20)
@@ -90,6 +95,7 @@ release:
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-hsk ./cmd/import-hsk
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-hanzi ./cmd/import-hanzi
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-pinyin ./cmd/import-pinyin
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-frequency ./cmd/import-frequency
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../fill-translations ./cmd/fill-translations
 	rsync -avz --progress \
 	    Makefile \
@@ -98,6 +104,8 @@ release:
 		import-hsk \
 		import-hanzi \
 		import-pinyin \
+		import-frequency \
+		service/cmd/import-frequency/frequency_data.txt \
 		fill-translations \
 		.env.example \
 		deploy/vocab-trainer.service \
