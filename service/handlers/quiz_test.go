@@ -740,6 +740,141 @@ func TestQuizCycle_AdvanceOnSuccessOnly(t *testing.T) {
 	}
 }
 
+func TestQuizCycle_AdvanceOnKnownOnly(t *testing.T) {
+	// When cycle_advance_on_known_only=true, the cycle position is driven by
+	// KnownCorrectCount rather than TotalAttempts or TotalCorrect. A word with
+	// TotalAttempts=5, TotalCorrect=3, but KnownCorrectCount=1 should show
+	// position (1-1)%3=0, not (5-1)%3=1 or (3-1)%3=2.
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	patchPayload := map[string]interface{}{
+		"primary_lang":                "en",
+		"secondary_lang":              "",
+		"prog_new":                    "transl_to_zh",
+		"prog_tier_struggling":        "transl_to_zh",
+		"prog_tier_learning":          "zh_pinyin_to_transl",
+		"prog_tier_practicing":        "zh_to_transl",
+		"prog_tier_mastered":          "random",
+		"new_word_mode_0":             "transl_to_zh",
+		"new_word_mode_1":             "transl_to_zh",
+		"new_word_mode_2":             "zh_to_transl",
+		"cycle_sequence":              "zh_pinyin_to_transl,transl_to_zh,zh_to_transl",
+		"cycle_advance_on_known_only": true,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 5
+	p.TotalCorrect = 3
+	p.KnownCorrectCount = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	// KnownCorrectCount=1 → (1-1)%3=0 → zh_pinyin_to_transl (step 0)
+	// TotalAttempts=5 would give (5-1)%3=1, TotalCorrect=3 would give (3-1)%3=2 — both wrong
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("advance_on_known_only: want %s (pos 0), got %s", models.ModeZhPinyinToTransl, card.Mode)
+	}
+}
+
+// TestQuizCycle_AdvanceOnKnownOnly_ViaGetNextCard is a regression test for a
+// bug where GetNextCard's SQL (both the main and unseen-word queries in
+// db/words.go, plus GetNextDrillCard in db/drill.go) never selected the
+// known_correct_count column, so /api/quiz/next always saw KnownCorrectCount
+// as its Go zero value (0) — even though Answer() was persisting the real
+// count correctly. The cycle position was effectively stuck at (0-1)%N=0
+// forever, since GetSM2Progress (used elsewhere, e.g. by Answer) did select
+// the column and so masked the bug in tests that set KnownCorrectCount
+// directly via UpdateSM2Progress instead of going through /api/quiz/next.
+// This test drives the real Next()->Answer()->Next() flow to catch that.
+func TestQuizCycle_AdvanceOnKnownOnly_ViaGetNextCard(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	patchPayload := map[string]interface{}{
+		"primary_lang":                "en",
+		"secondary_lang":              "",
+		"prog_new":                    "transl_to_zh",
+		"prog_tier_struggling":        "transl_to_zh",
+		"prog_tier_learning":          "zh_pinyin_to_transl",
+		"prog_tier_practicing":        "zh_to_transl",
+		"prog_tier_mastered":          "random",
+		"new_word_mode_0":             "transl_to_zh",
+		"new_word_mode_1":             "transl_to_zh",
+		"new_word_mode_2":             "zh_to_transl",
+		"cycle_sequence":              "zh_pinyin_to_transl,transl_to_zh,zh_to_transl",
+		"cycle_advance_on_known_only": true,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// Answer correctly on the first try three times in a row (pulling the due
+	// date back before each Next() call so the word is immediately due again),
+	// which should push the word through learning-phase graduation and advance
+	// the cycle position twice: step 0 -> step 1 -> step 2.
+	wantModes := []string{models.ModeZhPinyinToTransl, models.ModeZhPinyinToTransl, models.ModeTranslToZh, models.ModeZhToTransl}
+	for i, want := range wantModes {
+		p, err := s.GetSM2Progress(ctx, id)
+		if err != nil || p == nil {
+			t.Fatalf("iter %d: GetSM2Progress: %v / %v", i, err, p)
+		}
+		p.DueDate = time.Now().UTC().Add(-time.Hour)
+		if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+			t.Fatalf("iter %d: UpdateSM2Progress: %v", i, err)
+		}
+
+		rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("iter %d: want 200, got %d: %s", i, rec.Code, rec.Body.String())
+		}
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.Mode != want {
+			t.Errorf("iter %d: want mode %s, got %s", i, want, card.Mode)
+		}
+
+		answer := "hello"
+		if card.Mode == models.ModeTranslToZh {
+			answer = "你好"
+		}
+		rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": id, "mode": card.Mode, "answer": answer,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("iter %d: answer want 200, got %d: %s", i, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestSkip_RejectsNewWordWhenHidden(t *testing.T) {
 	s := openTestDB(t)
 	wordID := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})

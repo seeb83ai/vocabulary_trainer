@@ -43,6 +43,32 @@ func TestUpdateSM2Progress_Persists(t *testing.T) {
 	}
 }
 
+func TestUpdateSM2Progress_KnownCorrectCountPersists(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	p, err := s.GetSM2Progress(context.Background(), id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	if p.KnownCorrectCount != 0 {
+		t.Errorf("initial known_correct_count: want 0, got %d", p.KnownCorrectCount)
+	}
+
+	p.KnownCorrectCount = 4
+	if err := s.UpdateSM2Progress(context.Background(), *p); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.GetSM2Progress(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.KnownCorrectCount != 4 {
+		t.Errorf("known_correct_count: want 4, got %d", got.KnownCorrectCount)
+	}
+}
+
 func TestGetStats_Empty(t *testing.T) {
 	s := openTestDB(t)
 	due, total, _, err := s.GetStats(context.Background(), int64(2), nil, "")
@@ -464,6 +490,7 @@ func TestSaveSM2PrevState_RoundTrips(t *testing.T) {
 	prog.TotalAttempts = 12
 	prog.StreakBonus = 2
 	prog.LearningNewWord = false
+	prog.KnownCorrectCount = 3
 
 	if err := s.SaveSM2PrevState(ctx, id, *prog); err != nil {
 		t.Fatalf("SaveSM2PrevState: %v", err)
@@ -493,6 +520,9 @@ func TestSaveSM2PrevState_RoundTrips(t *testing.T) {
 	}
 	if got.LearningNewWord != prog.LearningNewWord {
 		t.Errorf("LearningNewWord: want %v, got %v", prog.LearningNewWord, got.LearningNewWord)
+	}
+	if got.KnownCorrectCount != prog.KnownCorrectCount {
+		t.Errorf("KnownCorrectCount: want %d, got %d", prog.KnownCorrectCount, got.KnownCorrectCount)
 	}
 }
 

@@ -178,8 +178,12 @@ async function loadSettings() {
       const el = document.getElementById('cycle-step-' + i);
       if (el) populateCycleSelect(el, cycleSteps[i] || '');
     }
-    const advanceEl = document.getElementById('cycle-advance-on-success-only');
-    if (advanceEl) advanceEl.checked = !!st.cycle_advance_on_success_only;
+    const cycleAdvanceMode = st.cycle_advance_on_known_only ? 'known'
+      : st.cycle_advance_on_success_only ? 'success'
+      : 'every_attempt';
+    document.querySelectorAll('input[name="cycle-advance-mode"]').forEach(el => {
+      el.checked = el.value === cycleAdvanceMode;
+    });
 
     // Random/cycle mode-by-bucket rows
     for (const m of RANDOM_MODES) {
@@ -339,7 +343,8 @@ function buildModePayload() {
     new_word_mode_1:        document.getElementById('mode-new-1')?.value           || 'transl_to_zh',
     new_word_mode_2:        document.getElementById('mode-new-2')?.value           || 'zh_to_transl',
     cycle_sequence:                 buildCycleSequence(),
-    cycle_advance_on_success_only:  !!(document.getElementById('cycle-advance-on-success-only')?.checked),
+    cycle_advance_on_success_only:  (document.querySelector('input[name="cycle-advance-mode"]:checked') || {}).value === 'success',
+    cycle_advance_on_known_only:    (document.querySelector('input[name="cycle-advance-mode"]:checked') || {}).value === 'known',
     new_word_require_zh:            !!(document.getElementById('require-zh')?.checked),
     new_word_require_trans: !!(document.getElementById('require-trans')?.checked),
     wrong_answer_retry_mode: (document.querySelector('input[name="wrong-answer-retry-mode"]:checked') || {}).value || 'off',

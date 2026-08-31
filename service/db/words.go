@@ -1018,7 +1018,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 	query := `
 		SELECT w.id, w.text, w.language, w.pinyin, w.created_at,
 		       p.repetitions, p.easiness, p.interval_days, p.due_date,
-		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
+		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word, p.known_correct_count
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh' AND w.user_id = ?` + tagFilter + newWordFilter + bucketSQL + ` %s
@@ -1035,7 +1035,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 		err := row.Scan(
 			&w.ID, &w.Text, &w.Language, &w.Pinyin, &createdAt,
 			&p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning,
+			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning, &p.KnownCorrectCount,
 		)
 		w.CreatedAt = parseDateTime(createdAt)
 		p.DueDate = parseDateTime(dueDate)

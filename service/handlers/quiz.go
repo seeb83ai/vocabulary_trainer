@@ -307,7 +307,9 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			seqStr = userSettings.CycleSequence
 		}
 		cycleCounter := progress.TotalAttempts
-		if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
+		if userSettings != nil && userSettings.CycleAdvanceOnKnownOnly {
+			cycleCounter = progress.KnownCorrectCount
+		} else if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
 			cycleCounter = progress.TotalCorrect
 		}
 		bucket := sm2.ClassifyTier(*progress).BucketKey()
@@ -464,7 +466,20 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 	prevTier := sm2.ClassifyTier(*progress).String()
 
+	// A word with no pending prev_state has not been answered wrong yet in
+	// this encounter, so a correct answer now is "known" — correct on the
+	// first try. Checked before UpdateSM2Progress so it reflects the state
+	// coming into this answer, not any state this request is about to write.
+	prevBeforeAnswer, prevErr := h.Store.GetSM2PrevState(r.Context(), req.WordID)
+	if prevErr != nil {
+		log.Printf("answer: GetSM2PrevState word %d: %v", req.WordID, prevErr)
+	}
+	firstTry := prevErr == nil && prevBeforeAnswer == nil
+
 	updated := sm2.ProcessAnswer(*progress, correct)
+	if correct && firstTry {
+		updated.KnownCorrectCount++
+	}
 	graduated := progress.LearningNewWord && !updated.LearningNewWord
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {

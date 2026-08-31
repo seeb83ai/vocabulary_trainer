@@ -449,6 +449,81 @@ test.describe('Settings – Cycle Mode 6th step (issue #377)', () => {
   });
 });
 
+// Issue #339: a stricter "advance if known" cycle-advance option, alongside
+// the existing "advance on every attempt" (default) and "advance on success"
+// choices. The three are mutually exclusive radio options backed by the
+// cycle_advance_on_success_only / cycle_advance_on_known_only settings
+// fields. The underlying cycle-position bookkeeping (KnownCorrectCount only
+// incrementing on a first-try-correct answer) is covered by the Go handler
+// tests in service/handlers/quiz_test.go and quiz_answer_test.go — see
+// TestQuizCycle_AdvanceOnKnownOnly, TestAnswer_FirstTryCorrect_IncrementsKnownCorrectCount,
+// and TestAnswer_WrongThenCorrect_DoesNotIncrementKnownCorrectCount.
+test.describe('Settings – Cycle advance if known (issue #339)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('offers three mutually exclusive cycle-advance options, defaulting to every attempt', async ({ page }) => {
+    await page.goto('/settings');
+    const every = page.locator('#cycle-advance-every');
+    const success = page.locator('#cycle-advance-success');
+    const known = page.locator('#cycle-advance-known');
+    await expect(every).toBeVisible();
+    await expect(success).toBeVisible();
+    await expect(known).toBeVisible();
+    await expect(every).toBeChecked();
+    await expect(success).not.toBeChecked();
+    await expect(known).not.toBeChecked();
+
+    await captureForPR(page, 'cycle-advance-options-default');
+  });
+
+  test('selecting "Advance only if known" saves and persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+
+    await page.locator('#cycle-advance-known').check();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+    await captureForPR(page, 'cycle-advance-known-selected');
+
+    await page.reload();
+    await expect(page.locator('#cycle-advance-known')).toBeChecked();
+    await expect(page.locator('#cycle-advance-success')).not.toBeChecked();
+    await expect(page.locator('#cycle-advance-every')).not.toBeChecked();
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.cycle_advance_on_known_only).toBe(true);
+    expect(settings.cycle_advance_on_success_only).toBe(false);
+
+    // Reset to default.
+    await page.locator('#cycle-advance-every').check();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
+
+  test('switching from "Advance only on success" to "Advance only if known" clears the success flag', async ({ page }) => {
+    await page.goto('/settings');
+
+    // Poll /api/settings rather than racing the "Saved." banner: the banner
+    // from the previous save can still be visible (it fades after 2.5s) when
+    // the next autosave (debounced 400ms) fires, so "visible" alone doesn't
+    // prove the *new* save has landed.
+    await page.locator('#cycle-advance-success').check();
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).cycle_advance_on_success_only)
+      .toBe(true);
+    let settings = await (await page.request.get('/api/settings')).json();
+    expect(settings.cycle_advance_on_known_only).toBe(false);
+
+    await page.locator('#cycle-advance-known').check();
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).cycle_advance_on_known_only)
+      .toBe(true);
+    settings = await (await page.request.get('/api/settings')).json();
+    expect(settings.cycle_advance_on_success_only).toBe(false);
+
+    // Reset to default.
+    await page.locator('#cycle-advance-every').check();
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).cycle_advance_on_known_only)
+      .toBe(false);
+  });
+});
+
 // Issue #287: per-bucket eligibility for Random/Cycle mode selection.
 test.describe('Settings – Random/Cycle Mode by Bucket (issue #287)', () => {
   test.use({ storageState: 'e2e/.auth/user.json' });

@@ -454,6 +454,55 @@ func TestAnswerCorrectClearsPrevState(t *testing.T) {
 	}
 }
 
+func TestAnswer_FirstTryCorrect_IncrementsKnownCorrectCount(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "hello",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	got, err := s.GetSM2Progress(ctx, id)
+	if err != nil || got == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, got)
+	}
+	if got.KnownCorrectCount != 1 {
+		t.Errorf("known_correct_count after first-try-correct answer: want 1, got %d", got.KnownCorrectCount)
+	}
+}
+
+func TestAnswer_WrongThenCorrect_DoesNotIncrementKnownCorrectCount(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	// Wrong first.
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "wrong",
+	})
+	// Then correct.
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "hello",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	got, err := s.GetSM2Progress(ctx, id)
+	if err != nil || got == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, got)
+	}
+	if got.KnownCorrectCount != 0 {
+		t.Errorf("known_correct_count after wrong-then-correct: want 0, got %d", got.KnownCorrectCount)
+	}
+}
+
 func TestAnswerAmbiguous_TranslToZh_SetsAmbiguousFlag(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

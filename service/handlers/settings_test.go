@@ -664,6 +664,52 @@ func TestSettingsCycleAdvanceOnSuccessOnly_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestSettingsCycleAdvanceOnKnownOnly_DefaultFalse(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, http.MethodGet, "/api/settings", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET settings: want 200, got %d", rec.Code)
+	}
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.CycleAdvanceOnKnownOnly {
+		t.Error("default cycle_advance_on_known_only: want false, got true")
+	}
+}
+
+func TestSettingsCycleAdvanceOnKnownOnly_RoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := map[string]interface{}{
+		"primary_lang":                "en",
+		"secondary_lang":              "",
+		"prog_new":                    "transl_to_zh",
+		"prog_tier_struggling":        "transl_to_zh",
+		"prog_tier_learning":          "zh_pinyin_to_transl",
+		"prog_tier_practicing":        "zh_to_transl",
+		"prog_tier_mastered":          "random",
+		"new_word_mode_0":             "transl_to_zh",
+		"new_word_mode_1":             "transl_to_zh",
+		"new_word_mode_2":             "zh_to_transl",
+		"cycle_sequence":              "zh_pinyin_to_transl,transl_to_zh,zh_to_transl",
+		"cycle_advance_on_known_only": true,
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if !st.CycleAdvanceOnKnownOnly {
+		t.Error("after PATCH: want cycle_advance_on_known_only=true, got false")
+	}
+}
+
 func TestSettingsPatchAcceptCorrectMode(t *testing.T) {
 	r := newRouter(openTestDB(t))
 
