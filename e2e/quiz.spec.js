@@ -1603,6 +1603,82 @@ test.describe('Quiz – retype on wrong answer', () => {
     }
   });
 
+  // Regression test for issue #389: the "Accept as correct (typo)" button was
+  // unconditionally hidden whenever the retype gate is active, even for a
+  // 1-character-off typo that accept_correct_mode: 'typo' should still offer.
+  // Clicking it must still advance straight to the next card (bypassing the
+  // retype requirement), same as when the retype gate is off.
+  test('"Accept as correct (typo)" button still shows and advances when the retype gate is active (issue #389)', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'both', accept_correct_mode: 'typo' } });
+
+    try {
+      await useZhToTranslMode(page);
+
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+      expect(cardRes.ok()).toBe(true);
+      const card = await cardRes.json();
+      const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+      expect(correctAnswer).toBeTruthy();
+      const typoAnswer = correctAnswer.slice(0, -1); // one character short — levenshtein distance 1
+
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+
+      await page.locator('#answer-input').fill(typoAnswer);
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+      // Retype gate is showing (proves the suppression path is exercised)...
+      await expect(page.locator('#wrong-retype-area')).toBeVisible();
+      // ...but the typo-accept button must still be offered.
+      await expect(page.locator('#accept-correct-btn')).toBeVisible();
+      await page.locator('#accept-correct-btn').scrollIntoViewIfNeeded();
+      await captureForPR(page, 'accept-typo-with-retype-gate');
+
+      // Clicking it advances straight to the next card without retyping.
+      await page.locator('#accept-correct-btn').click();
+      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+
+  // Regression test for issue #372: the same #346 refactor that regressed
+  // #389 also silently re-hid "Add as translation" under the retype gate.
+  // It must stay offered, and clicking it must still advance straight to
+  // the next card without requiring a retype.
+  test('"Add as translation" button still shows and advances when the retype gate is active (issue #372)', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'both' } });
+
+    try {
+      await useZhToTranslMode(page);
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+      // Clearly wrong answer (not a typo) so only "Add as translation" is offered.
+      await page.locator('#answer-input').fill('notananswer');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+      // Retype gate is showing (proves the suppression path is exercised)...
+      await expect(page.locator('#wrong-retype-area')).toBeVisible();
+      // ...but "Add as translation" must still be offered.
+      await expect(page.locator('#add-translation-row')).toBeVisible();
+      await expect(page.locator('#add-translation-btn')).toBeVisible();
+
+      // Clicking it advances straight to the next card without retyping.
+      await page.locator('#add-translation-btn').click();
+      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+
   // Regression test for issue #348: words whose canonical zh text carries a
   // parenthetical part-of-speech annotation (e.g. "花（动词）") show both
   // retype fields as correct (✓) once the user retypes the bare word/
