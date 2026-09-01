@@ -170,8 +170,11 @@ function renderWordAnswerResult(result, answer) {
       // Retype-on-wrong gate: block Next until the user retypes the correct
       // Chinese word and translation (same input-validation pattern as the
       // new-word introduction screen — see updateGotItState/isZhCorrect/isTransCorrect).
-      // "Add as translation" and "Accept as correct" also advance to the next
-      // card, so they're suppressed here too — otherwise they'd bypass the gate.
+      // "Add as translation" (issue #372) and "Accept as correct (typo)"
+      // (issue #389) both stay visible alongside the gate — clicking either
+      // accepts the answer and advances immediately, intentionally bypassing
+      // the retype requirement, since accepting the answer already confirms
+      // it without needing a retype.
       if (wrongAnswerRetryMode !== 'off') {
         const { requireZh, requireTrans } = wrongRetypeFieldsForCard(wrongAnswerRetryMode, currentCard.mode);
         wrongRetypeTarget = { zhText: result.zh_text, translations: result.translations, requireZh, requireTrans };
@@ -183,9 +186,6 @@ function renderWordAnswerResult(result, answer) {
         requireTrans ? show('wrong-retype-trans-group') : hide('wrong-retype-trans-group');
         show('wrong-retype-area');
         $('next-btn').disabled = true;
-        hide('add-translation-row');
-        hide('add-translation-lang-select');
-        hide('accept-correct-btn');
         setTimeout(() => $(requireZh ? 'wrong-retype-zh-input' : 'wrong-retype-trans-input').focus(), 50);
       } else {
         wrongRetypeTarget = null;
