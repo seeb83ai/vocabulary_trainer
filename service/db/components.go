@@ -278,9 +278,13 @@ type componentCard struct {
 	Progress    models.ComponentProgress
 }
 
-// GetNextComponentCard returns the most-overdue component due today for the user,
-// considering only characters that have a definition in at least one of langs.
-// Returns nil if nothing is due.
+// GetNextComponentCard returns the most-overdue component that is actually due
+// right now for the user, considering only characters that have a definition
+// in at least one of langs. Returns nil if nothing is due. The filter is
+// strict (due_date <= now, not "sometime today") so that a wrong answer —
+// which RecordComponentAnswer pushes a few minutes into the future via
+// sm2.Update's WrongRetryDelay — is not served again before that delay
+// elapses (#391).
 func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []string) (*componentCard, error) {
 	// Only return cards the user can answer in one of langs (defaulting to EN).
 	if len(langs) == 0 {
@@ -306,7 +310,7 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		WHERE cp.user_id = ?
 		  AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation
 		              WHERE character = cp.character AND lang IN (`+strings.Join(placeholders, ",")+`) AND definition != '')
-		  AND cp.due_date < date('now', '+1 day')
+		  AND cp.due_date <= CURRENT_TIMESTAMP
 		ORDER BY cp.due_date ASC
 		LIMIT 1`,
 		args...,

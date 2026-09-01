@@ -279,6 +279,33 @@ func TestGetNextComponentCard_MultipleReadingsJoined(t *testing.T) {
 	}
 }
 
+// TestGetNextComponentCard_WrongAnswerNotImmediatelyRepeated mirrors the word
+// quiz behaviour (see GetNextCard's "due_date <= CURRENT_TIMESTAMP" preference
+// in words.go): after a wrong answer, RecordComponentAnswer pushes the due
+// date a few minutes into the future (sm2.WrongRetryDelay), but
+// GetNextComponentCard's due-date filter (`< date('now', '+1 day')`) still
+// matched it because it compares against midnight tomorrow, not "now" — so a
+// component with no other due sibling was served again on the very next call
+// (#391) instead of waiting out its own retry delay like a word would.
+func TestGetNextComponentCard_WrongAnswerNotImmediatelyRepeated(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	if _, _, err := s.RecordComponentAnswer(ctx, int64(2), "女", false); err != nil {
+		t.Fatalf("RecordComponentAnswer: %v", err)
+	}
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card != nil {
+		t.Errorf("want nil (component's retry delay has not elapsed yet), got card for %q — wrong answer was repeated immediately", card.Character)
+	}
+}
+
 // ── Component HMM scene tests ────────────────────────────────────────────────
 
 func TestUpsertAndGetComponentHMMScene(t *testing.T) {
