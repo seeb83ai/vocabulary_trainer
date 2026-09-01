@@ -108,6 +108,14 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	var excludeComponents []string
+	if excl := r.URL.Query().Get("exclude_components"); excl != "" {
+		for _, part := range strings.Split(excl, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				excludeComponents = append(excludeComponents, part)
+			}
+		}
+	}
 
 	// Difficult-words drill: serve only flagged words (ordered by due date,
 	// ignoring the normal due-date horizon). Mnemonic/component candidates are
@@ -175,7 +183,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	// Fetch component candidate (filtered to langs the user is currently training).
 	var compCard *componentCard
 	if trainComponents {
-		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs)
+		cc, ccErr := h.Store.GetNextComponentCard(r.Context(), UserIDFromContext(r.Context()), langs, excludeComponents)
 		if ccErr != nil {
 			writeError(w, http.StatusInternalServerError, ccErr.Error())
 			return
