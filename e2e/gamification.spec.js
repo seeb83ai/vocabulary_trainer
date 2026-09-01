@@ -55,6 +55,7 @@ test.describe('Gamification — match game', () => {
         game_mode_hardest: true,
         game_mode_last_mistakes: true,
         gamification_hide_pinyin_from_bucket: '70-84',
+        auto_subwords: true,
       },
       headers: { 'Content-Type': 'application/json' },
     });
@@ -83,6 +84,7 @@ test.describe('Gamification — match game', () => {
         game_mode_newest: true,
         game_mode_hardest: true,
         game_mode_last_mistakes: true,
+        auto_subwords: true,
       },
     });
     expect(patch.status()).toBe(200);
