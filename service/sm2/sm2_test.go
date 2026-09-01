@@ -907,6 +907,22 @@ func TestCheckAnswer_TabInUserAnswer(t *testing.T) {
 	}
 }
 
+// ── Curly vs straight apostrophe equivalence (issue #390) ────────────────────
+
+func TestCheckAnswer_CurlyApostropheStored_StraightApostropheUser(t *testing.T) {
+	// Stored answer has curly apostrophe ’; user types straight apostrophe '
+	if !CheckAnswer("Don't worry", []string{"Don’t worry"}) {
+		t.Error("straight apostrophe in user answer should match curly apostrophe in stored answer")
+	}
+}
+
+func TestCheckAnswer_StraightApostropheStored_CurlyApostropheUser(t *testing.T) {
+	// Stored answer has straight apostrophe '; user types curly apostrophe ’
+	if !CheckAnswer("Don’t worry", []string{"Don't worry"}) {
+		t.Error("curly apostrophe in user answer should match straight apostrophe in stored answer")
+	}
+}
+
 func TestNormalizeAnswer_CollapseInternalSpaces(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"hello  world", "hello world"},
