@@ -994,6 +994,62 @@ test.describe('Quiz – green result box title (issue #246)', () => {
     await expect(greenLabel).toContainText('Component', { ignoreCase: true });
     await expect(greenLabel).not.toContainText('Character', { ignoreCase: true });
   });
+
+  // Regression test for issue #388: a component card following a
+  // voice_to_transl word card must show the Chinese character, not stay
+  // hidden from the earlier voice-only word card's hide('prompt-word').
+  test('component card shows the Chinese character after a voice_to_transl word card', async ({ page }) => {
+    let nextCalls = 0;
+    await page.route('**/api/quiz/next*', async (route) => {
+      nextCalls += 1;
+      if (nextCalls === 1) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            word_id: 1,
+            mode: 'voice_to_transl',
+            prompt: '你好',
+            pinyin: 'nǐ hǎo',
+          }),
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            card_type: 'component',
+            prompt: '木',
+            pinyin: 'mù',
+            is_new: false,
+            is_also_word: false,
+            definitions: { en: 'wood, tree' },
+          }),
+        });
+      }
+    });
+    await page.route('**/api/quiz/answer', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ correct: true, correct_answers: ['hello'], interval_days: 1 }),
+      });
+    });
+
+    await useZhToTranslMode(page);
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toBeHidden();
+
+    await page.locator('#answer-input').fill('hello');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#next-btn').click();
+
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#prompt-word')).toBeVisible();
+    await expect(page.locator('#prompt-word')).toHaveText('木');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
