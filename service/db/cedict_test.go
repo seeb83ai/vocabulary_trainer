@@ -258,6 +258,44 @@ func TestCreateSubwordsForWord_SplitsSemicolonDefinitions(t *testing.T) {
 	}
 }
 
+func TestCreateSubwordsForWord_InheritsParentTags(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedCedictEntryForTest(ctx, "炒饭", "en", "chǎo fàn", "fried rice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "炒", "en", "chǎo", "to stir-fry"); err != nil {
+		t.Fatal(err)
+	}
+
+	zhID, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "炒饭",
+		Translations:  map[string][]string{"en": {"fried rice"}},
+		Tags:          []string{"HSK1"},
+		StartTraining: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+	_ = zhID
+
+	// Look up the subword 炒 and check its tag matches the parent (not "HSK1-sub").
+	subID, err := s.GetWordIDByZhText(ctx, 2, "炒")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subID == 0 {
+		t.Fatal("want 炒 auto-created")
+	}
+	tags, err := s.getTagsForWord(ctx, subID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 1 || tags[0] != "HSK1" {
+		t.Errorf("want subword tag [HSK1], got %v", tags)
+	}
+}
+
 func TestLookupDictionary_SplitsSemicolons(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

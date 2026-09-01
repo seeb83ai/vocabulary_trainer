@@ -302,6 +302,29 @@ func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, la
 	return texts, rows.Err()
 }
 
+// GetTrainingZhWords returns all zh words for userID that are in training
+// (first_seen_at IS NOT NULL), ordered by first_seen_at ascending.
+func (s *Store) GetTrainingZhWords(ctx context.Context, userID int64) ([]models.Word, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.id, w.text FROM words w
+		 JOIN sm2_progress p ON p.word_id = w.id
+		 WHERE w.user_id = ? AND w.language = 'zh' AND p.first_seen_at IS NOT NULL
+		 ORDER BY p.first_seen_at ASC`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get training zh words: %w", err)
+	}
+	defer rows.Close()
+	var result []models.Word
+	for rows.Next() {
+		var w models.Word
+		if err := rows.Scan(&w.ID, &w.Text); err != nil {
+			return nil, err
+		}
+		result = append(result, w)
+	}
+	return result, rows.Err()
+}
+
 // IsZhWordForUser reports whether text is an exact zh word in the user's vocabulary.
 func (s *Store) IsZhWordForUser(ctx context.Context, userID int64, text string) (bool, error) {
 	var count int
@@ -483,8 +506,11 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 	// initialisation at the other two call sites (AcknowledgeWord/
 	// AcknowledgeRandomWords).
 	if req.StartTraining {
-		if err := s.CreateSubwordsForWord(ctx, userID, zhID, req.ZhText); err != nil {
-			log.Printf("CreateWord: CreateSubwordsForWord %q: %v", req.ZhText, err)
+		st, _ := s.GetUserSettings(ctx, userID)
+		if st == nil || st.AutoSubwords {
+			if err := s.CreateSubwordsForWord(ctx, userID, zhID, req.ZhText); err != nil {
+				log.Printf("CreateWord: CreateSubwordsForWord %q: %v", req.ZhText, err)
+			}
 		}
 	}
 

@@ -222,17 +222,10 @@ func (s *Store) CreateSubwordsForWord(ctx context.Context, userID, zhWordID int6
 	return nil
 }
 
-// deriveSubwordTags suffixes every parent tag with "-sub" (e.g. HSK1 ->
-// HSK1-sub); an untagged parent produces the single generic tag "sub".
+// deriveSubwordTags returns the same tags as the parent word so subwords are
+// findable under the same tag filter. An untagged parent produces no tags.
 func deriveSubwordTags(parentTags []string) []string {
-	if len(parentTags) == 0 {
-		return []string{"sub"}
-	}
-	tags := make([]string, len(parentTags))
-	for i, tag := range parentTags {
-		tags[i] = tag + "-sub"
-	}
-	return tags
+	return parentTags
 }
 
 // createSubword inserts one auto-created sub-word (zh word + EN/DE
