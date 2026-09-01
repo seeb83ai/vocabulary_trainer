@@ -1536,8 +1536,14 @@ test.describe('Quiz – retype on wrong answer', () => {
       await expect(page.locator('#next-btn')).toBeDisabled();
 
       // Typing the correct Chinese word and translation unlocks Next.
+      // The explicit dispatchEvent('input') after fill() guards against fill()
+      // racing the page's own setTimeout(..., 50)-based auto-focus of this
+      // input (see train-result.js) — the same CI flake pattern fixed for the
+      // issue #348 regression test below.
       await page.locator('#wrong-retype-zh-input').fill(card.prompt);
+      await page.locator('#wrong-retype-zh-input').dispatchEvent('input');
       await page.locator('#wrong-retype-trans-input').fill(correctAnswer);
+      await page.locator('#wrong-retype-trans-input').dispatchEvent('input');
       await expect(page.locator('#next-btn')).toBeEnabled({ timeout: 8_000 });
 
       await page.locator('#next-btn').click();
