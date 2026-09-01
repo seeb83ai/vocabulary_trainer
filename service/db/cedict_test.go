@@ -186,9 +186,9 @@ func TestCreateSubwordsForWord_TwoCharParentCreatesCharSubwords(t *testing.T) {
 	}
 
 	zhID, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
-		ZhText:       "炒饭",
-		Translations: map[string][]string{"en": {"fried rice"}},
-		Tags:         []string{"HSK1"},
+		ZhText:        "炒饭",
+		Translations:  map[string][]string{"en": {"fried rice"}},
+		Tags:          []string{"HSK1"},
 		StartTraining: true,
 	})
 	if err != nil {
