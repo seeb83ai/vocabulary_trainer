@@ -27,6 +27,11 @@ function renderWordAnswerResult(result, answer) {
   const breakdown = $('word-breakdown');
   const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
   const allTransTexts = selectedLangs.flatMap(lang => (result.translations || {})[lang] || []);
+  const cleanTransTexts = allTransTexts.filter(x => !isNoise(x));
+  const noiseTransTexts = allTransTexts.filter(isNoise);
+  const noiseHtml = noiseTransTexts.length > 0
+    ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${noiseTransTexts.map(escHtml).join(' · ')}</div></details>`
+    : '';
   // For wrong answers use compact equal-sized display so zh and translations are easy to read side-by-side.
   // For correct answers keep the large Chinese character as a visual reward.
   const makeCorrectBox = (compact) => `
@@ -36,7 +41,8 @@ function renderWordAnswerResult(result, answer) {
         <div class="${compact ? 'text-xl' : 'text-3xl'} font-bold text-gray-800 min-w-0">${escHtml(result.zh_text)}${pinyin}</div>
         <button type="button" class="result-inline-play text-2xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
       </div>
-      <div class="text-gray-600 text-sm mt-0.5">${allTransTexts.map(escHtml).join(' · ')}</div>
+      <div class="text-gray-600 text-sm mt-0.5">${cleanTransTexts.map(escHtml).join(' · ')}</div>
+      ${noiseHtml}
     </div>`;
   const correctBox = makeCorrectBox(false);
 
@@ -59,7 +65,7 @@ function renderWordAnswerResult(result, answer) {
       if (currentCard.mode === 'transl_to_zh') {
         // Show all translations across all languages except the one already shown as prompt.
         const allTexts = Object.values(currentCard.translations || {}).flat();
-        const others = allTexts.filter(txt => txt !== currentCard.prompt);
+        const others = allTexts.filter(txt => txt !== currentCard.prompt && !isNoise(txt));
         if (others.length > 0) {
           $('result-question-translations').innerHTML = others.map(escHtml).join(' · ');
           show('result-question-translations');

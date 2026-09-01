@@ -37,6 +37,12 @@ function normalizeAnswer(s) {
   return s;
 }
 
+// isNoise returns true for cedict annotation strings that aren't real translations:
+// measure-word refs (CL:), German example sentences (Bsp.:), German measure words (ZEW:).
+function isNoise(text) {
+  return /^(CL:|Bsp\.:|ZEW:)/.test(text);
+}
+
 function stripParens(s) {
   let prev;
   do {

@@ -131,7 +131,11 @@ func (s *Store) LookupDictionary(ctx context.Context, simplified, lang string) (
 		if err := rows.Scan(&d); err != nil {
 			return nil, fmt.Errorf("scan dictionary row: %w", err)
 		}
-		defs = append(defs, d)
+		for _, part := range strings.Split(d, ";") {
+			if s := strings.TrimSpace(part); s != "" {
+				defs = append(defs, s)
+			}
+		}
 	}
 	return defs, rows.Err()
 }
@@ -173,6 +177,11 @@ func (s *Store) CreateSubwordsForWord(ctx context.Context, userID, zhWordID int6
 		if tok.IsSingle || (tok.DefinitionEN == "" && tok.DefinitionDE == "") {
 			continue
 		}
+		if tok.Text == zhText {
+			// The whole parent word matched as one token (e.g. 炒饭→炒饭).
+			// Fall through to the character-level pass below instead.
+			continue
+		}
 		exists, err := s.IsZhWordForUser(ctx, userID, tok.Text)
 		if err != nil {
 			return fmt.Errorf("check existing subword %q: %w", tok.Text, err)
@@ -182,6 +191,32 @@ func (s *Store) CreateSubwordsForWord(ctx context.Context, userID, zhWordID int6
 		}
 		if err := s.createSubword(ctx, userID, tok, subTags); err != nil {
 			return fmt.Errorf("create subword %q: %w", tok.Text, err)
+		}
+	}
+
+	// Character-level pass: for each rune in the parent word, create a
+	// sub-word if it has a cedict definition and isn't already in the user's
+	// vocabulary. This handles the case where the whole parent matched as one
+	// token (e.g. 炒饭 → 炒饭), leaving the constituent chars unprocessed.
+	for _, r := range []rune(zhText) {
+		ch := string(r)
+		en, de, pinyin, found, err := lookupCedictToken(ctx, s.db, ch)
+		if err != nil {
+			return fmt.Errorf("cedict char lookup %q: %w", ch, err)
+		}
+		if !found || (en == "" && de == "") {
+			continue
+		}
+		exists, err := s.IsZhWordForUser(ctx, userID, ch)
+		if err != nil {
+			return fmt.Errorf("check existing char subword %q: %w", ch, err)
+		}
+		if exists {
+			continue
+		}
+		tok := SegmentToken{Text: ch, IsSingle: false, Pinyin: pinyin, DefinitionEN: en, DefinitionDE: de}
+		if err := s.createSubword(ctx, userID, tok, subTags); err != nil {
+			return fmt.Errorf("create char subword %q: %w", ch, err)
 		}
 	}
 	return nil
@@ -226,17 +261,23 @@ func (s *Store) createSubword(ctx context.Context, userID int64, tok SegmentToke
 		if pair.def == "" {
 			continue
 		}
-		transID, err := upsertWord(ctx, tx, pair.def, pair.lang, nil, userID)
-		if err != nil {
-			return err
-		}
-		if err := initSM2(ctx, tx, transID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
-			transID, zhID); err != nil {
-			return fmt.Errorf("link %s subword translation: %w", pair.lang, err)
+		for _, sense := range strings.Split(pair.def, ";") {
+			sense = strings.TrimSpace(sense)
+			if sense == "" {
+				continue
+			}
+			transID, err := upsertWord(ctx, tx, sense, pair.lang, nil, userID)
+			if err != nil {
+				return err
+			}
+			if err := initSM2(ctx, tx, transID); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx,
+				`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
+				transID, zhID); err != nil {
+				return fmt.Errorf("link %s subword translation: %w", pair.lang, err)
+			}
 		}
 	}
 

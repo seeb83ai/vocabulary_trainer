@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"testing"
+
+	"vocabulary_trainer/models"
 )
 
 func TestSegmentZhText_SplitsSingleCharAndMultiCharTokens(t *testing.T) {
@@ -166,5 +168,119 @@ func TestLookupDictionary_ExactMatchByLang(t *testing.T) {
 	}
 	if len(none) != 0 {
 		t.Errorf("want empty slice for no match, got %+v", none)
+	}
+}
+
+func TestCreateSubwordsForWord_TwoCharParentCreatesCharSubwords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	// Seed cedict for both the parent word and its constituent chars.
+	if err := s.SeedCedictEntryForTest(ctx, "炒饭", "en", "chǎo fàn", "fried rice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "炒", "en", "chǎo", "to stir-fry"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "饭", "en", "fàn", "cooked rice"); err != nil {
+		t.Fatal(err)
+	}
+
+	zhID, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:       "炒饭",
+		Translations: map[string][]string{"en": {"fried rice"}},
+		Tags:         []string{"HSK1"},
+		StartTraining: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+	_ = zhID
+
+	for _, ch := range []string{"炒", "饭"} {
+		exists, err := s.IsZhWordForUser(ctx, 2, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
+			t.Errorf("want %q auto-created as subword of 炒饭", ch)
+		}
+	}
+}
+
+func TestCreateSubwordsForWord_SplitsSemicolonDefinitions(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedCedictEntryForTest(ctx, "炒饭", "en", "chǎo fàn", "fried rice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "炒", "en", "chǎo", "to sauté; to stir-fry; to fire (sb)"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "炒饭",
+		Translations:  map[string][]string{"en": {"fried rice"}},
+		StartTraining: true,
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	// 炒 should exist and its translations should be the split senses, not the raw string.
+	exists, err := s.IsZhWordForUser(ctx, 2, "炒")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("want 炒 auto-created as subword")
+	}
+	// Check that "to sauté; to stir-fry; to fire (sb)" was NOT stored as one word.
+	var rawCount int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM words WHERE text = ? AND user_id = ?`,
+		"to sauté; to stir-fry; to fire (sb)", int64(2),
+	).Scan(&rawCount); err != nil {
+		t.Fatal(err)
+	}
+	if rawCount > 0 {
+		t.Error("raw semicolon-joined definition was stored as a word — want it split into parts")
+	}
+	// At least "to sauté" and "to stir-fry" should exist as individual translation words.
+	for _, sense := range []string{"to sauté", "to stir-fry", "to fire (sb)"} {
+		var cnt int
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM words WHERE text = ? AND user_id = ?`, sense, int64(2),
+		).Scan(&cnt); err != nil {
+			t.Fatal(err)
+		}
+		if cnt == 0 {
+			t.Errorf("want sense %q stored as individual translation word", sense)
+		}
+	}
+}
+
+func TestLookupDictionary_SplitsSemicolons(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	// Single row with multiple senses separated by "; "
+	if err := s.SeedCedictEntryForTest(ctx, "过", "en", "guò", "to cross; to go over; to pass (time)"); err != nil {
+		t.Fatal(err)
+	}
+	// Second row that is already a single sense (no semicolon)
+	if err := s.SeedCedictEntryForTest(ctx, "过", "en", "guò", "experienced action marker"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.LookupDictionary(ctx, "过", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"to cross", "to go over", "to pass (time)", "experienced action marker"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], w)
+		}
 	}
 }
