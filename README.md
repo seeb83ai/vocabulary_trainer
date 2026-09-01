@@ -824,6 +824,7 @@ Stages: **registered** (accounts created) → **verified email** → **activated
 | `PATCH` | `/api/settings` | Update language preferences and per-tier quiz mode configuration |
 | `PATCH` | `/api/training-filters` | Persist training page filter state (mode, tier, langs, tags, mnemonics, components) server-side for cross-device sync |
 | `PUT` | `/api/settings/api-keys` | Encrypt and store personal DeepL / LLM API keys |
+| `POST` | `/api/settings/backfill-subwords` | Create sub-words for every multi-character zh word already in active training (one-time backfill for words added before auto-subwords existed) |
 | `GET` | `/api/admin/overview` | Cross-user usage insights: account/activity stats, signup and quiz-volume trends, guest activity, DeepL/LLM usage, page/feature usage (admin role only) |
 
 ## License
