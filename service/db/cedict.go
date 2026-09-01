@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 )
 
 // SegmentToken is one piece of a segmented zh string: either a single Han
@@ -163,8 +165,29 @@ func (s *Store) CreateSubwordsForWord(ctx context.Context, userID, zhWordID int6
 		return nil
 	}
 	tokens, ok, err := segmentZhText(ctx, s.db, zhText)
-	if err != nil || !ok {
+	if err != nil {
 		return err
+	}
+	if !ok {
+		// No cedict data: add each Han character that has a hanzi definition
+		// as a component so it gets trained even without segmentation.
+		dueDate := time.Now().UTC().Format("2006-01-02 15:04:05")
+		for _, r := range []rune(zhText) {
+			ch := string(r)
+			var def string
+			if err := s.db.QueryRowContext(ctx,
+				`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`, ch,
+			).Scan(&def); err != nil || def == "" {
+				continue
+			}
+			if _, err := s.db.ExecContext(ctx,
+				`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
+				userID, ch, dueDate,
+			); err != nil {
+				log.Printf("CreateSubwordsForWord: add component %q (no cedict): %v", ch, err)
+			}
+		}
+		return nil
 	}
 
 	parentTags, err := s.getTagsForWord(ctx, zhWordID)
@@ -191,6 +214,29 @@ func (s *Store) CreateSubwordsForWord(ctx context.Context, userID, zhWordID int6
 		}
 		if err := s.createSubword(ctx, userID, tok, subTags); err != nil {
 			return fmt.Errorf("create subword %q: %w", tok.Text, err)
+		}
+	}
+
+	// Single-char component pass: for each IsSingle token (no cedict entry),
+	// add it to component_progress if it has a hanzi definition. This ensures
+	// that un-segmented top-level characters get trained as components.
+	dueDate := time.Now().UTC().Format("2006-01-02 15:04:05")
+	for _, tok := range tokens {
+		if !tok.IsSingle {
+			continue
+		}
+		var def string
+		err := s.db.QueryRowContext(ctx,
+			`SELECT COALESCE(definition, '') FROM hanzi_decomposition WHERE character = ?`, tok.Text,
+		).Scan(&def)
+		if err != nil || def == "" {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT OR IGNORE INTO component_progress (user_id, character, due_date) VALUES (?, ?, ?)`,
+			userID, tok.Text, dueDate,
+		); err != nil {
+			log.Printf("CreateSubwordsForWord: add component %q: %v", tok.Text, err)
 		}
 	}
 
