@@ -1656,33 +1656,62 @@ test.describe('Quiz – retype on wrong answer', () => {
   // #389 also silently re-hid "Add as translation" under the retype gate.
   // It must stay offered, and clicking it must still advance straight to
   // the next card without requiring a retype.
+  //
+  // A fresh isolated user + word is required (mirrors the issue #348 test
+  // below): the shared main user only rotates through 3 seed words, and an
+  // earlier test in this file ('"add as correct" button auto-advances...')
+  // submits this exact same literal wrong answer against that shared pool
+  // and clicks "Add as translation" too — which permanently records it as
+  // an accepted translation for whichever word it drew. If this test then
+  // drew the same word, its "wrong answer" would now grade as correct.
   test('"Add as translation" button still shows and advances when the retype gate is active (issue #372)', async ({ page }) => {
+    const email = `e2e-add-translation-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'AddTranslationTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '苹果',
+        pinyin: 'píngguǒ',
+        translations: { en: ['apple'] },
+        tags: [],
+        start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
     const settingsRes = await page.request.get('/api/settings');
     const originalSettings = await settingsRes.json();
     await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'both' } });
 
-    try {
-      await useZhToTranslMode(page);
-      await page.goto('/train');
-      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
 
-      // Clearly wrong answer (not a typo) so only "Add as translation" is offered.
-      await page.locator('#answer-input').fill('notananswer');
-      await page.locator('#answer-form button[type="submit"]').click();
-      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('苹果');
 
-      // Retype gate is showing (proves the suppression path is exercised)...
-      await expect(page.locator('#wrong-retype-area')).toBeVisible();
-      // ...but "Add as translation" must still be offered.
-      await expect(page.locator('#add-translation-row')).toBeVisible();
-      await expect(page.locator('#add-translation-btn')).toBeVisible();
+    // Clearly wrong answer (not a typo) so only "Add as translation" is offered.
+    await page.locator('#answer-input').fill('notananswer');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
 
-      // Clicking it advances straight to the next card without retyping.
-      await page.locator('#add-translation-btn').click();
-      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
-    } finally {
-      await page.request.patch('/api/settings', { data: originalSettings });
-    }
+    // Retype gate is showing (proves the suppression path is exercised)...
+    await expect(page.locator('#wrong-retype-area')).toBeVisible();
+    // ...but "Add as translation" must still be offered.
+    await expect(page.locator('#add-translation-row')).toBeVisible();
+    await expect(page.locator('#add-translation-btn')).toBeVisible();
+
+    // Clicking it advances straight to the next card without retyping.
+    await page.locator('#add-translation-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
   // Regression test for issue #348: words whose canonical zh text carries a
