@@ -617,6 +617,18 @@ func TestCheckHMMAnswer_Wrong(t *testing.T) {
 	}
 }
 
+// A mobile keyboard can insert an internal double space (or tab) that a plain
+// <div> renders identically to a single space (issue #396) — the comparison
+// must not treat that as a mismatch.
+func TestCheckHMMAnswer_InternalWhitespaceCollapsed(t *testing.T) {
+	if !CheckHMMAnswer("Knien,  betteln", "Knien, betteln") {
+		t.Error("double internal space in user answer should still match")
+	}
+	if !CheckHMMAnswer("Knien, betteln", "Knien,  betteln") {
+		t.Error("double internal space in correct name should still match")
+	}
+}
+
 // ── SelectMode ────────────────────────────────────────────────────────────────
 
 func TestSelectMode_ValidMode(t *testing.T) {
