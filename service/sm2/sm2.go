@@ -33,6 +33,16 @@ var fullwidthToHalfwidth = strings.NewReplacer(
 	"；", ";",
 )
 
+// apostropheVariants converts curly/typographic apostrophe variants (’ ‘ ´ `)
+// to the ASCII straight apostrophe ' so "Don't" and "Don't" compare equal
+// regardless of which one was typed or stored.
+var apostropheVariants = strings.NewReplacer(
+	"’", "'",
+	"‘", "'",
+	"´", "'",
+	"`", "'",
+)
+
 const (
 	QualityCorrect       = 4
 	QualityWrong         = 0
@@ -201,12 +211,14 @@ func CheckAnswer(userAnswer string, accepted []string) bool {
 }
 
 // NormalizeAnswer lowercases, collapses internal whitespace, converts common
-// fullwidth punctuation to their ASCII equivalents, collapses any run of
-// periods and/or ideographic ellipsis characters (anywhere in the string)
-// into a single space, and strips all trailing punctuation and whitespace.
+// fullwidth punctuation to their ASCII equivalents, converts curly/typographic
+// apostrophes to the ASCII straight apostrophe, collapses any run of periods
+// and/or ideographic ellipsis characters (anywhere in the string) into a
+// single space, and strips all trailing punctuation and whitespace.
 func NormalizeAnswer(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	s = fullwidthToHalfwidth.Replace(s)
+	s = apostropheVariants.Replace(s)
 	s = reDotsRun.ReplaceAllString(s, " ")
 	s = reTrailingPunct.ReplaceAllString(s, "")
 	s = strings.Join(strings.Fields(s), " ")
