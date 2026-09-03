@@ -296,7 +296,7 @@ func CheckComponentAnswer(userAnswer, definition string) bool {
 // optional parenthesised segments from both sides (case-insensitive, no
 // trailing-punctuation stripping — matching current HMM quiz behaviour).
 func CheckHMMAnswer(userAnswer, correctName string) bool {
-	norm := func(s string) string { return strings.TrimSpace(stripParens(s)) }
+	norm := func(s string) string { return strings.Join(strings.Fields(stripParens(s)), " ") }
 	return strings.EqualFold(norm(userAnswer), norm(correctName))
 }
 
