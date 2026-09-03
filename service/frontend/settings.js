@@ -521,49 +521,21 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
   btn.textContent = 'Update Password';
 });
 
-// Subwords save
-document.getElementById('subwords-save-btn')?.addEventListener('click', async () => {
-  hideMsg('subwords-success'); hideMsg('subwords-error');
-  const payload = {
-    primary_lang:   document.getElementById('primary-lang')?.value   || 'en',
-    secondary_lang: document.getElementById('secondary-lang')?.value || '',
-    accept_correct_mode: (document.querySelector('input[name="accept-correct-mode"]:checked') || {}).value || 'typo',
-    ...buildModePayload(),
-    ...buildDailyPayload(),
-  };
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const d = await res.json();
-      showMsg('subwords-error', d.error || 'Failed to save.', true);
-    } else {
-      showMsg('subwords-success', 'Saved.', false);
-    }
-  } catch {
-    showMsg('subwords-error', 'Network error.', true);
-  }
-});
-
 // Backfill subwords
 document.getElementById('backfill-subwords-btn')?.addEventListener('click', async () => {
-  hideMsg('subwords-success'); hideMsg('subwords-error');
   const btn = document.getElementById('backfill-subwords-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
   try {
     const res = await fetch('/api/settings/backfill-subwords', { method: 'POST' });
     if (!res.ok) {
-      const d = await res.json();
-      showMsg('subwords-error', d.error || 'Failed.', true);
+      const d = await res.json().catch(() => ({}));
+      showToastError(d.error || 'Failed.');
     } else {
       const d = await res.json();
-      showMsg('subwords-success', `Done — processed ${d.processed} word(s).`, false);
+      showSaved(`Done — processed ${d.processed} word(s).`);
     }
   } catch {
-    showMsg('subwords-error', 'Network error.', true);
+    showToastError('Network error.');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Add subwords for existing training words'; }
   }
