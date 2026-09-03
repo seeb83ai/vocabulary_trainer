@@ -37,6 +37,48 @@ test.describe('Vocabulary Management', () => {
     await expect(page.locator('#words-tbody')).toContainText('水', { timeout: 8_000 });
   });
 
+  test('adding a multi-character word auto-creates a tagged sub-word', async ({ page }) => {
+    // globalSetup imports a tiny cedict fixture covering 踢 ("to kick") and
+    // 足球 ("football/soccer"), so creating 踢足球 should auto-create 足球
+    // as its own inert vocabulary word, tagged HSK1 like its parent (issue #293).
+    await page.goto('/vocab');
+    await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
+
+    await page.locator('#form-zh').fill('踢足球');
+    await page.locator('#en-inputs-container .en-input').first().fill('play football');
+    await page.locator('#form-tag-input').fill('HSK1');
+    await page.locator('#form-tag-input').press('Enter');
+    await page.locator('#form-start-training').check();
+    await page.locator('#word-form button[type="submit"]').click();
+
+    await expect(page.locator('#words-tbody')).toContainText('踢足球', { timeout: 8_000 });
+
+    // The auto-created sub-word is inert (never acknowledged), so it's
+    // hidden by the default "hide unseen" filter — reveal it, then search.
+    await page.locator('#hide-unseen-btn').click();
+    await page.locator('#search-input').fill('足球');
+    const row = page.locator('#words-tbody tr', { hasText: '足球' }).filter({ hasNotText: '踢足球' });
+    await expect(row).toBeVisible({ timeout: 8_000 });
+  });
+
+  test('translate button uses the free local dictionary before DeepL', async ({ page }) => {
+    // 足球 is covered by the cedict fixture imported in globalSetup, so the
+    // Translate button should fill it in via the free local lookup — no
+    // plus role or DeepL key needed.
+    await page.goto('/vocab');
+    await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
+
+    await page.locator('#form-zh').fill('足球');
+    await page.locator('#translate-btn').click();
+
+    // LookupDictionary splits CC-CEDICT's multiple /def1/def2/ glosses into
+    // separate senses, each rendered as its own EN input.
+    const enInputs = page.locator('#en-inputs-container .en-input');
+    await expect(enInputs).toHaveCount(2, { timeout: 8_000 });
+    await expect(enInputs.nth(0)).toHaveValue('football');
+    await expect(enInputs.nth(1)).toHaveValue('soccer');
+  });
+
   test('title is on its own line above controls on mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 641 });
     await page.goto('/vocab');

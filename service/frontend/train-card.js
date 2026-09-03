@@ -301,10 +301,18 @@ async function loadNextCard(trackCurrent = false) {
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
     const transLines = [];
+    const newWordNoise = [];
     for (const texts of Object.values(currentCard.translations || {})) {
-      if (texts && texts.length) transLines.push(texts.map(escHtml).join(' · '));
+      if (!texts?.length) continue;
+      const clean = texts.filter(x => !isNoise(x));
+      const noise = texts.filter(isNoise);
+      if (clean.length) transLines.push(clean.map(escHtml).join(' · '));
+      newWordNoise.push(...noise);
     }
-    $('new-word-en').innerHTML = transLines.join('<br>') || '—';
+    const newWordNoiseHtml = newWordNoise.length > 0
+      ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${newWordNoise.map(escHtml).join(' · ')}</div></details>`
+      : '';
+    $('new-word-en').innerHTML = (transLines.join('<br>') || '—') + newWordNoiseHtml;
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     autoPlayCard(currentCard);
     if (!currentCard.pinyin) hide('new-word-pinyin');
@@ -455,7 +463,7 @@ function showCard() {
     if (currentCard.mode === 'transl_to_zh') {
       // Show all translations across all languages except the one already shown as prompt.
       const allTexts = Object.values(currentCard.translations || {}).flat();
-      const others = allTexts.filter(t => t !== currentCard.prompt);
+      const others = allTexts.filter(t => t !== currentCard.prompt && !isNoise(t));
       if (others.length > 0) {
         $('translations-hint').innerHTML = others.map(escHtml).join(' · ');
         show('translations-hint');

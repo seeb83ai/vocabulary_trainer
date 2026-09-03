@@ -223,6 +223,9 @@ func (s *Store) AcknowledgeRandomWords(ctx context.Context, userID int64, n int)
 		if err := s.InitComponentsForWord(ctx, userID, w.zhText, now); err != nil {
 			log.Printf("AcknowledgeRandomWords: initComponents %q: %v", w.zhText, err)
 		}
+		if err := s.CreateSubwordsForWord(ctx, userID, w.id, w.zhText); err != nil {
+			log.Printf("AcknowledgeRandomWords: CreateSubwordsForWord %q: %v", w.zhText, err)
+		}
 	}
 	return len(words), nil
 }

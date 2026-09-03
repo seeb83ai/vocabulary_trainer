@@ -156,6 +156,31 @@ export default async function globalSetup() {
   const dbPath = join(tmpdir(), `vocab-e2e-${Date.now()}.db`);
   console.log(`[E2E] Using DB: ${dbPath}`);
 
+  // ── 2b. Seed cedict_entries with a tiny fixture dictionary ─────────────────
+  // Mirrors the real deployment order (run the import tool once, then start
+  // the server): this creates + migrates the DB and populates just enough
+  // CC-CEDICT-format data for the sub-word auto-creation and free
+  // dictionary-lookup E2E tests to exercise real segmentation, not a mock.
+  console.log('[E2E] Importing cedict fixture data…');
+  execSync(
+    `cd service && go run ./cmd/import-cedict -db ${dbPath} -file ../e2e/fixtures/cedict-sample.u8 -lang en`,
+    {
+      stdio: 'inherit',
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        // Skip interactive first-run setup prompts (migration v20) — same
+        // credentials the server itself uses below, since Migrate() creates
+        // these accounts on first run regardless of which binary calls it.
+        ADMIN_EMAIL: 'admin@e2e.local',
+        ADMIN_PASSWORD: 'AdminE2ePassword1!',
+        USER_EMAIL: 'seed@e2e.local',
+        USER_PASSWORD: 'SeedE2ePassword1!',
+        BCRYPT_COST: 'min',
+      },
+    },
+  );
+
   // ── 3. Spawn the server ─────────────────────────────────────────────────────
   const server = spawn('./bin/e2e-server', [], {
     env: {
