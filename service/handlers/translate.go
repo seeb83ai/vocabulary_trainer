@@ -51,6 +51,28 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	targetLang := h.TargetLang
+	if req.TargetLang != "" {
+		targetLang = strings.ToUpper(req.TargetLang)
+	}
+
+	// Free, ungated local dictionary lookup for the zh -> target-lang
+	// direction, tried before any role/API-key check. The reverse direction
+	// (foreign text -> zh) has no reliable local lookup (CEDICT definitions
+	// are freeform phrases, not a clean reverse index), so it stays
+	// DeepL-only, handled further below unchanged.
+	if req.ZhText != "" && req.SourceText == "" {
+		if defs, err := h.Store.LookupDictionary(r.Context(), req.ZhText, targetLang); err == nil && len(defs) > 0 {
+			writeJSON(w, http.StatusOK, translateResponse{
+				ZhText:       req.ZhText,
+				SourceText:   defs[0],
+				Translations: defs,
+				Pinyin:       toPinyin(req.ZhText),
+			})
+			return
+		}
+	}
+
 	// Pinyin-only path (both zh and source_text provided) is available to all users.
 	// DeepL translation requires plus/admin role OR a personal user key.
 	pinyinOnly := req.ZhText != "" && req.SourceText != ""
@@ -70,11 +92,6 @@ func (h *TranslateHandler) Translate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := translateResponse{ZhText: req.ZhText, SourceText: req.SourceText}
-
-	targetLang := h.TargetLang
-	if req.TargetLang != "" {
-		targetLang = strings.ToUpper(req.TargetLang)
-	}
 
 	// Resolve the API key: user-specific key takes precedence over server env key.
 	apiKey := h.APIKey

@@ -148,23 +148,45 @@ test.describe('Quiz – acknowledged words (main user)', () => {
   });
 
   test('"add as correct" button auto-advances to next card after adding translation', async ({ page }) => {
-    await useZhToTranslMode(page);
-    await page.goto('/train');
-    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    // Clicking "add as correct" below permanently stores 'notananswer' as a
+    // real translation for whichever word is served — restore that word's
+    // translations afterward so this doesn't leak into later tests/specs
+    // that reuse the same shared word pool (e.g. issue #372's retype test,
+    // which types the literal string 'notananswer' expecting it to be wrong).
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+    const wordRes = await page.request.get(`/api/words/${card.word_id}`);
+    expect(wordRes.ok()).toBe(true);
+    const originalWord = await wordRes.json();
 
-    // Submit a clearly wrong answer (far from any correct answer) so only the
-    // add-translation-btn appears, not the accept-correct-btn (typo threshold).
-    await page.locator('#answer-input').fill('notananswer');
-    await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    try {
+      await useZhToTranslMode(page);
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
-    // The "add as correct" button must be visible
-    await expect(page.locator('#add-translation-btn')).toBeVisible();
+      // Submit a clearly wrong answer (far from any correct answer) so only the
+      // add-translation-btn appears, not the accept-correct-btn (typo threshold).
+      await page.locator('#answer-input').fill('notananswer');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
 
-    // Clicking it should auto-advance (load next card), not stay on result-area
-    await page.locator('#add-translation-btn').click();
-    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+      // The "add as correct" button must be visible
+      await expect(page.locator('#add-translation-btn')).toBeVisible();
+
+      // Clicking it should auto-advance (load next card), not stay on result-area
+      await page.locator('#add-translation-btn').click();
+      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+    } finally {
+      await page.request.put(`/api/words/${card.word_id}`, {
+        data: {
+          zh_text: originalWord.zh_text,
+          pinyin: originalWord.pinyin,
+          translations: originalWord.translations,
+        },
+      });
+    }
   });
 
   test('play button is visible in result area after answering (issue #158)', async ({ page }) => {

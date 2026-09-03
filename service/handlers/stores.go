@@ -27,6 +27,7 @@ type uploadCSVStore interface {
 	db.WordStore
 	db.QuizStore
 	db.ComponentStore
+	db.UserStore
 }
 
 type tagsStore interface {
@@ -81,6 +82,7 @@ type llmStore interface {
 
 type translateStore interface {
 	db.UserStore
+	LookupDictionary(ctx context.Context, simplified, lang string) ([]string, error)
 }
 
 type authStore interface {
@@ -90,6 +92,8 @@ type authStore interface {
 
 type settingsStore interface {
 	db.UserStore
+	db.ComponentStore
+	GetTrainingZhWords(ctx context.Context, userID int64) ([]models.Word, error)
 }
 
 type audioStore interface {
@@ -104,4 +108,6 @@ type adminStore interface {
 type componentIniter interface {
 	GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Progress, error)
 	InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error
+	CreateSubwordsForWord(ctx context.Context, userID, zhWordID int64, zhText string) error
+	GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error)
 }

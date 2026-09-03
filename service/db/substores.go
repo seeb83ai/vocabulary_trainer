@@ -136,6 +136,7 @@ type PinyinStore interface {
 type ComponentStore interface {
 	InitComponentsForWord(ctx context.Context, userID int64, zhText string, dueDate time.Time) error
 	IsComponentForUser(ctx context.Context, userID int64, text string) (bool, error)
+	CreateSubwordsForWord(ctx context.Context, userID, zhWordID int64, zhText string) error
 	GetNextComponentCard(ctx context.Context, userID int64, langs []string) (*componentCard, error)
 	GetComponentDefinitions(ctx context.Context, userID int64, character string, langs []string) (map[string]string, error)
 	StoreComponentTranslation(ctx context.Context, userID int64, character, lang, definition string) error

@@ -202,6 +202,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 	var st models.UserSettings
 	var gamificationEnabledInt, cycleAdvanceOnSuccessOnlyInt, cycleAdvanceOnKnownOnlyInt int
 	var trainMnemonicsInt, trainComponentsInt int
+	var autoSubwordsInt int
 	var trainLangsJSON, trainTagsJSON string
 	err = s.db.QueryRowContext(ctx, `
 		SELECT primary_lang, secondary_lang,
@@ -252,7 +253,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(wrong_answer_retry_mode, 'off'),
 		       COALESCE(component_coverage_threshold, 0),
 		       COALESCE(sentence_blank_enabled, 0),
-		       COALESCE(sentence_blank_ratio, 20)
+		       COALESCE(sentence_blank_ratio, 20),
+		       COALESCE(auto_subwords, 1)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -303,12 +305,14 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.ComponentCoverageThreshold,
 		&st.SentenceBlankEnabled,
 		&st.SentenceBlankRatio,
+		&autoSubwordsInt,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
 	st.CycleAdvanceOnKnownOnly = cycleAdvanceOnKnownOnlyInt == 1
 	st.TrainMnemonics = trainMnemonicsInt != 0
 	st.TrainComponents = trainComponentsInt != 0
+	st.AutoSubwords = autoSubwordsInt != 0
 	if err != nil {
 		return nil, "", "", "", fmt.Errorf("get user settings: %w", err)
 	}
@@ -422,7 +426,8 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			wrong_answer_retry_mode         = ?,
 			component_coverage_threshold    = ?,
 			sentence_blank_enabled          = ?,
-			sentence_blank_ratio            = ?
+			sentence_blank_ratio            = ?,
+			auto_subwords                   = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -466,6 +471,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.ComponentCoverageThreshold,
 		st.SentenceBlankEnabled,
 		st.SentenceBlankRatio,
+		st.AutoSubwords,
 		userID,
 	)
 	if err == nil {

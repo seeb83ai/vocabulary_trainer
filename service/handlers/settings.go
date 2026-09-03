@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"vocabulary_trainer/db"
@@ -85,6 +86,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		ComponentCoverageThreshold       *float64 `json:"component_coverage_threshold"`
 		SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 		SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
+		AutoSubwords                     bool     `json:"auto_subwords"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -318,12 +320,38 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		ComponentCoverageThreshold:       resolvedComponentThreshold,
 		SentenceBlankEnabled:             req.SentenceBlankEnabled,
 		SentenceBlankRatio:               req.SentenceBlankRatio,
+		AutoSubwords:                     req.AutoSubwords,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// BackfillSubwords handles POST /api/settings/backfill-subwords.
+// It walks all zh words already in training (ordered by first_seen_at) and
+// calls CreateSubwordsForWord for each one. Duplicate prevention is inside
+// CreateSubwordsForWord — already-existing chars are skipped.
+func (h *SettingsHandler) BackfillSubwords(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+	words, err := h.store.GetTrainingZhWords(r.Context(), userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	created := 0
+	for _, wd := range words {
+		if len([]rune(wd.Text)) <= 1 {
+			continue
+		}
+		if err := h.store.CreateSubwordsForWord(r.Context(), userID, wd.ID, wd.Text); err != nil {
+			log.Printf("BackfillSubwords %q: %v", wd.Text, err)
+		} else {
+			created++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"processed": created})
 }
 
 var validTrainModes = map[string]bool{
