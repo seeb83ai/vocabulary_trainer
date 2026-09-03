@@ -278,65 +278,105 @@ type componentCard struct {
 	Progress    models.ComponentProgress
 }
 
-// GetNextComponentCard returns the most-overdue component due today for the user,
-// considering only characters that have a definition in at least one of langs.
-// Returns nil if nothing is due.
-func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []string) (*componentCard, error) {
+// GetNextComponentCard returns the most-overdue component due today for the
+// user, considering only characters that have a definition in at least one of
+// langs. Returns nil if nothing is due.
+//
+// excludeChars lists recently-answered components (mirroring GetNextCard's
+// excludeIDs for words) so that a component whose SM-2 due date was just
+// pushed a few minutes into the future by a wrong answer — but which still
+// falls within today's due-date bound — is not immediately re-served while
+// another component due today is available. When no other component is
+// available, the excluded one is still returned rather than nothing (#391).
+func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []string, excludeChars []string) (*componentCard, error) {
 	// Only return cards the user can answer in one of langs (defaulting to EN).
 	if len(langs) == 0 {
 		langs = []string{"en"}
 	}
-	placeholders := make([]string, len(langs))
+	langPlaceholders := make([]string, len(langs))
 	langArgs := make([]any, len(langs))
 	for i, lang := range langs {
-		placeholders[i] = "?"
+		langPlaceholders[i] = "?"
 		langArgs[i] = strings.ToUpper(lang)
 	}
 
-	args := append([]any{userID}, langArgs...)
-
-	var c componentCard
-	var dueDateStr string
-	var firstSeenDate sql.NullString
-	err := s.db.QueryRowContext(ctx, `
+	query := `
 		SELECT cp.character, cp.due_date,
 		       cp.repetitions, cp.easiness, cp.interval_days,
 		       cp.total_correct, cp.total_attempts, cp.first_seen_date
 		FROM component_progress cp
 		WHERE cp.user_id = ?
 		  AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation
-		              WHERE character = cp.character AND lang IN (`+strings.Join(placeholders, ",")+`) AND definition != '')
-		  AND cp.due_date < date('now', '+1 day')
+		              WHERE character = cp.character AND lang IN (` + strings.Join(langPlaceholders, ",") + `) AND definition != '')
+		  %s
 		ORDER BY cp.due_date ASC
-		LIMIT 1`,
-		args...,
-	).Scan(
-		&c.Character, &dueDateStr,
-		&c.Progress.Repetitions, &c.Progress.Easiness, &c.Progress.IntervalDays,
-		&c.Progress.TotalCorrect, &c.Progress.TotalAttempts, &firstSeenDate,
-	)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get next component card: %w", err)
+		LIMIT 1`
+
+	tryQuery := func(extra string, extraArgs ...any) (*componentCard, error) {
+		args := append([]any{userID}, langArgs...)
+		args = append(args, extraArgs...)
+		var c componentCard
+		var dueDateStr string
+		var firstSeenDate sql.NullString
+		err := s.db.QueryRowContext(ctx, fmt.Sprintf(query, extra), args...).Scan(
+			&c.Character, &dueDateStr,
+			&c.Progress.Repetitions, &c.Progress.Easiness, &c.Progress.IntervalDays,
+			&c.Progress.TotalCorrect, &c.Progress.TotalAttempts, &firstSeenDate,
+		)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("get next component card: %w", err)
+		}
+
+		defs, err := s.GetComponentTranslations(ctx, userID, c.Character)
+		if err != nil {
+			return nil, err
+		}
+		c.Definitions = defs
+		var rawPinyin sql.NullString
+		_ = s.db.QueryRowContext(ctx, `SELECT pinyin FROM hanzi_decomposition WHERE character = ?`, c.Character).Scan(&rawPinyin)
+		c.Pinyin = joinPinyinJSON(rawPinyin.String)
+		c.Progress.UserID = userID
+		c.Progress.Character = c.Character
+		c.Progress.DueDate = dueDateStr
+		if firstSeenDate.Valid {
+			c.Progress.FirstSeenDate = &firstSeenDate.String
+		}
+		return &c, nil
 	}
 
-	defs, err := s.GetComponentTranslations(ctx, userID, c.Character)
-	if err != nil {
-		return nil, err
+	todayBound := "AND cp.due_date < date('now', '+1 day')"
+
+	excludeFilter := ""
+	excludeArgs := make([]any, len(excludeChars))
+	if len(excludeChars) > 0 {
+		placeholders := make([]string, len(excludeChars))
+		for i, c := range excludeChars {
+			placeholders[i] = "?"
+			excludeArgs[i] = c
+		}
+		excludeFilter = " AND cp.character NOT IN (" + strings.Join(placeholders, ",") + ")"
 	}
-	c.Definitions = defs
-	var rawPinyin sql.NullString
-	_ = s.db.QueryRowContext(ctx, `SELECT pinyin FROM hanzi_decomposition WHERE character = ?`, c.Character).Scan(&rawPinyin)
-	c.Pinyin = joinPinyinJSON(rawPinyin.String)
-	c.Progress.UserID = userID
-	c.Progress.Character = c.Character
-	c.Progress.DueDate = dueDateStr
-	if firstSeenDate.Valid {
-		c.Progress.FirstSeenDate = &firstSeenDate.String
+
+	c, err := tryQuery("AND cp.due_date <= CURRENT_TIMESTAMP"+excludeFilter, excludeArgs...)
+	if err != nil || c != nil {
+		return c, err
 	}
-	return &c, nil
+	// No overdue cards — prefer components outside the wrong-retry window so a
+	// recently failed component is not immediately repeated.
+	c, err = tryQuery(fmt.Sprintf("AND cp.due_date > datetime('now', '+%d seconds') %s%s", int(sm2.WrongRetryDelay.Seconds()), todayBound, excludeFilter), excludeArgs...)
+	if err != nil || c != nil {
+		return c, err
+	}
+	c, err = tryQuery(todayBound+excludeFilter, excludeArgs...)
+	if err != nil || c != nil {
+		return c, err
+	}
+	// No non-excluded component due today — fall back to repeating an
+	// excluded (recently answered) one rather than showing nothing.
+	return tryQuery(todayBound)
 }
 
 // GetComponentDefinitions returns definitions for a character keyed by lowercase lang code.

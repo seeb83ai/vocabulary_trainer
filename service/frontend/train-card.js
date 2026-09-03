@@ -66,6 +66,8 @@ let selectedMode = localStorage.getItem('quizMode') || 'random';
 
 // IDs of the last two answered vocabulary words, used to avoid immediate re-show.
 let recentWordIDs = [];
+// Characters of the last two answered components, used to avoid immediate re-show.
+let recentComponentChars = [];
 
 // ── Training-time tracking ──────────────────────────────────────────────────
 // Counts seconds while this tab is visible, the window has focus, and a card
@@ -176,6 +178,11 @@ async function loadNextCard(trackCurrent = false) {
   if (trackCurrent && currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
     recentWordIDs = [currentCard.word_id, ...recentWordIDs].slice(0, 2);
   }
+  // Same tracking for components, so a wrong-answered component isn't
+  // immediately re-shown while another component is also due (#391).
+  if (trackCurrent && currentCard?.card_type === 'component' && !currentCard.is_new) {
+    recentComponentChars = [currentCard.prompt, ...recentComponentChars].slice(0, 2);
+  }
   isSubmitted = false;
   ambiguousUnresolved = null;
   hide('card-area');
@@ -244,6 +251,7 @@ async function loadNextCard(trackCurrent = false) {
     if (!includeMnemonics) params.set('mnemonics', 'false');
     if (includeComponents) params.set('trainComponents', '1');
     if (recentWordIDs.length) params.set('exclude', recentWordIDs.join(','));
+    if (recentComponentChars.length) params.set('exclude_components', recentComponentChars.join(','));
     if (difficultDrill) params.set('difficult', 'true');
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';

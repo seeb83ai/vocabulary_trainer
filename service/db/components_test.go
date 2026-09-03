@@ -249,7 +249,7 @@ func TestGetNextComponentCard_IncludesPinyin(t *testing.T) {
 	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
 	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
 
-	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestGetNextComponentCard_MultipleReadingsJoined(t *testing.T) {
 	seedHanziFull(t, s, "行", "row/walk", "", "", "", `["háng","xíng"]`)
 	s.InsertComponentProgressForTest(ctx, int64(2), "行", time.Now().Add(-time.Hour))
 
-	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -276,6 +276,86 @@ func TestGetNextComponentCard_MultipleReadingsJoined(t *testing.T) {
 	}
 	if card.Pinyin != "háng / xíng" {
 		t.Errorf("want pinyin %q, got %q", "háng / xíng", card.Pinyin)
+	}
+}
+
+// TestGetNextComponentCard_ExcludeChars_SkipsWhenOthersAvailable mirrors
+// TestGetNextCard_ExcludeIDs_SkipsWhenOthersAvailable in words_test.go:
+// excluding one due component should serve the other rather than the
+// excluded one, keeping the "train everything due today" due-date filter
+// (`< date('now', '+1 day')`) intact — see #391 discussion.
+func TestGetNextComponentCard_ExcludeChars_SkipsWhenOthersAvailable(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
+	seedHanziFull(t, s, "行", "row/walk", "", "", "", `["háng"]`)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+	s.InsertComponentProgressForTest(ctx, int64(2), "行", time.Now().Add(-time.Hour))
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, []string{"女"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("want a card, got nil")
+	}
+	if card.Character != "行" {
+		t.Errorf("expected excluded component to be skipped: want %q, got %q", "行", card.Character)
+	}
+}
+
+// TestGetNextComponentCard_ExcludeChars_FallsBackToExcludedWhenNoOthers
+// mirrors TestGetNextCard_ExcludeIDs_FallsBackToExcludedWhenNoOthers: with
+// only one due component, excluding it must still return it rather than nil
+// — the trainer must never show "nothing to review" while a component is
+// genuinely due today just because it was the last one answered.
+func TestGetNextComponentCard_ExcludeChars_FallsBackToExcludedWhenNoOthers(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, []string{"女"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("expected fallback to excluded component, got nil")
+	}
+	if card.Character != "女" {
+		t.Errorf("expected fallback to excluded component %q, got %q", "女", card.Character)
+	}
+}
+
+// TestGetNextComponentCard_WrongAnswerNotImmediatelyRepeated reproduces #391:
+// answering a component wrong immediately re-served the same component even
+// though another component was also due. RecordComponentAnswer pushes the
+// due date a few minutes into the future (sm2.WrongRetryDelay), but that
+// alone doesn't stop a re-serve because it still falls within today's due
+// window — what actually prevents the repeat is the frontend passing the
+// just-answered character back as excludeChars on the very next request
+// (mirroring recentWordIDs for words), which this test simulates directly.
+func TestGetNextComponentCard_WrongAnswerNotImmediatelyRepeated(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziFull(t, s, "女", "woman", "", "", "", `["nǚ"]`)
+	seedHanziFull(t, s, "行", "row/walk", "", "", "", `["háng"]`)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+	s.InsertComponentProgressForTest(ctx, int64(2), "行", time.Now().Add(-time.Hour))
+
+	if _, _, err := s.RecordComponentAnswer(ctx, int64(2), "女", false); err != nil {
+		t.Fatalf("RecordComponentAnswer: %v", err)
+	}
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, []string{"女"})
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("want a card, got nil")
+	}
+	if card.Character != "行" {
+		t.Errorf("want the other due component %q, got %q — wrong answer was repeated immediately", "行", card.Character)
 	}
 }
 
@@ -868,7 +948,7 @@ func TestInitComponentsForWord_Idempotent(t *testing.T) {
 
 func TestGetNextComponentCard_ReturnsNilWhenEmpty(t *testing.T) {
 	s := openTestDB(t)
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -888,7 +968,7 @@ func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -1047,7 +1127,7 @@ func TestGetNextComponentCard_DELangFilter(t *testing.T) {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"de"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"de"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -1066,7 +1146,7 @@ func TestGetNextComponentCard_DEWithTranslation(t *testing.T) {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"de"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"de"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -1091,7 +1171,7 @@ func TestGetNextComponentCard_ENAndDE(t *testing.T) {
 		t.Fatalf("InitComponentsForWord: %v", err)
 	}
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en", "de"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en", "de"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
@@ -1127,7 +1207,7 @@ func TestGetNextComponentCard_DoesNotServeFutureComponent(t *testing.T) {
 	future := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 1, 0, time.UTC)
 	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", future)
 
-	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"})
+	card, err := s.GetNextComponentCard(context.Background(), int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
