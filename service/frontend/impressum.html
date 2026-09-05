@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Impressum · Vocab Trainer</title>
+  <script src="/tailwind.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <main class="max-w-2xl mx-auto px-4 py-12">
+    <a href="/" class="text-sm text-blue-600 hover:underline">&larr; Back to Vocab Trainer</a>
+
+    <div class="bg-white rounded-2xl shadow p-8 mt-4">
+      <h1 class="text-2xl font-bold text-gray-900 mb-1">Impressum</h1>
+      <p class="text-sm text-gray-500 mb-6">Legal notice pursuant to &sect;5 TMG (German Telemedia Act)</p>
+
+      <dl class="space-y-4 text-sm text-gray-700">
+        <div>
+          <dt class="font-semibold text-gray-900">Responsible for this website</dt>
+          <dd>{{.Name}}</dd>
+        </div>
+        <div>
+          <dt class="font-semibold text-gray-900">Address</dt>
+          <dd class="whitespace-pre-line">{{.Address}}</dd>
+        </div>
+        <div>
+          <dt class="font-semibold text-gray-900">Email</dt>
+          <dd><a href="mailto:{{.Email}}" class="text-blue-600 hover:underline">{{.Email}}</a></dd>
+        </div>
+        {{if .Phone}}
+        <div>
+          <dt class="font-semibold text-gray-900">Phone</dt>
+          <dd>{{.Phone}}</dd>
+        </div>
+        {{end}}
+      </dl>
+
+      <hr class="my-8 border-gray-200">
+
+      <h2 class="text-lg font-semibold text-gray-900 mb-2">Privacy</h2>
+      <p class="text-sm text-gray-700">
+        This page is a placeholder. Add a data-protection statement (Datenschutzerkl&auml;rung) here
+        describing what personal data this app processes (account email, vocabulary data, optional
+        DeepL/LLM API keys) and on what legal basis, before making this deployment public.
+      </p>
+    </div>
+  </main>
+</body>
+</html>

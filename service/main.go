@@ -47,6 +47,7 @@ func initTemplates(fsys fs.FS) {
 		}
 		templateCache[name] = t
 	}
+	initImpressumTemplate(fsys)
 }
 
 func renderTemplate(w http.ResponseWriter, name string, data PageData) {
@@ -465,6 +466,7 @@ func main() {
 	r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
+	r.Get("/impressum", impressumHandler)
 	r.With(handlers.RequireAdmin(store)).Get("/admin-dashboard", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "admin-dashboard", PageData{
 			Title:       "Admin Dashboard — Vocab Trainer",

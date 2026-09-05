@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD } from './global-setup.js';
 import { captureForPR } from './helpers/screenshot.js';
+import { openAuthModal } from './helpers/auth.js';
 
 // PATCH /api/settings replaces the whole settings row, so swapping just the
 // language pair means round-tripping the current settings with those two
@@ -36,6 +37,7 @@ test.describe('Vocabulary — Auto-translate EN/DE fields', () => {
   test('places EN and DE translations in the correct fields when primary language is German (issue #342)', async ({ page }) => {
     // Log in as admin (role=admin → Auto-translate is available).
     await page.goto('/');
+    await openAuthModal(page);
     await page.locator('#signin-email').fill(ADMIN_EMAIL);
     await page.locator('#signin-password').fill(ADMIN_PASSWORD);
     await page.locator('#signin-btn').click();

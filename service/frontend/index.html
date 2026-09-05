@@ -11,56 +11,313 @@
   <meta property="og:url" content="https://chinese.appace.de/">
   <script src="/tailwind.js"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col">
+<body class="bg-white text-gray-900">
 
-  <!-- Navigation -->
-  <nav class="bg-white shadow-sm border-b border-gray-200">
-    <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-      <span class="text-xl font-bold text-gray-800">词汇训练 · Vocab Trainer</span>
-      <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <option value="en">🇬🇧</option>
-        <option value="zh">🇨🇳</option>
-      </select>
+  <!-- Header -->
+  <header class="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-gray-200">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-6 gap-y-1">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-lg flex-none" aria-hidden="true">字</div>
+        <span class="font-bold text-gray-900 truncate" data-i18n="landing.brand">Vocab Trainer</span>
+      </div>
+      <nav class="hidden sm:flex items-center gap-5 ml-2">
+        <a href="#features" class="text-sm font-semibold text-gray-600 hover:text-gray-900 py-3" data-i18n="landing.nav.features">Features</a>
+        <a href="#demo" class="text-sm font-semibold text-gray-600 hover:text-gray-900 py-3" data-i18n="landing.nav.demo">Try the demo</a>
+      </nav>
+      <div class="flex items-center gap-2 ml-auto">
+        <button type="button" id="btn-login" data-show-tab="signin"
+          class="border border-gray-300 bg-white text-gray-900 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50 transition"
+          data-i18n="landing.login">Log in</button>
+        <button type="button" id="btn-signup" data-show-tab="register"
+          class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm px-4 py-2.5 rounded-xl transition"
+          data-i18n="landing.createAccount">Create free account</button>
+      </div>
     </div>
-  </nav>
+  </header>
 
-  <!-- Main content -->
-  <main class="flex-1 px-4 py-10 md:py-16">
-    <!--
-      Mobile (flex-col): order-* stacks login on top, the hero value
-      proposition below it, and the demo quiz last.
-      Desktop (md:grid): explicit row/col placement restores the original
-      two-column layout — hero spans the full left column, login and the
-      demo quiz stack in the right column.
-    -->
-    <div class="max-w-5xl mx-auto flex flex-col gap-10 md:grid md:grid-cols-2 md:items-start">
+  <!-- Hero -->
+  <section id="hero" class="bg-gradient-to-b from-blue-50 to-white border-b border-gray-100">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-12 sm:py-16 grid gap-10 lg:grid-cols-2 items-center">
 
-    <!-- Hero / value proposition -->
-    <section id="hero" class="order-2 md:order-none md:col-start-1 md:row-start-1 md:row-span-2">
-      <h1 id="hero-title" class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Learn Chinese vocabulary that sticks.</h1>
-      <p class="text-gray-600 text-lg mb-6">A free spaced-repetition trainer: every word comes back for review right before you would forget it. A few minutes a day is enough.</p>
-      <ul id="hero-features" class="space-y-3 text-gray-700 mb-8">
-        <li class="flex gap-3">
-          <span aria-hidden="true">🔁</span>
-          <span><strong>SM-2 spaced repetition</strong> with seven quiz modes, from hanzi recognition to listening-only recall.</span>
-        </li>
-        <li class="flex gap-3">
-          <span aria-hidden="true">🔊</span>
-          <span><strong>Native audio on every word</strong>, plus pinyin listening drills across ~1,600 syllable-and-tone combinations.</span>
-        </li>
-        <li class="flex gap-3">
-          <span aria-hidden="true">🎬</span>
-          <span><strong>Character breakdowns and movie-method mnemonics</strong> that make characters memorable instead of arbitrary.</span>
-        </li>
-      </ul>
-      <button id="hero-cta" type="button" data-show-tab="register"
-        class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 px-8 rounded-xl text-base transition">
-        Create free account
-      </button>
-      <p class="mt-3 text-sm text-gray-500">Free · Open source · HSK 1–6 word lists included</p>
-    </section>
+      <div class="min-w-0">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold uppercase tracking-wide mb-5" data-i18n="landing.hero.badge">SM-2 spaced repetition</div>
+        <h1 id="hero-title" class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-gray-900 mb-4" data-i18n="landing.hero.title">Learn Chinese vocabulary that sticks.</h1>
+        <p class="text-lg text-gray-600 mb-7 max-w-prose" data-i18n="landing.hero.subtitle">A free spaced-repetition trainer: every word comes back for review right before you would forget it. A few minutes a day is enough.</p>
+        <ul id="hero-features" class="space-y-3 text-gray-700 mb-8">
+          <li class="flex gap-3">
+            <span class="flex-none w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm" aria-hidden="true">🔁</span>
+            <span><strong class="text-gray-900" data-i18n="landing.hero.feature1.bold">SM-2 spaced repetition</strong> <span data-i18n="landing.hero.feature1.rest">with seven quiz modes, from hanzi recognition to listening-only recall.</span></span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-none w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm" aria-hidden="true">🔊</span>
+            <span><strong class="text-gray-900" data-i18n="landing.hero.feature2.bold">Native audio on every word</strong> <span data-i18n="landing.hero.feature2.rest">, plus pinyin listening drills across ~1,600 syllable-and-tone combinations.</span></span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-none w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-sm" aria-hidden="true">🎬</span>
+            <span><strong class="text-gray-900" data-i18n="landing.hero.feature3.bold">Character breakdowns and movie-method mnemonics</strong> <span data-i18n="landing.hero.feature3.rest">help you remember words long term.</span></span>
+          </li>
+        </ul>
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="button" id="hero-cta" data-show-tab="register"
+            class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-7 py-4 rounded-2xl shadow-lg shadow-blue-600/30 transition"
+            data-i18n="landing.createAccount">Create free account</button>
+          <a href="#demo" class="text-sm font-semibold text-blue-600 hover:underline px-2 py-4" data-i18n="landing.hero.tryDemo">Try five cards first →</a>
+        </div>
+        <p class="mt-4 text-sm text-gray-500" data-i18n="landing.hero.footnote">Free · Open source · HSK 1–6 word lists included</p>
+      </div>
 
-    <div class="order-1 md:order-none w-full max-w-md md:col-start-2 md:row-start-1 md:justify-self-end" id="auth-column">
+      <div id="demo" class="min-w-0">
+        <div id="demo-section-wrap" class="w-full max-w-md mx-auto">
+          <div id="demo-section" class="bg-gray-900 rounded-3xl p-5 sm:p-6 shadow-2xl">
+            <h2 class="text-white font-extrabold text-lg mb-1" data-i18n="landing.demo.title">Try it — no account needed</h2>
+            <p class="text-gray-400 text-sm mb-4" data-i18n="landing.demo.subtitle">Translate five Chinese words to see how the trainer works.</p>
+
+            <div class="bg-white rounded-2xl p-5">
+              <div id="demo-card">
+                <div class="mb-3">
+                  <span id="demo-progress" class="text-xs font-bold uppercase tracking-wide text-gray-400"></span>
+                </div>
+                <div id="demo-question" class="text-center mb-5">
+                  <div id="demo-zh" class="text-5xl font-bold text-gray-900 mb-2"></div>
+                  <div id="demo-pinyin" class="text-gray-500"></div>
+                </div>
+                <form id="demo-form" class="flex gap-2">
+                  <input id="demo-input" type="text" autocomplete="off" data-i18n-placeholder="landing.demo.placeholder" placeholder="Type the English meaning…"
+                    class="flex-1 min-w-0 border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <button type="submit" id="demo-submit"
+                    class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-5 rounded-xl transition"
+                    data-i18n="landing.demo.check">Check</button>
+                </form>
+                <!-- Mirrors the real quiz's result screen (#result-icon / #word-breakdown in train.html). -->
+                <div id="demo-feedback" class="hidden text-center">
+                  <div id="demo-icon" class="text-2xl font-extrabold mb-4"></div>
+                  <div id="demo-breakdown" class="text-left space-y-2"></div>
+                </div>
+                <button id="demo-next" type="button"
+                  class="hidden mt-4 w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 rounded-xl transition"
+                  data-i18n="landing.demo.next">Next word</button>
+              </div>
+
+              <div id="demo-done" class="hidden text-center py-2">
+                <div class="text-4xl mb-3" aria-hidden="true">🎉</div>
+                <p class="font-bold text-gray-900 mb-1">
+                  <span data-i18n="landing.demo.doneText">That's the demo —</span>
+                  <span id="demo-score"></span>
+                  <span data-i18n="landing.demo.correct">correct.</span>
+                </p>
+                <p class="text-sm text-gray-500 mb-4" data-i18n="landing.demo.doneSubtitle">With a free account, the trainer schedules each word for review right before you would forget it.</p>
+                <button id="demo-done-cta" type="button" data-show-tab="register"
+                  class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-6 py-3 rounded-xl transition"
+                  data-i18n="landing.createAccount">Create free account</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Feature teasers — grid content generated by service/cmd/gen-landing
+       from service/frontend/landing/teasers/*/teaser.json + images. Run
+       `make generate-landing` after changing a teaser folder. -->
+  <section id="features" class="max-w-6xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+    <div class="max-w-2xl mb-10">
+      <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 mb-3" data-i18n="landing.features.title">Dozens of options to improve your training</h2>
+      <p class="text-lg text-gray-500" data-i18n="landing.features.subtitle">Seven quiz modes, native audio, character breakdowns and full progress tracking</p>
+    </div>
+    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+<!-- LANDING-TEASERS:START -->
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50" data-carousel>
+      <img src="/landing/teasers/10-training/01-question.png" alt="Training card asking for the Chinese word for hello" data-slide="0" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+      <img src="/landing/teasers/10-training/02-filters.png" alt="Quiz mode, level and language filters above the training card" data-slide="1" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <div class="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 bg-gradient-to-t from-slate-900/10 to-transparent pt-6">
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="0" aria-label="Show image 1">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-blue-600"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="1" aria-label="Show image 2">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.training.category">Training</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.training.title">One card at a time, scheduled by SM-2</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.training.summary">Choose From Multiple Modes that help you to learn how it fits you best. Take advantage of SM-2 spaced repetition: The better you know a word, the less often you need to answer it&#39;s card</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/100-mismatches/01-mismatches.png" alt="Confusion pairs table showing words confused with each other" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.mismatches.category">Mismatches</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.mismatches.title">The words you keep mixing up</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.mismatches.summary">When a wrong answer is a valid translation of another word you know, the app records the pair. You see a hint right away, the Mismatches page keeps the full history, and the match game drills those pairs back at you.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.open-source.category">Open source</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.open-source.title">Be part of the change</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.open-source.summary">Suggest a change and the community implements it — or build it yourself and send it in. Nothing about the app is out of reach.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.self-hosted.category">Self-hosted</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.self-hosted.title">Run it on your own machine</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.self-hosted.summary">Host the app yourself with Docker or on a Raspberry Pi. Your data stays on your hardware, in a plain SQLite file, and you can adjust everything however you want.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/20-pinyin/01-quiz.png" alt="Pinyin listening quiz with multiple-choice syllables" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.pinyin.category">Pinyin drills</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.pinyin.title">Train your ear on 1,600 sounds</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.pinyin.summary">In Chinese, the tone conveys meaning: Hear a syllable and identify it — multiple choice while learning, typed answers once you know it. Spaced repetition tracks every syllable-and-tone combination separately.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/30-mnemonics/01-builder.png" alt="Hanzi Movie Method mnemonic builder" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.mnemonics.category">Mnemonics</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.mnemonics.title">Remember each Character with a Story</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.mnemonics.summary">The Hanzi Movie Method maps pinyin initials to actors, finals to locations, tones to rooms and radicals to props. Saved scenes reappear during training when you need them.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/40-match-game/01-match.png" alt="Word matching mini-game with Chinese and English columns" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.match-game.category">Match game</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.match-game.title">Small games to take a break</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.match-game.summary">Every so often training pauses for a matching round drawn from your newest, hardest or recently confused words to improve your memory and have a little fun in between.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/50-stats/01-dashboard.png" alt="Stats dashboard with daily progress chart" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.stats.category">Statistics</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.stats.title">Keep track of your progress</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.stats.summary">Daily attempts, accuracy and streaks, plus per-word statistics, your five hardest words and how many reviews are due on each of the next 30 days.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/60-vocabulary/01-list.png" alt="Vocabulary list with tags, levels and due dates" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.vocabulary.category">Your word list</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.vocabulary.title">HSK lists in, or your own words</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.vocabulary.summary">Start with HSK 1–6 in one click, or add words yourself — the Translate button fills in pinyin and meanings. Tag anything, filter by tag, and train just that set.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.vendor-lock-in.category">Your data</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.vendor-lock-in.title">No vendor lock-in</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.vendor-lock-in.summary">Import new words at any time, export all your words and translations and progress, for free.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/80-settings/01-settings.png" alt="Settings page with account and password cards" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.settings.category">Settings</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.settings.title">Tuned to how you learn</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.settings.summary">Full control how and what you want to learn with dozens of adjustments to personalize your training.</p>
+  </div>
+</article>
+<article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="p-5 pb-6">
+    <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.llm-support.category">LLM support</span>
+    <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.llm-support.title">Bring your own model</h3>
+    <p class="text-sm leading-relaxed text-gray-600" data-i18n="landing.teaser.llm-support.summary">Translations start with the built-in CC-CEDICT / HanDeDict dictionary, no key needed. Add your favourite LLM or DeepL on top to find translations for new words or stories for the hanzi movie method.</p>
+  </div>
+</article>
+
+<!-- LANDING-TEASERS:END -->
+    </div>
+  </section>
+
+  <!-- Closing CTA -->
+  <section class="max-w-6xl mx-auto px-4 sm:px-6 pb-16 sm:pb-24">
+    <div class="rounded-3xl bg-blue-50 border border-blue-100 p-8 sm:p-12 grid gap-8 sm:grid-cols-2 items-center">
+      <div>
+        <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900 mb-3" data-i18n="landing.cta.title">Five minutes a day, starting now</h2>
+        <p class="text-gray-600" data-i18n="landing.cta.subtitle">One click imports HSK 1 or more, and some first words are introduced right away. No card floods, no setup.</p>
+      </div>
+      <div class="sm:justify-self-end">
+        <button type="button" id="cta-signup" data-show-tab="register"
+          class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-7 py-4 rounded-2xl shadow-lg shadow-blue-600/30 transition"
+          data-i18n="landing.createAccount">Create free account</button>
+        <p class="mt-3 text-sm text-gray-500">
+          <span data-i18n="landing.cta.haveAccount">Already have an account?</span>
+          <button type="button" id="cta-signin" data-show-tab="signin" class="font-semibold text-blue-600 hover:underline" data-i18n="landing.signIn">Sign in</button>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-200 bg-gray-50">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs" aria-hidden="true">字</div>
+        <span class="text-sm font-bold text-gray-900">词汇训练 · Vocab Trainer</span>
+      </div>
+      <div class="flex items-center gap-4 flex-wrap">
+        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="en">🇬🇧</option>
+          <option value="zh">🇨🇳</option>
+        </select>
+        <a href="/impressum" class="text-sm text-gray-500 hover:text-gray-800" data-i18n="landing.footer.impressum">Impressum</a>
+        <span class="text-sm text-gray-400">chinese.appace.de</span>
+        <a href="https://github.com/seeb83ai/vocabulary_trainer" aria-label="Source code on GitHub" title="Source code on GitHub"
+          class="w-11 h-11 flex items-center justify-center text-gray-500 hover:text-gray-900 transition">
+          <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.07-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.15 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path></svg>
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Sign in / Create account modal -->
+  <div id="auth-modal" class="hidden fixed inset-0 z-50 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div id="auth-modal-panel" class="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between gap-3 mb-4">
+        <div class="flex items-center gap-2">
+          <div class="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs" aria-hidden="true">字</div>
+          <span class="text-sm font-bold text-gray-900" data-i18n="landing.brand">Vocab Trainer</span>
+        </div>
+        <button type="button" id="auth-modal-close" aria-label="Close"
+          class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 text-sm transition">✕</button>
+      </div>
 
       <!-- HIBP warning banner (shown after login with compromised password) -->
       <div id="hibp-warning" class="hidden mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4">
@@ -68,132 +325,92 @@
         <a href="/settings" class="inline-block text-sm bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-1.5 rounded-lg transition">Change Password</a>
       </div>
 
-      <!-- Card -->
-      <div class="bg-white rounded-2xl shadow p-8">
+      <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6">
+        <button id="tab-signin" type="button" class="flex-1 py-2 rounded-lg text-sm font-semibold transition bg-white text-gray-900 shadow-sm" data-i18n="landing.signIn">Sign In</button>
+        <button id="tab-register" type="button" class="flex-1 py-2 rounded-lg text-sm font-semibold transition text-gray-500 hover:text-gray-800" data-i18n="landing.createAccount2">Create Account</button>
+      </div>
 
-        <!-- Tabs -->
-        <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-8">
-          <button id="tab-signin" type="button" class="flex-1 py-2 rounded-lg text-sm font-medium transition bg-white text-gray-800 shadow-sm">Sign In</button>
-          <button id="tab-register" type="button" class="flex-1 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Create Account</button>
-        </div>
+      <!-- Sign In panel -->
+      <div id="panel-signin">
+        <h2 class="text-lg font-semibold text-gray-900 mb-6" data-i18n="landing.signin.welcome">Welcome back</h2>
 
-        <!-- Sign In panel -->
-        <div id="panel-signin">
-          <h2 class="text-lg font-semibold text-gray-800 mb-6">Welcome back</h2>
+        <div id="signin-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+        <div id="signin-info" class="hidden mb-4 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2"></div>
 
-          <div id="signin-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
-          <div id="signin-info" class="hidden mb-4 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2"></div>
+        <form id="signin-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="signin-email" data-i18n="landing.email">Email</label>
+            <input id="signin-email" type="email" required autocomplete="email"
+              class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="signin-password" data-i18n="landing.password">Password</label>
+            <input id="signin-password" type="password" required autocomplete="current-password"
+              class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <button type="submit" id="signin-btn"
+            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-base transition"
+            data-i18n="landing.signIn">Sign In</button>
+        </form>
 
-          <form id="signin-form" class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1" for="signin-email">Email</label>
-              <input id="signin-email" type="email" required autocomplete="email"
-                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1" for="signin-password">Password</label>
-              <input id="signin-password" type="password" required autocomplete="current-password"
-                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <button type="submit" id="signin-btn"
-              class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-base transition">
-              Sign In
-            </button>
-          </form>
+        <p class="mt-5 text-center text-sm text-gray-500">
+          <span data-i18n="landing.signin.newHere">New here?</span>
+          <button type="button" data-show-tab="register" class="text-blue-600 hover:underline font-medium" data-i18n="landing.signin.createOne">Create an account</button>
+        </p>
+      </div>
 
-          <p class="mt-5 text-center text-sm text-gray-500">
-            New here?
-            <button type="button" data-show-tab="register" class="text-blue-600 hover:underline font-medium">Create an account</button>
+      <!-- Register panel -->
+      <div id="panel-register" class="hidden">
+        <h2 class="text-lg font-semibold text-gray-900 mb-6" data-i18n="landing.register.title">Create your account</h2>
+
+        <div id="register-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+
+        <!-- Pending verification screen -->
+        <div id="register-pending" class="hidden text-center py-4">
+          <div class="text-4xl mb-4" aria-hidden="true">📧</div>
+          <h3 class="text-base font-semibold text-gray-900 mb-2" data-i18n="landing.register.checkInbox">Check your inbox</h3>
+          <p class="text-sm text-gray-500">
+            <span data-i18n="landing.register.confirmSent">We sent a confirmation link to</span>
+            <strong id="register-pending-email"></strong>.
+            <span data-i18n="landing.register.clickActivate">Click it to activate your account.</span>
           </p>
         </div>
 
-        <!-- Register panel -->
-        <div id="panel-register" class="hidden">
-          <h2 class="text-lg font-semibold text-gray-800 mb-6">Create your account</h2>
-
-          <div id="register-error" class="hidden mb-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
-
-          <!-- Pending verification screen -->
-          <div id="register-pending" class="hidden text-center py-4">
-            <div class="text-4xl mb-4">📧</div>
-            <h3 class="text-base font-semibold text-gray-800 mb-2">Check your inbox</h3>
-            <p class="text-sm text-gray-500">We sent a confirmation link to <strong id="register-pending-email"></strong>. Click it to activate your account.</p>
+        <form id="register-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-email" data-i18n="landing.email">Email</label>
+            <input id="reg-email" type="email" required autocomplete="email"
+              class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
           </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-password">
+              <span data-i18n="landing.password">Password</span>
+              <span class="text-gray-400 font-normal" data-i18n="landing.register.minChars">(min. 8 characters)</span>
+            </label>
+            <input id="reg-password" type="password" required autocomplete="new-password" minlength="8"
+              class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-confirm" data-i18n="landing.register.confirmPassword">Confirm Password</label>
+            <input id="reg-confirm" type="password" required autocomplete="new-password"
+              class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <button type="submit" id="register-btn"
+            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-base transition"
+            data-i18n="landing.createAccount2">Create Account</button>
+        </form>
 
-          <form id="register-form" class="space-y-4">
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-email">Email</label>
-              <input id="reg-email" type="email" required autocomplete="email"
-                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-password">Password <span class="text-gray-400 font-normal">(min. 8 characters)</span></label>
-              <input id="reg-password" type="password" required autocomplete="new-password" minlength="8"
-                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1" for="reg-confirm">Confirm Password</label>
-              <input id="reg-confirm" type="password" required autocomplete="new-password"
-                class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
-            <button type="submit" id="register-btn"
-              class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-base transition">
-              Create Account
-            </button>
-          </form>
-
-          <p class="mt-5 text-center text-sm text-gray-500">
-            Already have an account?
-            <button type="button" data-show-tab="signin" class="text-blue-600 hover:underline font-medium">Sign in</button>
-          </p>
-        </div>
-
+        <p class="mt-5 text-center text-sm text-gray-500">
+          <span data-i18n="landing.register.alreadyHave">Already have an account?</span>
+          <button type="button" data-show-tab="signin" class="text-blue-600 hover:underline font-medium" data-i18n="landing.signIn">Sign in</button>
+        </p>
       </div>
     </div>
+  </div>
 
-    <!-- Try-it demo quiz (no account needed) -->
-    <div id="demo-section-wrap" class="order-3 md:order-none w-full max-w-md md:col-start-2 md:row-start-2 md:justify-self-end">
-      <div id="demo-section" class="bg-white rounded-2xl shadow p-8">
-        <h2 class="text-lg font-semibold text-gray-800 mb-1">Try it — no account needed</h2>
-        <p class="text-sm text-gray-500 mb-6">Translate five Chinese words to see how the trainer works.</p>
-
-        <div id="demo-card">
-          <div class="mb-4">
-            <span id="demo-progress" class="text-xs font-medium uppercase tracking-wide text-gray-400"></span>
-          </div>
-          <div id="demo-question" class="text-center mb-6">
-            <div id="demo-zh" class="text-5xl font-bold text-gray-900 mb-2"></div>
-            <div id="demo-pinyin" class="text-gray-500"></div>
-          </div>
-          <form id="demo-form" class="flex gap-2">
-            <input id="demo-input" type="text" autocomplete="off" placeholder="Type the English meaning…"
-              class="flex-1 min-w-0 border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <button type="submit" id="demo-submit"
-              class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-5 rounded-xl transition">Check</button>
-          </form>
-          <!-- Mirrors the real quiz's result screen (#result-icon / #word-breakdown in train.html). -->
-          <div id="demo-feedback" class="hidden text-center">
-            <div id="demo-icon" class="text-3xl font-bold mb-4"></div>
-            <div id="demo-breakdown" class="text-left space-y-2"></div>
-          </div>
-          <button id="demo-next" type="button"
-            class="hidden mt-4 w-full bg-gray-800 hover:bg-gray-900 text-white font-semibold py-2.5 rounded-xl transition">Next word</button>
-        </div>
-
-        <div id="demo-done" class="hidden text-center py-4">
-          <div class="text-4xl mb-3" aria-hidden="true">🎉</div>
-          <p class="font-semibold text-gray-800 mb-1">That's the demo — <span id="demo-score"></span> correct.</p>
-          <p class="text-sm text-gray-500 mb-4">With a free account, the trainer schedules each word for review right before you would forget it.</p>
-          <button id="demo-done-cta" type="button" data-show-tab="register"
-            class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 px-6 rounded-xl transition">Create free account</button>
-        </div>
-      </div>
-    </div>
-
-    </div>
-  </main>
-
+  <script src="i18n.js"></script>
   <script src="index.js"></script>
+  <script src="carousel.js"></script>
   <script src="demo.js"></script>
 </body>
 </html>

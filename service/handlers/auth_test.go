@@ -39,6 +39,12 @@ func newAuthRouter(t *testing.T) http.Handler {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	r.Get("/impressum", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	r.Get("/landing/teasers/10-training/01-question.png", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	return r
 }
 
@@ -793,6 +799,27 @@ func TestMiddleware_DemoAccessibleWithoutSession(t *testing.T) {
 	rec := do(t, r, "GET", "/api/demo/cards", nil)
 	if rec.Code != http.StatusOK {
 		t.Errorf("want 200 on /api/demo/cards without session, got %d", rec.Code)
+	}
+}
+
+// The Impressum is legally required to be reachable by any visitor — a
+// signed-out link that bounced to "/" would defeat the point.
+func TestMiddleware_ImpressumAccessibleWithoutSession(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := do(t, r, "GET", "/impressum", nil)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 on /impressum without session, got %d", rec.Code)
+	}
+}
+
+// The landing page's feature-teaser screenshots (service/frontend/landing/)
+// are <img> sources on the signed-out "/" page — they must load for a
+// visitor with no session, or the whole teaser grid renders as broken images.
+func TestMiddleware_LandingTeaserImagesAccessibleWithoutSession(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := do(t, r, "GET", "/landing/teasers/10-training/01-question.png", nil)
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200 on a landing teaser image without session, got %d", rec.Code)
 	}
 }
 

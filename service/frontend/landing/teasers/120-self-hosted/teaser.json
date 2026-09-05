@@ -1,0 +1,5 @@
+{
+  "category": "Self-hosted",
+  "title": "Run it on your own machine",
+  "summary": "Host the app yourself with Docker or on a Raspberry Pi. Your data stays on your hardware, in a plain SQLite file, and you can adjust everything however you want."
+}

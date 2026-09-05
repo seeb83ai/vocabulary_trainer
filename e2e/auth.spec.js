@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { openAuthModal } from './helpers/auth.js';
 
 const TEST_EMAIL = 'e2e@test.local';
 const TEST_PASSWORD = 'E2eTestPassword123!';
@@ -7,6 +8,7 @@ const TEST_PASSWORD = 'E2eTestPassword123!';
 test.describe('Authentication', () => {
   test('login page renders with Sign In and Create Account tabs', async ({ page }) => {
     await page.goto('/');
+    await openAuthModal(page);
     await expect(page.locator('#tab-signin')).toBeVisible();
     await expect(page.locator('#tab-register')).toBeVisible();
     await expect(page.locator('#signin-form')).toBeVisible();
@@ -22,7 +24,7 @@ test.describe('Authentication', () => {
     const uniqueEmail = `e2e-reg-${Date.now()}@test.local`;
 
     await page.goto('/');
-    await page.locator('#tab-register').click();
+    await openAuthModal(page, 'register');
     await expect(page.locator('#panel-register')).toBeVisible();
 
     await page.locator('#reg-email').fill(uniqueEmail);
@@ -36,6 +38,7 @@ test.describe('Authentication', () => {
 
   test('wrong password shows error message', async ({ page }) => {
     await page.goto('/');
+    await openAuthModal(page);
     await page.locator('#signin-email').fill(TEST_EMAIL);
     await page.locator('#signin-password').fill('WrongPassword999!');
     await page.locator('#signin-btn').click();

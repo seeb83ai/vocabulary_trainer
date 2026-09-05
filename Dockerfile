@@ -8,6 +8,11 @@ RUN go mod download
 
 COPY service/ .
 
+# Regenerate the landing page's feature-teaser grid from
+# frontend/landing/teasers/*/teaser.json + images before the frontend is
+# embedded into the binary, so the built image never ships a stale grid.
+RUN go run ./cmd/gen-landing
+
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vocab-trainer .
 
 # Stage 2: Runtime
