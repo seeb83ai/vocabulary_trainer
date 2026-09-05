@@ -975,6 +975,57 @@ func TestGetNextCard_BaselineNewBucket_BlocksNewWords(t *testing.T) {
 	}
 }
 
+// TestGetNextCard_BaselineNewBucket_NotYetDueDoesNotBlockNewWords guards
+// against issue #398: a new-bucket word whose due_date has been pushed days
+// into the future (e.g. by the match-game bug that used to strand words in
+// learning_new_word=1 with a real SM2-scale due date) must not count against
+// the NewBucketEnabled cap, since it isn't actually reachable today anyway.
+// Without this, such a word permanently occupies a "new bucket" slot and
+// blocks introduction of genuinely new words until its bogus due date passes.
+func TestGetNextCard_BaselineNewBucket_NotYetDueDoesNotBlockNewWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Create and acknowledge a word so it lands in the New bucket, then push
+	// its due_date days into the future — as if it were stranded there by
+	// the match-game bug rather than being freshly introduced today.
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, wordID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = datetime('now', '+7 days') WHERE word_id = ?`, wordID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create an unseen word.
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// New-bucket count would be 1 with threshold 1 — but the stuck word isn't
+	// due today, so it shouldn't count, and the unseen word should still show.
+	baselines := &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 1}
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected a word, got nil")
+	}
+	if w.Text != "火" {
+		t.Errorf("expected unseen word 火 to still be introducible since the stuck new-bucket word isn't due, got %s", w.Text)
+	}
+}
+
 func TestGetNextCard_BaselineNewBucket_BelowThreshold_StillShowsNewWord(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

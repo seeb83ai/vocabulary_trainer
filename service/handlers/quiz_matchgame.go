@@ -284,17 +284,7 @@ func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	quality := sm2.QualityWrong
-	if req.Correct {
-		quality = sm2.QualityCorrect
-	}
-
-	updated := sm2.Update(*progress, quality)
-	updated.TotalAttempts++
-	if req.Correct {
-		updated.TotalCorrect++
-	}
-	updated.StreakBonus = sm2.CalcStreakBonus(updated.StreakBonus, updated.Repetitions, updated.TotalCorrect, updated.TotalAttempts)
+	updated := sm2.ProcessAnswer(*progress, req.Correct)
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
 		internalError(w, err)
