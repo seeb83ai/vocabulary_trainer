@@ -334,7 +334,12 @@ async function loadNextCard(trackCurrent = false) {
     if (needsInput) {
       $('new-word-inputs').classList.remove('hidden');
       $('new-word-got-it-btn').disabled = true;
-      setTimeout(() => (requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input')).focus({ preventScroll: true }), 50);
+      // See the matching guard on the wrong-retype gate in train-result.js —
+      // don't steal focus back from a field someone already started typing in.
+      setTimeout(() => {
+        const el = requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input');
+        if (!el.value) el.focus({ preventScroll: true });
+      }, 50);
     } else {
       $('new-word-inputs').classList.add('hidden');
       $('new-word-got-it-btn').disabled = false;

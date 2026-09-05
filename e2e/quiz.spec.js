@@ -1784,6 +1784,11 @@ test.describe('Quiz – retype on wrong answer', () => {
     await expect(page.locator('#wrong-retype-area')).toBeVisible();
     await expect(page.locator('#next-btn')).toBeDisabled();
 
+    // The page auto-focuses #wrong-retype-zh-input ~50ms after this area
+    // appears (train-result.js). Waiting for that focus to land before
+    // typing means our fill() below can never race that timer.
+    await expect(page.locator('#wrong-retype-zh-input')).toBeFocused({ timeout: 2_000 });
+
     // Retype the bare word (no parenthetical annotation) and a correct
     // translation — both checkmarks must turn green. The explicit
     // dispatchEvent('input') after fill() mirrors the same defensive pattern

@@ -192,7 +192,15 @@ function renderWordAnswerResult(result, answer) {
         requireTrans ? show('wrong-retype-trans-group') : hide('wrong-retype-trans-group');
         show('wrong-retype-area');
         $('next-btn').disabled = true;
-        setTimeout(() => $(requireZh ? 'wrong-retype-zh-input' : 'wrong-retype-trans-input').focus(), 50);
+        // Delayed so the just-unhidden input has completed layout before we
+        // focus it. Guarded on an empty value so this can never steal focus
+        // back from someone (or an E2E test) who already started typing in
+        // the 50ms window — auto-focus is a convenience for the common case
+        // of an untouched field, not a mandate to fight with faster input.
+        setTimeout(() => {
+          const el = $(requireZh ? 'wrong-retype-zh-input' : 'wrong-retype-trans-input');
+          if (!el.value) el.focus();
+        }, 50);
       } else {
         wrongRetypeTarget = null;
         hide('wrong-retype-area');
