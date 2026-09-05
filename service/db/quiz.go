@@ -457,6 +457,39 @@ func (s *Store) ClearSM2PrevState(ctx context.Context, wordID int64) error {
 	return err
 }
 
+// SaveCyclePinMode records the quiz mode last shown for a word so a subsequent
+// wrong answer, under cycle_advance_on_known_only or cycle_advance_on_success_only,
+// repeats the same mode instead of re-deriving the cycle position from the word's
+// (possibly just-shifted) accuracy-tier bucket. Called after a wrong answer.
+func (s *Store) SaveCyclePinMode(ctx context.Context, wordID int64, mode string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET cycle_pin_mode = ? WHERE word_id = ?`, mode, wordID)
+	return err
+}
+
+// GetCyclePinMode reads the pinned cycle mode for a word. Returns "" when unset.
+func (s *Store) GetCyclePinMode(ctx context.Context, wordID int64) (string, error) {
+	var raw sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT cycle_pin_mode FROM sm2_progress WHERE word_id = ?`, wordID).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get cycle pin mode: %w", err)
+	}
+	return raw.String, nil
+}
+
+// ClearCyclePinMode sets cycle_pin_mode = NULL for the given word.
+// Called whenever the word's cycle position actually advances (any correct
+// answer, or AcceptCorrect), ending the pinned encounter.
+func (s *Store) ClearCyclePinMode(ctx context.Context, wordID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET cycle_pin_mode = NULL WHERE word_id = ?`, wordID)
+	return err
+}
+
 // SharesTranslation returns true when zhWordID1 and zhWordID2 share at least
 // one translation in the given languages. If langs is empty it falls back to
 // ["en"]. Matching is done in Go using sm2.ExpandVariants (the same

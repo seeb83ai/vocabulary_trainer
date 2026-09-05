@@ -65,6 +65,9 @@ type QuizStore interface {
 	SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2Progress) error
 	GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2Progress, error)
 	ClearSM2PrevState(ctx context.Context, wordID int64) error
+	SaveCyclePinMode(ctx context.Context, wordID int64, mode string) error
+	GetCyclePinMode(ctx context.Context, wordID int64) (string, error)
+	ClearCyclePinMode(ctx context.Context, wordID int64) error
 	RecordDailyStat(ctx context.Context, userID int64, correct bool) (int, error)
 	EnsureDueTodaySnapshot(ctx context.Context, userID int64) (int, error)
 	RecordTrainingTime(ctx context.Context, userID int64, seconds int) error

@@ -310,18 +310,36 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
 		}
 	case models.ModeCycle:
-		seqStr := sm2.DefaultCycleSequence
-		if userSettings != nil && userSettings.CycleSequence != "" {
-			seqStr = userSettings.CycleSequence
+		// Under advance-only-if-known/success, a wrong answer leaves the cycle
+		// position counter unchanged but can still shift the word's accuracy-tier
+		// bucket, which would otherwise re-filter the configured sequence into a
+		// different mode at the same position. Pin to the exact mode last shown
+		// (set by Answer on a wrong submission, cleared once the position actually
+		// advances) so the unresolved encounter keeps repeating the same question.
+		var pinnedMode string
+		if userSettings != nil && (userSettings.CycleAdvanceOnKnownOnly || userSettings.CycleAdvanceOnSuccessOnly) {
+			pinnedMode, err = h.Store.GetCyclePinMode(r.Context(), word.ID)
+			if err != nil {
+				log.Printf("quiz next: GetCyclePinMode word %d: %v", word.ID, err)
+				pinnedMode = ""
+			}
 		}
-		cycleCounter := progress.TotalAttempts
-		if userSettings != nil && userSettings.CycleAdvanceOnKnownOnly {
-			cycleCounter = progress.KnownCorrectCount
-		} else if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
-			cycleCounter = progress.TotalCorrect
+		if pinnedMode != "" {
+			mode = pinnedMode
+		} else {
+			seqStr := sm2.DefaultCycleSequence
+			if userSettings != nil && userSettings.CycleSequence != "" {
+				seqStr = userSettings.CycleSequence
+			}
+			cycleCounter := progress.TotalAttempts
+			if userSettings != nil && userSettings.CycleAdvanceOnKnownOnly {
+				cycleCounter = progress.KnownCorrectCount
+			} else if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
+				cycleCounter = progress.TotalCorrect
+			}
+			bucket := sm2.ClassifyTier(*progress).BucketKey()
+			mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), bucket, randCfg)
 		}
-		bucket := sm2.ClassifyTier(*progress).BucketKey()
-		mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), bucket, randCfg)
 	default:
 		bucket := sm2.ClassifyTier(*progress).BucketKey()
 		mode = sm2.SelectMode(bucket, randCfg)
@@ -436,10 +454,12 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userSettings, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context()))
+
 	langs := req.Langs
 	if len(langs) == 0 {
-		if st, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); st != nil {
-			langs = []string{st.PrimaryLang}
+		if userSettings != nil {
+			langs = []string{userSettings.PrimaryLang}
 		} else {
 			langs = []string{"en"}
 		}
@@ -507,6 +527,11 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		if err := h.Store.ClearSM2PrevState(ctx, req.WordID); err != nil {
 			log.Printf("answer: ClearSM2PrevState word %d: %v", req.WordID, err)
 		}
+		// The encounter is resolved — any pinned cycle mode (see below) no
+		// longer applies; the next question re-derives its position/bucket normally.
+		if err := h.Store.ClearCyclePinMode(ctx, req.WordID); err != nil {
+			log.Printf("answer: ClearCyclePinMode word %d: %v", req.WordID, err)
+		}
 		// A correctly-answered word leaves the difficult-words drill.
 		if err := h.Store.ClearDrillFlag(ctx, req.WordID); err != nil {
 			log.Printf("answer: ClearDrillFlag word %d: %v", req.WordID, err)
@@ -514,6 +539,15 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if err := h.Store.SaveSM2PrevState(ctx, req.WordID, *progress); err != nil {
 			log.Printf("answer: SaveSM2PrevState word %d: %v", req.WordID, err)
+		}
+		// Under advance-only-if-known/success, a wrong answer doesn't move the
+		// cycle position counter, so pin the exact mode just shown — otherwise a
+		// tier shift from this wrong answer could re-filter the cycle sequence
+		// into a different mode next time (issue #400).
+		if userSettings != nil && (userSettings.CycleAdvanceOnKnownOnly || userSettings.CycleAdvanceOnSuccessOnly) {
+			if err := h.Store.SaveCyclePinMode(ctx, req.WordID, req.Mode); err != nil {
+				log.Printf("answer: SaveCyclePinMode word %d: %v", req.WordID, err)
+			}
 		}
 	}
 
@@ -635,6 +669,8 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = h.Store.RecordAnswerTimestamps(ctx, req.WordID, true)
 	_ = h.Store.ClearSM2PrevState(ctx, req.WordID)
+	// Accepting a typo as correct resolves the encounter, same as a correct answer.
+	_ = h.Store.ClearCyclePinMode(ctx, req.WordID)
 	// Accepting a typo as correct also retires the word from the difficult drill.
 	_ = h.Store.ClearDrillFlag(ctx, req.WordID)
 

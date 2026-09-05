@@ -560,6 +560,42 @@ func TestGetSM2PrevState_NilWhenUnset(t *testing.T) {
 	}
 }
 
+func TestCyclePinMode_RoundTripsAndClears(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	got, err := s.GetCyclePinMode(ctx, id)
+	if err != nil {
+		t.Fatalf("GetCyclePinMode (unset): %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected empty pin mode for fresh word, got %q", got)
+	}
+
+	if err := s.SaveCyclePinMode(ctx, id, models.ModeZhPinyinToTransl); err != nil {
+		t.Fatalf("SaveCyclePinMode: %v", err)
+	}
+	got, err = s.GetCyclePinMode(ctx, id)
+	if err != nil {
+		t.Fatalf("GetCyclePinMode: %v", err)
+	}
+	if got != models.ModeZhPinyinToTransl {
+		t.Errorf("GetCyclePinMode: want %s, got %q", models.ModeZhPinyinToTransl, got)
+	}
+
+	if err := s.ClearCyclePinMode(ctx, id); err != nil {
+		t.Fatalf("ClearCyclePinMode: %v", err)
+	}
+	got, err = s.GetCyclePinMode(ctx, id)
+	if err != nil {
+		t.Fatalf("GetCyclePinMode after clear: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected empty pin mode after clear, got %q", got)
+	}
+}
+
 // TestAcknowledgeRandomWords_AtomicAndConsolidated covers issue 08:
 //   - 4.3: the duplicate first_seen_date column is gone; first_seen_at is the
 //     single source of truth and is set on acknowledgement.

@@ -503,6 +503,131 @@ func TestAnswer_WrongThenCorrect_DoesNotIncrementKnownCorrectCount(t *testing.T)
 	}
 }
 
+func TestAnswer_WrongUnderKnownOnly_SetsCyclePinMode(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", map[string]interface{}{
+		"primary_lang":                "en",
+		"secondary_lang":              "",
+		"prog_new":                    "transl_to_zh",
+		"prog_tier_struggling":        "transl_to_zh",
+		"prog_tier_learning":          "zh_pinyin_to_transl",
+		"prog_tier_practicing":        "zh_to_transl",
+		"prog_tier_mastered":          "random",
+		"new_word_mode_0":             "transl_to_zh",
+		"new_word_mode_1":             "transl_to_zh",
+		"new_word_mode_2":             "zh_to_transl",
+		"cycle_advance_on_known_only": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhPinyinToTransl, Answer: "wrong",
+	})
+
+	got, err := s.GetCyclePinMode(ctx, id)
+	if err != nil {
+		t.Fatalf("GetCyclePinMode: %v", err)
+	}
+	if got != models.ModeZhPinyinToTransl {
+		t.Errorf("GetCyclePinMode after wrong answer: want %s, got %q", models.ModeZhPinyinToTransl, got)
+	}
+}
+
+func TestAnswer_CorrectAnswer_ClearsCyclePinMode(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", map[string]interface{}{
+		"primary_lang":                "en",
+		"secondary_lang":              "",
+		"prog_new":                    "transl_to_zh",
+		"prog_tier_struggling":        "transl_to_zh",
+		"prog_tier_learning":          "zh_pinyin_to_transl",
+		"prog_tier_practicing":        "zh_to_transl",
+		"prog_tier_mastered":          "random",
+		"new_word_mode_0":             "transl_to_zh",
+		"new_word_mode_1":             "transl_to_zh",
+		"new_word_mode_2":             "zh_to_transl",
+		"cycle_advance_on_known_only": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Wrong first, pinning the mode.
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhPinyinToTransl, Answer: "wrong",
+	})
+	if got, _ := s.GetCyclePinMode(ctx, id); got == "" {
+		t.Fatal("expected cycle_pin_mode to be set after wrong answer")
+	}
+
+	// Correct (not first try) resolves the encounter.
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhPinyinToTransl, Answer: "hello",
+	})
+
+	got, err := s.GetCyclePinMode(ctx, id)
+	if err != nil {
+		t.Fatalf("GetCyclePinMode: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected cycle_pin_mode cleared after correct answer, got %q", got)
+	}
+}
+
+func TestAcceptCorrect_ClearsCyclePinMode(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", map[string]interface{}{
+		"primary_lang":                "en",
+		"secondary_lang":              "",
+		"prog_new":                    "transl_to_zh",
+		"prog_tier_struggling":        "transl_to_zh",
+		"prog_tier_learning":          "zh_pinyin_to_transl",
+		"prog_tier_practicing":        "zh_to_transl",
+		"prog_tier_mastered":          "random",
+		"new_word_mode_0":             "transl_to_zh",
+		"new_word_mode_1":             "transl_to_zh",
+		"new_word_mode_2":             "zh_to_transl",
+		"cycle_advance_on_known_only": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhPinyinToTransl, Answer: "wrong",
+	})
+	if got, _ := s.GetCyclePinMode(ctx, id); got == "" {
+		t.Fatal("expected cycle_pin_mode to be set after wrong answer")
+	}
+
+	rec = do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{WordID: id})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("accept-correct: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	got, err := s.GetCyclePinMode(ctx, id)
+	if err != nil {
+		t.Fatalf("GetCyclePinMode: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected cycle_pin_mode cleared after accept-correct, got %q", got)
+	}
+}
+
 func TestAnswerAmbiguous_TranslToZh_SetsAmbiguousFlag(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
