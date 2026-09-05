@@ -37,7 +37,7 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			JOIN sm2_progress p ON p.word_id = wz.id
 			WHERE t.zh_word_id != ?
 			  AND wz.user_id = ?
-			  AND p.repetitions > 0 AND p.first_seen_at IS NOT NULL`, zhWordID, userID)
+			  AND p.first_seen_at IS NOT NULL`, zhWordID, userID)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion: %w", qErr)
 		}
@@ -65,7 +65,7 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			JOIN sm2_progress p ON p.word_id = w.id
 			WHERE w.language = 'zh' AND LOWER(TRIM(w.text)) = ?
 			  AND w.id != ? AND w.user_id = ?
-			  AND p.repetitions > 0 AND p.first_seen_at IS NOT NULL
+			  AND p.first_seen_at IS NOT NULL
 			LIMIT 1`, normalized, zhWordID, userID).Scan(&confusedWithID)
 		if err != nil && err != sql.ErrNoRows {
 			return 0, false, fmt.Errorf("lookup confusion: %w", err)
@@ -96,7 +96,7 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			WHERE w.language IN (`+strings.Join(placeholders, ",")+`)
 			  AND t.zh_word_id != ?
 			  AND wz.user_id = ?
-			  AND p.repetitions > 0 AND p.first_seen_at IS NOT NULL`, args...)
+			  AND p.first_seen_at IS NOT NULL`, args...)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion translations: %w", qErr)
 		}
