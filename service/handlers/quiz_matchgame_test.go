@@ -483,6 +483,48 @@ func TestMatchAnswer_Wrong(t *testing.T) {
 	}
 }
 
+// TestMatchAnswer_LearningNewWord_UsesLearningPhase guards against issue #398:
+// a word still in the new-word introduction phase (learning_new_word=1)
+// answered correctly via the match-game widget must go through the same
+// learning-phase update as the main quiz (sm2.ProcessAnswer/UpdateLearning:
+// due date minutes away, single-correct-answer streak) rather than the full
+// graduated SM-2 algorithm (due date days away). Previously MatchAnswer called
+// sm2.Update directly regardless of LearningNewWord, permanently stranding the
+// word in the new bucket with a real SM2 due date it could never graduate out of.
+func TestMatchAnswer_LearningNewWord_UsesLearningPhase(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	before, err := s.GetSM2Progress(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.LearningNewWord {
+		t.Fatalf("expected freshly seeded word to be learning_new_word=1")
+	}
+
+	body := map[string]any{"zh_word_id": id, "correct": true}
+	rec := do(t, r, "POST", "/api/quiz/match-answer", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	after, err := s.GetSM2Progress(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.LearningNewWord {
+		t.Fatalf("expected word to remain in the new-word phase after a single correct answer (graduates at %d)", 3)
+	}
+	if time.Until(after.DueDate) > time.Hour {
+		t.Errorf("expected a learning-phase due date (minutes away), got due_date=%v (%v from now)", after.DueDate, time.Until(after.DueDate))
+	}
+	if after.IntervalDays > 1 {
+		t.Errorf("expected interval_days to stay at the learning-phase default, got %d", after.IntervalDays)
+	}
+}
+
 func TestMatchAnswer_MissingWordID(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)
