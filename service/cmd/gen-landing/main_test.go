@@ -182,10 +182,10 @@ func TestRenderTeasers_EmitsI18nKeysStrippedOfOrderPrefix(t *testing.T) {
 
 func TestI18nSlug_StripsNumericOrderPrefix(t *testing.T) {
 	cases := map[string]string{
-		"10-training":       "training",
-		"120-self-hosted":   "self-hosted",
-		"no-prefix-at-all":  "no-prefix-at-all",
-		"10":                "10",
+		"10-training":      "training",
+		"120-self-hosted":  "self-hosted",
+		"no-prefix-at-all": "no-prefix-at-all",
+		"10":               "10",
 	}
 	for in, want := range cases {
 		if got := i18nSlug(in); got != want {
