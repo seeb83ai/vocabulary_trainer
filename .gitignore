@@ -4,6 +4,8 @@ vocabulary_trainer
 import-hsk 
 import-pinyin
 import-hanzi
+import-frequency
+import-cedict
 fill-translations
 fill-hanzi-translations
 

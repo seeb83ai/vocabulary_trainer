@@ -107,7 +107,7 @@ release:
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-pinyin ./cmd/import-pinyin
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-frequency ./cmd/import-frequency
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../fill-translations ./cmd/fill-translations
-	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../fill-translations ./cmd/import-cedict
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-cedict ./cmd/import-cedict
 	rsync -avz --progress \
 	    Makefile \
 	    dictionary.txt \
