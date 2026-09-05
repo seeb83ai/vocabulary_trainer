@@ -798,6 +798,106 @@ func TestQuizCycle_AdvanceOnKnownOnly(t *testing.T) {
 	}
 }
 
+// TestQuizCycle_AdvanceOnKnownOnly_WrongAnswerPinsMode is a regression test
+// for issue #400: a wrong answer under cycle_advance_on_known_only left
+// KnownCorrectCount (the cycle-position counter) unchanged, but the word's
+// accuracy-tier bucket can still shift (accuracy drops across a tier
+// boundary). SelectCycleMode re-filters the configured cycle sequence down
+// to the modes eligible for the *current* bucket on every call, so the same
+// numeric position landed on a different mode once the bucket moved — the
+// user saw a different quiz format right after answering wrong, even though
+// nothing should have "advanced". The fix pins the exact mode that was shown
+// until the encounter is actually resolved by a correct answer.
+func TestQuizCycle_AdvanceOnKnownOnly_WrongAnswerPinsMode(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	patchPayload := map[string]interface{}{
+		"primary_lang":                "en",
+		"secondary_lang":              "",
+		"prog_new":                    "transl_to_zh",
+		"prog_tier_struggling":        "transl_to_zh",
+		"prog_tier_learning":          "zh_pinyin_to_transl",
+		"prog_tier_practicing":        "zh_to_transl",
+		"prog_tier_mastered":          "random",
+		"new_word_mode_0":             "transl_to_zh",
+		"new_word_mode_1":             "transl_to_zh",
+		"new_word_mode_2":             "zh_to_transl",
+		"cycle_sequence":              "zh_pinyin_to_transl,transl_to_zh,zh_to_transl",
+		"cycle_advance_on_known_only": true,
+		// Restrict zh_pinyin_to_transl to the "70-84" (Practicing) bucket only,
+		// so a wrong answer that drops the word to "50-69" (Learning) makes it
+		// ineligible and shifts the filtered pool's first eligible step.
+		"random_mode_range_zh_pinyin_to_transl": "70-84,70-84",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	// Graduated word sitting right at the Practicing (70-84) / Learning (50-69)
+	// boundary: TotalAttempts=10, TotalCorrect=7 -> acc=0.70 -> Practicing.
+	// KnownCorrectCount=1 -> pos (1-1)%N=0.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.LearningNewWord = false
+	p.TotalAttempts = 10
+	p.TotalCorrect = 7
+	p.KnownCorrectCount = 1
+	p.Easiness = 2.5
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first Next: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Fatalf("first Next: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	}
+
+	// Answer wrong. Accuracy drops below the Practicing threshold, so the
+	// word's bucket shifts from "70-84" to "50-69" — but KnownCorrectCount
+	// (the advance-on-known-only counter) does not change.
+	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": id, "mode": card.Mode, "answer": "wrong",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Due again immediately.
+	p, err = s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second Next: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("after wrong answer: want pinned mode %s, got %s (cycle position should not re-derive from the shifted bucket)", models.ModeZhPinyinToTransl, card.Mode)
+	}
+}
+
 // TestQuizCycle_AdvanceOnKnownOnly_ViaGetNextCard is a regression test for a
 // bug where GetNextCard's SQL (both the main and unseen-word queries in
 // db/words.go, plus GetNextDrillCard in db/drill.go) never selected the

@@ -280,6 +280,8 @@ Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation
 
 You can configure the sequence (2 to 6 steps) in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, *Voice → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel offers three mutually exclusive advance options: **Advance on every attempt** (default, counter is `total_attempts`), **Advance only on success** (counter is `total_correct`), and **Advance only if known** (counter is a first-try-correct count that only increments when an answer is correct with no wrong guess earlier in that encounter).
 
+Under **advance only on success** or **advance only if known**, a wrong answer holds the step at exactly the format that was just shown — even if that answer also moves the word into a different accuracy tier (which would otherwise re-filter the step against a different "Random / Cycle mode by bucket" range, see below, and could pick a different format for the same step). The pinned format is cleared as soon as the encounter is resolved by a correct answer.
+
 ## Random / Cycle mode by bucket
 
 **Random** mode and **Cycle** mode both pick from 5 quiz formats: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, and *Voice → Translation*. In **Settings → Random / Cycle Mode by Bucket**, you can restrict which of these formats is eligible for each of the 5 accuracy tiers (New, Struggling, Learning, Practicing, Mastered — the same buckets used elsewhere in the app). For each format, choose an inclusive "from" and "to" bucket range, or turn the format off entirely.
