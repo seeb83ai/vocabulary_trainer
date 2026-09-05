@@ -814,18 +814,18 @@ func TestQuizCycle_AdvanceOnKnownOnly_WrongAnswerPinsMode(t *testing.T) {
 	r := newRouter(s)
 
 	patchPayload := map[string]interface{}{
-		"primary_lang":                        "en",
-		"secondary_lang":                      "",
-		"prog_new":                            "transl_to_zh",
-		"prog_tier_struggling":                "transl_to_zh",
-		"prog_tier_learning":                  "zh_pinyin_to_transl",
-		"prog_tier_practicing":                "zh_to_transl",
-		"prog_tier_mastered":                  "random",
-		"new_word_mode_0":                     "transl_to_zh",
-		"new_word_mode_1":                     "transl_to_zh",
-		"new_word_mode_2":                     "zh_to_transl",
-		"cycle_sequence":                      "zh_pinyin_to_transl,transl_to_zh,zh_to_transl",
-		"cycle_advance_on_known_only":         true,
+		"primary_lang":                "en",
+		"secondary_lang":              "",
+		"prog_new":                    "transl_to_zh",
+		"prog_tier_struggling":        "transl_to_zh",
+		"prog_tier_learning":          "zh_pinyin_to_transl",
+		"prog_tier_practicing":        "zh_to_transl",
+		"prog_tier_mastered":          "random",
+		"new_word_mode_0":             "transl_to_zh",
+		"new_word_mode_1":             "transl_to_zh",
+		"new_word_mode_2":             "zh_to_transl",
+		"cycle_sequence":              "zh_pinyin_to_transl,transl_to_zh,zh_to_transl",
+		"cycle_advance_on_known_only": true,
 		// Restrict zh_pinyin_to_transl to the "70-84" (Practicing) bucket only,
 		// so a wrong answer that drops the word to "50-69" (Learning) makes it
 		// ineligible and shifts the filtered pool's first eligible step.
