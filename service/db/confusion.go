@@ -34,8 +34,10 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			SELECT t.zh_word_id, w.text FROM words w
 			JOIN translations t ON t.translation_word_id = w.id
 			JOIN words wz ON wz.id = t.zh_word_id
+			JOIN sm2_progress p ON p.word_id = wz.id
 			WHERE t.zh_word_id != ?
-			  AND wz.user_id = ?`, zhWordID, userID)
+			  AND wz.user_id = ?
+			  AND p.repetitions > 0 AND p.first_seen_at IS NOT NULL`, zhWordID, userID)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion: %w", qErr)
 		}
@@ -59,9 +61,11 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		// First: find a ZH word whose text matches the answer (user typed Chinese).
 		var confusedWithID int64
 		err := s.db.QueryRowContext(ctx, `
-			SELECT id FROM words
-			WHERE language = 'zh' AND LOWER(TRIM(text)) = ?
-			  AND id != ? AND user_id = ?
+			SELECT w.id FROM words w
+			JOIN sm2_progress p ON p.word_id = w.id
+			WHERE w.language = 'zh' AND LOWER(TRIM(w.text)) = ?
+			  AND w.id != ? AND w.user_id = ?
+			  AND p.repetitions > 0 AND p.first_seen_at IS NOT NULL
 			LIMIT 1`, normalized, zhWordID, userID).Scan(&confusedWithID)
 		if err != nil && err != sql.ErrNoRows {
 			return 0, false, fmt.Errorf("lookup confusion: %w", err)
@@ -88,9 +92,11 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			SELECT t.zh_word_id, w.text FROM words w
 			JOIN translations t ON t.translation_word_id = w.id
 			JOIN words wz ON wz.id = t.zh_word_id
+			JOIN sm2_progress p ON p.word_id = wz.id
 			WHERE w.language IN (`+strings.Join(placeholders, ",")+`)
 			  AND t.zh_word_id != ?
-			  AND wz.user_id = ?`, args...)
+			  AND wz.user_id = ?
+			  AND p.repetitions > 0 AND p.first_seen_at IS NOT NULL`, args...)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion translations: %w", qErr)
 		}

@@ -634,7 +634,8 @@ func TestAnswerAmbiguous_TranslToZh_SetsAmbiguousFlag(t *testing.T) {
 
 	// Seed two zh words that share the EN translation "know"
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
-	seedWord(t, s, "认识", "rènshi", []string{"know", "recognize"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know", "recognize"})
+	markWordTrained(t, s, id2)
 
 	// Acknowledge id1 so it is available in the quiz
 	if err := s.AcknowledgeWord(context.Background(), int64(2), id1); err != nil {
@@ -734,7 +735,8 @@ func TestAnswerAmbiguous_MultiGlossTranslation_SetsAmbiguousFlag(t *testing.T) {
 	r := newRouter(s)
 
 	id1 := seedWordFull(t, s, int64(2), "面", "miàn", []string{"noodles"}, []string{"Nudeln"}, nil)
-	seedWordFull(t, s, int64(2), "面条", "miàntiáo", []string{"noodle"}, []string{"Nudeln / Pasta"}, nil)
+	id2 := seedWordFull(t, s, int64(2), "面条", "miàntiáo", []string{"noodle"}, []string{"Nudeln / Pasta"}, nil)
+	markWordTrained(t, s, id2)
 	if err := s.AcknowledgeWord(context.Background(), int64(2), id1); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
