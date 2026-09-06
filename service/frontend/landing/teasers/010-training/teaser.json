@@ -1,0 +1,14 @@
+{
+  "category": "Training",
+  "title": "One card at a time, scheduled by SM-2",
+  "summary": "Choose From Multiple Modes that help you to learn how it fits you best. Take advantage of SM-2 spaced repetition: The better you know a word, the less often you need to answer it's card",
+  "imageAlt": [
+    "Training card asking for the translation for 超市 with hints",
+    "Quiz mode, correct answer",
+    "Quiz mode, wrong answer, retype answer",
+    "Quiz mode, show confusion/mismatches with another known word",
+    "Training card asking for the translation for 超市",
+    "Training card asking for the translation for 超市",
+    "Success Page if all words for the day are trained"
+  ]
+}

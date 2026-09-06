@@ -1,10 +1,18 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr generate-landing
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
 export
 
-## build: build the Docker image
+## generate-landing: regenerate the landing page's feature-teaser grid from
+## frontend/landing/teasers/*/teaser.json + images (service/cmd/gen-landing).
+## The Dockerfile also runs this during 'make build'/'make restart', since
+## those build the binary inside the image; this target covers the paths
+## that build the Go binary directly on the host ('dev', 'release').
+generate-landing:
+	cd service && go run ./cmd/gen-landing
+
+## build: build the Docker image (regenerates the landing page first, via the Dockerfile)
 build:
 	docker compose build
 
@@ -26,7 +34,7 @@ logs:
 	docker compose logs -f
 
 ## dev: run locally without Docker (requires Go 1.22+)
-dev:
+dev: generate-landing
 	mkdir -p data
 	DB_PATH=data/vocab.db go run ./service
 
@@ -91,7 +99,7 @@ restore:
 	@echo "restored data/vocab.db from $(FROM)"
 
 ## release: cross-compile for Raspberry Pi (arm64) and rsync to RSYNC_DEST
-release:
+release: generate-landing
 	@branch=$$(git rev-parse --abbrev-ref HEAD); \
 	default=$$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'); \
 	default=$${default:-main}; \

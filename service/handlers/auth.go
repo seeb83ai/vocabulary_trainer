@@ -164,12 +164,15 @@ func RequireProductionSecret(sessionSecret, appEnv string) error {
 func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
-		if p == "/" || p == "/login" ||
+		if p == "/" || p == "/login" || p == "/impressum" ||
 			strings.HasPrefix(p, "/api/login") ||
 			strings.HasPrefix(p, "/api/register") ||
 			strings.HasPrefix(p, "/api/verify-email") ||
 			strings.HasPrefix(p, "/api/demo/") ||
 			p == "/api/auth/status" ||
+			// Landing-page feature-teaser screenshots (service/frontend/landing/)
+			// are <img> sources on the signed-out "/" page.
+			strings.HasPrefix(p, "/landing/") ||
 			strings.HasSuffix(p, ".js") ||
 			strings.HasSuffix(p, ".css") {
 			next.ServeHTTP(w, r)

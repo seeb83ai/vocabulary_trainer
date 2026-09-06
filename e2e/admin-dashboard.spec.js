@@ -1,10 +1,12 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, TEST_EMAIL, TEST_PASSWORD } from './global-setup.js';
+import { openAuthModal } from './helpers/auth.js';
 
 test.describe('Admin dashboard', () => {
   test('admin user sees usage insights', async ({ page }) => {
     await page.goto('/');
+    await openAuthModal(page);
     await page.locator('#signin-email').fill(ADMIN_EMAIL);
     await page.locator('#signin-password').fill(ADMIN_PASSWORD);
     await page.locator('#signin-btn').click();
@@ -18,6 +20,7 @@ test.describe('Admin dashboard', () => {
 
   test('non-admin user is redirected away from the dashboard', async ({ page }) => {
     await page.goto('/');
+    await openAuthModal(page);
     await page.locator('#signin-email').fill(TEST_EMAIL);
     await page.locator('#signin-password').fill(TEST_PASSWORD);
     await page.locator('#signin-btn').click();

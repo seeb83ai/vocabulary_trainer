@@ -21,7 +21,7 @@ while IFS= read -r p; do
   [ -z "$p" ] && continue
   case "$p" in
     # HTML page routes and the catch-all — not part of the API table.
-    /|/vocab|/stats|/train|/mnemonics|/mismatches|/pinyin|/settings|/login|"/*") continue ;;
+    /|/vocab|/stats|/train|/mnemonics|/mismatches|/pinyin|/settings|/login|/impressum|"/*") continue ;;
     # Generic leaf used by multiple nested groups (list/create at a group root).
     /export|/context|/generate-scene|/hmm/generate-scene) continue ;;
     # Internal/sub-resource endpoints covered by Go handler tests, not part of

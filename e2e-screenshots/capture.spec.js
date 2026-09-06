@@ -8,6 +8,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TEST_EMAIL } from '../e2e/global-setup.js';
+import { openAuthModal } from '../e2e/helpers/auth.js';
 
 /** Translations keyed by zh word — must match the seed in e2e/global-setup.js. */
 const SEED_TRANSLATIONS = {
@@ -103,6 +104,7 @@ test.describe.serial('README screenshots — clean pages', () => {
 test.describe('README screenshots — login', () => {
   test('login / register', async ({ page }) => {
     await page.goto('/');
+    await openAuthModal(page);
     await expect(page.locator('#signin-form')).toBeVisible({ timeout: 10_000 });
     await page.screenshot({ path: 'images/chinese_login.png' });
   });

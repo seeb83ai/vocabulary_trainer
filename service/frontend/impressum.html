@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Impressum · Vocab Trainer</title>
+  <script src="/tailwind.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <main class="max-w-2xl mx-auto px-4 py-12">
+    <a href="/" class="text-sm text-blue-600 hover:underline">&larr; Back to Vocab Trainer</a>
+
+    <div class="bg-white rounded-2xl shadow p-8 mt-4">
+      <h1 class="text-2xl font-bold text-gray-900 mb-1">Impressum</h1>
+      
+      <dl class="space-y-4 text-sm text-gray-700">
+        <div>
+          <dt class="font-semibold text-gray-900">Responsible for this website</dt>
+          <dd>{{.Name}}</dd>
+        </div>
+        <div>
+          <dt class="font-semibold text-gray-900">Address</dt>
+          <dd class="whitespace-pre-line">{{.Address}}</dd>
+        </div>
+        <div>
+          <dt class="font-semibold text-gray-900">Email</dt>
+          <dd><a href="mailto:{{.Email}}" class="text-blue-600 hover:underline">{{.Email}}</a></dd>
+        </div>
+        {{if .Phone}}
+        <div>
+          <dt class="font-semibold text-gray-900">Phone</dt>
+          <dd>{{.Phone}}</dd>
+        </div>
+        {{end}}
+      </dl>
+
+      <hr class="my-8 border-gray-200">
+
+      <h2 class="text-lg font-semibold text-gray-900 mb-2">Datenschutzerkl&auml;rung</h2>
+      <div class="text-sm text-gray-700 space-y-4">
+
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-1">1. Verantwortliche Stelle</h3>
+          <p>Verantwortlich f&uuml;r die Verarbeitung personenbezogener Daten auf dieser Website ist die oben genannte Person (Impressum).</p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-1">2. Erhobene Daten und Zweck</h3>
+          <p>Diese Anwendung ist eine selbst-gehostete Webanwendung. Folgende personenbezogene Daten werden verarbeitet:</p>
+          <ul class="list-disc ml-5 mt-1 space-y-1">
+            <li><strong>Konto-E-Mail-Adresse:</strong> Wird bei der Registrierung erhoben und dient ausschlie&szlig;lich der Authentifizierung und, falls konfiguriert, der E-Mail-Verifikation. Rechtsgrundlage: Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;b DSGVO (Vertrag).</li>
+            <li><strong>Vokabeldaten:</strong> Von Ihnen eingetragene W&ouml;rter, &Uuml;bersetzungen und Lernergebnisse werden in einer lokalen SQLite-Datenbank auf dem Server gespeichert. Diese Daten dienen ausschlie&szlig;lich dem Betrieb des Vokabeltrainers. Rechtsgrundlage: Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;b DSGVO.</li>
+            <li><strong>Optionale externe API-Dienste:</strong> Wenn DeepL- oder KI-&Uuml;bersetzungsfunktionen genutzt werden, wird der eingegebene Text zur &Uuml;bersetzung an den jeweiligen Dienst &uuml;bermittelt. Es werden keine personenbezogenen Daten (z.&nbsp;B. Name oder E-Mail) an diese Dienste weitergegeben. Die Nutzung dieser Funktionen ist freiwillig. Rechtsgrundlage: Art.&nbsp;6 Abs.&nbsp;1 lit.&nbsp;a DSGVO (Einwilligung durch aktive Nutzung).</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-1">3. Datenweitergabe</h3>
+          <p>Daten werden nicht an Dritte weitergegeben, verkauft oder vermietet, mit Ausnahme der oben genannten optionalen API-Dienste (DeepL, LLM-Anbieter), sofern diese vom Betreiber konfiguriert wurden.</p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-1">4. Speicherdauer</h3>
+          <p>Konto- und Vokabeldaten werden gespeichert, solange ein Benutzerkonto besteht. Nach L&ouml;schung des Kontos werden alle zugeh&ouml;rigen Daten unverz&uuml;glich entfernt.</p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-1">5. Ihre Rechte</h3>
+          <p>Sie haben das Recht auf Auskunft, Berichtigung, L&ouml;schung, Einschr&auml;nkung der Verarbeitung sowie Daten&uuml;bertragbarkeit (Art.&nbsp;15&ndash;20 DSGVO). Wenden Sie sich hierf&uuml;r an die oben genannte E-Mail-Adresse. Sie haben au&szlig;erdem das Recht, sich bei einer Datenschutzaufsichtsbeh&ouml;rde zu beschweren.</p>
+        </div>
+
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-1">6. Keine Cookies, kein Tracking</h3>
+          <p>Diese Anwendung verwendet keine Analyse- oder Tracking-Cookies. Das Sitzungs-Cookie dient ausschlie&szlig;lich der Authentifizierung und wird nach dem Abmelden gel&ouml;scht.</p>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,17 +1,40 @@
-// Login / register page logic. Extracted from inline <script> so the
-// app can enforce a strict CSP (script-src 'self', no 'unsafe-inline').
+// Landing page logic. Extracted from inline <script> so the app can enforce
+// a strict CSP (script-src 'self', no 'unsafe-inline').
+//
+// Sign-in/create-account lives in a modal (#auth-modal), opened by any
+// element carrying [data-show-tab="signin"|"register"] — the header
+// buttons, the hero CTA, the demo-finish CTA and the closing band.
+
+// activeTabClasses returns the Tailwind classes for a modal tab button,
+// depending on whether it is the selected tab.
+function activeTabClasses(isActive) {
+  return 'flex-1 py-2 rounded-lg text-sm font-semibold transition ' +
+    (isActive ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800');
+}
+
+// initialTab picks which modal tab a visitor lands on based on the URL
+// hash, so a shared "/#register" link opens straight to registration.
+function initialTab(hash) {
+  return hash === '#register' ? 'register' : 'signin';
+}
 
 function showTab(tab) {
   const isSignin = tab === 'signin';
-  document.getElementById('tab-signin').className =
-    'flex-1 py-2 rounded-lg text-sm font-medium transition ' +
-    (isSignin ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800');
-  document.getElementById('tab-register').className =
-    'flex-1 py-2 rounded-lg text-sm font-medium transition ' +
-    (!isSignin ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-800');
+  document.getElementById('tab-signin').className = activeTabClasses(isSignin);
+  document.getElementById('tab-register').className = activeTabClasses(!isSignin);
   document.getElementById('panel-signin').classList.toggle('hidden', !isSignin);
   document.getElementById('panel-register').classList.toggle('hidden', isSignin);
   history.replaceState(null, '', isSignin ? '/' : '/#register');
+}
+
+function openModal(tab) {
+  showTab(tab);
+  document.getElementById('auth-modal').classList.remove('hidden');
+  document.getElementById(tab === 'register' ? 'reg-email' : 'signin-email')?.focus();
+}
+
+function closeModal() {
+  document.getElementById('auth-modal').classList.add('hidden');
 }
 
 async function isPasswordPwned(password) {
@@ -39,6 +62,14 @@ async function isPasswordPwned(password) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  const langSelect = document.getElementById('lang-select');
+  langSelect.value = getUILang();
+  applyTranslations();
+  langSelect.addEventListener('change', () => {
+    setUILang(langSelect.value);
+    applyTranslations();
+  });
+
   // Redirect to /train if already authenticated
   fetch('/api/auth/status').then(r => r.json()).then(d => {
     if (d.auth) {
@@ -48,17 +79,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }).catch(() => {});
 
-  if (location.hash === '#register') showTab('register');
-
   document.getElementById('tab-signin').addEventListener('click', () => showTab('signin'));
   document.getElementById('tab-register').addEventListener('click', () => showTab('register'));
   for (const el of document.querySelectorAll('[data-show-tab]')) {
-    el.addEventListener('click', () => showTab(el.dataset.showTab));
+    el.addEventListener('click', () => openModal(el.dataset.showTab));
   }
-  // On small screens the auth card sits below the hero — bring it into view.
-  document.getElementById('hero-cta')?.addEventListener('click', () => {
-    document.getElementById('auth-column')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  document.getElementById('auth-modal-close').addEventListener('click', closeModal);
+  document.getElementById('auth-modal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
   });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('auth-modal').classList.contains('hidden')) {
+      closeModal();
+    }
+  });
+
+  if (location.hash === '#register') openModal(initialTab(location.hash));
 
   // Sign In
   document.getElementById('signin-form').addEventListener('submit', async e => {
@@ -183,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(location.search);
   const urlError = urlParams.get('error');
   if (urlError) {
+    openModal('signin');
     const errEl = document.getElementById('signin-error');
     if (urlError === 'invalid_token') {
       errEl.textContent = 'This verification link is invalid or has expired. Please register again.';
