@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
@@ -962,4 +963,47 @@ func TestMarkConfusionsShownInGame_DoesNotAffectOtherModesRow(t *testing.T) {
 	if shownTranslToZh.Valid {
 		t.Errorf("transl_to_zh row was marked shown by a zh_to_transl-only call; want last_shown_in_game still NULL, got %q", shownTranslToZh.String)
 	}
+}
+
+// TestDetectConfusion_QueriesDriveFromUsersWords locks in the query shape
+// fix: the zh_to_transl and transl_to_zh confusion lookups must drive from
+// the user's own zh words (an indexed seek on words(user_id, language) —
+// see idx_words_user_language) rather than filtering the whole translations
+// table with a "!=" predicate, which can't use an index and previously
+// scanned every user's translation rows on every wrong answer. It runs
+// EXPLAIN QUERY PLAN against the exact query strings DetectConfusion uses,
+// so a future change back to the old shape fails this test.
+func TestDetectConfusion_QueriesDriveFromUsersWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	assertUsesWordsUserLanguageIndex := func(t *testing.T, query string, args ...any) {
+		t.Helper()
+		rows, err := s.db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+query, args...)
+		if err != nil {
+			t.Fatalf("explain query plan: %v", err)
+		}
+		defer rows.Close()
+		var sawIndexedWords bool
+		for rows.Next() {
+			var id, parent, notUsed int
+			var detail string
+			if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+				t.Fatalf("scan explain row: %v", err)
+			}
+			t.Logf("plan: %s", detail)
+			if strings.Contains(detail, "wz") && strings.Contains(detail, "idx_words_user_language") {
+				sawIndexedWords = true
+			}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("explain rows: %v", err)
+		}
+		if !sawIndexedWords {
+			t.Error("want the query to seek the user's zh words via idx_words_user_language, got a different plan")
+		}
+	}
+
+	assertUsesWordsUserLanguageIndex(t, zhToTranslConfusionQuery, int64(2), int64(1))
+	assertUsesWordsUserLanguageIndex(t, translToZhConfusionQuery("?"), int64(2), "en", int64(1))
 }
