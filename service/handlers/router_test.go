@@ -245,6 +245,17 @@ func seedWord(t *testing.T, s *db.Store, zhText, pinyin string, enTexts []string
 	return id
 }
 
+// markWordTrained flips a word's SM2 progress to look like it has actually
+// been trained (as opposed to merely existing in the vocabulary list, which
+// initSM2 sets up for every word at creation time regardless of training).
+// Mismatch detection only considers already-trained words as confusion candidates.
+func markWordTrained(t *testing.T, s *db.Store, wordID int64) {
+	t.Helper()
+	if _, err := s.ExecForTest(`UPDATE sm2_progress SET repetitions = 1, first_seen_at = datetime('now') WHERE word_id = ?`, wordID); err != nil {
+		t.Fatalf("markWordTrained %d: %v", wordID, err)
+	}
+}
+
 func seedWordFull(t *testing.T, s *db.Store, userID int64, zhText, pinyin string, enTexts, deTexts, tags []string) int64 {
 	t.Helper()
 	tr := map[string][]string{"en": enTexts}
