@@ -2,5 +2,13 @@
   "category": "Settings",
   "title": "Tuned to how you learn",
   "summary": "Full control how and what you want to learn with dozens of adjustments to personalize your training.",
-  "imageAlt": ["Settings page with account and password cards"]
+  "imageAlt": [
+    "Settings for new words and wrong answers",
+    "Settings for cycle mode, how do you want to train?",
+    "How fast shall new words appear?",
+    "Gamification settings",
+    "Language Settings for Training",
+    "Tweak the display while training",
+    "Fine tune training mode to your needs"
+  ]
 }

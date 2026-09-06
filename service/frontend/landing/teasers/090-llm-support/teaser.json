@@ -1,5 +1,9 @@
 {
   "category": "LLM support",
   "title": "Bring your own model",
-  "summary": "Translations start with the built-in CC-CEDICT / HanDeDict dictionary, no key needed. Add your favourite LLM or DeepL on top to find translations for new words or stories for the hanzi movie method."
+  "summary": "Translations start with the built-in CC-CEDICT / HanDeDict dictionary, no key needed. Add your favourite LLM or DeepL on top to find translations for new words or stories for the hanzi movie method.",
+  "imageAlt": [
+    "Bring your own API Keys to benefit of LLM or DeepL",
+    "Use DeepL to generate translations"
+  ]
 }
