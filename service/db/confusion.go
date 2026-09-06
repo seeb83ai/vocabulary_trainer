@@ -10,6 +10,36 @@ import (
 	"vocabulary_trainer/sm2"
 )
 
+// zhToTranslConfusionQuery finds every translation word belonging to one of
+// the user's OTHER zh words. It drives from words (filtered to the user's own
+// zh rows via idx_words_user_language) rather than scanning translations with
+// a "!=" predicate, which can't use an index and previously walked every
+// user's translation rows on each call.
+// Both queries additionally require p.first_seen_at IS NOT NULL — a word
+// that has never actually been trained (repetitions = 0, first_seen_at NULL,
+// the default state right after CreateWord/initSM2) must not be reported as
+// a confusion just because its translation text happens to match (#403).
+const zhToTranslConfusionQuery = `
+	SELECT t.zh_word_id, w.text FROM words wz
+	JOIN sm2_progress p ON p.word_id = wz.id
+	JOIN translations t ON t.zh_word_id = wz.id
+	JOIN words w ON w.id = t.translation_word_id
+	WHERE wz.user_id = ? AND wz.language = 'zh' AND wz.id != ? AND p.first_seen_at IS NOT NULL`
+
+// translToZhConfusionQuery is zhToTranslConfusionQuery restricted to
+// translation words in one of the given languages (for transl_to_zh
+// confusion lookups, which only consider the user's selected langs).
+// langPlaceholders is a comma-joined "?,?,..." string sized to the caller's
+// langs slice.
+func translToZhConfusionQuery(langPlaceholders string) string {
+	return `
+	SELECT t.zh_word_id, w.text FROM words wz
+	JOIN sm2_progress p ON p.word_id = wz.id
+	JOIN translations t ON t.zh_word_id = wz.id
+	JOIN words w ON w.id = t.translation_word_id
+	WHERE wz.user_id = ? AND wz.language = 'zh' AND w.language IN (` + langPlaceholders + `) AND wz.id != ? AND p.first_seen_at IS NOT NULL`
+}
+
 // DetectConfusion checks if the user's wrong answer matches a different known word.
 // For zh_to_en / zh_pinyin_to_en: looks for a translation word (restricted to langs)
 // whose text matches the answer, then returns the zh word it belongs to (if different
@@ -30,14 +60,7 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		// it falls back to zh_to_transl, so the typed answer may be in any language.
 		// Go-level matching also handles SQLite LOWER() not folding non-ASCII (umlauts)
 		// and slash-separated alternatives (e.g. "dog / hound").
-		rows, qErr := s.db.QueryContext(ctx, `
-			SELECT t.zh_word_id, w.text FROM words w
-			JOIN translations t ON t.translation_word_id = w.id
-			JOIN words wz ON wz.id = t.zh_word_id
-			JOIN sm2_progress p ON p.word_id = wz.id
-			WHERE t.zh_word_id != ?
-			  AND wz.user_id = ?
-			  AND p.first_seen_at IS NOT NULL`, zhWordID, userID)
+		rows, qErr := s.db.QueryContext(ctx, zhToTranslConfusionQuery, userID, zhWordID)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion: %w", qErr)
 		}
@@ -83,20 +106,13 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		}
 		placeholders := make([]string, len(langs))
 		args := make([]any, 0, len(langs)+2)
+		args = append(args, userID)
 		for i, l := range langs {
 			placeholders[i] = "?"
 			args = append(args, l)
 		}
-		args = append(args, zhWordID, userID)
-		rows, qErr := s.db.QueryContext(ctx, `
-			SELECT t.zh_word_id, w.text FROM words w
-			JOIN translations t ON t.translation_word_id = w.id
-			JOIN words wz ON wz.id = t.zh_word_id
-			JOIN sm2_progress p ON p.word_id = wz.id
-			WHERE w.language IN (`+strings.Join(placeholders, ",")+`)
-			  AND t.zh_word_id != ?
-			  AND wz.user_id = ?
-			  AND p.first_seen_at IS NOT NULL`, args...)
+		args = append(args, zhWordID)
+		rows, qErr := s.db.QueryContext(ctx, translToZhConfusionQuery(strings.Join(placeholders, ",")), args...)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion translations: %w", qErr)
 		}
