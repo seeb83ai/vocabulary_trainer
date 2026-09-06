@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
 	"vocabulary_trainer/models"
 
@@ -393,4 +394,34 @@ func initComponents(ctx context.Context, s componentIniter, userID, wordID int64
 			log.Printf("CreateSubwordsForWord %q: %v", zhText, err)
 		}
 	}
+}
+
+// componentInitWG tracks in-flight background work started by
+// initComponentsAsync. Tests call WaitForComponentInit to deterministically
+// wait for that work to finish before asserting on its side effects.
+var componentInitWG sync.WaitGroup
+
+// initComponentsAsync runs initComponents in the background instead of on the
+// caller's request. initComponents can be expensive (component-coverage
+// scoring recomputes decomposition data across the user's whole vocabulary;
+// sub-word creation does several sequential lookups) and neither result is
+// needed to answer the triggering request (Acknowledge just needs to confirm
+// the word entered training) — the component_progress/sub-word rows only
+// need to exist by the time a later /api/quiz/next call might serve them.
+// Uses context.Background() rather than the request's context, since the
+// request context is canceled once the HTTP handler returns, which would
+// abort in-flight queries in the background goroutine.
+func initComponentsAsync(s componentIniter, userID, wordID int64, zhText string) {
+	componentInitWG.Add(1)
+	go func() {
+		defer componentInitWG.Done()
+		initComponents(context.Background(), s, userID, wordID, zhText)
+	}()
+}
+
+// WaitForComponentInit blocks until all background work started by
+// initComponentsAsync has finished. Exported for tests that need to observe
+// its side effects deterministically.
+func WaitForComponentInit() {
+	componentInitWG.Wait()
 }

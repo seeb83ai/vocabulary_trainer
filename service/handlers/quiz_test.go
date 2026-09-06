@@ -188,6 +188,10 @@ func TestQuizAcknowledge_CreatesComponentProgress(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
 	}
+	// Component/sub-word initialisation now runs in the background (see
+	// initComponentsAsync) so the request doesn't block on it; wait for it to
+	// finish before asserting on its result.
+	handlers.WaitForComponentInit()
 
 	_, total, err := s.GetComponentCounts(ctx, int64(2), nil)
 	if err != nil {
