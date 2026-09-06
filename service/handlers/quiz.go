@@ -807,7 +807,7 @@ func (h *QuizHandler) Acknowledge(w http.ResponseWriter, r *http.Request) {
 	}
 	zhText, err := h.Store.GetZhTextByID(r.Context(), userID, req.WordID)
 	if err == nil && zhText != "" {
-		initComponents(r.Context(), h.Store, userID, req.WordID, zhText)
+		initComponentsAsync(h.Store, userID, req.WordID, zhText)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
