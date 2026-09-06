@@ -84,6 +84,17 @@ func seedWord(t *testing.T, s *Store, zhText, pinyin string, enTexts []string) i
 	return id
 }
 
+// markWordTrained flips a word's SM2 progress to look like it has actually
+// been trained (as opposed to merely existing in the vocabulary list, which
+// initSM2 sets up for every word at creation time regardless of training).
+func markWordTrained(t *testing.T, s *Store, wordID int64) {
+	t.Helper()
+	if _, err := s.db.ExecContext(context.Background(),
+		`UPDATE sm2_progress SET repetitions = 1, first_seen_at = datetime('now') WHERE word_id = ?`, wordID); err != nil {
+		t.Fatalf("markWordTrained %d: %v", wordID, err)
+	}
+}
+
 func seedWordWithTags(t *testing.T, s *Store, zhText, pinyin string, enTexts, tags []string) int64 {
 	t.Helper()
 	id, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
