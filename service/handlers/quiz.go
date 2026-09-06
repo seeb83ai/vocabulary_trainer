@@ -163,11 +163,10 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	mnemonics := r.URL.Query().Get("mnemonics") != "false" && !difficult
 	trainComponents := r.URL.Query().Get("trainComponents") == "1" && !difficult
 
-	// Ensure progress rows exist for any newly-named library entries.
-	if err := h.Store.EnsureHMMProgress(r.Context(), UserIDFromContext(r.Context())); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	// Progress rows for named library entries are now seeded directly by the
+	// HMM library write endpoints (UpdateActor/UpdateLocation/UpdateToneRoom/
+	// UpsertProp) the moment an entry is named, so this no longer needs an
+	// EnsureHMMProgress sweep on every card fetch.
 
 	// Fetch HMM mnemonic candidate.
 	var hmmCard *models.HMMQuizCard
