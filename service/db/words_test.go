@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
@@ -2217,5 +2218,55 @@ func TestAcknowledgeRandomWords_CreatesSubwords(t *testing.T) {
 	}
 	if got := wordTagsForText(t, s, 2, "足球"); len(got) != 1 || got[0] != "HSK1" {
 		t.Errorf("want 足球 tagged [HSK1], got %v", got)
+	}
+}
+
+// TestGetNextCard_UsesUserLanguageIndex verifies a plain index exists on
+// words(user_id, language) and that the query planner uses it for the
+// language+user_id lookup GetNextCard (and several other hot-path queries)
+// depend on. Without it, SQLite falls back to a full scan of the words
+// table ordered by rowid, which scales with total row count instead of the
+// user's own word count.
+func TestGetNextCard_UsesUserLanguageIndex(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	var count int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'words' AND sql LIKE '%(user_id, language)%'`,
+	).Scan(&count); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("want a plain index on words(user_id, language)")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `EXPLAIN QUERY PLAN
+		SELECT w.id, w.text FROM words w
+		JOIN sm2_progress p ON p.word_id = w.id
+		WHERE w.language = 'zh' AND w.user_id = ?
+		ORDER BY p.due_date ASC LIMIT 1`,
+		int64(2),
+	)
+	if err != nil {
+		t.Fatalf("explain query plan: %v", err)
+	}
+	defer rows.Close()
+	var sawIndexedScan bool
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatalf("scan explain row: %v", err)
+		}
+		if strings.Contains(detail, "USING INDEX") && strings.Contains(detail, "w") {
+			sawIndexedScan = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("explain rows: %v", err)
+	}
+	if !sawIndexedScan {
+		t.Error("want words scan to use an index, got a full table scan")
 	}
 }
