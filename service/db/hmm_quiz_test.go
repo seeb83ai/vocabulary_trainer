@@ -168,3 +168,115 @@ func TestGetHMMStats(t *testing.T) {
 		t.Errorf("actor Total = %d, want 1", stats.Total)
 	}
 }
+
+// TestUpdateHMMActor_SeedsProgressRow locks in moving progress-row seeding
+// off the /api/quiz/next hot path (where EnsureHMMProgress previously ran on
+// every card fetch, doing 4 SELECTs plus one INSERT OR IGNORE per named
+// entry) and onto the library-write path instead: naming an actor should by
+// itself create its hmm_progress row, with no separate EnsureHMMProgress call.
+func TestUpdateHMMActor_SeedsProgressRow(t *testing.T) {
+	store := openTestDB(t)
+	clearAllHMMNames(t, store.db)
+	ctx := context.Background()
+
+	if err := store.UpdateHMMActor(ctx, testUserID, "b", "Bruce Lee"); err != nil {
+		t.Fatalf("UpdateHMMActor: %v", err)
+	}
+
+	prog, err := store.GetHMMProgress(ctx, testUserID, "actor", "b")
+	if err != nil {
+		t.Fatalf("GetHMMProgress: %v", err)
+	}
+	if prog == nil {
+		t.Fatal("want a progress row created directly by UpdateHMMActor")
+	}
+	if prog.FirstSeenDate == "" {
+		t.Error("want first_seen_date set")
+	}
+}
+
+// TestUpdateHMMActor_BlankNameDoesNotSeedProgress preserves EnsureHMMProgress's
+// existing rule that only named entries get a progress row.
+func TestUpdateHMMActor_BlankNameDoesNotSeedProgress(t *testing.T) {
+	store := openTestDB(t)
+	clearAllHMMNames(t, store.db)
+	ctx := context.Background()
+
+	if err := store.UpdateHMMActor(ctx, testUserID, "b", ""); err != nil {
+		t.Fatalf("UpdateHMMActor: %v", err)
+	}
+
+	prog, err := store.GetHMMProgress(ctx, testUserID, "actor", "b")
+	if err != nil {
+		t.Fatalf("GetHMMProgress: %v", err)
+	}
+	if prog != nil {
+		t.Error("want no progress row for a blank actor name")
+	}
+}
+
+func TestUpdateHMMLocation_SeedsProgressRow(t *testing.T) {
+	store := openTestDB(t)
+	clearAllHMMNames(t, store.db)
+	ctx := context.Background()
+
+	if err := store.UpdateHMMLocation(ctx, testUserID, "an", "Grand Canyon"); err != nil {
+		t.Fatalf("UpdateHMMLocation: %v", err)
+	}
+
+	prog, err := store.GetHMMProgress(ctx, testUserID, "location", "an")
+	if err != nil {
+		t.Fatalf("GetHMMProgress: %v", err)
+	}
+	if prog == nil {
+		t.Fatal("want a progress row created directly by UpdateHMMLocation")
+	}
+}
+
+func TestUpdateHMMToneRoom_SeedsProgressRow(t *testing.T) {
+	store := openTestDB(t)
+	clearAllHMMNames(t, store.db)
+	ctx := context.Background()
+	// A pre-existing test fixture (migration v13's default seeded tone-room
+	// names, carried forward to user 2 by the v31 per-user backfill) already
+	// has a progress row for tone 1 independent of naming; delete it so this
+	// test actually exercises UpdateHMMToneRoom's new seeding behavior.
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM hmm_progress WHERE user_id = ? AND entity_type = 'tone_room' AND entity_key = '1'`, testUserID); err != nil {
+		t.Fatalf("delete pre-existing progress: %v", err)
+	}
+
+	if err := store.UpdateHMMToneRoom(ctx, testUserID, 1, "Entrance"); err != nil {
+		t.Fatalf("UpdateHMMToneRoom: %v", err)
+	}
+
+	prog, err := store.GetHMMProgress(ctx, testUserID, "tone_room", "1")
+	if err != nil {
+		t.Fatalf("GetHMMProgress: %v", err)
+	}
+	if prog == nil {
+		t.Fatal("want a progress row created directly by UpdateHMMToneRoom")
+	}
+}
+
+func TestUpsertHMMProp_SeedsProgressRow(t *testing.T) {
+	store := openTestDB(t)
+	clearAllHMMNames(t, store.db)
+	ctx := context.Background()
+	// See TestUpdateHMMToneRoom_SeedsProgressRow: this radical already carries
+	// a pre-existing progress row from the same test-fixture migration quirk.
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM hmm_progress WHERE user_id = ? AND entity_type = 'prop' AND entity_key = '一'`, testUserID); err != nil {
+		t.Fatalf("delete pre-existing progress: %v", err)
+	}
+
+	if err := store.UpsertHMMProp(ctx, testUserID, "一", "razor blade"); err != nil {
+		t.Fatalf("UpsertHMMProp: %v", err)
+	}
+
+	prog, err := store.GetHMMProgress(ctx, testUserID, "prop", "一")
+	if err != nil {
+		t.Fatalf("GetHMMProgress: %v", err)
+	}
+	if prog == nil {
+		t.Fatal("want a progress row created directly by UpsertHMMProp")
+	}
+}

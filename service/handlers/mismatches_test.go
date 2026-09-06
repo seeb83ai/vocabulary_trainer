@@ -21,7 +21,8 @@ func TestMismatches_Empty(t *testing.T) {
 func TestMismatches_RecordedOnWrongAnswer(t *testing.T) {
 	s := openTestDB(t)
 	xieID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
-	seedWord(t, s, "书", "shū", []string{"Buch"})
+	bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+	markWordTrained(t, s, bookID)
 
 	r := newRouter(s)
 
@@ -123,7 +124,8 @@ func TestMismatches_NoConfusionOnCorrectAnswer(t *testing.T) {
 func TestMismatches_EnToZh_Recorded(t *testing.T) {
 	s := openTestDB(t)
 	buchwID := seedWord(t, s, "书", "shū", []string{"Buch"})
-	seedWord(t, s, "五", "wǔ", []string{"five"})
+	fiveID := seedWord(t, s, "五", "wǔ", []string{"five"})
+	markWordTrained(t, s, fiveID)
 	r := newRouter(s)
 
 	// Given prompt "Buch" (en_to_zh), user types "五" instead of "书"
@@ -155,7 +157,8 @@ func TestMismatches_EnToZh_Recorded(t *testing.T) {
 func TestMismatches_CountIncrementsOnRepeat(t *testing.T) {
 	s := openTestDB(t)
 	xieID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
-	seedWord(t, s, "书", "shū", []string{"Buch"})
+	bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+	markWordTrained(t, s, bookID)
 	r := newRouter(s)
 
 	for i := 0; i < 3; i++ {

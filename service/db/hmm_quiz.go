@@ -47,8 +47,29 @@ func hmmPrompt(entityType, entityKey string) string {
 	return entityKey
 }
 
+// ensureHMMProgressRow inserts a single missing hmm_progress row for one
+// named library entry. Called directly from the library-write path
+// (UpdateHMMActor/UpdateHMMLocation/UpdateHMMToneRoom/UpsertHMMProp) so a new
+// entry gets its progress row the moment it's named, instead of relying on
+// EnsureHMMProgress's full sweep — which used to run on every
+// /api/quiz/next call and re-scan+re-insert every named entry on every card
+// fetch. A no-op (matching EnsureHMMProgress) when name is blank.
+func (s *Store) ensureHMMProgressRow(ctx context.Context, userID int64, entityType, entityKey, name string) error {
+	if strings.TrimSpace(name) == "" {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO hmm_progress (user_id, entity_type, entity_key, first_seen_date) VALUES (?, ?, ?, date('now'))`,
+		userID, entityType, entityKey); err != nil {
+		return fmt.Errorf("seed hmm_progress %s/%s: %w", entityType, entityKey, err)
+	}
+	return nil
+}
+
 // EnsureHMMProgress inserts missing progress rows for all library entries that
-// have a non-empty name for the given user. Safe to call repeatedly (INSERT OR IGNORE).
+// have a non-empty name for the given user. Kept for ImportTemplateWords and
+// test setup; the quiz Next handler no longer calls this on every card fetch —
+// see ensureHMMProgressRow. Safe to call repeatedly (INSERT OR IGNORE).
 func (s *Store) EnsureHMMProgress(ctx context.Context, userID int64) error {
 	type seedQuery struct {
 		typ   string

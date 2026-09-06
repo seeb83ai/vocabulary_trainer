@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"vocabulary_trainer/models"
 )
@@ -40,7 +41,7 @@ func (s *Store) UpdateHMMActor(ctx context.Context, userID int64, initial, actor
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("hmm actor %q not found", initial)
 	}
-	return nil
+	return s.ensureHMMProgressRow(ctx, userID, "actor", initial, actorName)
 }
 
 func (s *Store) GetHMMLocations(ctx context.Context, userID int64) ([]models.HMMLocation, error) {
@@ -71,7 +72,7 @@ func (s *Store) UpdateHMMLocation(ctx context.Context, userID int64, finalKey, l
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("hmm location %q not found", finalKey)
 	}
-	return nil
+	return s.ensureHMMProgressRow(ctx, userID, "location", finalKey, locationName)
 }
 
 func (s *Store) GetHMMToneRooms(ctx context.Context, userID int64) ([]models.HMMToneRoom, error) {
@@ -102,7 +103,7 @@ func (s *Store) UpdateHMMToneRoom(ctx context.Context, userID int64, tone int, r
 	if n, _ := res.RowsAffected(); n == 0 {
 		return fmt.Errorf("hmm tone room %d not found", tone)
 	}
-	return nil
+	return s.ensureHMMProgressRow(ctx, userID, "tone_room", strconv.Itoa(tone), roomName)
 }
 
 func (s *Store) GetHMMProps(ctx context.Context, userID int64) ([]models.HMMProp, error) {
@@ -132,7 +133,7 @@ func (s *Store) UpsertHMMProp(ctx context.Context, userID int64, radical, propNa
 	if err != nil {
 		return fmt.Errorf("upsert hmm prop: %w", err)
 	}
-	return nil
+	return s.ensureHMMProgressRow(ctx, userID, "prop", radical, propName)
 }
 
 func (s *Store) DeleteHMMProp(ctx context.Context, userID int64, radical string) error {

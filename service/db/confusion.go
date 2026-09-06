@@ -15,11 +15,16 @@ import (
 // zh rows via idx_words_user_language) rather than scanning translations with
 // a "!=" predicate, which can't use an index and previously walked every
 // user's translation rows on each call.
+// Both queries additionally require p.first_seen_at IS NOT NULL — a word
+// that has never actually been trained (repetitions = 0, first_seen_at NULL,
+// the default state right after CreateWord/initSM2) must not be reported as
+// a confusion just because its translation text happens to match (#403).
 const zhToTranslConfusionQuery = `
 	SELECT t.zh_word_id, w.text FROM words wz
+	JOIN sm2_progress p ON p.word_id = wz.id
 	JOIN translations t ON t.zh_word_id = wz.id
 	JOIN words w ON w.id = t.translation_word_id
-	WHERE wz.user_id = ? AND wz.language = 'zh' AND wz.id != ?`
+	WHERE wz.user_id = ? AND wz.language = 'zh' AND wz.id != ? AND p.first_seen_at IS NOT NULL`
 
 // translToZhConfusionQuery is zhToTranslConfusionQuery restricted to
 // translation words in one of the given languages (for transl_to_zh
@@ -29,9 +34,10 @@ const zhToTranslConfusionQuery = `
 func translToZhConfusionQuery(langPlaceholders string) string {
 	return `
 	SELECT t.zh_word_id, w.text FROM words wz
+	JOIN sm2_progress p ON p.word_id = wz.id
 	JOIN translations t ON t.zh_word_id = wz.id
 	JOIN words w ON w.id = t.translation_word_id
-	WHERE wz.user_id = ? AND wz.language = 'zh' AND w.language IN (` + langPlaceholders + `) AND wz.id != ?`
+	WHERE wz.user_id = ? AND wz.language = 'zh' AND w.language IN (` + langPlaceholders + `) AND wz.id != ? AND p.first_seen_at IS NOT NULL`
 }
 
 // DetectConfusion checks if the user's wrong answer matches a different known word.
@@ -78,9 +84,11 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		// First: find a ZH word whose text matches the answer (user typed Chinese).
 		var confusedWithID int64
 		err := s.db.QueryRowContext(ctx, `
-			SELECT id FROM words
-			WHERE language = 'zh' AND LOWER(TRIM(text)) = ?
-			  AND id != ? AND user_id = ?
+			SELECT w.id FROM words w
+			JOIN sm2_progress p ON p.word_id = w.id
+			WHERE w.language = 'zh' AND LOWER(TRIM(w.text)) = ?
+			  AND w.id != ? AND w.user_id = ?
+			  AND p.first_seen_at IS NOT NULL
 			LIMIT 1`, normalized, zhWordID, userID).Scan(&confusedWithID)
 		if err != nil && err != sql.ErrNoRows {
 			return 0, false, fmt.Errorf("lookup confusion: %w", err)

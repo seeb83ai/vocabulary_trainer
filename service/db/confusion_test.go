@@ -12,7 +12,8 @@ import (
 func TestDetectConfusion_ZhToEn_Found(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
-	seedWord(t, s, "书", "shū", []string{"Buch"})
+	bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+	markWordTrained(t, s, bookID)
 
 	confusedWithID, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "Buch", "zh_to_transl", []string{"en"})
 	if err != nil {
@@ -33,6 +34,7 @@ func TestDetectConfusion_Behaviour(t *testing.T) {
 	s := openTestDB(t)
 	shoeID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 	bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+	markWordTrained(t, s, bookID)
 
 	// Different entry's translation → confusion with that entry.
 	confusedWith, found, err := s.DetectConfusion(context.Background(), int64(2), shoeID, "Buch", "zh_to_transl", []string{"en"})
@@ -74,9 +76,29 @@ func TestDetectConfusion_ZhToEn_NoMatch(t *testing.T) {
 	}
 }
 
+// TestDetectConfusion_ZhToEn_UntrainedWord_NotFound is a regression test for
+// the mismatch-scope fix: a word that exists in the vocabulary list but has
+// never actually been trained (repetitions = 0, first_seen_at NULL, the
+// default state right after CreateWord/initSM2) must not be reported as a
+// confusion, even if its translation text matches the wrong answer.
+func TestDetectConfusion_ZhToEn_UntrainedWord_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+	seedWord(t, s, "书", "shū", []string{"Buch"}) // never trained
+
+	_, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "Buch", "zh_to_transl", []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("an untrained word's translation must not be reported as a confusion")
+	}
+}
+
 func TestDetectConfusion_EnToZh_Found(t *testing.T) {
 	s := openTestDB(t)
-	seedWord(t, s, "书", "shū", []string{"Buch"})
+	bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+	markWordTrained(t, s, bookID)
 	zhID := seedWord(t, s, "五", "", []string{"five"})
 
 	confusedWithID, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "书", "transl_to_zh", nil)
@@ -88,6 +110,23 @@ func TestDetectConfusion_EnToZh_Found(t *testing.T) {
 	}
 	if confusedWithID == zhID {
 		t.Error("confused_with_id must differ from zh_word_id")
+	}
+}
+
+// TestDetectConfusion_TranslToZh_UntrainedWord_NotFound mirrors
+// TestDetectConfusion_ZhToEn_UntrainedWord_NotFound for transl_to_zh mode,
+// where the user typed Chinese text that matches an untrained zh word directly.
+func TestDetectConfusion_TranslToZh_UntrainedWord_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "书", "shū", []string{"Buch"}) // never trained
+	zhID := seedWord(t, s, "五", "", []string{"five"})
+
+	_, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "书", "transl_to_zh", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("an untrained word must not be reported as a confusion")
 	}
 }
 
@@ -114,6 +153,7 @@ func TestDetectConfusion_ZhToTranslVariants_Found(t *testing.T) {
 			s := openTestDB(t)
 			shoeID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
 			bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+			markWordTrained(t, s, bookID)
 
 			confusedWith, found, err := s.DetectConfusion(context.Background(), int64(2), shoeID, "Buch", mode, []string{"en"})
 			if err != nil {
@@ -178,7 +218,8 @@ func TestGetConfusions_LastSeenUpdated(t *testing.T) {
 func TestDetectConfusion_ZhPinyinToEn_Found(t *testing.T) {
 	s := openTestDB(t)
 	zhID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
-	seedWord(t, s, "书", "shū", []string{"Buch"})
+	bookID := seedWord(t, s, "书", "shū", []string{"Buch"})
+	markWordTrained(t, s, bookID)
 
 	confusedWithID, found, err := s.DetectConfusion(context.Background(), int64(2), zhID, "Buch", "zh_pinyin_to_transl", []string{"en"})
 	if err != nil {
@@ -416,6 +457,7 @@ func TestDetectConfusion_ZhToEn_MatchesDeTranslation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markWordTrained(t, s, otherID)
 
 	// Typing "Uhr" (DE translation of 点) while answering for 人 should detect a confusion.
 	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "Uhr", "zh_to_transl", []string{"en", "de"})
@@ -451,6 +493,7 @@ func TestDetectConfusion_ZhToEn_MatchesEnTranslation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markWordTrained(t, s, otherID)
 
 	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "good", "zh_to_transl", []string{"en"})
 	if err != nil {
@@ -485,6 +528,7 @@ func TestDetectConfusion_ZhToEn_DeMatchedEvenWhenLangIsEnOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markWordTrained(t, s, otherID)
 
 	// Mismatch detection is language-agnostic: typing "Uhr" (DE translation of 点)
 	// should detect a confusion even when langs=["en"] only.
@@ -522,6 +566,7 @@ func TestDetectConfusion_UmlautTranslation_Found(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markWordTrained(t, s, otherID)
 
 	// User types "übung" (lowercase) while answering for 练习; should detect 练 as confusion.
 	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "übung", "zh_to_transl", []string{"de"})
@@ -559,6 +604,7 @@ func TestDetectConfusion_SlashVariant_Found(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markWordTrained(t, s, otherID)
 
 	// User types "nourishment" while answering for 吃; should detect 食物 as confusion.
 	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "nourishment", "zh_to_transl", []string{"en"})
@@ -601,6 +647,7 @@ func TestDetectConfusion_ZhToTransl_DeOnlyWord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markWordTrained(t, s, zouID)
 
 	// User typed "Spaziergang" but langs=["en"] (default — mode fell back to zh_to_transl).
 	// Mismatch detection must search across ALL languages, not just ["en"].
@@ -639,6 +686,7 @@ func TestDetectConfusion_TranslToZh_TranslationOfOtherWord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markWordTrained(t, s, otherID)
 
 	// User types "spaziergang" while in transl_to_zh mode for 天; should detect 走.
 	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "spaziergang", "transl_to_zh", []string{"de"})
@@ -676,6 +724,7 @@ func TestDetectConfusion_TranslToZh_SlashVariant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	markWordTrained(t, s, otherID)
 
 	// User types "nourishment" in transl_to_zh mode for 天; should detect 食物.
 	confusedWithID, found, err := s.DetectConfusion(ctx, int64(2), targetID, "nourishment", "transl_to_zh", []string{"en"})
