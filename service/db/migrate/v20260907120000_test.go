@@ -41,7 +41,10 @@ func TestFixMatchGameFirstSeenAt_SetsFromLastAttempt(t *testing.T) {
 		t.Fatalf("migration: %v", err)
 	}
 
-	for _, tc := range []struct{ id int; want string }{
+	for _, tc := range []struct {
+		id   int
+		want string
+	}{
 		{1, "2026-09-03 18:09:06"},
 		{2, "2026-09-07 10:25:21"},
 	} {
