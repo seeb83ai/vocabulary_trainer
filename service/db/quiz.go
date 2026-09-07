@@ -67,14 +67,14 @@ func (s *Store) RecordAnswerTimestamps(ctx context.Context, wordID int64, correc
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	if correct {
 		_, err := s.db.ExecContext(ctx,
-			`UPDATE sm2_progress SET last_attempt_at = ? WHERE word_id = ?`, now, wordID)
+			`UPDATE sm2_progress SET last_attempt_at = ?, first_seen_at = COALESCE(first_seen_at, ?) WHERE word_id = ?`, now, now, wordID)
 		if err != nil {
 			return fmt.Errorf("record answer timestamps: %w", err)
 		}
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET last_attempt_at = ?, last_wrong_at = ? WHERE word_id = ?`, now, now, wordID)
+		`UPDATE sm2_progress SET last_attempt_at = ?, last_wrong_at = ?, first_seen_at = COALESCE(first_seen_at, ?) WHERE word_id = ?`, now, now, now, wordID)
 	if err != nil {
 		return fmt.Errorf("record answer timestamps: %w", err)
 	}

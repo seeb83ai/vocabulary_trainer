@@ -81,13 +81,13 @@ func TestDailyStats_PopulatedAfterAnswer(t *testing.T) {
 	if resp.Days[0].Mistakes != 0 {
 		t.Errorf("mistakes: want 0, got %d", resp.Days[0].Mistakes)
 	}
-	if resp.Days[0].WordsSeen != 0 {
-		t.Errorf("words_seen: want 0, got %d", resp.Days[0].WordsSeen)
+	if resp.Days[0].WordsSeen != 1 {
+		t.Errorf("words_seen: want 1, got %d", resp.Days[0].WordsSeen)
 	}
-	// Word was not presented via GetNextCard, so first_seen_date is NULL
-	// and all bucket counts should be 0.
-	if resp.Days[0].BucketNew != 0 {
-		t.Errorf("bucket_new: want 0, got %d", resp.Days[0].BucketNew)
+	// RecordAnswerTimestamps now stamps first_seen_at on the first answer,
+	// so the word is counted as seen and appears in bucket_new (learning phase).
+	if resp.Days[0].BucketNew != 1 {
+		t.Errorf("bucket_new: want 1, got %d", resp.Days[0].BucketNew)
 	}
 	if resp.Days[0].BucketStruggling != 0 {
 		t.Errorf("bucket_struggling: want 0, got %d", resp.Days[0].BucketStruggling)

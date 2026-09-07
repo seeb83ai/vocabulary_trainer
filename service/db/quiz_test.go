@@ -788,3 +788,56 @@ func TestRecordAnswerTimestamps_SetsAttemptAlwaysAndWrongOnlyOnWrong(t *testing.
 		t.Error("expected last_wrong_at set after a wrong answer")
 	}
 }
+
+// TestRecordAnswerTimestamps_SetsFirstSeenAtWhenNull verifies that
+// RecordAnswerTimestamps stamps first_seen_at on the first call when it is
+// still NULL (covers match-game words that were never formally acknowledged).
+func TestRecordAnswerTimestamps_SetsFirstSeenAtWhenNull(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "一", "", []string{"one"})
+
+	var before sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT first_seen_at FROM sm2_progress WHERE word_id = ?`, a).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if before.Valid {
+		t.Fatal("expected first_seen_at to be NULL for a freshly seeded word")
+	}
+
+	if err := s.RecordAnswerTimestamps(ctx, a, true); err != nil {
+		t.Fatal(err)
+	}
+
+	var after sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT first_seen_at FROM sm2_progress WHERE word_id = ?`, a).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if !after.Valid || after.String == "" {
+		t.Errorf("expected first_seen_at to be set after first RecordAnswerTimestamps, got NULL")
+	}
+}
+
+// TestRecordAnswerTimestamps_DoesNotOverwriteFirstSeenAt verifies that a
+// pre-existing first_seen_at value is never overwritten by a later call.
+func TestRecordAnswerTimestamps_DoesNotOverwriteFirstSeenAt(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "一", "", []string{"one"})
+	const original = "2026-01-01 10:00:00"
+	if _, err := s.db.ExecContext(ctx, `UPDATE sm2_progress SET first_seen_at = ? WHERE word_id = ?`, original, a); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.RecordAnswerTimestamps(ctx, a, true); err != nil {
+		t.Fatal(err)
+	}
+
+	var got sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT first_seen_at FROM sm2_progress WHERE word_id = ?`, a).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Valid || got.String != original {
+		t.Errorf("expected first_seen_at to remain %q, got %q (valid=%v)", original, got.String, got.Valid)
+	}
+}
