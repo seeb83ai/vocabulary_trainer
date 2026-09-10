@@ -336,8 +336,15 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			} else if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
 				cycleCounter = progress.TotalCorrect
 			}
-			bucket := sm2.ClassifyTier(*progress).BucketKey()
-			mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), bucket, randCfg)
+			if progress.LearningNewWord {
+				// The intro phase walks the configured sequence as a fixed
+				// pedagogical order, not RandomModeConfig's accuracy-tier range
+				// (which would otherwise silently drop steps — issue #416/#409).
+				mode = sm2.SelectNewWordCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), randCfg)
+			} else {
+				bucket := sm2.ClassifyTier(*progress).BucketKey()
+				mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), bucket, randCfg)
+			}
 		}
 	default:
 		bucket := sm2.ClassifyTier(*progress).BucketKey()

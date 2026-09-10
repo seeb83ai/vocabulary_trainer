@@ -278,6 +278,8 @@ Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation
 | 3 | 2 | Chinese → Translation |
 | 4 | 0 (wraps) | Chinese + Pinyin → Translation |
 
+While a word is still in the new-word introduction phase, the sequence position is not restricted by the "Random / Cycle mode by bucket" range (see below) — the full configured sequence is walked in order, so all of its steps are reachable before the word graduates out of the intro phase. Once the word graduates, normal bucket-based filtering applies.
+
 You can configure the sequence (2 to 6 steps) in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, *Voice → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel offers three mutually exclusive advance options: **Advance on every attempt** (default, counter is `total_attempts`), **Advance only on success** (counter is `total_correct`), and **Advance only if known** (counter is a first-try-correct count that only increments when an answer is correct with no wrong guess earlier in that encounter).
 
 Under **advance only on success** or **advance only if known**, a wrong answer holds the step at exactly the format that was just shown — even if that answer also moves the word into a different accuracy tier (which would otherwise re-filter the step against a different "Random / Cycle mode by bucket" range, see below, and could pick a different format for the same step). The pinned format is cleared as soon as the encounter is resolved by a correct answer.
@@ -287,7 +289,7 @@ Under **advance only on success** or **advance only if known**, a wrong answer h
 **Random** mode and **Cycle** mode both pick from 5 quiz formats: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, and *Voice → Translation*. In **Settings → Random / Cycle Mode by Bucket**, you can restrict which of these formats is eligible for each of the 5 accuracy tiers (New, Struggling, Learning, Practicing, Mastered — the same buckets used elsewhere in the app). For each format, choose an inclusive "from" and "to" bucket range, or turn the format off entirely.
 
 - **Random mode** picks uniformly at random among the formats eligible for the word's current bucket.
-- **Cycle mode** filters your configured step sequence down to the formats eligible for the word's current bucket before picking a step. If none of your configured steps are eligible for that bucket, the app falls back to picking from the full bucket-eligible format list instead.
+- **Cycle mode** filters your configured step sequence down to the formats eligible for the word's current bucket before picking a step. If none of your configured steps are eligible for that bucket, the app falls back to picking from the full bucket-eligible format list instead. This bucket filtering does not apply while a word is still in the new-word introduction phase (see "Cycle mode" above) — a step turned off entirely is still skipped there, but the per-bucket range is not.
 
 On save, the app checks that every one of the 5 buckets has at least one eligible format across all 5 settings combined. If a bucket would be left with no eligible format, the save is rejected and nothing changes.
 

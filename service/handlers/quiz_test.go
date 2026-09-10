@@ -570,10 +570,11 @@ func TestQuizCycleWraps(t *testing.T) {
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
 	// Set total_attempts=4 so position=(4-1)%3=0 in the raw 3-step default
-	// sequence. The word stays in the "new" bucket (learning_new_word=true),
-	// and the default random-mode-range ladder makes zh_to_transl ineligible
-	// there, so the cycle sequence is filtered down to [zh_pinyin_to_transl,
-	// transl_to_zh] before indexing — position (4-1)%2=1 → transl_to_zh.
+	// sequence, wrapping back to position 0. The word stays in the "new"
+	// bucket (learning_new_word=true): unlike an already-graduated word, the
+	// intro-phase cycle position (SelectNewWordCycleMode) is not filtered by
+	// RandomModeConfig's per-tier bucket range, so the full 3-step sequence is
+	// used as configured (issue #416/#409).
 	// AcknowledgeWord first to set first_seen_date (required for GetNextCard).
 	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
@@ -597,9 +598,48 @@ func TestQuizCycleWraps(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	// total_attempts=4 → bucket-filtered 2-step sequence → (4-1)%2=1 → transl_to_zh
-	if card.Mode != models.ModeTranslToZh {
-		t.Errorf("cycle wrapped (bucket-filtered): want %s, got %s", models.ModeTranslToZh, card.Mode)
+	// total_attempts=4 → unfiltered 3-step sequence → (4-1)%3=0 → zh_pinyin_to_transl
+	if card.Mode != models.ModeZhPinyinToTransl {
+		t.Errorf("cycle wrapped: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	}
+}
+
+// TestQuizCycle_NewWordPhase_WalksFullSequence covers issue #416/#409: under
+// plain Cycle mode (no advance-on-known/success-only) with default settings,
+// a word still in the new-word intro phase must walk all 3 steps of the
+// default cycle_sequence in order as total_attempts advances — not collapse
+// to a 2-step oscillation that never reaches the 3rd step because
+// RandomModeConfig's default "new" bucket range excludes zh_to_transl.
+func TestQuizCycle_NewWordPhase_WalksFullSequence(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	r := newRouter(s)
+
+	wantModes := []string{models.ModeZhPinyinToTransl, models.ModeTranslToZh, models.ModeZhToTransl}
+	for i, want := range wantModes {
+		p, err := s.GetSM2Progress(ctx, id)
+		if err != nil || p == nil {
+			t.Fatalf("iter %d: GetSM2Progress: %v / %v", i, err, p)
+		}
+		p.TotalAttempts = i + 1
+		p.DueDate = time.Now().UTC().Add(-time.Hour)
+		if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+			t.Fatalf("iter %d: UpdateSM2Progress: %v", i, err)
+		}
+
+		rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("iter %d: want 200, got %d: %s", i, rec.Code, rec.Body.String())
+		}
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.Mode != want {
+			t.Errorf("iter %d (total_attempts=%d): want %s, got %s", i, i+1, want, card.Mode)
+		}
 	}
 }
 
