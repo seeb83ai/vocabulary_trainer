@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       $('comp-stats-chart').style.display = 'none';
       show('comp-chart-empty');
       $('comp-table-body').innerHTML =
-        `<tr><td colspan="4" class="py-8 text-center text-gray-400">No component training data yet.</td></tr>`;
+        `<tr><td colspan="4" class="py-8 text-center text-gray-400">${escHtml(t('stats.noCompTrainingData'))}</td></tr>`;
     } else {
       renderCompChart(cdays);
       renderCompTable(cdays);
@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       $('pinyin-stats-chart').style.display = 'none';
       show('pinyin-chart-empty');
       $('pinyin-table-body').innerHTML =
-        `<tr><td colspan="5" class="py-8 text-center text-gray-400">No pinyin training data yet.</td></tr>`;
+        `<tr><td colspan="5" class="py-8 text-center text-gray-400">${escHtml(t('stats.noPinyinTrainingData'))}</td></tr>`;
     } else {
       renderPinyinChart(pdays);
       renderPinyinToneChart(pdays);
@@ -181,8 +181,12 @@ function renderChart(days) {
               const idx = items[0].dataIndex;
               const d = days[idx];
               const acc = d.attempts > 0 ? Math.round(((d.attempts - d.mistakes) / d.attempts) * 100) : 0;
-              return `Accuracy: ${acc}%\nWords seen: ${d.words_seen}\nBest streak: ${d.correct_streak}\n` +
-                `Buckets: ${d.bucket_new||0} new · ${d.bucket_struggling||0} struggling · ${d.bucket_learning||0} learning · ${d.bucket_practicing||0} practicing · ${d.bucket_mastered||0} mastered`;
+              return t('stats.accuracyTooltip', {
+                acc, seen: d.words_seen, streak: d.correct_streak,
+                new: d.bucket_new || 0, struggling: d.bucket_struggling || 0,
+                learning: d.bucket_learning || 0, practicing: d.bucket_practicing || 0,
+                mastered: d.bucket_mastered || 0,
+              });
             },
           },
         },
@@ -235,7 +239,7 @@ function drawBucketChart(days) {
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
-        y: { beginAtZero: true, stacked: _bucketStacked, title: { display: true, text: 'Words' } },
+        y: { beginAtZero: true, stacked: _bucketStacked, title: { display: true, text: t('stats.words') } },
       },
       plugins: {
         tooltip: {
@@ -498,7 +502,7 @@ function renderPinyinChart(days) {
           stack: 'answers',
         },
         {
-          label: 'Sounds seen',
+          label: t('stats.soundsSeen'),
           data: days.map(d => d.sounds_seen),
           type: 'line',
           borderColor: 'rgba(168, 85, 247, 0.9)',
@@ -519,7 +523,7 @@ function renderPinyinChart(days) {
         y1: {
           beginAtZero: true,
           position: 'right',
-          title: { display: true, text: 'Sounds' },
+          title: { display: true, text: t('stats.sounds') },
           grid: { drawOnChartArea: false },
         },
       },
@@ -530,7 +534,7 @@ function renderPinyinChart(days) {
               const idx = items[0].dataIndex;
               const d = days[idx];
               const acc = d.attempts > 0 ? Math.round(((d.attempts - d.mistakes) / d.attempts) * 100) : 0;
-              return `Accuracy: ${acc}%\nSounds seen: ${d.sounds_seen}`;
+              return t('stats.pinyinAccuracyTooltip', { acc, seen: d.sounds_seen });
             },
           },
         },
@@ -540,7 +544,10 @@ function renderPinyinChart(days) {
 }
 
 // Tone labels with superscript tone marks for display
-const TONE_LABELS = ['Tone 1 (ā)', 'Tone 2 (á)', 'Tone 3 (ǎ)', 'Tone 4 (à)', 'Tone 5 (a·)'];
+const TONE_MARKS = ['ā', 'á', 'ǎ', 'à', 'a·'];
+function toneLabels() {
+  return TONE_MARKS.map((mark, i) => t('stats.toneLabel', { n: i + 1, mark }));
+}
 const TONE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 function renderPinyinToneChart(days) {
@@ -573,16 +580,16 @@ function renderPinyinToneChart(days) {
   new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: TONE_LABELS,
+      labels: toneLabels(),
       datasets: [
         {
-          label: 'Correct',
+          label: t('chart.correct'),
           data: correct,
           backgroundColor: 'rgba(34, 197, 94, 0.7)',
           stack: 'tone',
         },
         {
-          label: 'Wrong',
+          label: t('chart.mistakes'),
           data: wrong,
           backgroundColor: 'rgba(239, 68, 68, 0.7)',
           stack: 'tone',
@@ -594,7 +601,7 @@ function renderPinyinToneChart(days) {
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: {},
-        y: { beginAtZero: true, stacked: true, title: { display: true, text: 'Answers' }, ticks: { precision: 0 } },
+        y: { beginAtZero: true, stacked: true, title: { display: true, text: t('stats.answers') }, ticks: { precision: 0 } },
       },
       plugins: {
         tooltip: {
@@ -603,7 +610,7 @@ function renderPinyinToneChart(days) {
               const idx = items[0].dataIndex;
               const total = correct[idx] + wrong[idx];
               const acc = total > 0 ? Math.round(correct[idx] / total * 100) : 0;
-              return `Accuracy: ${acc}%  (${correct[idx]}/${total})`;
+              return t('stats.toneAccuracyTooltip', { acc, correct: correct[idx], total });
             },
           },
         },
@@ -656,7 +663,7 @@ function renderCompChart(days) {
           stack: 'answers',
         },
         {
-          label: 'Components in training',
+          label: t('stats.componentsInTraining'),
           data: days.map(d => d.components_total),
           type: 'line',
           borderColor: 'rgba(168, 85, 247, 0.9)',
@@ -677,7 +684,7 @@ function renderCompChart(days) {
         y1: {
           beginAtZero: true,
           position: 'right',
-          title: { display: true, text: 'Components' },
+          title: { display: true, text: t('vocab.viewComponents') },
           grid: { drawOnChartArea: false },
         },
       },
@@ -689,7 +696,7 @@ function renderCompChart(days) {
               const d = days[idx];
               const total = d.correct + d.wrong;
               const acc = total > 0 ? Math.round(d.correct / total * 100) : 0;
-              return `Accuracy: ${acc}%\nComponents in training: ${d.components_total}`;
+              return t('stats.compAccuracyTooltip', { acc, n: d.components_total });
             },
           },
         },
@@ -735,7 +742,7 @@ function renderCompDueDateChart(dates) {
     data: {
       labels,
       datasets: [{
-        label: 'Components',
+        label: t('vocab.viewComponents'),
         data: dates.map(d => d.count),
         backgroundColor: colors,
       }],
@@ -744,7 +751,7 @@ function renderCompDueDateChart(dates) {
       responsive: true,
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
-        y: { beginAtZero: true, title: { display: true, text: 'Components' }, ticks: { precision: 0 } },
+        y: { beginAtZero: true, title: { display: true, text: t('vocab.viewComponents') }, ticks: { precision: 0 } },
       },
       plugins: {
         tooltip: {
@@ -762,15 +769,18 @@ function renderCompDueDateChart(dates) {
 
 // --- Mnemonics tab ---
 
-const HMM_TYPE_LABELS = {
-  actor:     'Actors',
-  location:  'Locations',
-  tone_room: 'Tone Rooms',
-  prop:      'Props',
-};
+function hmmTypeLabels() {
+  return {
+    actor:     t('stats.hmmType.actors'),
+    location:  t('stats.hmmType.locations'),
+    tone_room: t('stats.hmmType.toneRooms'),
+    prop:      t('stats.hmmType.props'),
+  };
+}
 
 function renderHMMBreakdown(breakdown) {
   const tbody = $('hmm-breakdown-body');
+  const typeLabels = hmmTypeLabels();
   let totalRow = { total: 0, due_today: 0, total_attempts: 0, total_correct: 0 };
   const rows = breakdown.map(b => {
     const acc = b.total_attempts > 0 ? Math.round(b.accuracy) : null;
@@ -780,7 +790,7 @@ function renderHMMBreakdown(breakdown) {
     totalRow.total_attempts += b.total_attempts;
     totalRow.total_correct  += b.total_correct;
     return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-      <td class="py-2 pr-4 font-medium">${escHtml(HMM_TYPE_LABELS[b.entity_type] || b.entity_type)}</td>
+      <td class="py-2 pr-4 font-medium">${escHtml(typeLabels[b.entity_type] || b.entity_type)}</td>
       <td class="py-2 pr-4 text-right">${b.total}</td>
       <td class="py-2 pr-4 text-right">${b.due_today > 0 ? `<span class="text-orange-500">${b.due_today}</span>` : b.due_today}</td>
       <td class="py-2 pr-4 text-right">${b.total_attempts}</td>
@@ -790,7 +800,7 @@ function renderHMMBreakdown(breakdown) {
   const totalAcc = totalRow.total_attempts > 0 ? Math.round(totalRow.total_correct / totalRow.total_attempts * 100) : null;
   const totalAccColor = totalAcc === null ? 'text-gray-400' : totalAcc >= 80 ? 'text-green-600' : totalAcc >= 50 ? 'text-yellow-600' : 'text-red-600';
   rows.push(`<tr class="font-semibold border-t border-gray-300">
-    <td class="py-2 pr-4">Total</td>
+    <td class="py-2 pr-4">${escHtml(t('stats.totalCol'))}</td>
     <td class="py-2 pr-4 text-right">${totalRow.total}</td>
     <td class="py-2 pr-4 text-right">${totalRow.due_today > 0 ? `<span class="text-orange-500">${totalRow.due_today}</span>` : totalRow.due_today}</td>
     <td class="py-2 pr-4 text-right">${totalRow.total_attempts}</td>
@@ -822,7 +832,7 @@ function renderDueDateChart(dates) {
       responsive: true,
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
-        y: { beginAtZero: true, title: { display: true, text: 'Words' }, ticks: { precision: 0 } },
+        y: { beginAtZero: true, title: { display: true, text: t('stats.words') }, ticks: { precision: 0 } },
       },
       plugins: {
         tooltip: {

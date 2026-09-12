@@ -23,33 +23,37 @@ async function isPasswordPwned(password) {
   }
 }
 
-const MODE_OPTIONS = [
-  { value: 'transl_to_zh',       label: 'Translation → Chinese' },
-  { value: 'zh_to_transl',       label: 'Chinese → Translation' },
-  { value: 'zh_to_transl_no_sound', label: 'Chinese (no sound) → Translation' },
-  { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
-  { value: 'voice_to_transl',    label: 'Voice → Translation' },
-  { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
-  { value: 'random',             label: 'Random' },
-];
+function modeOptions() {
+  return [
+    { value: 'transl_to_zh',       label: t('settingsMode.transl_to_zh') },
+    { value: 'zh_to_transl',       label: t('settingsMode.zh_to_transl') },
+    { value: 'zh_to_transl_no_sound', label: t('settingsMode.zh_to_transl_no_sound') },
+    { value: 'zh_pinyin_to_transl', label: t('settingsMode.zh_pinyin_to_transl') },
+    { value: 'voice_to_transl',    label: t('settingsMode.voice_to_transl') },
+    { value: 'mask_pinyin',        label: t('settingsMode.mask_pinyin') },
+    { value: 'random',             label: t('mode.random') },
+  ];
+}
 
-const CYCLE_STEP_OPTIONS = [
-  { value: 'zh_pinyin_to_transl', label: 'Chinese + Pinyin → Translation' },
-  { value: 'transl_to_zh',       label: 'Translation → Chinese' },
-  { value: 'zh_to_transl',       label: 'Chinese → Translation' },
-  { value: 'zh_to_transl_no_sound', label: 'Chinese (no sound) → Translation' },
-  { value: 'voice_to_transl',    label: 'Voice → Translation' },
-  { value: 'mask_pinyin',        label: 'Translation → Chinese (pinyin hint)' },
-];
+function cycleStepOptions() {
+  return [
+    { value: 'zh_pinyin_to_transl', label: t('settingsMode.zh_pinyin_to_transl') },
+    { value: 'transl_to_zh',       label: t('settingsMode.transl_to_zh') },
+    { value: 'zh_to_transl',       label: t('settingsMode.zh_to_transl') },
+    { value: 'zh_to_transl_no_sound', label: t('settingsMode.zh_to_transl_no_sound') },
+    { value: 'voice_to_transl',    label: t('settingsMode.voice_to_transl') },
+    { value: 'mask_pinyin',        label: t('settingsMode.mask_pinyin') },
+  ];
+}
 
 function populateCycleSelect(el, value) {
   el.innerHTML = '';
   const empty = document.createElement('option');
   empty.value = '';
-  empty.textContent = '— (disabled)';
+  empty.textContent = t('settings.disabledOption');
   if (value === '') empty.selected = true;
   el.appendChild(empty);
-  for (const opt of CYCLE_STEP_OPTIONS) {
+  for (const opt of cycleStepOptions()) {
     const o = document.createElement('option');
     o.value = opt.value;
     o.textContent = opt.label;
@@ -60,13 +64,15 @@ function populateCycleSelect(el, value) {
 
 // Learning buckets, in increasing-difficulty order — mirrors TIERS in app.js
 // and the sm2 package's bucketOrder.
-const BUCKETS = [
-  { key: 'new',    label: 'New' },
-  { key: '0-49',   label: 'Struggling' },
-  { key: '50-69',  label: 'Learning' },
-  { key: '70-84',  label: 'Practicing' },
-  { key: '85-100', label: 'Mastered' },
-];
+function buckets() {
+  return [
+    { key: 'new',    label: t('tier.new') },
+    { key: '0-49',   label: t('tier.struggling') },
+    { key: '50-69',  label: t('tier.learning') },
+    { key: '70-84',  label: t('tier.practicing') },
+    { key: '85-100', label: t('tier.mastered') },
+  ];
+}
 
 // The 5 candidate modes governed by the random/cycle per-bucket setting, with
 // the field name UserSettings uses and the built-in default range (mirrors
@@ -94,7 +100,7 @@ function modeRangeValue(off, from, to) {
 
 function populateBucketSelect(el, value) {
   el.innerHTML = '';
-  for (const b of BUCKETS) {
+  for (const b of buckets()) {
     const o = document.createElement('option');
     o.value = b.key;
     o.textContent = b.label;
@@ -105,7 +111,7 @@ function populateBucketSelect(el, value) {
 
 function populateModeSelect(el, value) {
   el.innerHTML = '';
-  for (const opt of MODE_OPTIONS) {
+  for (const opt of modeOptions()) {
     const o = document.createElement('option');
     o.value = opt.value;
     o.textContent = opt.label;
@@ -131,10 +137,14 @@ async function loadLanguages() {
     const langs = await res.json(); // e.g. ["en", "de"]
     const primaryEl = document.getElementById('primary-lang');
     const secondaryEl = document.getElementById('secondary-lang');
-    const names = { en: 'English', de: 'German', zh: 'Chinese', fr: 'French', es: 'Spanish' };
+    const names = { en: t('vocab.english'), de: t('vocab.german'), zh: t('settings.langChinese'), fr: t('settings.langFrench'), es: t('settings.langSpanish') };
     primaryEl.innerHTML = '';
     // Secondary starts with a "None" sentinel so the user can clear it
-    secondaryEl.innerHTML = '<option value="">— None —</option>';
+    secondaryEl.innerHTML = '';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = t('settings.noneOption');
+    secondaryEl.appendChild(noneOpt);
     for (const code of langs) {
       const label = names[code] || code;
       const o1 = document.createElement('option');
@@ -192,8 +202,8 @@ async function loadSettings() {
       const offEl = document.getElementById('random-mode-' + m.key + '-off');
       if (!fromEl || !toEl || !offEl) continue;
       const state = parseModeRangeForUI(st[m.field] || '', m.def);
-      populateBucketSelect(fromEl, state.from || BUCKETS[0].key);
-      populateBucketSelect(toEl, state.to || BUCKETS[BUCKETS.length - 1].key);
+      populateBucketSelect(fromEl, state.from || buckets()[0].key);
+      populateBucketSelect(toEl, state.to || buckets()[buckets().length - 1].key);
       offEl.checked = state.off;
       fromEl.disabled = state.off;
       toEl.disabled = state.off;
@@ -265,11 +275,11 @@ async function loadSettings() {
     // API key status
     if (st.deepl_key_masked) {
       const el = document.getElementById('deepl-key-status');
-      if (el) { el.textContent = 'Current: ' + st.deepl_key_masked; el.classList.remove('hidden'); }
+      if (el) { el.textContent = t('settings.currentKeyStatus', { masked: st.deepl_key_masked }); el.classList.remove('hidden'); }
     }
     if (st.llm_key_masked) {
       const el = document.getElementById('llm-key-status');
-      if (el) { el.textContent = 'Current: ' + st.llm_key_masked; el.classList.remove('hidden'); }
+      if (el) { el.textContent = t('settings.currentKeyStatus', { masked: st.llm_key_masked }); el.classList.remove('hidden'); }
     }
     const providerEl = document.getElementById('llm-provider');
     if (providerEl && st.llm_provider) {
@@ -310,6 +320,35 @@ for (const m of RANDOM_MODES) {
 
 loadLanguages().then(() => loadSettings());
 loadComponentCoverage();
+
+// Re-render select options with translated labels when the UI language changes,
+// preserving each select's current value.
+document.addEventListener('langchange', () => {
+  for (const id of ['mode-prog-new','mode-prog-struggling','mode-prog-learning','mode-prog-practicing','mode-prog-mastered',
+                     'mode-new-0','mode-new-1','mode-new-2']) {
+    const el = document.getElementById(id);
+    if (el) populateModeSelect(el, el.value);
+  }
+  for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2','cycle-step-3','cycle-step-4','cycle-step-5']) {
+    const el = document.getElementById(id);
+    if (el) populateCycleSelect(el, el.value);
+  }
+  for (const m of RANDOM_MODES) {
+    const fromEl = document.getElementById('random-mode-' + m.key + '-from');
+    const toEl = document.getElementById('random-mode-' + m.key + '-to');
+    if (fromEl) populateBucketSelect(fromEl, fromEl.value);
+    if (toEl) populateBucketSelect(toEl, toEl.value);
+  }
+  const primaryEl = document.getElementById('primary-lang');
+  const secondaryEl = document.getElementById('secondary-lang');
+  const primaryVal = primaryEl?.value;
+  const secondaryVal = secondaryEl?.value;
+  loadLanguages().then(() => {
+    if (primaryEl && primaryVal) primaryEl.value = primaryVal;
+    if (secondaryEl && secondaryVal !== undefined) secondaryEl.value = secondaryVal;
+  });
+  updateComponentCoverageSummary();
+});
 
 // ── Training mode ──────────────────────────────────────────────────────────────
 
@@ -423,17 +462,17 @@ async function saveAPIKeys(clearAll) {
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      showToastError(d.error || 'Failed to save API keys.');
+      showToastError(d.error || t('settings.apiKeysSaveFailed'));
       return;
     }
     const st = await res.json();
-    showSaved(clearAll ? 'API keys cleared.' : 'API keys saved.');
+    showSaved(clearAll ? t('settings.apiKeysCleared') : t('settings.apiKeysSaved'));
 
     // Update masked status
     const deeplStatusEl = document.getElementById('deepl-key-status');
     if (deeplStatusEl) {
       if (st.deepl_key_masked) {
-        deeplStatusEl.textContent = 'Current: ' + st.deepl_key_masked;
+        deeplStatusEl.textContent = t('settings.currentKeyStatus', { masked: st.deepl_key_masked });
         deeplStatusEl.classList.remove('hidden');
       } else {
         deeplStatusEl.classList.add('hidden');
@@ -442,7 +481,7 @@ async function saveAPIKeys(clearAll) {
     const llmStatusEl = document.getElementById('llm-key-status');
     if (llmStatusEl) {
       if (st.llm_key_masked) {
-        llmStatusEl.textContent = 'Current: ' + st.llm_key_masked;
+        llmStatusEl.textContent = t('settings.currentKeyStatus', { masked: st.llm_key_masked });
         llmStatusEl.classList.remove('hidden');
       } else {
         llmStatusEl.classList.add('hidden');
@@ -460,7 +499,7 @@ async function saveAPIKeys(clearAll) {
       if (localEl) localEl.value = '';
     }
   } catch {
-    showToastError('Network error.');
+    showToastError(t('settings.networkError'));
   }
 }
 
@@ -478,26 +517,26 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
   const confirmPw = document.getElementById('pw-confirm').value;
 
   if (newPw !== confirmPw) {
-    showToastError('New passwords do not match.');
+    showToastError(t('settings.pwMismatch'));
     return;
   }
   if (newPw.length < 8) {
-    showToastError('New password must be at least 8 characters.');
+    showToastError(t('settings.pwTooShort'));
     return;
   }
 
   btn.disabled = true;
-  btn.textContent = 'Checking password…';
+  btn.textContent = t('settings.checkingPassword');
 
   const pwned = await isPasswordPwned(newPw);
   if (pwned) {
-    showToastError('This password has appeared in a data breach. Please choose a different password.');
+    showToastError(t('settings.pwPwned'));
     btn.disabled = false;
-    btn.textContent = 'Update Password';
+    btn.textContent = t('settings.updatePassword');
     return;
   }
 
-  btn.textContent = 'Updating…';
+  btn.textContent = t('settings.updatingPassword');
 
   try {
     const res = await fetch('/api/change-password', {
@@ -508,36 +547,36 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
     const data = await res.json();
 
     if (!res.ok) {
-      showToastError(data.error || 'Failed to update password.');
+      showToastError(data.error || t('settings.pwUpdateFailed'));
     } else {
-      showSaved('Password changed successfully.');
+      showSaved(t('settings.pwChanged'));
       document.getElementById('pw-form').reset();
     }
   } catch {
-    showToastError('Network error. Please try again.');
+    showToastError(t('settings.networkErrorRetry'));
   }
 
   btn.disabled = false;
-  btn.textContent = 'Update Password';
+  btn.textContent = t('settings.updatePassword');
 });
 
 // Backfill subwords
 document.getElementById('backfill-subwords-btn')?.addEventListener('click', async () => {
   const btn = document.getElementById('backfill-subwords-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+  if (btn) { btn.disabled = true; btn.textContent = t('settings.backfillRunning'); }
   try {
     const res = await fetch('/api/settings/backfill-subwords', { method: 'POST' });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      showToastError(d.error || 'Failed.');
+      showToastError(d.error || t('settings.backfillFailed'));
     } else {
       const d = await res.json();
-      showSaved(`Done — processed ${d.processed} word(s).`);
+      showSaved(t('settings.backfillDone', { n: d.processed }));
     }
   } catch {
-    showToastError('Network error.');
+    showToastError(t('settings.networkError'));
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Add subwords for existing training words'; }
+    if (btn) { btn.disabled = false; btn.textContent = t('settings.backfillButton'); }
   }
 });
 
@@ -614,19 +653,20 @@ function updateComponentCoverageSummary() {
   if (!summaryEl) return;
   const trainedTotal = componentCoverageTrainedCharacters.length;
   if (totalComponents === 0) {
-    summaryEl.textContent = 'No components found in your vocabulary yet.';
+    summaryEl.textContent = t('settings.noComponentsYet');
     return;
   }
-  const trainedLine = 'You are currently training ' + trainedTotal + ' component' + (trainedTotal === 1 ? '' : 's') + '.';
+  const noun = trainedTotal === 1 ? t('settings.componentSingular') : t('settings.componentPlural');
+  const trainedLine = t('settings.currentlyTraining', { n: trainedTotal, noun });
   if (targetPct <= 0) {
-    summaryEl.textContent = trainedLine + ' All ' + totalComponents + ' components would be added to training (no coverage target set).';
+    summaryEl.textContent = trainedLine + ' ' + t('settings.allComponentsAdded', { n: totalComponents });
     return;
   }
   const pct = Math.round((selectedCount / totalComponents) * 100);
   const outOfScope = componentCoverageTrainedCharacters.filter(c => !selectedCharacters.has(c)).length;
-  summaryEl.textContent = trainedLine + ' ' + selectedCount + ' of ' + totalComponents + ' components (' + pct +
-    '%) would be added to training to cover ' + targetPct + '% of your ' + componentCoverageTotalWords + ' Chinese words. ' +
-    outOfScope + ' of your currently-trained components would not have been needed to reach that target — they stay in training; this setting never removes already-trained components.';
+  summaryEl.textContent = trainedLine + ' ' +
+    t('settings.coverageSummary', { selected: selectedCount, total: totalComponents, pct, target: targetPct, words: componentCoverageTotalWords }) + ' ' +
+    t('settings.outOfScopeNote', { n: outOfScope });
 }
 
 async function loadComponentCoverage() {
@@ -676,16 +716,16 @@ function buildFullSettingsPayload() {
 // change, exactly as the old per-button handlers behaved.
 function localValidationError(group, payload) {
   if (group === 'lang' && payload.secondary_lang !== '' && payload.primary_lang === payload.secondary_lang) {
-    return 'Primary and secondary languages must differ.';
+    return t('settings.primarySecondaryDiffer');
   }
   if (group === 'daily' && (!payload.max_new_words_per_day || payload.max_new_words_per_day < 1)) {
-    return 'New words per day must be at least 1.';
+    return t('settings.newWordsPerDayMin');
   }
   if (group === 'gamification' && (!payload.gamification_frequency || payload.gamification_frequency < 1 || payload.gamification_frequency > 1440)) {
-    return 'Frequency must be between 1 and 1440 minutes.';
+    return t('settings.frequencyRange');
   }
   if (group === 'component-threshold' && (isNaN(payload.component_coverage_threshold) || payload.component_coverage_threshold < 0 || payload.component_coverage_threshold > 100)) {
-    return 'Threshold must be between 0 and 100.';
+    return t('settings.thresholdRange');
   }
   return null;
 }
@@ -714,12 +754,12 @@ async function autoSaveSettings(group) {
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      showToastError(d.error || 'Failed to save.');
+      showToastError(d.error || t('settings.saveFailed'));
       return;
     }
-    showSaved('Saved.');
+    showSaved(t('settings.saved'));
   } catch {
-    showToastError('Network error.');
+    showToastError(t('settings.networkError'));
   }
 }
 
