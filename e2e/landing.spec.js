@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { openAuthModal } from './helpers/auth.js';
+import { captureForPR } from './helpers/screenshot.js';
 
 test.describe('Landing page', () => {
   test('signed-out visit shows the value proposition', async ({ page }) => {
@@ -10,6 +11,13 @@ test.describe('Landing page', () => {
     await expect(page.locator('#hero-title')).toBeVisible();
     await expect(page.locator('#hero-title')).toContainText(/Chinese/i);
     await expect(page.locator('#hero-features li')).toHaveCount(3);
+
+    // Language picker lives in the top nav, left of Log in — not in the footer.
+    await expect(page.locator('header #lang-select')).toBeVisible();
+    const langBox = await page.locator('header #lang-select').boundingBox();
+    const loginBox = await page.locator('#btn-login').boundingBox();
+    expect(langBox.x).toBeLessThan(loginBox.x);
+    await captureForPR(page, 'landing-header-lang-picker');
 
     // Sign-in/create-account lives behind a modal now, opened from CTA
     // buttons — it should be present but not shown until a visitor asks for it.

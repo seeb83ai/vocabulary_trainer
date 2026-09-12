@@ -25,6 +25,11 @@
         <a href="#demo" class="text-sm font-semibold text-gray-600 hover:text-gray-900 py-3" data-i18n="landing.nav.demo">Try the demo</a>
       </nav>
       <div class="flex items-center gap-2 ml-auto">
+        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="en">🇬🇧</option>
+          <option value="zh">🇨🇳</option>
+          <option value="de">🇩🇪</option>
+        </select>
         <button type="button" id="btn-login" data-show-tab="signin"
           class="border border-gray-300 bg-white text-gray-900 font-semibold text-sm px-4 py-2.5 rounded-xl hover:bg-gray-50 transition"
           data-i18n="landing.login">Log in</button>
@@ -410,11 +415,6 @@
         <span class="text-sm font-bold text-gray-900">词汇训练 · Vocab Trainer</span>
       </div>
       <div class="flex items-center gap-4 flex-wrap">
-        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="en">🇬🇧</option>
-          <option value="zh">🇨🇳</option>
-          <option value="de">🇩🇪</option>
-        </select>
         <a href="/impressum" class="text-sm text-gray-500 hover:text-gray-800" data-i18n="landing.footer.impressum">Impressum</a>
         <span class="text-sm text-gray-400">chinese.appace.de</span>
         <a href="https://github.com/seeb83ai/vocabulary_trainer" target="_blank" aria-label="Source code on GitHub" title="Source code on GitHub"
