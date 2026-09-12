@@ -1252,3 +1252,64 @@ func TestSelectCycleMode_UncontrolledStepAlwaysEligible(t *testing.T) {
 		t.Errorf("uncontrolled step: want mask_pinyin to survive bucket filtering, got %s", m)
 	}
 }
+
+// ── SelectNewWordCycleMode ───────────────────────────────────────────────────
+
+// TestSelectNewWordCycleMode_IgnoresBucketRange covers issue #416/#409: a word
+// still in the new-word intro phase must walk its full configured cycle
+// sequence in order, not the "new"-bucket-restricted subset SelectCycleMode
+// uses for already-graduated words. Under the default RandomModeConfig,
+// zh_to_transl is ineligible for the "new" bucket, which would otherwise
+// silently drop the 3rd step of the default 3-step sequence and make the
+// intro phase repeat step 0/1 forever.
+func TestSelectNewWordCycleMode_IgnoresBucketRange(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	seq := []string{models.ModeZhPinyinToTransl, models.ModeTranslToZh, models.ModeZhToTransl}
+	// counter mirrors total_attempts (1-based, as passed at the quiz.go call
+	// site): counter=1 is position 0, counter=4 wraps back to position 0.
+	want := map[int]string{
+		1: models.ModeZhPinyinToTransl,
+		2: models.ModeTranslToZh,
+		3: models.ModeZhToTransl,
+		4: models.ModeZhPinyinToTransl,
+	}
+	for counter, w := range want {
+		if m := SelectNewWordCycleMode(counter, seq, cfg); m != w {
+			t.Errorf("counter=%d: want %s, got %s", counter, w, m)
+		}
+	}
+}
+
+// TestSelectNewWordCycleMode_RespectsExplicitOff covers the one restriction
+// that should still apply during the intro phase: a step the user explicitly
+// disabled ("off") must still be skipped, even though the per-tier range
+// restriction is bypassed.
+func TestSelectNewWordCycleMode_RespectsExplicitOff(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	cfg.ZhPinyinToTransl = "off"
+	seq := []string{models.ModeZhPinyinToTransl, models.ModeTranslToZh, models.ModeZhToTransl}
+	// zh_pinyin_to_transl is off → filtered pool is [transl_to_zh, zh_to_transl].
+	if m := SelectNewWordCycleMode(1, seq, cfg); m != models.ModeTranslToZh {
+		t.Errorf("counter=1: want transl_to_zh, got %s", m)
+	}
+	if m := SelectNewWordCycleMode(2, seq, cfg); m != models.ModeZhToTransl {
+		t.Errorf("counter=2: want zh_to_transl, got %s", m)
+	}
+}
+
+// TestSelectNewWordCycleMode_FallsBackWhenSequenceFullyOff covers the case
+// where every step in the configured sequence is explicitly off: fall back to
+// the full set of controlled modes that aren't off, rather than the
+// (entirely disabled) raw sequence.
+func TestSelectNewWordCycleMode_FallsBackWhenSequenceFullyOff(t *testing.T) {
+	cfg := DefaultRandomModeConfig()
+	cfg.TranslToZh = "off"
+	cfg.ZhPinyinToTransl = "off"
+	cfg.ZhToTranslNoSound = "off"
+	cfg.VoiceToTransl = "off"
+	// ZhToTransl is left at its default (not off) — it's the only survivor.
+	seq := []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl}
+	if m := SelectNewWordCycleMode(1, seq, cfg); m != models.ModeZhToTransl {
+		t.Errorf("want fallback zh_to_transl, got %s", m)
+	}
+}
