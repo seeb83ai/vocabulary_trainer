@@ -5,10 +5,10 @@
 
     <!-- Tabs -->
     <div class="flex gap-1 bg-white rounded-xl shadow p-1 w-fit flex-wrap">
-      <button id="tab-words"      class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white">Words</button>
-      <button id="tab-pinyin"     class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Pinyin</button>
-      <button id="tab-components" class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Components</button>
-      <button id="tab-mnemonics"  class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800">Mnemonics</button>
+      <button id="tab-words"      class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white" data-i18n="stats.words">Words</button>
+      <button id="tab-pinyin"     class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800" data-i18n="nav.pinyin">Pinyin</button>
+      <button id="tab-components" class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800" data-i18n="vocab.viewComponents">Components</button>
+      <button id="tab-mnemonics"  class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800" data-i18n="nav.mnemonics">Mnemonics</button>
     </div>
 
     <!-- ===== WORDS TAB ===== -->
@@ -131,18 +131,18 @@
 
       <!-- Training History Chart -->
       <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Pinyin Training History</h2>
-        <div id="pinyin-chart-empty" class="hidden text-center text-gray-400 py-12">No pinyin training data yet. Start a session to see your progress!</div>
+        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.pinyinTrainingHistory">Pinyin Training History</h2>
+        <div id="pinyin-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noPinyinTrainingData">No pinyin training data yet. Start a session to see your progress!</div>
         <div style="min-height:250px"><canvas id="pinyin-stats-chart" height="200"></canvas></div>
       </div>
 
       <!-- Tone Accuracy Chart -->
       <div class="bg-white rounded-2xl shadow p-6">
         <div class="flex items-baseline gap-3 mb-4">
-          <h2 class="text-lg font-semibold text-gray-800">Accuracy per Tone — Last 14 Days</h2>
+          <h2 class="text-lg font-semibold text-gray-800" data-i18n="stats.accuracyPerTone">Accuracy per Tone — Last 14 Days</h2>
           <span id="pinyin-tone-chart-range" class="text-sm text-gray-400"></span>
         </div>
-        <div id="pinyin-tone-chart-empty" class="hidden text-center text-gray-400 py-12">No tone data yet.</div>
+        <div id="pinyin-tone-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noToneData">No tone data yet.</div>
         <div style="min-height:250px"><canvas id="pinyin-tone-chart" height="200"></canvas></div>
       </div>
 
@@ -157,7 +157,7 @@
                 <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
                 <th class="py-2 pr-4 text-right" data-i18n="stats.mistakes">Mistakes</th>
                 <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
-                <th class="py-2 text-right">Sounds Seen</th>
+                <th class="py-2 text-right" data-i18n="stats.soundsSeen">Sounds Seen</th>
               </tr>
             </thead>
             <tbody id="pinyin-table-body">
@@ -174,15 +174,15 @@
 
       <!-- Training History Chart -->
       <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Component Training History</h2>
-        <div id="comp-chart-empty" class="hidden text-center text-gray-400 py-12">No component training data yet. Start a session to see your progress!</div>
+        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.compTrainingHistory">Component Training History</h2>
+        <div id="comp-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noCompTrainingData">No component training data yet. Start a session to see your progress!</div>
         <div style="min-height:250px"><canvas id="comp-stats-chart" height="200"></canvas></div>
       </div>
 
       <!-- Component Count by Due Date -->
       <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Components by Due Date</h2>
-        <div id="comp-due-chart-empty" class="hidden text-center text-gray-400 py-12">No seen components yet.</div>
+        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.componentsByDueDate">Components by Due Date</h2>
+        <div id="comp-due-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noSeenComponents">No seen components yet.</div>
         <div style="min-height:250px"><canvas id="comp-due-date-chart" height="200"></canvas></div>
       </div>
 
@@ -197,7 +197,7 @@
                 <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
                 <th class="py-2 pr-4 text-right" data-i18n="stats.mistakes">Mistakes</th>
                 <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
-                <th class="py-2 text-right text-violet-600">Components</th>
+                <th class="py-2 text-right text-violet-600" data-i18n="vocab.viewComponents">Components</th>
               </tr>
             </thead>
             <tbody id="comp-table-body">
@@ -214,15 +214,15 @@
 
       <!-- Breakdown by entity type -->
       <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4">Mnemonic Library Stats</h2>
-        <div id="hmm-breakdown-empty" class="hidden text-center text-gray-400 py-12">No mnemonics trained yet. Set up your HMM library and start training!</div>
+        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.mnemonicLibraryStats">Mnemonic Library Stats</h2>
+        <div id="hmm-breakdown-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noMnemonicsTrained">No mnemonics trained yet. Set up your HMM library and start training!</div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm text-left">
             <thead class="text-gray-500 border-b">
               <tr>
-                <th class="py-2 pr-4">Type</th>
-                <th class="py-2 pr-4 text-right">Total</th>
-                <th class="py-2 pr-4 text-right">Due Today</th>
+                <th class="py-2 pr-4" data-i18n="stats.typeCol">Type</th>
+                <th class="py-2 pr-4 text-right" data-i18n="stats.totalCol">Total</th>
+                <th class="py-2 pr-4 text-right" data-i18n="vocab.dueToday">Due Today</th>
                 <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
                 <th class="py-2 text-right" data-i18n="stats.accuracy">Accuracy</th>
               </tr>

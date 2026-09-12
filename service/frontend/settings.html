@@ -5,31 +5,31 @@
 
     <!-- Account info -->
     <div class="bg-white rounded-2xl shadow p-6">
-      <h2 class="text-lg font-semibold text-gray-800 mb-4">Account</h2>
-      <p class="text-sm text-gray-500 mb-1">Signed in as</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="settings.account">Account</h2>
+      <p class="text-sm text-gray-500 mb-1" data-i18n="settings.signedInAs">Signed in as</p>
       <p id="account-email" class="text-base font-medium text-gray-800">—</p>
     </div>
 
     <!-- Change password -->
     <div class="bg-white rounded-2xl shadow p-6">
-      <h2 class="text-lg font-semibold text-gray-800 mb-4">Change Password</h2>
+      <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="settings.changePassword">Change Password</h2>
       <form id="pw-form" class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-current">Current Password</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-current" data-i18n="settings.currentPassword">Current Password</label>
           <input id="pw-current" type="password" required autocomplete="current-password"
             class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-new">New Password <span class="text-gray-400 font-normal">(min. 8 characters)</span></label>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-new"><span data-i18n="settings.newPassword">New Password</span> <span class="text-gray-400 font-normal" data-i18n="landing.register.minChars">(min. 8 characters)</span></label>
           <input id="pw-new" type="password" required autocomplete="new-password" minlength="8"
             class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-confirm">Confirm New Password</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="pw-confirm" data-i18n="settings.confirmNewPassword">Confirm New Password</label>
           <input id="pw-confirm" type="password" required autocomplete="new-password"
             class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
-        <button type="submit" id="pw-btn"
+        <button type="submit" id="pw-btn" data-i18n="settings.updatePassword"
           class="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition">
           Update Password
         </button>
@@ -38,17 +38,17 @@
 
     <!-- Language Preferences -->
     <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="lang">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Language Preferences</h2>
-      <p class="text-sm text-gray-500 mb-4">The primary language is shown first in the vocabulary list and training. Both languages are accepted as answers. Changes save automatically.</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.languagePrefs">Language Preferences</h2>
+      <p class="text-sm text-gray-500 mb-4" data-i18n="settings.languagePrefsDesc">The primary language is shown first in the vocabulary list and training. Both languages are accepted as answers. Changes save automatically.</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Primary Language</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="settings.primaryLanguage">Primary Language</label>
           <select id="primary-lang" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Secondary Language <span class="text-gray-400 font-normal">(optional)</span></label>
+          <label class="block text-sm font-medium text-gray-700 mb-1"><span data-i18n="settings.secondaryLanguage">Secondary Language</span> <span class="text-gray-400 font-normal" data-i18n="settings.optional">(optional)</span></label>
           <select id="secondary-lang" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">— None —</option>
+            <option value="" data-i18n="settings.noneOption">— None —</option>
           </select>
         </div>
       </div>
@@ -56,140 +56,140 @@
 
     <!-- Training Mode -->
     <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="mode">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Training Mode</h2>
-      <p class="text-sm text-gray-500 mb-5">Customize which quiz format is shown for each proficiency tier when using <strong>Progressive</strong> mode.</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.trainingMode">Training Mode</h2>
+      <p class="text-sm text-gray-500 mb-5"><span data-i18n="settings.trainingModeDescPre">Customize which quiz format is shown for each proficiency tier when using</span> <strong data-i18n="mode.progressive">Progressive</strong> <span data-i18n="settings.trainingModeDescPost">mode.</span></p>
 
       <!-- Progressive tiers -->
-      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">Words past introduction</p>
+      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide" data-i18n="settings.wordsPastIntroduction">Words past introduction</p>
       <div class="space-y-2 mb-5">
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-32 text-sm text-gray-600">New (&lt;3 tries)</span>
+          <span class="sm:w-32 text-sm text-gray-600" data-i18n="settings.tierNewTries">New (&lt;3 tries)</span>
           <select id="mode-prog-new" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-32 text-sm text-gray-600">Struggling (&lt;50%)</span>
+          <span class="sm:w-32 text-sm text-gray-600" data-i18n="settings.tierStrugglingPct">Struggling (&lt;50%)</span>
           <select id="mode-prog-struggling" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-32 text-sm text-gray-600">Learning (&lt;70%)</span>
+          <span class="sm:w-32 text-sm text-gray-600" data-i18n="settings.tierLearningPct">Learning (&lt;70%)</span>
           <select id="mode-prog-learning" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-32 text-sm text-gray-600">Practicing (&lt;85%)</span>
+          <span class="sm:w-32 text-sm text-gray-600" data-i18n="settings.tierPracticingPct">Practicing (&lt;85%)</span>
           <select id="mode-prog-practicing" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-32 text-sm text-gray-600">Mastered (≥85%)</span>
+          <span class="sm:w-32 text-sm text-gray-600" data-i18n="settings.tierMasteredPct">Mastered (≥85%)</span>
           <select id="mode-prog-mastered" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
       </div>
 
       <!-- New word phase -->
-      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">New word phase (during introduction)</p>
+      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide" data-i18n="settings.newWordPhase">New word phase (during introduction)</p>
       <div class="space-y-2 mb-5">
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-32 text-sm text-gray-600">1st attempt</span>
+          <span class="sm:w-32 text-sm text-gray-600" data-i18n="settings.attempt1">1st attempt</span>
           <select id="mode-new-0" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-32 text-sm text-gray-600">2nd attempt</span>
+          <span class="sm:w-32 text-sm text-gray-600" data-i18n="settings.attempt2">2nd attempt</span>
           <select id="mode-new-1" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-32 text-sm text-gray-600">3rd attempt+</span>
+          <span class="sm:w-32 text-sm text-gray-600" data-i18n="settings.attempt3Plus">3rd attempt+</span>
           <select id="mode-new-2" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
       </div>
       <!-- Quiz display -->
-      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">Quiz Display</p>
+      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide" data-i18n="settings.quizDisplay">Quiz Display</p>
       <div class="space-y-2 mb-5">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="blur-pinyin" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-600">Blur pinyin until tapped</span>
+          <span class="text-sm text-gray-600" data-i18n="settings.blurPinyin">Blur pinyin until tapped</span>
         </label>
-        <p class="text-xs text-gray-400 ml-7">Hides the pinyin hint on quiz cards so you can't read it at a glance — tap or click it to reveal.</p>
+        <p class="text-xs text-gray-400 ml-7" data-i18n="settings.blurPinyinDesc">Hides the pinyin hint on quiz cards so you can't read it at a glance — tap or click it to reveal.</p>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="no-auto-voice-on-blur" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-600">No auto-voice when pinyin is blurred or missing</span>
+          <span class="text-sm text-gray-600" data-i18n="settings.noAutoVoice">No auto-voice when pinyin is blurred or missing</span>
         </label>
-        <p class="text-xs text-gray-400 ml-7">Skips automatic audio playback when the pinyin hint is hidden or not available for a card.</p>
+        <p class="text-xs text-gray-400 ml-7" data-i18n="settings.noAutoVoiceDesc">Skips automatic audio playback when the pinyin hint is hidden or not available for a card.</p>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="celebrate-bucket-change" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-600">Celebrate bucket changes</span>
+          <span class="text-sm text-gray-600" data-i18n="settings.celebrateBucketChanges">Celebrate bucket changes</span>
         </label>
-        <p class="text-xs text-gray-400 ml-7">Shows an extra screen when a word moves up a level, before the next card.</p>
+        <p class="text-xs text-gray-400 ml-7" data-i18n="settings.celebrateBucketChangesDesc">Shows an extra screen when a word moves up a level, before the next card.</p>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="sentence-blank-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-600">Sentence fill-in-the-blank</span>
+          <span class="text-sm text-gray-600" data-i18n="settings.sentenceBlank">Sentence fill-in-the-blank</span>
         </label>
-        <p class="text-xs text-gray-400 ml-7">Occasionally shows a full sentence with one already-reviewed word blanked out, instead of a plain word card.</p>
+        <p class="text-xs text-gray-400 ml-7" data-i18n="settings.sentenceBlankDesc">Occasionally shows a full sentence with one already-reviewed word blanked out, instead of a plain word card.</p>
         <div class="flex items-center gap-2 ml-7">
-          <label for="sentence-blank-ratio" class="text-xs text-gray-500">Frequency (%)</label>
+          <label for="sentence-blank-ratio" class="text-xs text-gray-500" data-i18n="settings.frequencyPct">Frequency (%)</label>
           <input type="number" id="sentence-blank-ratio" min="0" max="100" step="5"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
       </div>
 
       <!-- New word confirmation inputs -->
-      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">New word confirmation</p>
-      <p class="text-sm text-gray-500 mb-3">When a new word is introduced, require typing before confirming.</p>
+      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide" data-i18n="settings.newWordConfirmation">New word confirmation</p>
+      <p class="text-sm text-gray-500 mb-3" data-i18n="settings.newWordConfirmationDesc">When a new word is introduced, require typing before confirming.</p>
       <div class="space-y-2 mb-5">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="require-zh" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-600">Require typing the Chinese word</span>
+          <span class="text-sm text-gray-600" data-i18n="settings.requireZh">Require typing the Chinese word</span>
         </label>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="require-trans" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-600">Require typing a translation</span>
+          <span class="text-sm text-gray-600" data-i18n="settings.requireTrans">Require typing a translation</span>
         </label>
       </div>
 
       <!-- Wrong answer retry -->
-      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">Wrong Answer Retry</p>
-      <p class="text-sm text-gray-500 mb-3">After a wrong answer, optionally require retyping the correct answer before continuing.</p>
+      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide" data-i18n="settings.wrongAnswerRetry">Wrong Answer Retry</p>
+      <p class="text-sm text-gray-500 mb-3" data-i18n="settings.wrongAnswerRetryDesc">After a wrong answer, optionally require retyping the correct answer before continuing.</p>
       <div class="space-y-2 mb-5">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="radio" name="wrong-answer-retry-mode" value="off" class="accent-blue-600">
-          <span class="text-sm text-gray-700"><strong>Off</strong> (default) — continue immediately after a wrong answer</span>
+          <span class="text-sm text-gray-700"><strong data-i18n="settings.retryOffLabel">Off</strong> <span data-i18n="settings.retryOffDesc">(default) — continue immediately after a wrong answer</span></span>
         </label>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="radio" name="wrong-answer-retry-mode" value="matched" class="accent-blue-600">
-          <span class="text-sm text-gray-700"><strong>Only what was tested</strong> — e.g. for Chinese → translation, retype just the translation</span>
+          <span class="text-sm text-gray-700"><strong data-i18n="settings.retryMatchedLabel">Only what was tested</strong> <span data-i18n="settings.retryMatchedDesc">— e.g. for Chinese → translation, retype just the translation</span></span>
         </label>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="radio" name="wrong-answer-retry-mode" value="both" class="accent-blue-600">
-          <span class="text-sm text-gray-700"><strong>Chinese and translation</strong> — always retype both, regardless of the card's direction</span>
+          <span class="text-sm text-gray-700"><strong data-i18n="settings.retryBothLabel">Chinese and translation</strong> <span data-i18n="settings.retryBothDesc">— always retype both, regardless of the card's direction</span></span>
         </label>
       </div>
     </div>
 
     <!-- Cycle Mode -->
     <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="cycle">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Cycle Mode</h2>
-      <p class="text-sm text-gray-500 mb-5">Configure the direction sequence when using <strong>Cycle</strong> mode.</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.cycleMode">Cycle Mode</h2>
+      <p class="text-sm text-gray-500 mb-5"><span data-i18n="settings.cycleModeDescPre">Configure the direction sequence when using</span> <strong data-i18n="mode.cycle">Cycle</strong> <span data-i18n="settings.cycleModeDescPost">mode.</span></p>
       <div class="space-y-2 mb-5">
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-16 text-sm text-gray-600">Step 1</span>
+          <span class="sm:w-16 text-sm text-gray-600" data-i18n-params='{"n":1}' data-i18n="settings.step">Step 1</span>
           <select id="cycle-step-0" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-16 text-sm text-gray-600">Step 2</span>
+          <span class="sm:w-16 text-sm text-gray-600" data-i18n-params='{"n":2}' data-i18n="settings.step">Step 2</span>
           <select id="cycle-step-1" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-16 text-sm text-gray-600">Step 3</span>
+          <span class="sm:w-16 text-sm text-gray-600" data-i18n-params='{"n":3}' data-i18n="settings.step">Step 3</span>
           <select id="cycle-step-2" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-16 text-sm text-gray-600">Step 4</span>
+          <span class="sm:w-16 text-sm text-gray-600" data-i18n-params='{"n":4}' data-i18n="settings.step">Step 4</span>
           <select id="cycle-step-3" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-16 text-sm text-gray-600">Step 5</span>
+          <span class="sm:w-16 text-sm text-gray-600" data-i18n-params='{"n":5}' data-i18n="settings.step">Step 5</span>
           <select id="cycle-step-4" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-          <span class="sm:w-16 text-sm text-gray-600">Step 6</span>
+          <span class="sm:w-16 text-sm text-gray-600" data-i18n-params='{"n":6}' data-i18n="settings.step">Step 6</span>
           <select id="cycle-step-5" class="w-full sm:flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
         </div>
       </div>
@@ -197,22 +197,22 @@
         <label class="flex items-start gap-3 cursor-pointer">
           <input type="radio" name="cycle-advance-mode" id="cycle-advance-every" value="every_attempt" class="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
           <span class="text-sm text-gray-700">
-            <span class="font-medium">Advance on every attempt</span>
-            <span class="block text-gray-500 text-xs mt-0.5">The default. The next step in the cycle is loaded after every attempt, correct or wrong.</span>
+            <span class="font-medium" data-i18n="settings.cycleAdvanceEveryTitle">Advance on every attempt</span>
+            <span class="block text-gray-500 text-xs mt-0.5" data-i18n="settings.cycleAdvanceEveryDesc">The default. The next step in the cycle is loaded after every attempt, correct or wrong.</span>
           </span>
         </label>
         <label class="flex items-start gap-3 cursor-pointer">
           <input type="radio" name="cycle-advance-mode" id="cycle-advance-success" value="success" class="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
           <span class="text-sm text-gray-700">
-            <span class="font-medium">Advance only on success</span>
-            <span class="block text-gray-500 text-xs mt-0.5">The next step in the cycle is loaded only after a correct answer, however many attempts it took to get there.</span>
+            <span class="font-medium" data-i18n="settings.cycleAdvanceSuccessTitle">Advance only on success</span>
+            <span class="block text-gray-500 text-xs mt-0.5" data-i18n="settings.cycleAdvanceSuccessDesc">The next step in the cycle is loaded only after a correct answer, however many attempts it took to get there.</span>
           </span>
         </label>
         <label class="flex items-start gap-3 cursor-pointer">
           <input type="radio" name="cycle-advance-mode" id="cycle-advance-known" value="known" class="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500">
           <span class="text-sm text-gray-700">
-            <span class="font-medium">Advance only if known</span>
-            <span class="block text-gray-500 text-xs mt-0.5">Stricter: the next step is loaded only when you got the answer right on the first try — a wrong guess before the correct answer keeps the step the same next time.</span>
+            <span class="font-medium" data-i18n="settings.cycleAdvanceKnownTitle">Advance only if known</span>
+            <span class="block text-gray-500 text-xs mt-0.5" data-i18n="settings.cycleAdvanceKnownDesc">Stricter: the next step is loaded only when you got the answer right on the first try — a wrong guess before the correct answer keeps the step the same next time.</span>
           </span>
         </label>
       </div>
@@ -220,57 +220,57 @@
 
     <!-- Random / Cycle Mode by Bucket -->
     <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="random-mode">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Random / Cycle Mode by Bucket</h2>
-      <p class="text-sm text-gray-500 mb-5">Choose which learning buckets each quiz format may be picked for, when using <strong>Random</strong> or <strong>Cycle</strong> mode. Every bucket must have at least one eligible format.</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.randomCycleByBucket">Random / Cycle Mode by Bucket</h2>
+      <p class="text-sm text-gray-500 mb-5"><span data-i18n="settings.randomCycleByBucketDescPre">Choose which learning buckets each quiz format may be picked for, when using</span> <strong data-i18n="mode.random">Random</strong> <span data-i18n="settings.orWord">or</span> <strong data-i18n="mode.cycle">Cycle</strong> <span data-i18n="settings.randomCycleByBucketDescPost">mode. Every bucket must have at least one eligible format.</span></p>
       <div class="space-y-3 mb-5">
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="transl_to_zh">
-          <span class="sm:w-44 text-sm text-gray-600">Translation → Chinese</span>
+          <span class="sm:w-44 text-sm text-gray-600" data-i18n="settingsMode.transl_to_zh">Translation → Chinese</span>
           <select id="random-mode-transl_to_zh-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
-          <span class="text-sm text-gray-400">to</span>
+          <span class="text-sm text-gray-400" data-i18n="settings.toWord">to</span>
           <select id="random-mode-transl_to_zh-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
           <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
             <input type="checkbox" id="random-mode-transl_to_zh-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-            Off
+            <span data-i18n="settings.offLabel">Off</span>
           </label>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="zh_pinyin_to_transl">
-          <span class="sm:w-44 text-sm text-gray-600">Chinese + Pinyin → Translation</span>
+          <span class="sm:w-44 text-sm text-gray-600" data-i18n="settingsMode.zh_pinyin_to_transl">Chinese + Pinyin → Translation</span>
           <select id="random-mode-zh_pinyin_to_transl-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
-          <span class="text-sm text-gray-400">to</span>
+          <span class="text-sm text-gray-400" data-i18n="settings.toWord">to</span>
           <select id="random-mode-zh_pinyin_to_transl-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
           <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
             <input type="checkbox" id="random-mode-zh_pinyin_to_transl-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-            Off
+            <span data-i18n="settings.offLabel">Off</span>
           </label>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="zh_to_transl">
-          <span class="sm:w-44 text-sm text-gray-600">Chinese → Translation</span>
+          <span class="sm:w-44 text-sm text-gray-600" data-i18n="settingsMode.zh_to_transl">Chinese → Translation</span>
           <select id="random-mode-zh_to_transl-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
-          <span class="text-sm text-gray-400">to</span>
+          <span class="text-sm text-gray-400" data-i18n="settings.toWord">to</span>
           <select id="random-mode-zh_to_transl-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
           <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
             <input type="checkbox" id="random-mode-zh_to_transl-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-            Off
+            <span data-i18n="settings.offLabel">Off</span>
           </label>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="zh_to_transl_no_sound">
-          <span class="sm:w-44 text-sm text-gray-600">Chinese (no sound) → Translation</span>
+          <span class="sm:w-44 text-sm text-gray-600" data-i18n="settingsMode.zh_to_transl_no_sound">Chinese (no sound) → Translation</span>
           <select id="random-mode-zh_to_transl_no_sound-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
-          <span class="text-sm text-gray-400">to</span>
+          <span class="text-sm text-gray-400" data-i18n="settings.toWord">to</span>
           <select id="random-mode-zh_to_transl_no_sound-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
           <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
             <input type="checkbox" id="random-mode-zh_to_transl_no_sound-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-            Off
+            <span data-i18n="settings.offLabel">Off</span>
           </label>
         </div>
         <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3" data-random-mode-row="voice_to_transl">
-          <span class="sm:w-44 text-sm text-gray-600">Voice → Translation</span>
+          <span class="sm:w-44 text-sm text-gray-600" data-i18n="settingsMode.voice_to_transl">Voice → Translation</span>
           <select id="random-mode-voice_to_transl-from" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
-          <span class="text-sm text-gray-400">to</span>
+          <span class="text-sm text-gray-400" data-i18n="settings.toWord">to</span>
           <select id="random-mode-voice_to_transl-to" class="w-full sm:w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
           <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
             <input type="checkbox" id="random-mode-voice_to_transl-off" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-            Off
+            <span data-i18n="settings.offLabel">Off</span>
           </label>
         </div>
       </div>
@@ -278,71 +278,71 @@
 
     <!-- Daily Learning -->
     <div id="daily-learning-section" class="bg-white rounded-2xl shadow p-6" data-settings-autosave="daily">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Daily Learning</h2>
-      <p class="text-sm text-gray-500 mb-5">Control how many new words are introduced each day and set optional gates that pause new introductions when your review load is high.</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.dailyLearning">Daily Learning</h2>
+      <p class="text-sm text-gray-500 mb-5" data-i18n="settings.dailyLearningDesc">Control how many new words are introduced each day and set optional gates that pause new introductions when your review load is high.</p>
 
       <!-- New words per day -->
       <div class="mb-5">
-        <label class="block text-sm font-medium text-gray-700 mb-1" for="max-new-words">New words per day</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="max-new-words" data-i18n="settings.newWordsPerDay">New words per day</label>
         <input id="max-new-words" type="number" min="1" max="50"
           class="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
       </div>
 
       <!-- Cooldown between new words -->
       <div class="mb-5">
-        <label class="block text-sm font-medium text-gray-700 mb-1" for="new-word-cooldown">Cooldown between new words (minutes)</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="new-word-cooldown" data-i18n="settings.cooldownBetweenNewWords">Cooldown between new words (minutes)</label>
         <input id="new-word-cooldown" type="number" min="0" max="1440"
           class="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <p class="text-xs text-gray-400 mt-1">Minimum time to wait before introducing the next new word. Set to 0 to disable.</p>
+        <p class="text-xs text-gray-400 mt-1" data-i18n="settings.cooldownDesc">Minimum time to wait before introducing the next new word. Set to 0 to disable.</p>
       </div>
 
       <!-- Skip button visibility -->
       <div class="mb-5">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="skip-new-visible" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-700">Show <strong>skip</strong> button for new words</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.skipButtonVisibility">Show skip button for new words</span>
         </label>
-        <p class="text-xs text-gray-400 mt-1 ml-7">When unchecked, new words must be reviewed — there is no way to skip them.</p>
+        <p class="text-xs text-gray-400 mt-1 ml-7" data-i18n="settings.skipButtonVisibilityDesc">When unchecked, new words must be reviewed — there is no way to skip them.</p>
       </div>
 
       <!-- Session extension -->
       <div class="mb-5">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="extend-session-extra-words" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-700">Add extra words at the end of a session to avoid repetition</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.extendSession">Add extra words at the end of a session to avoid repetition</span>
         </label>
-        <p class="text-xs text-gray-400 mt-1 ml-7">When enabled, if the only card left due today was just answered, a not-yet-due word is served instead of immediately repeating it. When disabled, only genuinely due-today words are ever served, even if that means repeating one.</p>
+        <p class="text-xs text-gray-400 mt-1 ml-7" data-i18n="settings.extendSessionDesc">When enabled, if the only card left due today was just answered, a not-yet-due word is served instead of immediately repeating it. When disabled, only genuinely due-today words are ever served, even if that means repeating one.</p>
       </div>
 
       <!-- Baselines -->
-      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide">Baselines</p>
-      <p class="text-xs text-gray-500 mb-3">New words are only introduced when <em>all</em> active conditions pass.</p>
+      <p class="text-sm font-semibold text-gray-600 mb-2 uppercase tracking-wide" data-i18n="settings.baselines">Baselines</p>
+      <p class="text-xs text-gray-500 mb-3" data-i18n="settings.baselinesDesc">New words are only introduced when <em>all</em> active conditions pass.</p>
       <div class="space-y-3 mb-5">
 
         <div class="flex items-center gap-3">
           <input type="checkbox" id="baseline-due-today-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
-          <span class="text-sm text-gray-700 flex-1 min-w-0">Max due words at day start</span>
+          <span class="text-sm text-gray-700 flex-1 min-w-0" data-i18n="settings.maxDueAtDayStart">Max due words at day start</span>
           <input type="number" id="baseline-due-today-value" min="0" max="9999"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
         </div>
 
         <div class="flex items-center gap-3">
           <input type="checkbox" id="baseline-struggling-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
-          <span class="text-sm text-gray-700 flex-1 min-w-0">Max words in <strong>Struggling</strong> bucket</span>
+          <span class="text-sm text-gray-700 flex-1 min-w-0" data-i18n="settings.maxInStruggling">Max words in Struggling bucket</span>
           <input type="number" id="baseline-struggling-value" min="0" max="9999"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
         </div>
 
         <div class="flex items-center gap-3">
           <input type="checkbox" id="baseline-learning-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
-          <span class="text-sm text-gray-700 flex-1 min-w-0">Max words in <strong>Learning</strong> bucket</span>
+          <span class="text-sm text-gray-700 flex-1 min-w-0" data-i18n="settings.maxInLearning">Max words in Learning bucket</span>
           <input type="number" id="baseline-learning-value" min="0" max="9999"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
         </div>
 
         <div class="flex items-center gap-3">
           <input type="checkbox" id="baseline-new-bucket-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0">
-          <span class="text-sm text-gray-700 flex-1 min-w-0">Max words in <strong>New</strong> bucket</span>
+          <span class="text-sm text-gray-700 flex-1 min-w-0" data-i18n="settings.maxInNewBucket">Max words in New bucket</span>
           <input type="number" id="baseline-new-bucket-value" min="0" max="9999"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-40">
         </div>
@@ -352,94 +352,94 @@
 
     <!-- Accept as Correct -->
     <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="accept-mode">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Accept as Correct</h2>
-      <p class="text-sm text-gray-500 mb-4">Show an "Accept as correct" button after a wrong answer to override typos without penalising your SM-2 progress.</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.acceptAsCorrect">Accept as Correct</h2>
+      <p class="text-sm text-gray-500 mb-4" data-i18n="settings.acceptAsCorrectDesc">Show an "Accept as correct" button after a wrong answer to override typos without penalising your SM-2 progress.</p>
       <div class="space-y-2 mb-4">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="radio" name="accept-correct-mode" value="never" class="accent-blue-600">
-          <span class="text-sm text-gray-700"><strong>Never</strong> — always count wrong answers as wrong</span>
+          <span class="text-sm text-gray-700"><strong data-i18n="settings.acceptNeverLabel">Never</strong> <span data-i18n="settings.acceptNeverDesc">— always count wrong answers as wrong</span></span>
         </label>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="radio" name="accept-correct-mode" value="typo" class="accent-blue-600">
-          <span class="text-sm text-gray-700"><strong>On typos</strong> (default) — show button when your answer differs by exactly 1 character</span>
+          <span class="text-sm text-gray-700"><strong data-i18n="settings.acceptTypoLabel">On typos</strong> <span data-i18n="settings.acceptTypoDesc">(default) — show button when your answer differs by exactly 1 character</span></span>
         </label>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="radio" name="accept-correct-mode" value="always" class="accent-blue-600">
-          <span class="text-sm text-gray-700"><strong>Always</strong> — show button for any wrong answer</span>
+          <span class="text-sm text-gray-700"><strong data-i18n="settings.acceptAlwaysLabel">Always</strong> <span data-i18n="settings.acceptAlwaysDesc">— show button for any wrong answer</span></span>
         </label>
       </div>
     </div>
 
     <!-- Gamification -->
     <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="gamification">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Gamification</h2>
-      <p class="text-sm text-gray-500 mb-4">After you have made enough mistakes, a word-matching mini-game will appear during training to help you distinguish confused pairs.</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.gamification">Gamification</h2>
+      <p class="text-sm text-gray-500 mb-4" data-i18n="settings.gamificationDesc">After you have made enough mistakes, a word-matching mini-game will appear during training to help you distinguish confused pairs.</p>
       <div class="space-y-3 mb-4">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="gamification-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-700">Enable word-matching mini-game</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.enableMiniGame">Enable word-matching mini-game</span>
         </label>
         <div class="flex items-center gap-3 flex-wrap">
-          <span class="text-sm text-gray-700">Show game at most every</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.showGameAtMostEvery">Show game at most every</span>
           <input type="number" id="gamification-frequency" min="1" max="1440" value="5"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <span class="text-sm text-gray-700">minutes</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.minutes">minutes</span>
         </div>
       </div>
-      <p class="text-sm text-gray-500 mb-2">Game modes — which word pools the mini-game can draw from:</p>
+      <p class="text-sm text-gray-500 mb-2" data-i18n="settings.gameModesIntro">Game modes — which word pools the mini-game can draw from:</p>
       <div class="space-y-3 mb-4">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="game-mode-mismatch" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-700">Mismatch — recently confused word/component pairs</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.gameModeMismatch">Mismatch — recently confused word/component pairs</span>
         </label>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="game-mode-newest" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-700">Newest words — your most recently added words</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.gameModeNewest">Newest words — your most recently added words</span>
         </label>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="game-mode-hardest" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-700">Hardest words — your lowest-accuracy words</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.gameModeHardest">Hardest words — your lowest-accuracy words</span>
         </label>
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="game-mode-last-mistakes" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-          <span class="text-sm text-gray-700">Last mistakes — words you recently answered wrong</span>
+          <span class="text-sm text-gray-700" data-i18n="settings.gameModeLastMistakes">Last mistakes — words you recently answered wrong</span>
         </label>
       </div>
       <div class="flex items-center gap-3 flex-wrap mb-1">
-        <label for="gamification-hide-pinyin-bucket" class="text-sm text-gray-700">Hide pinyin hint once a word reaches</label>
+        <label for="gamification-hide-pinyin-bucket" class="text-sm text-gray-700" data-i18n="settings.hidePinyinOnceReaches">Hide pinyin hint once a word reaches</label>
         <select id="gamification-hide-pinyin-bucket" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="new">New</option>
-          <option value="0-49">Struggling</option>
-          <option value="50-69">Learning</option>
-          <option value="70-84">Practicing</option>
-          <option value="85-100">Mastered</option>
+          <option value="new" data-i18n="tier.new">New</option>
+          <option value="0-49" data-i18n="tier.struggling">Struggling</option>
+          <option value="50-69" data-i18n="tier.learning">Learning</option>
+          <option value="70-84" data-i18n="tier.practicing">Practicing</option>
+          <option value="85-100" data-i18n="tier.mastered">Mastered</option>
         </select>
       </div>
-      <p class="text-xs text-gray-500 mb-4">Words in this bucket or higher show only the hanzi in the match-the-pairs game, no pinyin.</p>
+      <p class="text-xs text-gray-500 mb-4" data-i18n="settings.hidePinyinDesc">Words in this bucket or higher show only the hanzi in the match-the-pairs game, no pinyin.</p>
       <div class="flex items-center gap-3 flex-wrap mb-1">
-        <label for="match-game-pinyin-reveal" class="text-sm text-gray-700">After selecting a pair, show pinyin</label>
+        <label for="match-game-pinyin-reveal" class="text-sm text-gray-700" data-i18n="settings.afterSelectingPairShow">After selecting a pair, show pinyin</label>
         <select id="match-game-pinyin-reveal" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="off">Off</option>
-          <option value="always">Always</option>
-          <option value="after_correct">Only after correct match</option>
+          <option value="off" data-i18n="settings.revealOff">Off</option>
+          <option value="always" data-i18n="settings.revealAlways">Always</option>
+          <option value="after_correct" data-i18n="settings.revealAfterCorrect">Only after correct match</option>
         </select>
       </div>
-      <p class="text-xs text-gray-500 mb-4">Controls when a word tile's pinyin hint is shown, if not already shown.</p>
+      <p class="text-xs text-gray-500 mb-4" data-i18n="settings.matchGameRevealDesc">Controls when a word tile's pinyin hint is shown, if not already shown.</p>
     </div>
 
     <!-- Component Training -->
     <div id="component-training-section" class="bg-white rounded-2xl shadow p-6" data-settings-autosave="component-threshold">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Component Training</h2>
-      <p class="text-sm text-gray-500 mb-5">Words are broken into hanzi components (radicals and sub-parts) for the character breakdown and component quiz. Instead of training every component, pick a target: as new words start training, only enough components — starting with whichever unlocks the most words you haven't covered yet — are added to reach that share of your Chinese vocabulary. Already-trained components are never removed by this setting.</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.componentTraining">Component Training</h2>
+      <p class="text-sm text-gray-500 mb-5" data-i18n="settings.componentTrainingDesc">Words are broken into hanzi components (radicals and sub-parts) for the character breakdown and component quiz. Instead of training every component, pick a target: as new words start training, only enough components — starting with whichever unlocks the most words you haven't covered yet — are added to reach that share of your Chinese vocabulary. Already-trained components are never removed by this setting.</p>
 
       <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 mb-1" for="component-coverage-threshold">Target word coverage</label>
+        <label class="block text-sm font-medium text-gray-700 mb-1" for="component-coverage-threshold" data-i18n="settings.targetWordCoverage">Target word coverage</label>
         <div class="flex items-center gap-2">
           <input id="component-coverage-threshold" type="number" min="0" max="100" step="0.5" value="0"
             class="w-24 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <span class="text-sm text-gray-600">%</span>
         </div>
-        <p class="text-xs text-gray-400 mt-1">Learn as many components as needed to cover this share of all your Chinese words. Set to 0 to train every component (default).</p>
+        <p class="text-xs text-gray-400 mt-1" data-i18n="settings.targetWordCoverageDesc">Learn as many components as needed to cover this share of all your Chinese words. Set to 0 to train every component (default).</p>
       </div>
 
       <p id="component-coverage-summary" class="text-sm text-gray-600 mb-3"></p>
@@ -448,27 +448,27 @@
 
     <!-- Subwords -->
     <div class="bg-white rounded-2xl shadow p-6" data-settings-autosave="subwords">
-      <h2 class="text-lg font-semibold text-gray-800 mb-1">Subwords</h2>
-      <p class="text-sm text-gray-500 mb-4">When a word enters training, automatically create vocabulary entries for its constituent characters (if they exist in the dictionary).</p>
+      <h2 class="text-lg font-semibold text-gray-800 mb-1" data-i18n="settings.subwords">Subwords</h2>
+      <p class="text-sm text-gray-500 mb-4" data-i18n="settings.subwordsDesc">When a word enters training, automatically create vocabulary entries for its constituent characters (if they exist in the dictionary).</p>
       <div class="space-y-2 mb-5">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="auto-subwords" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
-          <span class="text-sm text-gray-600">Auto-create subwords when a word enters training</span>
+          <span class="text-sm text-gray-600" data-i18n="settings.autoCreateSubwords">Auto-create subwords when a word enters training</span>
         </label>
       </div>
       <div id="backfill-section" class="mt-6 pt-5 border-t border-gray-100">
-        <p class="text-sm text-gray-600 mb-3">Apply subword creation to all words already in training (runs once, skips existing entries).</p>
-        <button id="backfill-subwords-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-5 py-2 rounded-xl text-sm transition">Add subwords for existing training words</button>
+        <p class="text-sm text-gray-600 mb-3" data-i18n="settings.backfillDesc">Apply subword creation to all words already in training (runs once, skips existing entries).</p>
+        <button id="backfill-subwords-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-5 py-2 rounded-xl text-sm transition" data-i18n="settings.backfillButton">Add subwords for existing training words</button>
       </div>
     </div>
 
     <!-- API Keys -->
     <div id="apikey-section" class="bg-white rounded-2xl shadow p-6">
       <div class="flex items-center gap-2 mb-1">
-        <h2 class="text-lg font-semibold text-gray-800">API Keys</h2>
+        <h2 class="text-lg font-semibold text-gray-800" data-i18n="settings.apiKeys">API Keys</h2>
         <div class="relative inline-block group">
           <button class="text-gray-400 hover:text-blue-500 text-base leading-none" aria-label="Info">ℹ</button>
-          <div class="hidden group-hover:block absolute left-6 top-0 z-50 w-72 bg-gray-800 text-white text-xs rounded-xl p-3 shadow-lg pointer-events-none">
+          <div class="hidden group-hover:block absolute left-6 top-0 z-50 w-72 bg-gray-800 text-white text-xs rounded-xl p-3 shadow-lg pointer-events-none" data-i18n="settings.apiKeysInfo">
             Your keys are encrypted using a key derived from your login password (PBKDF2-SHA256) and stored in the database.
             They are only accessible while you are logged in.
             If you change your password, your keys are automatically re-encrypted.
@@ -476,44 +476,44 @@
           </div>
         </div>
       </div>
-      <p class="text-sm text-gray-500 mb-4">Personal API keys let you use DeepL translation and LLM scene generation without needing a plus account  or a personal LLM key.</p>
+      <p class="text-sm text-gray-500 mb-4" data-i18n="settings.apiKeysDesc">Personal API keys let you use DeepL translation and LLM scene generation without needing a plus account  or a personal LLM key.</p>
 
       <div class="space-y-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">DeepL API Key</label>
-          <input id="deepl-key" type="password" autocomplete="off" placeholder="Paste key — leave blank to keep current"
+          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="settings.deeplApiKey">DeepL API Key</label>
+          <input id="deepl-key" type="password" autocomplete="off" placeholder="Paste key — leave blank to keep current" data-i18n-placeholder="settings.pasteKeyPlaceholder"
             class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <p id="deepl-key-status" class="text-xs text-gray-400 mt-1 hidden"></p>
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">LLM Provider</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="settings.llmProvider">LLM Provider</label>
           <select id="llm-provider" class="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">— None —</option>
+            <option value="" data-i18n="settings.noneOption">— None —</option>
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic</option>
             <option value="gemini">Gemini</option>
-            <option value="local">Local (OpenAI-compatible)</option>
+            <option value="local" data-i18n="settings.llmProviderLocal">Local (OpenAI-compatible)</option>
           </select>
         </div>
 
         <div id="llm-local-url-row" class="hidden">
-          <label class="block text-sm font-medium text-gray-700 mb-1">Local LLM Base URL</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="settings.localLlmBaseUrl">Local LLM Base URL</label>
           <input id="llm-local-url" type="text" autocomplete="off" placeholder="http://localhost:11434/v1"
             class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
 
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">LLM API Key</label>
-          <input id="llm-key" type="password" autocomplete="off" placeholder="Paste key — leave blank to keep current"
+          <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="settings.llmApiKey">LLM API Key</label>
+          <input id="llm-key" type="password" autocomplete="off" placeholder="Paste key — leave blank to keep current" data-i18n-placeholder="settings.pasteKeyPlaceholder"
             class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <p id="llm-key-status" class="text-xs text-gray-400 mt-1 hidden"></p>
         </div>
       </div>
 
       <div class="flex gap-3 mt-5 flex-wrap">
-        <button id="apikey-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition">Save API Keys</button>
-        <button id="apikey-clear-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-6 py-2 rounded-xl text-sm transition">Clear All Keys</button>
+        <button id="apikey-save-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm transition" data-i18n="settings.saveApiKeys">Save API Keys</button>
+        <button id="apikey-clear-btn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold px-6 py-2 rounded-xl text-sm transition" data-i18n="settings.clearAllKeys">Clear All Keys</button>
       </div>
     </div>
 
