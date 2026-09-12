@@ -481,7 +481,7 @@ const I18N = {
     'landing.footer.impressum': 'Impressum',
 
     'landing.hero.badge': 'SM-2 spaced repetition',
-    'landing.hero.title': 'Learn Chinese vocabulary that sticks.',
+    'landing.hero.title': 'Learn Chinese vocabulary for free',
     'landing.hero.subtitle': 'A free spaced-repetition trainer: every word comes back for review right before you would forget it. A few minutes a day is enough.',
     'landing.hero.feature1.bold': 'SM-2 spaced repetition',
     'landing.hero.feature1.rest': 'with seven quiz modes, from hanzi recognition to listening-only recall.',
@@ -1037,7 +1037,7 @@ const I18N = {
     'landing.footer.impressum': '法律声明',
 
     'landing.hero.badge': 'SM-2 间隔重复',
-    'landing.hero.title': '学会记得住的中文词汇。',
+    'landing.hero.title': '免费学中文词汇',
     'landing.hero.subtitle': '免费的间隔重复训练工具：每个词都会在你即将遗忘之前被安排复习。每天几分钟就够了。',
     'landing.hero.feature1.bold': 'SM-2 间隔重复',
     'landing.hero.feature1.rest': '配合七种测验模式，从汉字识别到纯听力回忆。',

@@ -41,7 +41,7 @@
 
       <div class="min-w-0">
         <div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold uppercase tracking-wide mb-5" data-i18n="landing.hero.badge">SM-2 spaced repetition</div>
-        <h1 id="hero-title" class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-gray-900 mb-4" data-i18n="landing.hero.title">Learn Chinese vocabulary that sticks.</h1>
+        <h1 id="hero-title" class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-gray-900 mb-4" data-i18n="landing.hero.title">Learn Chinese vocabulary for free</h1>
         <p class="text-lg text-gray-600 mb-7 max-w-prose" data-i18n="landing.hero.subtitle">A free spaced-repetition trainer: every word comes back for review right before you would forget it. A few minutes a day is enough.</p>
         <ul id="hero-features" class="space-y-3 text-gray-700 mb-8">
           <li class="flex gap-3">
@@ -131,13 +131,33 @@
 <article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
   <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
     <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50" data-carousel>
-      <img src="/landing/teasers/010-training/01-question.png" alt="Training card asking for the Chinese word for hello" data-slide="0" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
-      <img src="/landing/teasers/010-training/02-filters.png" alt="Quiz mode, level and language filters above the training card" data-slide="1" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/010-training/10-chinese_pinyin_visible.png" alt="Training card asking for the translation for 超市 with hints" data-slide="0" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+      <img src="/landing/teasers/010-training/11-correct_answer.png" alt="Quiz mode, correct answer" data-slide="1" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/010-training/12-wrong_answer.png" alt="Quiz mode, wrong answer, retype answer" data-slide="2" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/010-training/13-mismatch_small.png" alt="Quiz mode, show confusion/mismatches with another known word" data-slide="3" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/010-training/14-chinese_pinyin.png" alt="Training card asking for the translation for 超市" data-slide="4" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/010-training/15-chinese.png" alt="Training card asking for the translation for 超市" data-slide="5" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/010-training/20-all_done.png" alt="Success Page if all words for the day are trained" data-slide="6" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
       <div class="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 bg-gradient-to-t from-slate-900/10 to-transparent pt-6">
         <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="0" aria-label="Show image 1">
           <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-blue-600"></span>
         </button>
         <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="1" aria-label="Show image 2">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="2" aria-label="Show image 3">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="3" aria-label="Show image 4">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="4" aria-label="Show image 5">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="5" aria-label="Show image 6">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="6" aria-label="Show image 7">
           <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
         </button>
       </div>
@@ -163,8 +183,17 @@
 </article>
 <article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
   <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
-    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
-      <img src="/landing/teasers/030-mnemonics/01-builder.png" alt="Hanzi Movie Method mnemonic builder" class="absolute inset-0 w-full h-full object-contain">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50" data-carousel>
+      <img src="/landing/teasers/030-mnemonics/01-builder.png" alt="Hanzi Movie Method mnemonic builder" data-slide="0" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+      <img src="/landing/teasers/030-mnemonics/02-mnemonic_scene_builder.png" alt="Hanzi Movie Method mnemonic scene builder" data-slide="1" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <div class="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 bg-gradient-to-t from-slate-900/10 to-transparent pt-6">
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="0" aria-label="Show image 1">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-blue-600"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="1" aria-label="Show image 2">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+      </div>
     </div>
   </div>
   <div class="p-5 pb-6">
@@ -187,8 +216,29 @@
 </article>
 <article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
   <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
-    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
-      <img src="/landing/teasers/050-stats/01-dashboard.png" alt="Stats dashboard with daily progress chart" class="absolute inset-0 w-full h-full object-contain">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50" data-carousel>
+      <img src="/landing/teasers/050-stats/01-stats_training_history.png" alt="Stats dashboard with daily progress chart" data-slide="0" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+      <img src="/landing/teasers/050-stats/02-stats_last_14_days.png" alt="Stats dashboard with details for each day" data-slide="1" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/050-stats/03-stats_words_by_duedate.png" alt="Forcast for words to learn during the next days" data-slide="2" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/050-stats/04-stats_words.png" alt="Most difficult words overview" data-slide="3" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/050-stats/05-stats_accuracy.png" alt="Accuracy / Learning drilldown" data-slide="4" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <div class="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 bg-gradient-to-t from-slate-900/10 to-transparent pt-6">
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="0" aria-label="Show image 1">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-blue-600"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="1" aria-label="Show image 2">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="2" aria-label="Show image 3">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="3" aria-label="Show image 4">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="4" aria-label="Show image 5">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+      </div>
     </div>
   </div>
   <div class="p-5 pb-6">
@@ -210,6 +260,20 @@
   </div>
 </article>
 <article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50" data-carousel>
+      <img src="/landing/teasers/070-vendor-lock-in/01-download_words.png" alt="Download all your words and progress" data-slide="0" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+      <img src="/landing/teasers/070-vendor-lock-in/02-upload_csv.png" alt="Upload new word lists" data-slide="1" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <div class="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 bg-gradient-to-t from-slate-900/10 to-transparent pt-6">
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="0" aria-label="Show image 1">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-blue-600"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="1" aria-label="Show image 2">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+      </div>
+    </div>
+  </div>
   <div class="p-5 pb-6">
     <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.vendor-lock-in.category">Your data</span>
     <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.vendor-lock-in.title">No vendor lock-in</h3>
@@ -218,8 +282,37 @@
 </article>
 <article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
   <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
-    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
-      <img src="/landing/teasers/080-settings/01-settings.png" alt="Settings page with account and password cards" class="absolute inset-0 w-full h-full object-contain">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50" data-carousel>
+      <img src="/landing/teasers/080-settings/01-settings_words.png" alt="Settings for new words and wrong answers" data-slide="0" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+      <img src="/landing/teasers/080-settings/02-settings_cycle_mode.png" alt="Settings for cycle mode, how do you want to train?" data-slide="1" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/080-settings/03-settings_daily_learning.png" alt="How fast shall new words appear?" data-slide="2" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/080-settings/04-settings_gamification.png" alt="Gamification settings" data-slide="3" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/080-settings/05-settings_language.png" alt="Language Settings for Training" data-slide="4" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/080-settings/06-settings_quiz_display.png" alt="Tweak the display while training" data-slide="5" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <img src="/landing/teasers/080-settings/07-settings_training_mode.png" alt="Fine tune training mode to your needs" data-slide="6" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <div class="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 bg-gradient-to-t from-slate-900/10 to-transparent pt-6">
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="0" aria-label="Show image 1">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-blue-600"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="1" aria-label="Show image 2">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="2" aria-label="Show image 3">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="3" aria-label="Show image 4">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="4" aria-label="Show image 5">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="5" aria-label="Show image 6">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="6" aria-label="Show image 7">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+      </div>
     </div>
   </div>
   <div class="p-5 pb-6">
@@ -229,6 +322,20 @@
   </div>
 </article>
 <article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50" data-carousel>
+      <img src="/landing/teasers/090-llm-support/01-settings_api_keys.png" alt="Bring your own API Keys to benefit of LLM or DeepL" data-slide="0" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-100">
+      <img src="/landing/teasers/090-llm-support/02-add_word.png" alt="Use DeepL to generate translations" data-slide="1" class="carousel-slide absolute inset-0 w-full h-full object-contain transition-opacity duration-500 opacity-0">
+      <div class="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 bg-gradient-to-t from-slate-900/10 to-transparent pt-6">
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="0" aria-label="Show image 1">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-blue-600"></span>
+        </button>
+        <button type="button" class="carousel-dot flex items-end justify-center w-11 h-11 pb-3" data-slide="1" aria-label="Show image 2">
+          <span class="carousel-mark w-1.5 h-1.5 rounded-full ring-2 ring-white/80 bg-gray-900/25"></span>
+        </button>
+      </div>
+    </div>
+  </div>
   <div class="p-5 pb-6">
     <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.llm-support.category">LLM support</span>
     <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.llm-support.title">Bring your own model</h3>
@@ -248,6 +355,11 @@
   </div>
 </article>
 <article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/110-open-source/01-github.png" alt="Distributed on Github" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
   <div class="p-5 pb-6">
     <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.open-source.category">Open source</span>
     <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.open-source.title">Be part of the change</h3>
@@ -255,6 +367,11 @@
   </div>
 </article>
 <article class="border border-gray-200 rounded-3xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
+  <div class="bg-gray-100 border-b border-gray-200 p-3 pb-0">
+    <div class="relative aspect-[4/3] rounded-t-xl overflow-hidden bg-slate-50">
+      <img src="/landing/teasers/120-self-hosted/01-self_hosted.png" alt="Host your own vocabulary trainer" class="absolute inset-0 w-full h-full object-contain">
+    </div>
+  </div>
   <div class="p-5 pb-6">
     <span class="text-[11px] font-bold tracking-wide uppercase text-blue-600" data-i18n="landing.teaser.self-hosted.category">Self-hosted</span>
     <h3 class="mt-2 mb-1.5 text-lg font-bold text-gray-900" data-i18n="landing.teaser.self-hosted.title">Run it on your own machine</h3>
