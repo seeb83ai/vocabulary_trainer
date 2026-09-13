@@ -274,6 +274,17 @@ func seedWordFull(t *testing.T, s *db.Store, userID int64, zhText, pinyin string
 	return id
 }
 
+// seedCedictEntry inserts a cedict_entries row used as the dictionary source
+// for tag-based import — user_id=1 stores only zh words and tags, never
+// translations, so tests that exercise import must seed cedict_entries
+// directly instead of linking translations onto user 1's words.
+func seedCedictEntry(t *testing.T, s *db.Store, simplified, lang, definition string) {
+	t.Helper()
+	if err := s.SeedCedictEntryForTest(context.Background(), simplified, lang, "", definition); err != nil {
+		t.Fatalf("seedCedictEntry: %v", err)
+	}
+}
+
 // seedHMMCard names an actor so EnsureHMMProgress creates a due progress row.
 func seedHMMCard(t *testing.T, s *db.Store) {
 	t.Helper()

@@ -118,12 +118,12 @@ func TestGetImportableSourceTags_FiltersImportable(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	// Seed two tags for user 1 (source/library user).
+	// Seed two tags for user 1 (source/library user). User 1 is a
+	// zh-words-and-tags-only template; translations come from cedict_entries.
 	for _, tag := range []string{"hsk1", "hsk2"} {
 		if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
-			ZhText:       tag + "字",
-			Translations: map[string][]string{"en": {tag + " word"}},
-			Tags:         []string{tag},
+			ZhText: tag + "字",
+			Tags:   []string{tag},
 		}); err != nil {
 			t.Fatalf("CreateWord %s: %v", tag, err)
 		}
@@ -151,11 +151,16 @@ func TestGetImportableSourceTags_AvailableLangs(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
-		ZhText:       "你好",
-		Translations: map[string][]string{"en": {"hello"}, "de": {"hallo"}},
-		Tags:         []string{"greetings"},
+		ZhText: "你好",
+		Tags:   []string{"greetings"},
 	}); err != nil {
 		t.Fatalf("CreateWord: %v", err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "你好", "en", "", "hello"); err != nil {
+		t.Fatalf("seed en cedict entry: %v", err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "你好", "de", "", "hallo"); err != nil {
+		t.Fatalf("seed de cedict entry: %v", err)
 	}
 
 	tags, err := s.GetImportableSourceTags(ctx, int64(1))
@@ -182,9 +187,8 @@ func TestGetImportableSourceTags_WithDescription(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
-		ZhText:       "你好",
-		Translations: map[string][]string{"en": {"hello"}},
-		Tags:         []string{"greetings"},
+		ZhText: "你好",
+		Tags:   []string{"greetings"},
 	}); err != nil {
 		t.Fatalf("CreateWord: %v", err)
 	}

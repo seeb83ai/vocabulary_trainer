@@ -123,17 +123,19 @@ func (s *Store) GetImportableSourceTags(ctx context.Context, userID int64) ([]mo
 		return out, nil
 	}
 
-	// Fetch all distinct translation languages per tag in one query.
+	// Fetch all distinct dictionary languages available per tag in one query.
+	// Translations for import come from cedict_entries, not from any
+	// translation words stored on the source user — user_id=1 is a
+	// zh-words-and-tags-only template.
 	langRows, err := s.db.QueryContext(ctx, `
-		SELECT tg.name, tr_w.language
+		SELECT tg.name, ce.lang
 		FROM tags tg
 		JOIN word_tags wt ON wt.tag_id = tg.id
 		JOIN words zh ON zh.id = wt.word_id AND zh.user_id = ? AND zh.language = 'zh'
-		JOIN translations tr ON tr.zh_word_id = zh.id
-		JOIN words tr_w ON tr_w.id = tr.translation_word_id
+		JOIN cedict_entries ce ON ce.simplified = zh.text
 		WHERE tg.importable = 1
-		GROUP BY tg.name, tr_w.language
-		ORDER BY tg.name, tr_w.language`, userID)
+		GROUP BY tg.name, ce.lang
+		ORDER BY tg.name, ce.lang`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get importable source tag langs: %w", err)
 	}
