@@ -578,7 +578,7 @@ func TestWordsCreate_ZhTextTooLong(t *testing.T) {
 
 func TestWordsCreate_TooManyTranslations(t *testing.T) {
 	r := newRouter(openTestDB(t))
-	texts := make([]string, 21)
+	texts := make([]string, 41)
 	for i := range texts {
 		texts[i] = fmt.Sprintf("translation %d", i)
 	}
@@ -587,7 +587,7 @@ func TestWordsCreate_TooManyTranslations(t *testing.T) {
 		Translations: map[string][]string{"en": texts},
 	})
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("want 400 for > 20 translations, got %d", rec.Code)
+		t.Errorf("want 400 for > 40 translations, got %d", rec.Code)
 	}
 }
 
