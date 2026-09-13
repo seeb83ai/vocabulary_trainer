@@ -312,9 +312,13 @@ func (s *Store) createSubword(ctx context.Context, userID int64, tok SegmentToke
 			if err := initSM2(ctx, tx, transID); err != nil {
 				return err
 			}
+			rank, err := computeTranslationRank(ctx, tx, pair.lang, sense)
+			if err != nil {
+				return fmt.Errorf("rank %s subword translation: %w", pair.lang, err)
+			}
 			if _, err := tx.ExecContext(ctx,
-				`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
-				transID, zhID); err != nil {
+				`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id, source, rank) VALUES (?, ?, 'cedict', ?)`,
+				transID, zhID, rank); err != nil {
 				return fmt.Errorf("link %s subword translation: %w", pair.lang, err)
 			}
 		}

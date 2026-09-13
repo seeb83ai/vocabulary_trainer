@@ -1,26 +1,32 @@
-// cmd/import-frequency/main.go — Import a Chinese word-frequency list into the
-// standalone word_frequency reference table.
+// cmd/import-frequency/main.go — Import a word-frequency list into the
+// word_frequency_lang reference table.
 //
-// The table is keyed by the hanzi string (word_frequency(word, rank)) and is
-// independent of any user's vocabulary — it only annotates GetNextCard's new-word
-// ordering (see issue #340: frequent words are introduced before rare ones).
-// Importing does not create or modify any words; a frequency entry for a word not
-// in a user's vocabulary is simply unused until that word is added.
+// The table is keyed by (word, lang) -> rank and is independent of any
+// user's vocabulary. The zh list annotates GetNextCard's new-word ordering
+// (see issue #340: frequent words are introduced before rare ones); the
+// en/de lists rank individual translation glosses so training can hide the
+// rarest ones (see translations.rank/source). Importing does not create or
+// modify any words; a frequency entry for a word not currently used is
+// simply unused until it is.
 //
-// The bundled frequency_data.txt (rank 1 = most frequent) is derived from
-// hermitdave/FrequencyWords (MIT license, https://github.com/hermitdave/FrequencyWords),
-// content/2018/zh_cn/zh_cn_50k.txt, based on an OpenSubtitles 2018 corpus — filtered
-// to entries consisting solely of CJK ideographs, deduplicated, top 8000 by frequency.
+// The bundled frequency_data.txt (zh, rank 1 = most frequent) is derived
+// from hermitdave/FrequencyWords (MIT license,
+// https://github.com/hermitdave/FrequencyWords), content/2018/zh_cn/zh_cn_50k.txt,
+// based on an OpenSubtitles 2018 corpus — filtered to entries consisting
+// solely of CJK ideographs, deduplicated, top 8000 by frequency. The en/de
+// bundled lists in service/db/migrate/ follow the same recipe, filtered to
+// alphabetic entries instead.
 //
-// NOTE: this bundled list is imported automatically by the schema migration
-// in service/db/migrate/v20260826120000_add_word_frequency.go — every fresh
-// or upgraded database gets it on startup with no manual step. This CLI tool
+// NOTE: all three bundled lists are imported automatically by schema
+// migrations (v20260826120000_add_word_frequency.go for zh,
+// v20260913120000_add_word_frequency_lang.go for en/de) — every fresh or
+// upgraded database gets them on startup with no manual step. This CLI tool
 // remains available for importing an alternative or updated frequency list
-// (pass -file), or for re-running the bundled import explicitly.
+// (pass -file and -lang), or for re-running a bundled import explicitly.
 //
 // Usage:
 //
-//	go run ./cmd/import-frequency [-db data/vocab.db] [-file frequency_data.txt] [-dry-run]
+//	go run ./cmd/import-frequency [-db data/vocab.db] [-file frequency_data.txt] [-lang zh] [-dry-run]
 package main
 
 import (
@@ -40,6 +46,7 @@ import (
 func main() {
 	dbPath := flag.String("db", "data/vocab.db", "path to SQLite database")
 	filePath := flag.String("file", "frequency_data.txt", "path to word-frequency list (word<TAB>rank per line)")
+	lang := flag.String("lang", "zh", "language the list is for (zh, en, de) — written into word_frequency_lang")
 	dryRun := flag.Bool("dry-run", false, "parse and validate but do not write to the database")
 	flag.Parse()
 
@@ -72,11 +79,11 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	inserted, err := importEntries(db, entries)
+	inserted, err := importEntries(db, entries, *lang)
 	if err != nil {
 		log.Fatalf("import: %v", err)
 	}
-	fmt.Printf("Done. wrote %d word_frequency rows\n", inserted)
+	fmt.Printf("Done. wrote %d word_frequency_lang rows (lang=%s)\n", inserted, *lang)
 }
 
 type freqEntry struct {
@@ -112,8 +119,9 @@ func parse(f *os.File) (entries []freqEntry, skipped int, err error) {
 	return entries, skipped, nil
 }
 
-// importEntries upserts every entry into word_frequency and returns the count written.
-func importEntries(db *sql.DB, entries []freqEntry) (int, error) {
+// importEntries upserts every entry into word_frequency_lang for lang and
+// returns the count written.
+func importEntries(db *sql.DB, entries []freqEntry, lang string) (int, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, err
@@ -122,9 +130,9 @@ func importEntries(db *sql.DB, entries []freqEntry) (int, error) {
 
 	for _, e := range entries {
 		if _, err := tx.Exec(
-			`INSERT INTO word_frequency (word, rank) VALUES (?, ?)
-			 ON CONFLICT(word) DO UPDATE SET rank = excluded.rank`,
-			e.word, e.rank); err != nil {
+			`INSERT INTO word_frequency_lang (word, lang, rank) VALUES (?, ?, ?)
+			 ON CONFLICT(word, lang) DO UPDATE SET rank = excluded.rank`,
+			e.word, lang, e.rank); err != nil {
 			return 0, fmt.Errorf("upsert %q: %w", e.word, err)
 		}
 	}

@@ -128,6 +128,20 @@
           <input type="number" id="sentence-blank-ratio" min="0" max="100" step="5"
             class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
         </div>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" id="translation-ranking-enabled" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-600" data-i18n="settings.translationRanking">Hide rare translations during training</span>
+        </label>
+        <p class="text-xs text-gray-400 ml-7" data-i18n="settings.translationRankingDesc">Ranks each word's translations by how common they are and only shows the most important ones on quiz cards. Rare translations are still accepted as correct answers.</p>
+        <div class="flex items-center gap-2 ml-7">
+          <label for="max-translations-shown" class="text-xs text-gray-500" data-i18n="settings.maxTranslationsShown">Max translations shown</label>
+          <input type="number" id="max-translations-shown" min="1" step="1"
+            class="w-20 border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <label class="flex items-center gap-3 cursor-pointer ml-7">
+          <input type="checkbox" id="translation-hide-unranked" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <span class="text-sm text-gray-600" data-i18n="settings.translationHideUnranked">Also hide translations with no frequency data</span>
+        </label>
       </div>
 
       <!-- New word confirmation inputs -->

@@ -281,16 +281,12 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 		card.Translations = map[string][]string{}
 		for _, lang := range langs {
-			transWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
+			texts, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings, 0)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			if len(transWords) > 0 {
-				texts := make([]string, len(transWords))
-				for i, tw := range transWords {
-					texts[i] = tw.Text
-				}
+			if len(texts) > 0 {
 				card.Translations[lang] = texts
 			}
 		}
@@ -377,13 +373,16 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		// Load translations for ALL selected langs so the user sees every meaning as context.
 		translations := map[string][]string{}
 		for _, lang := range langs {
-			words, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
+			// +1: this card's own prompt word is drawn from these translations
+			// and then excluded from the displayed hint list (train-card.js), so
+			// request one extra to keep "max shown" accurate post-exclusion.
+			texts, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings, 1)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			for _, w := range words {
-				translations[lang] = append(translations[lang], w.Text)
+			if len(texts) > 0 {
+				translations[lang] = texts
 			}
 		}
 		if len(translations) == 0 {

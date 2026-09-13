@@ -258,6 +258,38 @@ func TestCreateSubwordsForWord_SplitsSemicolonDefinitions(t *testing.T) {
 	}
 }
 
+func TestCreateSubwordsForWord_MarksTranslationsAsCedictSourced(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedCedictEntryForTest(ctx, "炒饭", "en", "chǎo fàn", "fried rice"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "炒", "en", "chǎo", "to stir-fry"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "炒饭",
+		Translations:  map[string][]string{"en": {"fried rice"}},
+		StartTraining: true,
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	var source string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT t.source FROM translations t
+		 JOIN words en ON en.id = t.translation_word_id
+		 JOIN words zh ON zh.id = t.zh_word_id
+		 WHERE zh.text = '炒' AND en.text = 'to stir-fry' AND zh.user_id = 2`,
+	).Scan(&source); err != nil {
+		t.Fatalf("query subword translation source: %v", err)
+	}
+	if source != "cedict" {
+		t.Errorf("source = %q, want %q", source, "cedict")
+	}
+}
+
 func TestCreateSubwordsForWord_InheritsParentTags(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

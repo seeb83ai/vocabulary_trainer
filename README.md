@@ -37,6 +37,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - **Bucket growth indicator.** The result screen shows one growth icon (🌰🌱🌿🌳🌸) for each accuracy tier: New, Struggling, Learning, Practicing, or Mastered. The icon marks the current tier of a word, HMM entity, or component, on both correct and wrong answers.
   - **Celebrate bucket changes** is an optional setting, off by default, in Settings → Training Mode → Quiz Display. When a correct answer advances a word's tier, this setting shows a full-screen "Level up!" interstitial before the result screen. The old tier's icon dissolves into the new one.
 - **Sentence fill-in-the-blank.** An optional training mode, off by default, in Settings → Training Mode → Quiz Display ("Sentence fill-in-the-blank" + a frequency percentage). Tag a zh word with an `s_`-prefixed tag (for example `s_hsk1`) to mark it as a sentence. When enabled, the training page occasionally shows one of your sentences with one word blanked out instead of a plain word card — either the Chinese word is blanked (translation shown as context) or a word inside the sentence's translation is blanked (Chinese shown as context), following the same direction logic as progressive mode. A sentence only becomes eligible once every word it contains (punctuation aside — commas, quotation marks, etc. are skipped) has been reviewed at least once, and the app always blanks whichever of those words is next due, so the mode reinforces words you already know in context. Answering updates that word's own SM-2 progress, the same as answering it in a normal quiz card would.
+- **Translation ranking.** An optional setting, off by default, in Settings → Training Mode → Quiz Display ("Hide rare translations during training"). CC-CEDICT/HanDeDict-derived translations are ranked by how common each gloss's rarest word is, using bundled English/German word-frequency lists (from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords), same source as the existing Chinese frequency list). When enabled, only the top N translations per language (configurable, default 3) are shown on quiz cards; the rest stay valid answers, they're just hidden from the hint. Translations you added or edited yourself are never hidden. A separate "Also hide translations with no frequency data" toggle controls whether a gloss with no match in the frequency list counts as low-priority (hidden if over the cap) or is always shown — off by default.
 - **Tags.** You can assign tags to vocabulary words, for example "HSK1", "food", or "travel". You can filter by tag on the vocabulary list and the training page. When you select multiple tags, the app applies OR logic. An autocomplete input creates tags on the fly, and the app removes unused tags automatically.
 - **Auto-translate.** A "Translate" button in the Add/Edit Word form detects direction automatically: enter Chinese to get the translation and pinyin filled in, or enter the translation to get Chinese and pinyin back. It first tries a free local dictionary lookup (see "Free dictionary lookup" below); for the Chinese→translation direction, if that finds nothing it falls back to DeepL when configured (plus/admin accounts or a personal DeepL key). The reverse direction (translation→Chinese) is DeepL-only. The app generates pinyin locally with [go-pinyin](https://github.com/mozillazg/go-pinyin). Generated pinyin preserves `()`/`（）` brackets from the Chinese text, so a word like `过 (动词)` gets pinyin `guò (dòng cí)`.
 - **Pinyin auto-fill in the Add/Edit Word form.** As you type in the Chinese field, the app fills the Pinyin field automatically once you pause. If the Pinyin field is already non-empty (auto-filled or hand-edited), the app doesn't recompute it on every keystroke — only after you stop typing for 3 seconds or move focus out of the Chinese field, and only after confirming if the recomputed value differs from what's there.
@@ -476,18 +477,18 @@ When you set `-lang` to anything other than `en`, the tool translates each Engli
 
 ## Word-frequency import
 
-A standalone `word_frequency(word, rank)` reference table (rank 1 = most frequent) is used to order [new-word introduction](#new-word-introduction-order) — it does not create or modify any vocabulary words, and a ranked word that isn't in a user's vocabulary is simply unused.
+A standalone `word_frequency_lang(word, lang, rank)` reference table (rank 1 = most frequent) serves two features: the zh list orders [new-word introduction](#new-word-introduction-order), and the en/de lists power [translation ranking](#features) (scoring each CEDICT/HanDeDict-derived translation gloss by its rarest word, so training can hide the least important ones). It does not create or modify any vocabulary words, and a ranked word that isn't currently used is simply unused. (An older `word_frequency(word, rank)` table from before the en/de lists existed is still present for backward compatibility but is no longer read.)
 
-An 8,000-entry list derived from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords) (MIT license), `content/2018/zh_cn/zh_cn_50k.txt` (an OpenSubtitles-based corpus) — filtered to entries made up solely of CJK ideographs, deduplicated, and truncated to the top 8,000 by frequency — is bundled with the app and **imported automatically by the schema migration on startup**. No manual step is required; this is unlike the optional `import-hanzi`/`import-cedict` tools, since without it the frequency-ordering rule above would silently do nothing.
+Three 8,000-entry lists derived from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords) (MIT license) — `content/2018/zh_cn/zh_cn_50k.txt`, `content/2018/en/en_50k.txt`, and `content/2018/de/de_50k.txt` (OpenSubtitles-based corpora) — filtered to entries made up solely of CJK ideographs (zh) or alphabetic characters (en/de), deduplicated, and truncated to the top 8,000 by frequency — are bundled with the app and **imported automatically by schema migrations on startup**. No manual step is required; this is unlike the optional `import-hanzi`/`import-cedict` tools, since without it the frequency-ordering and translation-ranking features above would silently do nothing.
 
-A `make import-frequency` CLI tool remains available for importing an alternative or updated frequency list, or to force a re-import of the bundled one:
+A `make import-frequency` CLI tool remains available for importing an alternative or updated frequency list, or to force a re-import of a bundled one:
 
 ```bash
-# Re-import the bundled list
+# Re-import the bundled zh list
 make import-frequency
 
-# Custom DB path or data file
-make import-frequency DB=/path/to/vocab.db FILE=/path/to/frequency_data.txt
+# Custom DB path, data file, or language (zh/en/de)
+make import-frequency DB=/path/to/vocab.db FILE=/path/to/frequency_data.txt LANG=en
 
 # Preview without writing
 go run ./service/cmd/import-frequency -dry-run
@@ -499,9 +500,10 @@ Flags:
 |---|---|---|
 | `-db` | `data/vocab.db` | Path to SQLite database |
 | `-file` | `frequency_data.txt` | Path to a `word<TAB>rank` list (lines starting with `#` are treated as comments) |
+| `-lang` | `zh` | Language the list is for (`zh`, `en`, or `de`) |
 | `-dry-run` | false | Parse and validate without writing |
 
-Re-running the import updates the rank of any word already present rather than duplicating it, so it's safe to re-run after refreshing the data file.
+Re-running the import updates the rank of any word already present for that language rather than duplicating it, so it's safe to re-run after refreshing the data file.
 
 ### Character decomposition import (makemeahanzi)
 

@@ -27,6 +27,120 @@ func TestCreateWord_Idempotent(t *testing.T) {
 	}
 }
 
+func TestCreateWord_TranslationsMarkedUserSourcedAndTopRank(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	var source string
+	var rank int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT source, rank FROM translations WHERE zh_word_id = ?`, id,
+	).Scan(&source, &rank); err != nil {
+		t.Fatalf("query translation source/rank: %v", err)
+	}
+	if source != "user" {
+		t.Errorf("source = %q, want %q", source, "user")
+	}
+	if rank != 0 {
+		t.Errorf("rank = %d, want 0", rank)
+	}
+}
+
+func TestCreateWord_TranslationSourcesMarksCedictDerivedTranslations(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:       "送",
+		Translations: map[string][]string{"en": {"to send", "to deliver"}},
+		TranslationSources: map[string][]string{
+			"en": {"cedict", "cedict"},
+		},
+		StartTraining: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	candidates, err := s.GetTranslationCandidatesForWord(ctx, id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(candidates))
+	}
+	for _, c := range candidates {
+		if c.Source != "cedict" {
+			t.Errorf("Text %q: Source = %q, want %q", c.Text, c.Source, "cedict")
+		}
+	}
+}
+
+func TestCreateWord_TranslationSourcesDefaultsToUserWhenMissing(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "你好",
+		Translations:  map[string][]string{"en": {"hello"}},
+		StartTraining: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	candidates, err := s.GetTranslationCandidatesForWord(ctx, id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0].Source != "user" {
+		t.Errorf("expected 1 user-sourced candidate, got %+v", candidates)
+	}
+}
+
+func TestUpdateWord_PreservesTranslationSourceWhenResubmitted(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:             "送",
+		Translations:       map[string][]string{"en": {"to send"}},
+		TranslationSources: map[string][]string{"en": {"cedict"}},
+		StartTraining:      true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	// Simulate the edit form: it loads the word (with its stored sources)
+	// and resubmits the same translation unchanged, plus fixing the pinyin.
+	wd, err := s.GetWordByID(ctx, 2, id)
+	if err != nil || wd == nil {
+		t.Fatalf("GetWordByID: %v / %v", err, wd)
+	}
+	if got := wd.TranslationSources["en"]; len(got) != 1 || got[0] != "cedict" {
+		t.Fatalf("GetWordByID TranslationSources = %v, want [cedict]", got)
+	}
+
+	if err := s.UpdateWord(ctx, 2, id, models.UpdateWordRequest{
+		ZhText:             wd.ZhText,
+		Pinyin:             "sòng",
+		Translations:       wd.Translations,
+		TranslationSources: wd.TranslationSources,
+	}); err != nil {
+		t.Fatalf("UpdateWord: %v", err)
+	}
+
+	candidates, err := s.GetTranslationCandidatesForWord(ctx, id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0].Source != "cedict" {
+		t.Errorf("expected source to survive the edit as 'cedict', got %+v", candidates)
+	}
+}
+
 func TestCreateWord_MultipleTranslations(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "吃饭", "chī fàn", []string{"eat", "have a meal"})
@@ -93,6 +207,37 @@ func TestGetWords_ReturnsAll(t *testing.T) {
 	}
 	if len(words) != 2 {
 		t.Errorf("len(words): want 2, got %d", len(words))
+	}
+}
+
+func TestGetWords_IncludesTranslationSources(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:             "送",
+		Translations:       map[string][]string{"en": {"to send"}},
+		TranslationSources: map[string][]string{"en": {"cedict"}},
+		StartTraining:      true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	words, _, err := s.GetWords(ctx, int64(2), "", 1, 20, "", "", nil, false, false, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found *models.WordDetail
+	for i := range words {
+		if words[i].ID == id {
+			found = &words[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("word not found in list")
+	}
+	if got := found.TranslationSources["en"]; len(got) != 1 || got[0] != "cedict" {
+		t.Errorf("TranslationSources[en] = %v, want [cedict]", got)
 	}
 }
 
@@ -494,6 +639,30 @@ func TestGetTranslationsForWord_EN(t *testing.T) {
 	}
 	if len(words) != 2 {
 		t.Errorf("expected 2 EN translations, got %d", len(words))
+	}
+}
+
+func TestGetTranslationCandidatesForWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	candidates, err := s.GetTranslationCandidatesForWord(ctx, id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	c := candidates[0]
+	if c.Text != "hello" {
+		t.Errorf("Text = %q, want %q", c.Text, "hello")
+	}
+	if c.Source != "user" {
+		t.Errorf("Source = %q, want %q", c.Source, "user")
+	}
+	if c.Rank == nil || *c.Rank != 0 {
+		t.Errorf("Rank = %v, want pointer to 0", c.Rank)
 	}
 }
 

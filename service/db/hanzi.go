@@ -551,8 +551,13 @@ func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, t
 		return fmt.Errorf("get %s word id: %w", lang, err)
 	}
 
+	rank, err := computeTranslationRank(ctx, tx, lang, transText)
+	if err != nil {
+		return fmt.Errorf("rank %s translation: %w", lang, err)
+	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`, transID, zhID,
+		`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id, source, rank) VALUES (?, ?, 'cedict', ?)`,
+		transID, zhID, rank,
 	); err != nil {
 		return fmt.Errorf("link %s translation: %w", lang, err)
 	}

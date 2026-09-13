@@ -254,7 +254,10 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(component_coverage_threshold, 0),
 		       COALESCE(sentence_blank_enabled, 0),
 		       COALESCE(sentence_blank_ratio, 20),
-		       COALESCE(auto_subwords, 1)
+		       COALESCE(auto_subwords, 1),
+		       COALESCE(translation_ranking_enabled, 0),
+		       COALESCE(max_translations_shown, 3),
+		       COALESCE(translation_hide_unranked, 0)
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -306,6 +309,9 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.SentenceBlankEnabled,
 		&st.SentenceBlankRatio,
 		&autoSubwordsInt,
+		&st.TranslationRankingEnabled,
+		&st.MaxTranslationsShown,
+		&st.TranslationHideUnranked,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
@@ -427,7 +433,10 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			component_coverage_threshold    = ?,
 			sentence_blank_enabled          = ?,
 			sentence_blank_ratio            = ?,
-			auto_subwords                   = ?
+			auto_subwords                   = ?,
+			translation_ranking_enabled     = ?,
+			max_translations_shown          = ?,
+			translation_hide_unranked       = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -472,6 +481,9 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.SentenceBlankEnabled,
 		st.SentenceBlankRatio,
 		st.AutoSubwords,
+		st.TranslationRankingEnabled,
+		st.MaxTranslationsShown,
+		st.TranslationHideUnranked,
 		userID,
 	)
 	if err == nil {

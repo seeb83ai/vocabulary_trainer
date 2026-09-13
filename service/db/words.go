@@ -184,19 +184,21 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		}
 		for i := range words {
 			words[i].Translations = map[string][]string{}
+			words[i].TranslationSources = map[string][]string{}
 		}
 		allLangs, err := s.GetTranslationLanguages(ctx)
 		if err != nil {
 			return nil, 0, err
 		}
 		for _, lang := range allLangs {
-			langMap, err := s.batchLoadTranslationTexts(ctx, ids, lang)
+			langMap, sourceMap, err := s.batchLoadTranslationTexts(ctx, ids, lang)
 			if err != nil {
 				return nil, 0, err
 			}
 			for i, w := range words {
 				if t := langMap[w.ID]; t != nil {
 					words[i].Translations[lang] = t
+					words[i].TranslationSources[lang] = sourceMap[w.ID]
 				}
 			}
 		}
@@ -210,9 +212,11 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 	return words, total, nil
 }
 
-// batchLoadTranslationTexts loads all translation texts for the given zh word IDs
-// filtered by the given language ('en' or 'de'), returning a map of zhID → texts.
-func (s *Store) batchLoadTranslationTexts(ctx context.Context, ids []int64, lang string) (map[int64][]string, error) {
+// batchLoadTranslationTexts loads all translation texts and sources for the
+// given zh word IDs filtered by the given language ('en' or 'de'), returning
+// a map of zhID → texts and a map of zhID → sources (index-aligned with the
+// texts map, same order as getTranslationTextsAndSourcesForZhWord).
+func (s *Store) batchLoadTranslationTexts(ctx context.Context, ids []int64, lang string) (map[int64][]string, map[int64][]string, error) {
 	placeholders := make([]string, len(ids))
 	args := make([]any, len(ids)+1)
 	args[0] = lang
@@ -221,25 +225,27 @@ func (s *Store) batchLoadTranslationTexts(ctx context.Context, ids []int64, lang
 		args[i+1] = id
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT t.zh_word_id, w.text FROM words w
+		`SELECT t.zh_word_id, w.text, t.source FROM words w
 		 JOIN translations t ON t.translation_word_id = w.id
 		 WHERE w.language = ?
 		   AND t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
 		 ORDER BY w.text`, args...)
 	if err != nil {
-		return nil, fmt.Errorf("batch %s texts: %w", lang, err)
+		return nil, nil, fmt.Errorf("batch %s texts: %w", lang, err)
 	}
 	defer rows.Close()
-	result := make(map[int64][]string)
+	texts := make(map[int64][]string)
+	sources := make(map[int64][]string)
 	for rows.Next() {
 		var zhID int64
-		var text string
-		if err := rows.Scan(&zhID, &text); err != nil {
-			return nil, err
+		var text, source string
+		if err := rows.Scan(&zhID, &text, &source); err != nil {
+			return nil, nil, err
 		}
-		result[zhID] = append(result[zhID], text)
+		texts[zhID] = append(texts[zhID], text)
+		sources[zhID] = append(sources[zhID], source)
 	}
-	return result, rows.Err()
+	return texts, sources, rows.Err()
 }
 
 func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, ids []int64, idIndex map[int64]int) error {
@@ -276,6 +282,36 @@ func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, id
 		}
 	}
 	return nil
+}
+
+// getTranslationTextsAndSourcesForZhWord is like getTranslationTextsForZhWord
+// but also returns each translation's source, in the same order (index i of
+// each slice describes the same translation) — used by GetWordByID so the
+// edit form can resubmit the same source and avoid demoting a cedict-derived
+// translation to "user" just because the word was resaved.
+func (s *Store) getTranslationTextsAndSourcesForZhWord(ctx context.Context, zhID int64, lang string) (texts []string, sources []string, err error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.text, t.source FROM words w
+		 JOIN translations t ON t.translation_word_id = w.id
+		 WHERE t.zh_word_id = ? AND w.language = ?
+		 ORDER BY w.text`, zhID, lang)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get %s texts and sources: %w", lang, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var txt, source string
+		if err := rows.Scan(&txt, &source); err != nil {
+			return nil, nil, err
+		}
+		texts = append(texts, txt)
+		sources = append(sources, source)
+	}
+	if texts == nil {
+		texts = []string{}
+		sources = []string{}
+	}
+	return texts, sources, rows.Err()
 }
 
 func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, lang string) ([]string, error) {
@@ -419,13 +455,15 @@ func (s *Store) GetWordByID(ctx context.Context, userID, id int64) (*models.Word
 		return nil, fmt.Errorf("get word by id: %w", err)
 	}
 	wd.Translations = map[string][]string{}
+	wd.TranslationSources = map[string][]string{}
 	for _, lang := range []string{"en", "de"} {
-		texts, err := s.getTranslationTextsForZhWord(ctx, id, lang)
+		texts, sources, err := s.getTranslationTextsAndSourcesForZhWord(ctx, id, lang)
 		if err != nil {
 			return nil, err
 		}
 		if len(texts) > 0 {
 			wd.Translations[lang] = texts
+			wd.TranslationSources[lang] = sources
 		}
 	}
 	wd.Tags, err = s.getTagsForWord(ctx, id)
@@ -454,7 +492,7 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 	}
 
 	for lang, texts := range req.Translations {
-		for _, text := range texts {
+		for i, text := range texts {
 			text = strings.TrimSpace(text)
 			if text == "" {
 				continue
@@ -466,9 +504,8 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 			if err := initSM2(ctx, tx, transID); err != nil {
 				return 0, err
 			}
-			if _, err := tx.ExecContext(ctx,
-				`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
-				transID, zhID); err != nil {
+			source := sourceAt(req.TranslationSources[lang], i)
+			if err := linkTranslation(ctx, tx, transID, zhID, lang, text, source); err != nil {
 				return 0, fmt.Errorf("link %s translation: %w", lang, err)
 			}
 		}
@@ -568,7 +605,7 @@ func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req mode
 	}
 
 	for lang, texts := range req.Translations {
-		for _, text := range texts {
+		for i, text := range texts {
 			text = strings.TrimSpace(text)
 			if text == "" {
 				continue
@@ -580,9 +617,8 @@ func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req mode
 			if err := initSM2(ctx, tx, transID); err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx,
-				`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
-				transID, id); err != nil {
+			source := sourceAt(req.TranslationSources[lang], i)
+			if err := linkTranslation(ctx, tx, transID, id, lang, text, source); err != nil {
 				return fmt.Errorf("link %s translation: %w", lang, err)
 			}
 		}
@@ -690,6 +726,34 @@ func (s *Store) GetTranslationLanguages(ctx context.Context) ([]string, error) {
 }
 
 // GetTranslationsForWord returns all words in targetLang linked to wordID.
+// GetTranslationCandidatesForWord returns a zh word's translations in the
+// given language together with the ranking data (source/rank) used to
+// decide which ones to show during training. See models.TranslationCandidate.
+func (s *Store) GetTranslationCandidatesForWord(ctx context.Context, wordID int64, targetLang string) ([]models.TranslationCandidate, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.text, t.source, t.rank
+		 FROM words w
+		 JOIN translations t ON t.translation_word_id = w.id
+		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
+	if err != nil {
+		return nil, fmt.Errorf("get translation candidates: %w", err)
+	}
+	defer rows.Close()
+	var out []models.TranslationCandidate
+	for rows.Next() {
+		var c models.TranslationCandidate
+		var rank sql.NullInt64
+		if err := rows.Scan(&c.Text, &c.Source, &rank); err != nil {
+			return nil, err
+		}
+		if rank.Valid {
+			c.Rank = &rank.Int64
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.id, w.text, w.language, w.pinyin, w.created_at

@@ -378,3 +378,73 @@ func TestMigrate_WordFrequencyAutoImportDoesNotReRun(t *testing.T) {
 		t.Errorf("expected the override to survive a second Migrate call (import must not re-run), got rank %d", rank)
 	}
 }
+
+// TestMigrate_WordFrequencyLangAutoImport verifies word_frequency_lang is
+// populated for all three languages: zh (backfilled from word_frequency),
+// en, and de (from the newly bundled lists).
+func TestMigrate_WordFrequencyLangAutoImport(t *testing.T) {
+	db := openRawDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	var zhRank int
+	if err := db.QueryRow(`SELECT rank FROM word_frequency_lang WHERE word = ? AND lang = 'zh'`, "的").Scan(&zhRank); err != nil {
+		t.Fatalf("expected zh word_frequency to be backfilled into word_frequency_lang: %v", err)
+	}
+	if zhRank != 1 {
+		t.Errorf("expected '的' rank 1 in word_frequency_lang, got %d", zhRank)
+	}
+
+	var enRank int
+	if err := db.QueryRow(`SELECT rank FROM word_frequency_lang WHERE word = ? AND lang = 'en'`, "you").Scan(&enRank); err != nil {
+		t.Fatalf("expected bundled en frequency data to be imported: %v", err)
+	}
+	if enRank != 1 {
+		t.Errorf("expected 'you' rank 1 for en, got %d", enRank)
+	}
+
+	var deRank int
+	if err := db.QueryRow(`SELECT rank FROM word_frequency_lang WHERE word = ? AND lang = 'de'`, "ich").Scan(&deRank); err != nil {
+		t.Fatalf("expected bundled de frequency data to be imported: %v", err)
+	}
+	if deRank != 1 {
+		t.Errorf("expected 'ich' rank 1 for de, got %d", deRank)
+	}
+
+	var total int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM word_frequency_lang`).Scan(&total); err != nil {
+		t.Fatalf("count word_frequency_lang rows: %v", err)
+	}
+	if total < 15000 {
+		t.Fatalf("expected thousands of rows across zh/en/de, got %d", total)
+	}
+}
+
+// TestMigrate_TranslationsRankSourceColumns verifies the new translations
+// columns exist and default existing/new rows to source='user', rank=0.
+func TestMigrate_TranslationsRankSourceColumns(t *testing.T) {
+	db := openRawDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO words (id, text, language, user_id) VALUES (1, '你好', 'zh', 2), (2, 'hello', 'en', 2)`); err != nil {
+		t.Fatalf("insert words: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO translations (translation_word_id, zh_word_id) VALUES (2, 1)`); err != nil {
+		t.Fatalf("insert translation without explicit source/rank: %v", err)
+	}
+
+	var source string
+	var rank int
+	if err := db.QueryRow(`SELECT source, rank FROM translations WHERE translation_word_id = 2 AND zh_word_id = 1`).Scan(&source, &rank); err != nil {
+		t.Fatalf("read translation source/rank: %v", err)
+	}
+	if source != "user" {
+		t.Errorf("expected default source 'user', got %q", source)
+	}
+	if rank != 0 {
+		t.Errorf("expected default rank 0, got %d", rank)
+	}
+}

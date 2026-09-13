@@ -79,6 +79,43 @@ test.describe('Vocabulary Management', () => {
     await expect(enInputs.nth(1)).toHaveValue('soccer');
   });
 
+  // Regression test: translations autofilled by the Translate button must be
+  // stored as CEDICT-sourced (so translation ranking can hide them), not as
+  // "user"-sourced — a word added this way is the primary way users add
+  // vocabulary, so if this regresses, translation ranking silently does
+  // nothing for virtually every word.
+  test('translations filled by the Translate button are stored as cedict-sourced; edited ones become user-sourced', async ({ page }) => {
+    await page.goto('/vocab');
+    await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
+
+    await page.locator('#form-zh').fill('足球');
+    await page.locator('#translate-btn').click();
+    const enInputs = page.locator('#en-inputs-container .en-input');
+    await expect(enInputs).toHaveCount(2, { timeout: 8_000 });
+    await expect(enInputs.nth(0)).toHaveValue('football');
+    await expect(enInputs.nth(1)).toHaveValue('soccer');
+
+    // Edit the second (dictionary-filled) input by hand before submitting —
+    // it should be tracked as user-sourced, unlike the untouched first one.
+    await enInputs.nth(1).fill('soccer (edited)');
+    await page.locator('#form-start-training').check();
+    await page.locator('#word-form button[type="submit"]').click();
+    await expect(page.locator('#words-tbody')).toContainText('足球', { timeout: 8_000 });
+
+    const res = await page.request.get('/api/words?q=足球&page=1&per_page=20');
+    const body = await res.json();
+    const word = body.words.find(w => w.zh_text === '足球');
+    expect(word).toBeTruthy();
+    // Map text -> source rather than asserting the full array: an earlier
+    // spec in this file ("auto-creates a tagged sub-word") may have already
+    // created 足球 as an inert cedict-sourced sub-word, so this word can carry
+    // extra pre-existing translations alongside the ones this test added.
+    const sourceByText = {};
+    word.translations.en.forEach((text, i) => { sourceByText[text] = word.translation_sources.en[i]; });
+    expect(sourceByText['football']).toBe('cedict');
+    expect(sourceByText['soccer (edited)']).toBe('user');
+  });
+
   test('title is on its own line above controls on mobile viewport', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 641 });
     await page.goto('/vocab');

@@ -242,6 +242,133 @@ func TestQuizNext_TranslToZh_IncludesZhText(t *testing.T) {
 	}
 }
 
+func TestQuizNext_TranslationRanking_HidesLowRankTranslations(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Seed an extra CEDICT-derived, low-priority (unranked) translation
+	// alongside the user-added "hello".
+	if err := s.AddTranslation(ctx, int64(2), id, "en", "obscure greeting"); err != nil {
+		t.Fatalf("AddTranslation: %v", err)
+	}
+	if _, err := s.ExecForTest(
+		`UPDATE translations SET source = 'cedict', rank = NULL
+		 WHERE zh_word_id = ? AND translation_word_id = (SELECT id FROM words WHERE text = 'obscure greeting')`,
+		id,
+	); err != nil {
+		t.Fatalf("mark extra translation cedict-sourced: %v", err)
+	}
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.TranslationRankingEnabled = true
+	st.MaxTranslationsShown = 0
+	st.TranslationHideUnranked = true
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	// Leave progress at TotalAttempts==0 so this hits the new-word
+	// introduction card, which shows the cap exactly as configured (unlike
+	// transl_to_zh, whose card reserves one extra slot for its own prompt —
+	// see TestQuizNext_TranslationRanking_PromptDoesNotCountAgainstCap).
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	texts := card.Translations["en"]
+	if len(texts) != 1 || texts[0] != "hello" {
+		t.Errorf("want only user-added translation [hello] shown, got %v", texts)
+	}
+}
+
+// TestQuizNext_TranslationRanking_PromptDoesNotCountAgainstCap is a
+// regression test: the transl_to_zh card draws its prompt from the same
+// translations list and the frontend (train-card.js) then excludes that
+// prompt from the displayed hint list. If the backend capped to exactly
+// max_translations_shown, the user would see one fewer than they configured
+// (one consumed as the prompt). The card must return max+1 translations so
+// max remain visible once the frontend excludes the prompt.
+func TestQuizNext_TranslationRanking_PromptDoesNotCountAgainstCap(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "送", "sòng", []string{"to send"})
+
+	extra := []string{"to deliver", "to transmit", "to give as a present", "to see sb off", "to accompany", "to go along with"}
+	for _, text := range extra {
+		if err := s.AddTranslation(ctx, int64(2), id, "en", text); err != nil {
+			t.Fatalf("AddTranslation %q: %v", text, err)
+		}
+	}
+	// Mark every translation (including the seed one) as cedict-sourced with
+	// a distinct rank, so all 7 compete for the same ranked cap — isolates
+	// the prompt/extraSlots behavior from the separate always-shown ("user")
+	// exemption tested elsewhere.
+	if _, err := s.ExecForTest(
+		`UPDATE translations SET source = 'cedict', rank = (
+		    SELECT COUNT(*) FROM words w2
+		    JOIN translations t2 ON t2.translation_word_id = w2.id
+		    WHERE t2.zh_word_id = translations.zh_word_id AND w2.id <= translations.translation_word_id
+		 )
+		 WHERE zh_word_id = ?`,
+		id,
+	); err != nil {
+		t.Fatalf("mark translations cedict-sourced: %v", err)
+	}
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.TranslationRankingEnabled = true
+	st.MaxTranslationsShown = 4
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=transl_to_zh", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	texts := card.Translations["en"]
+	if len(texts) != 5 {
+		t.Fatalf("want 5 translations returned (4 to show + 1 consumed as prompt), got %d: %v", len(texts), texts)
+	}
+	// Mirror the frontend's exclusion (train-card.js) to confirm 4 remain visible.
+	shown := 0
+	for _, txt := range texts {
+		if txt != card.Prompt {
+			shown++
+		}
+	}
+	if shown != 4 {
+		t.Errorf("want 4 translations visible after excluding the prompt, got %d (prompt=%q, all=%v)", shown, card.Prompt, texts)
+	}
+	if card.Prompt == "" {
+		t.Error("expected a non-empty prompt")
+	}
+}
+
 func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
