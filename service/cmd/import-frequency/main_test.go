@@ -81,7 +81,23 @@ func TestBundledFrequencyDataMatchesMigrationCopy(t *testing.T) {
 	}
 }
 
-func TestImportEntries_WritesWordFrequencyTable(t *testing.T) {
+func TestBundledEnDeFrequencyDataMatchesMigrationCopy(t *testing.T) {
+	for _, lang := range []string{"en", "de"} {
+		here, err := os.ReadFile("frequency_data_" + lang + ".txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		migrationCopy, err := os.ReadFile("../../db/migrate/frequency_data_" + lang + ".txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(here) != string(migrationCopy) {
+			t.Errorf("%s: frequency_data_%s.txt copies have drifted apart — keep them byte-identical", lang, lang)
+		}
+	}
+}
+
+func TestImportEntries_WritesWordFrequencyLangTable(t *testing.T) {
 	os.Setenv("ADMIN_EMAIL", "admin@example.de")
 	os.Setenv("ADMIN_PASSWORD", "I am the admin")
 	os.Setenv("USER_EMAIL", "me@example.de")
@@ -99,7 +115,7 @@ func TestImportEntries_WritesWordFrequencyTable(t *testing.T) {
 	defer db.Close()
 	db.SetMaxOpenConns(1)
 
-	n, err := importEntries(db, []freqEntry{{word: "你好", rank: 1}, {word: "谢谢", rank: 2}})
+	n, err := importEntries(db, []freqEntry{{word: "你好", rank: 1}, {word: "谢谢", rank: 2}}, "zh")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +124,7 @@ func TestImportEntries_WritesWordFrequencyTable(t *testing.T) {
 	}
 
 	var rank int
-	if err := db.QueryRow(`SELECT rank FROM word_frequency WHERE word = ?`, "你好").Scan(&rank); err != nil {
+	if err := db.QueryRow(`SELECT rank FROM word_frequency_lang WHERE word = ? AND lang = 'zh'`, "你好").Scan(&rank); err != nil {
 		t.Fatal(err)
 	}
 	if rank != 1 {
@@ -116,15 +132,15 @@ func TestImportEntries_WritesWordFrequencyTable(t *testing.T) {
 	}
 
 	// Re-importing with a different rank should update, not duplicate.
-	if _, err := importEntries(db, []freqEntry{{word: "你好", rank: 99}}); err != nil {
+	if _, err := importEntries(db, []freqEntry{{word: "你好", rank: 99}}, "zh"); err != nil {
 		t.Fatal(err)
 	}
 	var count int
-	db.QueryRow(`SELECT COUNT(*) FROM word_frequency WHERE word = ?`, "你好").Scan(&count)
+	db.QueryRow(`SELECT COUNT(*) FROM word_frequency_lang WHERE word = ? AND lang = 'zh'`, "你好").Scan(&count)
 	if count != 1 {
 		t.Errorf("expected upsert to keep a single row, got %d", count)
 	}
-	db.QueryRow(`SELECT rank FROM word_frequency WHERE word = ?`, "你好").Scan(&rank)
+	db.QueryRow(`SELECT rank FROM word_frequency_lang WHERE word = ? AND lang = 'zh'`, "你好").Scan(&rank)
 	if rank != 99 {
 		t.Errorf("expected updated rank 99, got %d", rank)
 	}

@@ -202,6 +202,46 @@ test.describe('Settings – Blur pinyin (issue #201)', () => {
   });
 });
 
+// Translation ranking: hide rare CEDICT/HanDeDict-derived translations during
+// training, ranked by word frequency, while user-added ones always show.
+test.describe('Settings – Translation ranking', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('translation ranking toggle is visible and defaults to unchecked', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.locator('#translation-ranking-enabled')).toBeVisible();
+    await expect(page.locator('#translation-ranking-enabled')).not.toBeChecked();
+    await expect(page.locator('#max-translations-shown')).toHaveValue('3');
+    await captureForPR(page, 'settings-translation-ranking');
+  });
+
+  test('translation ranking settings save and persist across reload', async ({ page }) => {
+    await page.goto('/settings');
+
+    await page.locator('#translation-ranking-enabled').check();
+    await page.locator('#max-translations-shown').fill('2');
+    await page.locator('#translation-hide-unranked').check();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#translation-ranking-enabled')).toBeChecked();
+    await expect(page.locator('#max-translations-shown')).toHaveValue('2');
+    await expect(page.locator('#translation-hide-unranked')).toBeChecked();
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.translation_ranking_enabled).toBe(true);
+    expect(settings.max_translations_shown).toBe(2);
+    expect(settings.translation_hide_unranked).toBe(true);
+
+    // Reset to default.
+    await page.locator('#translation-ranking-enabled').uncheck();
+    await page.locator('#max-translations-shown').fill('3');
+    await page.locator('#translation-hide-unranked').uncheck();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
+});
+
 // Wrong answer retry: choose whether/what to require retyping after a wrong
 // answer (issue #346) — off / only the tested field(s) ("matched") / always
 // both the Chinese word and translation ("both").

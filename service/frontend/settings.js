@@ -236,6 +236,12 @@ async function loadSettings() {
     if (sentenceBlankRatioEl) sentenceBlankRatioEl.value = st.sentence_blank_ratio ?? 20;
     const autoSubwordsEl = document.getElementById('auto-subwords');
     if (autoSubwordsEl) autoSubwordsEl.checked = st.auto_subwords !== false;
+    const translationRankingEnabledEl = document.getElementById('translation-ranking-enabled');
+    if (translationRankingEnabledEl) translationRankingEnabledEl.checked = !!st.translation_ranking_enabled;
+    const maxTranslationsShownEl = document.getElementById('max-translations-shown');
+    if (maxTranslationsShownEl) maxTranslationsShownEl.value = st.max_translations_shown ?? 3;
+    const translationHideUnrankedEl = document.getElementById('translation-hide-unranked');
+    if (translationHideUnrankedEl) translationHideUnrankedEl.checked = !!st.translation_hide_unranked;
 
     // Daily learning
     const maxNewEl = document.getElementById('max-new-words');
@@ -397,6 +403,9 @@ function buildModePayload() {
     sentence_blank_enabled: !!(document.getElementById('sentence-blank-enabled')?.checked),
     sentence_blank_ratio:   parseInt(document.getElementById('sentence-blank-ratio')?.value || '20', 10),
     auto_subwords:           !!(document.getElementById('auto-subwords')?.checked),
+    translation_ranking_enabled: !!(document.getElementById('translation-ranking-enabled')?.checked),
+    max_translations_shown:      parseInt(document.getElementById('max-translations-shown')?.value || '3', 10),
+    translation_hide_unranked:   !!(document.getElementById('translation-hide-unranked')?.checked),
   };
 }
 

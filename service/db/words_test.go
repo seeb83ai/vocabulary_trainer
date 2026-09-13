@@ -27,6 +27,26 @@ func TestCreateWord_Idempotent(t *testing.T) {
 	}
 }
 
+func TestCreateWord_TranslationsMarkedUserSourcedAndTopRank(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	var source string
+	var rank int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT source, rank FROM translations WHERE zh_word_id = ?`, id,
+	).Scan(&source, &rank); err != nil {
+		t.Fatalf("query translation source/rank: %v", err)
+	}
+	if source != "user" {
+		t.Errorf("source = %q, want %q", source, "user")
+	}
+	if rank != 0 {
+		t.Errorf("rank = %d, want 0", rank)
+	}
+}
+
 func TestCreateWord_MultipleTranslations(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "吃饭", "chī fàn", []string{"eat", "have a meal"})
@@ -494,6 +514,30 @@ func TestGetTranslationsForWord_EN(t *testing.T) {
 	}
 	if len(words) != 2 {
 		t.Errorf("expected 2 EN translations, got %d", len(words))
+	}
+}
+
+func TestGetTranslationCandidatesForWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	candidates, err := s.GetTranslationCandidatesForWord(ctx, id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(candidates))
+	}
+	c := candidates[0]
+	if c.Text != "hello" {
+		t.Errorf("Text = %q, want %q", c.Text, "hello")
+	}
+	if c.Source != "user" {
+		t.Errorf("Source = %q, want %q", c.Source, "user")
+	}
+	if c.Rank == nil || *c.Rank != 0 {
+		t.Errorf("Rank = %v, want pointer to 0", c.Rank)
 	}
 }
 

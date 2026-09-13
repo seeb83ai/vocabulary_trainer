@@ -690,6 +690,34 @@ func (s *Store) GetTranslationLanguages(ctx context.Context) ([]string, error) {
 }
 
 // GetTranslationsForWord returns all words in targetLang linked to wordID.
+// GetTranslationCandidatesForWord returns a zh word's translations in the
+// given language together with the ranking data (source/rank) used to
+// decide which ones to show during training. See models.TranslationCandidate.
+func (s *Store) GetTranslationCandidatesForWord(ctx context.Context, wordID int64, targetLang string) ([]models.TranslationCandidate, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.text, t.source, t.rank
+		 FROM words w
+		 JOIN translations t ON t.translation_word_id = w.id
+		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
+	if err != nil {
+		return nil, fmt.Errorf("get translation candidates: %w", err)
+	}
+	defer rows.Close()
+	var out []models.TranslationCandidate
+	for rows.Next() {
+		var c models.TranslationCandidate
+		var rank sql.NullInt64
+		if err := rows.Scan(&c.Text, &c.Source, &rank); err != nil {
+			return nil, err
+		}
+		if rank.Valid {
+			c.Rank = &rank.Int64
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.id, w.text, w.language, w.pinyin, w.created_at

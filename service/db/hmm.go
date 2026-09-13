@@ -430,16 +430,20 @@ func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 
 	// Copy translations.
 	tRows, err := tx.QueryContext(ctx,
-		`SELECT translation_word_id, zh_word_id FROM translations
+		`SELECT translation_word_id, zh_word_id, source, rank FROM translations
 		 WHERE zh_word_id IN (SELECT id FROM words WHERE user_id = 1)`)
 	if err != nil {
 		return fmt.Errorf("query template translations: %w", err)
 	}
-	type translationRow struct{ enID, zhID int64 }
+	type translationRow struct {
+		enID, zhID int64
+		source     string
+		rank       sql.NullInt64
+	}
 	var translations []translationRow
 	for tRows.Next() {
 		var tr translationRow
-		if err := tRows.Scan(&tr.enID, &tr.zhID); err != nil {
+		if err := tRows.Scan(&tr.enID, &tr.zhID, &tr.source, &tr.rank); err != nil {
 			tRows.Close()
 			return fmt.Errorf("scan template translation: %w", err)
 		}
@@ -456,8 +460,8 @@ func (s *Store) ImportTemplateWords(ctx context.Context, userID int64) error {
 			continue
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id) VALUES (?, ?)`,
-			newEnID, newZhID,
+			`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id, source, rank) VALUES (?, ?, ?, ?)`,
+			newEnID, newZhID, tr.source, tr.rank,
 		); err != nil {
 			return fmt.Errorf("insert user translation: %w", err)
 		}

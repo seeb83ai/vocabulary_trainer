@@ -281,16 +281,12 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		}
 		card.Translations = map[string][]string{}
 		for _, lang := range langs {
-			transWords, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
+			texts, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			if len(transWords) > 0 {
-				texts := make([]string, len(transWords))
-				for i, tw := range transWords {
-					texts[i] = tw.Text
-				}
+			if len(texts) > 0 {
 				card.Translations[lang] = texts
 			}
 		}
@@ -377,13 +373,13 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		// Load translations for ALL selected langs so the user sees every meaning as context.
 		translations := map[string][]string{}
 		for _, lang := range langs {
-			words, err := h.Store.GetTranslationsForWord(r.Context(), word.ID, lang)
+			texts, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-			for _, w := range words {
-				translations[lang] = append(translations[lang], w.Text)
+			if len(texts) > 0 {
+				translations[lang] = texts
 			}
 		}
 		if len(translations) == 0 {

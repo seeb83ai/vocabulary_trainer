@@ -242,6 +242,59 @@ func TestQuizNext_TranslToZh_IncludesZhText(t *testing.T) {
 	}
 }
 
+func TestQuizNext_TranslationRanking_HidesLowRankTranslations(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	// Seed an extra CEDICT-derived, low-priority (unranked) translation
+	// alongside the user-added "hello".
+	if err := s.AddTranslation(ctx, int64(2), id, "en", "obscure greeting"); err != nil {
+		t.Fatalf("AddTranslation: %v", err)
+	}
+	if _, err := s.ExecForTest(
+		`UPDATE translations SET source = 'cedict', rank = NULL
+		 WHERE zh_word_id = ? AND translation_word_id = (SELECT id FROM words WHERE text = 'obscure greeting')`,
+		id,
+	); err != nil {
+		t.Fatalf("mark extra translation cedict-sourced: %v", err)
+	}
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.TranslationRankingEnabled = true
+	st.MaxTranslationsShown = 0
+	st.TranslationHideUnranked = true
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode=transl_to_zh", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	texts := card.Translations["en"]
+	if len(texts) != 1 || texts[0] != "hello" {
+		t.Errorf("want only user-added translation [hello] shown, got %v", texts)
+	}
+}
+
 func TestQuizNext_DailyNewWordLimitBlocked(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

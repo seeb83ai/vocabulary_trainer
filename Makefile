@@ -74,10 +74,10 @@ import-pinyin:
 	mkdir -p data
 	cd service && go run ./cmd/import-pinyin -db $(or $(DB),../data/vocab.db) -source ../$(or $(SOURCE),mp3) -audio-dir ../$(or $(PINYIN_AUDIO_DIR),data/pinyin-audio)
 
-## import-frequency: import a Chinese word-frequency list used to order new-word introduction (see issue #340) — the bundled list is already auto-imported by the schema migration on startup; use this to import an alternative/updated list (FILE=frequency_data.txt DB=data/vocab.db)
+## import-frequency: import a zh/en/de word-frequency list used to order new-word introduction (see issue #340) and rank translations for training — the bundled lists are already auto-imported by schema migrations on startup; use this to import an alternative/updated list (FILE=frequency_data.txt DB=data/vocab.db LANG=zh)
 import-frequency:
 	mkdir -p data
-	cd service && go run ./cmd/import-frequency -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),cmd/import-frequency/frequency_data.txt)
+	cd service && go run ./cmd/import-frequency -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),cmd/import-frequency/frequency_data.txt) -lang $(or $(LANG),zh)
 
 ## funnel: print the signup → activation → retention funnel (DB=data/vocab.db MIN_ATTEMPTS=20)
 funnel:

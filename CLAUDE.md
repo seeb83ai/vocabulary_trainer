@@ -201,6 +201,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/components_stats.go` | Component stats history and coverage |
 | `service/db/components_test_helpers.go` | Test-only seed/set helpers for component tests |
 | `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary` |
+| `service/db/translation_rank.go` | `computeTranslationRank` — scores an auto-derived translation gloss against `word_frequency_lang` |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
 | `service/db/funnel.go` | Signup → activation → retention funnel (`GetFunnelReport`) |
@@ -210,6 +211,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 |---|---|
 | `service/handlers/words.go` | CRUD + `AddTranslation` handler, shared `writeJSON`/`writeError`/`parseID` |
 | `service/handlers/quiz.go` | `QuizHandler`, `Next`, `Answer`, `Skip`, `Acknowledge`, `Advance`, `FlagDifficult` |
+| `service/handlers/quiz_translation_filter.go` | `loadTranslationsForCard`, `filterTranslationsForDisplay` — hides low-rank translations on quiz cards per user settings |
 | `service/handlers/quiz_stats.go` | `DailyStats`, `WordStats`, `Stats`, `DueDateDistribution` |
 | `service/handlers/quiz_matchgame.go` | `MatchGame`, `MatchAnswer` handlers |
 | `service/handlers/components.go` | Component (hanzi) quiz handlers |

@@ -87,6 +87,9 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 		SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
 		AutoSubwords                     bool     `json:"auto_subwords"`
+		TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
+		MaxTranslationsShown             int      `json:"max_translations_shown"`
+		TranslationHideUnranked          bool     `json:"translation_hide_unranked"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -202,6 +205,12 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	if req.SentenceBlankRatio < 0 || req.SentenceBlankRatio > 100 {
 		writeError(w, http.StatusBadRequest, "sentence_blank_ratio must be between 0 and 100")
 		return
+	}
+	// 0/omitted (e.g. a partial PATCH that doesn't touch this field) falls
+	// back to the default rather than storing a nonsensical "show 0" value.
+	resolvedMaxTranslationsShown := req.MaxTranslationsShown
+	if resolvedMaxTranslationsShown < 1 {
+		resolvedMaxTranslationsShown = 3
 	}
 
 	// Resolve gamification_enabled: nil means the field was omitted (as every
@@ -321,6 +330,9 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		SentenceBlankEnabled:             req.SentenceBlankEnabled,
 		SentenceBlankRatio:               req.SentenceBlankRatio,
 		AutoSubwords:                     req.AutoSubwords,
+		TranslationRankingEnabled:        req.TranslationRankingEnabled,
+		MaxTranslationsShown:             resolvedMaxTranslationsShown,
+		TranslationHideUnranked:          req.TranslationHideUnranked,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

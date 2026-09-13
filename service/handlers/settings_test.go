@@ -1210,6 +1210,44 @@ func TestSettingsPatch_SentenceBlankRatio_Invalid(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_TranslationRanking(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["translation_ranking_enabled"] != false {
+		t.Errorf("translation_ranking_enabled: want false by default, got %v", st["translation_ranking_enabled"])
+	}
+	if st["max_translations_shown"] != float64(3) {
+		t.Errorf("max_translations_shown: want 3 by default, got %v", st["max_translations_shown"])
+	}
+	if st["translation_hide_unranked"] != false {
+		t.Errorf("translation_hide_unranked: want false by default, got %v", st["translation_hide_unranked"])
+	}
+
+	body := baseSettingsPatch()
+	body["translation_ranking_enabled"] = true
+	body["max_translations_shown"] = 5
+	body["translation_hide_unranked"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["translation_ranking_enabled"] != true {
+		t.Errorf("translation_ranking_enabled: want true after update, got %v", st["translation_ranking_enabled"])
+	}
+	if st["max_translations_shown"] != float64(5) {
+		t.Errorf("max_translations_shown: want 5 after update, got %v", st["max_translations_shown"])
+	}
+	if st["translation_hide_unranked"] != true {
+		t.Errorf("translation_hide_unranked: want true after update, got %v", st["translation_hide_unranked"])
+	}
+}
+
 func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

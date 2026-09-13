@@ -79,6 +79,9 @@ type UserSettings struct {
 	SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 	SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
 	AutoSubwords                     bool     `json:"auto_subwords"`
+	TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
+	MaxTranslationsShown             int      `json:"max_translations_shown"`
+	TranslationHideUnranked          bool     `json:"translation_hide_unranked"`
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.
@@ -164,6 +167,15 @@ type Word struct {
 	Language  string // "en" or "zh"
 	Pinyin    *string
 	CreatedAt time.Time
+}
+
+// TranslationCandidate is one translation linked to a zh word, along with
+// the importance data used to rank/hide it during training (see
+// db.computeTranslationRank and the translations.source/rank columns).
+type TranslationCandidate struct {
+	Text   string
+	Source string // "user" or "cedict"
+	Rank   *int64 // nil when unranked (no frequency-list match)
 }
 
 type SM2Progress struct {
