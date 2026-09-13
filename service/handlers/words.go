@@ -56,6 +56,30 @@ func (h *WordsHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// cleanTranslations trims/drops blank translations, in lockstep with the
+// parallel sources array (sources[lang][i] describes translations[lang][i]),
+// so a blank entry doesn't shift a later translation's source out of sync.
+func cleanTranslations(translations, sources map[string][]string) (map[string][]string, map[string][]string) {
+	cleaned := map[string][]string{}
+	cleanedSources := map[string][]string{}
+	for lang, texts := range translations {
+		langSources := sources[lang]
+		for i, t := range texts {
+			s := strings.TrimSpace(t)
+			if s == "" {
+				continue
+			}
+			cleaned[lang] = append(cleaned[lang], s)
+			var source string
+			if i < len(langSources) {
+				source = langSources[i]
+			}
+			cleanedSources[lang] = append(cleanedSources[lang], source)
+		}
+	}
+	return cleaned, cleanedSources
+}
+
 func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req models.CreateWordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -76,18 +100,13 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "pinyin too long (max 200 characters)")
 		return
 	}
-	cleaned := map[string][]string{}
-	for lang, texts := range req.Translations {
-		for _, t := range texts {
-			if s := strings.TrimSpace(t); s != "" {
-				cleaned[lang] = append(cleaned[lang], s)
-			}
-		}
-		if len(cleaned[lang]) > 20 {
+	cleaned, cleanedSources := cleanTranslations(req.Translations, req.TranslationSources)
+	for _, texts := range cleaned {
+		if len(texts) > 20 {
 			writeError(w, http.StatusBadRequest, "too many translations (max 20)")
 			return
 		}
-		for _, t := range cleaned[lang] {
+		for _, t := range texts {
 			if utf8.RuneCountInString(t) > 500 {
 				writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
 				return
@@ -113,6 +132,7 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	req.Translations = cleaned
+	req.TranslationSources = cleanedSources
 
 	// CreateWord handles StartTraining (acknowledge + component init) atomically
 	// inside its transaction; the handler only fires async TTS afterwards.
@@ -170,18 +190,13 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "pinyin too long (max 200 characters)")
 		return
 	}
-	cleaned := map[string][]string{}
-	for lang, texts := range req.Translations {
-		for _, t := range texts {
-			if s := strings.TrimSpace(t); s != "" {
-				cleaned[lang] = append(cleaned[lang], s)
-			}
-		}
-		if len(cleaned[lang]) > 20 {
+	cleaned, cleanedSources := cleanTranslations(req.Translations, req.TranslationSources)
+	for _, texts := range cleaned {
+		if len(texts) > 20 {
 			writeError(w, http.StatusBadRequest, "too many translations (max 20)")
 			return
 		}
-		for _, t := range cleaned[lang] {
+		for _, t := range texts {
 			if utf8.RuneCountInString(t) > 500 {
 				writeError(w, http.StatusBadRequest, "translation too long (max 500 characters)")
 				return
@@ -207,6 +222,7 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	req.Translations = cleaned
+	req.TranslationSources = cleanedSources
 
 	if err := h.Store.UpdateWord(r.Context(), UserIDFromContext(r.Context()), id, req); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

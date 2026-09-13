@@ -278,40 +278,47 @@ type AnswerResponse struct {
 	UserAnswerPinyin *string             `json:"user_answer_pinyin,omitempty"`
 }
 
+// TranslationSources, when present, parallels Translations[lang] index-for-index:
+// "cedict" for a translation that came verbatim from a dictionary lookup
+// (and so gets ranked/hidden per translation-ranking settings), "user" (or
+// missing) for one the user typed or edited themselves (always shown).
 type CreateWordRequest struct {
-	ZhText        string              `json:"zh_text"`
-	Pinyin        string              `json:"pinyin"`
-	Translations  map[string][]string `json:"translations"`
-	Tags          []string            `json:"tags"`
-	StartTraining bool                `json:"start_training"`
+	ZhText             string              `json:"zh_text"`
+	Pinyin             string              `json:"pinyin"`
+	Translations       map[string][]string `json:"translations"`
+	TranslationSources map[string][]string `json:"translation_sources"`
+	Tags               []string            `json:"tags"`
+	StartTraining      bool                `json:"start_training"`
 }
 
 type UpdateWordRequest struct {
-	ZhText        string              `json:"zh_text"`
-	Pinyin        string              `json:"pinyin"`
-	Translations  map[string][]string `json:"translations"`
-	Tags          []string            `json:"tags"`
-	StartTraining bool                `json:"start_training"`
+	ZhText             string              `json:"zh_text"`
+	Pinyin             string              `json:"pinyin"`
+	Translations       map[string][]string `json:"translations"`
+	TranslationSources map[string][]string `json:"translation_sources"`
+	Tags               []string            `json:"tags"`
+	StartTraining      bool                `json:"start_training"`
 }
 
 type WordDetail struct {
-	ID              int64               `json:"id"`
-	ZhText          string              `json:"zh_text"`
-	Pinyin          *string             `json:"pinyin"`
-	Translations    map[string][]string `json:"translations"`
-	CreatedAt       time.Time           `json:"created_at"`
-	Repetitions     int                 `json:"repetitions"`
-	Easiness        float64             `json:"easiness"`
-	IntervalDays    int                 `json:"interval_days"`
-	TotalCorrect    int                 `json:"total_correct"`
-	TotalAttempts   int                 `json:"total_attempts"`
-	StreakBonus     int                 `json:"streak_bonus"`
-	DueDate         time.Time           `json:"due_date"`
-	Tags            []string            `json:"tags"`
-	NeedsReview     bool                `json:"needs_review"`
-	LearningNewWord bool                `json:"learning_new_word"`
-	SceneText       string              `json:"scene_text,omitempty"`
-	IsAlsoComponent bool                `json:"is_also_component,omitempty"`
+	ID                 int64               `json:"id"`
+	ZhText             string              `json:"zh_text"`
+	Pinyin             *string             `json:"pinyin"`
+	Translations       map[string][]string `json:"translations"`
+	TranslationSources map[string][]string `json:"translation_sources"`
+	CreatedAt          time.Time           `json:"created_at"`
+	Repetitions        int                 `json:"repetitions"`
+	Easiness           float64             `json:"easiness"`
+	IntervalDays       int                 `json:"interval_days"`
+	TotalCorrect       int                 `json:"total_correct"`
+	TotalAttempts      int                 `json:"total_attempts"`
+	StreakBonus        int                 `json:"streak_bonus"`
+	DueDate            time.Time           `json:"due_date"`
+	Tags               []string            `json:"tags"`
+	NeedsReview        bool                `json:"needs_review"`
+	LearningNewWord    bool                `json:"learning_new_word"`
+	SceneText          string              `json:"scene_text,omitempty"`
+	IsAlsoComponent    bool                `json:"is_also_component,omitempty"`
 }
 
 // ConfusionKindWord / ConfusionKindComponent identify which side of a

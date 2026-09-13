@@ -54,6 +54,42 @@ func TestWordsCreate_Valid(t *testing.T) {
 	}
 }
 
+func TestWordsCreate_TranslationSourcesSurviveBlankEntryFiltering(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	// A blank translation between two real ones (as the frontend would never
+	// send, but a client could) must not shift TranslationSources out of
+	// alignment with the translations that survive filtering.
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:       "足球",
+		Pinyin:       "zúqiú",
+		Translations: map[string][]string{"en": {"football", "", "soccer"}},
+		TranslationSources: map[string][]string{
+			"en": {"cedict", "cedict", "user"},
+		},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp map[string]int64
+	decodeJSON(t, rec, &resp)
+
+	candidates, err := s.GetTranslationCandidatesForWord(context.Background(), resp["id"], "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, c := range candidates {
+		got[c.Text] = c.Source
+	}
+	if got["football"] != "cedict" {
+		t.Errorf("football source = %q, want cedict", got["football"])
+	}
+	if got["soccer"] != "user" {
+		t.Errorf("soccer source = %q, want user", got["soccer"])
+	}
+}
+
 func TestWordsCreate_MissingZhText(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{

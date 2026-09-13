@@ -32,6 +32,34 @@ func computeTranslationRank(ctx context.Context, tx *sql.Tx, lang, text string) 
 	return worst, nil
 }
 
+// sourceAt returns sources[i] if present, else "user" — the default for a
+// translation with no explicit origin (e.g. an older request/client that
+// doesn't send TranslationSources at all).
+func sourceAt(sources []string, i int) string {
+	if i < len(sources) && sources[i] == "cedict" {
+		return "cedict"
+	}
+	return "user"
+}
+
+// linkTranslation inserts (or reuses) the translations row connecting transID
+// to zhID, computing and storing a frequency rank when source is "cedict"
+// (see computeTranslationRank); a "user" translation is always rank 0/exempt.
+func linkTranslation(ctx context.Context, tx *sql.Tx, transID, zhID int64, lang, text, source string) error {
+	rank := sql.NullInt64{Int64: 0, Valid: true}
+	if source == "cedict" {
+		var err error
+		rank, err = computeTranslationRank(ctx, tx, lang, text)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := tx.ExecContext(ctx,
+		`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id, source, rank) VALUES (?, ?, ?, ?)`,
+		transID, zhID, source, rank)
+	return err
+}
+
 // splitFrequencyWords lowercases text and splits it into individual words on
 // anything that isn't a letter or apostrophe (so "to be able to" -> ["to",
 // "be", "able", "to"], "don't" stays one word).

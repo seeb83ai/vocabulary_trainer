@@ -81,18 +81,20 @@ function openEditForm(word) {
   }
 
   const enTexts = (word.translations || {})[primaryLang] || [];
+  const enSources = (word.translation_sources || {})[primaryLang] || [];
   const container = $('en-inputs-container');
   container.innerHTML = '';
-  for (const t of (enTexts.length ? enTexts : [''])) {
-    addEnInput(t);
+  for (const [i, t] of (enTexts.length ? enTexts : ['']).entries()) {
+    addEnInput(t, enSources[i] || 'user');
   }
 
   const deContainer = $('de-inputs-container');
   deContainer.innerHTML = '';
   if (secondaryLang) {
     const deTexts = (word.translations || {})[secondaryLang] || [];
-    for (const t of (deTexts.length ? deTexts : [''])) {
-      addDeInput(t);
+    const deSources = (word.translation_sources || {})[secondaryLang] || [];
+    for (const [i, t] of (deTexts.length ? deTexts : ['']).entries()) {
+      addDeInput(t, deSources[i] || 'user');
     }
   }
   applySecondaryLangVisibility();
@@ -215,7 +217,15 @@ function resetForm() {
   $('hmm-builder-container').innerHTML = '';
 }
 
-function addEnInput(value = '') {
+// A translation input's `data-source` tracks whether its current value came
+// verbatim from a dictionary lookup ("cedict", set by handleTranslate/
+// openEditForm) or was typed/edited by hand ("user", the default and what
+// any edit permanently downgrades it to) — see translation-ranking settings.
+function markInputEdited(input) {
+  input.dataset.source = 'user';
+}
+
+function addEnInput(value = '', source = 'user') {
   const container = $('en-inputs-container');
   const wrapper = document.createElement('div');
   wrapper.className = 'flex items-center gap-2 mb-2';
@@ -224,13 +234,16 @@ function addEnInput(value = '') {
     <input type="text" class="en-input flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
            placeholder="${placeholder}" value="${escHtml(value)}">
     <button type="button" class="btn-remove-en text-gray-400 hover:text-red-500 text-xl leading-none" title="Remove">×</button>`;
+  const input = wrapper.querySelector('.en-input');
+  input.dataset.source = source;
+  input.addEventListener('input', () => markInputEdited(input));
   wrapper.querySelector('.btn-remove-en').addEventListener('click', () => {
     if (container.children.length > 1) wrapper.remove();
   });
   container.appendChild(wrapper);
 }
 
-function addDeInput(value = '') {
+function addDeInput(value = '', source = 'user') {
   const container = $('de-inputs-container');
   const wrapper = document.createElement('div');
   wrapper.className = 'flex items-center gap-2 mb-2';
@@ -239,6 +252,9 @@ function addDeInput(value = '') {
     <input type="text" class="de-input flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
            placeholder="${placeholder}" value="${escHtml(value)}">
     <button type="button" class="btn-remove-de text-gray-400 hover:text-red-500 text-xl leading-none" title="Remove">×</button>`;
+  const input = wrapper.querySelector('.de-input');
+  input.dataset.source = source;
+  input.addEventListener('input', () => markInputEdited(input));
   wrapper.querySelector('.btn-remove-de').addEventListener('click', () => {
     if (container.children.length > 1) wrapper.remove();
   });
@@ -247,16 +263,23 @@ function addDeInput(value = '') {
 
 function buildFormPayload() {
   const pinyin = $('form-pinyin').value.trim();
+  const enInputs = Array.from(document.querySelectorAll('.en-input')).filter(i => i.value.trim());
   const translations = {
-    [primaryLang]: Array.from(document.querySelectorAll('.en-input')).map(i => i.value.trim()).filter(Boolean),
+    [primaryLang]: enInputs.map(i => i.value.trim()),
+  };
+  const translationSources = {
+    [primaryLang]: enInputs.map(i => i.dataset.source || 'user'),
   };
   if (secondaryLang) {
-    translations[secondaryLang] = Array.from(document.querySelectorAll('.de-input')).map(i => i.value.trim()).filter(Boolean);
+    const deInputs = Array.from(document.querySelectorAll('.de-input')).filter(i => i.value.trim());
+    translations[secondaryLang] = deInputs.map(i => i.value.trim());
+    translationSources[secondaryLang] = deInputs.map(i => i.dataset.source || 'user');
   }
   return {
     zh_text: $('form-zh').value.trim(),
     pinyin: pinyin,
     translations,
+    translation_sources: translationSources,
     tags: [...formTags],
     start_training: $('form-start-training').checked,
   };
@@ -405,7 +428,7 @@ async function handleTranslate() {
       if (translTexts.length > 0) {
         const container = $('en-inputs-container');
         container.innerHTML = '';
-        for (const tr of translTexts) addEnInput(tr);
+        for (const tr of translTexts) addEnInput(tr, 'cedict');
       }
     }
 
@@ -414,7 +437,7 @@ async function handleTranslate() {
       if (translTexts.length > 0) {
         const container = $('de-inputs-container');
         container.innerHTML = '';
-        for (const tr of translTexts) addDeInput(tr);
+        for (const tr of translTexts) addDeInput(tr, 'cedict');
       }
     }
   } catch (e) {
