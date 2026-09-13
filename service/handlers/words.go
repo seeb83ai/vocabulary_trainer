@@ -102,8 +102,8 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	cleaned, cleanedSources := cleanTranslations(req.Translations, req.TranslationSources)
 	for _, texts := range cleaned {
-		if len(texts) > 20 {
-			writeError(w, http.StatusBadRequest, "too many translations (max 20)")
+		if len(texts) > 40 {
+			writeError(w, http.StatusBadRequest, "too many translations (max 40)")
 			return
 		}
 		for _, t := range texts {
@@ -192,8 +192,8 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	cleaned, cleanedSources := cleanTranslations(req.Translations, req.TranslationSources)
 	for _, texts := range cleaned {
-		if len(texts) > 20 {
-			writeError(w, http.StatusBadRequest, "too many translations (max 20)")
+		if len(texts) > 40 {
+			writeError(w, http.StatusBadRequest, "too many translations (max 40)")
 			return
 		}
 		for _, t := range texts {
