@@ -19,7 +19,13 @@ type translationCandidateStore interface {
 // show on a quiz card, applying the user's translation-ranking settings when
 // enabled. When ranking is disabled (or settings are nil), every linked
 // translation is returned, matching the pre-ranking behavior.
-func loadTranslationsForCard(ctx context.Context, store translationCandidateStore, wordID int64, lang string, settings *models.UserSettings) ([]string, error) {
+//
+// extraSlots raises the effective cap by that many entries. The transl_to_zh
+// card pulls its prompt word out of this same list and the frontend then
+// excludes it from the displayed hint (train-card.js), so that caller passes
+// extraSlots=1 — otherwise "max shown" translations become max-1 visible
+// once the prompt is drawn from them. Every other caller passes 0.
+func loadTranslationsForCard(ctx context.Context, store translationCandidateStore, wordID int64, lang string, settings *models.UserSettings, extraSlots int) ([]string, error) {
 	if settings == nil || !settings.TranslationRankingEnabled {
 		words, err := store.GetTranslationsForWord(ctx, wordID, lang)
 		if err != nil {
@@ -44,7 +50,7 @@ func loadTranslationsForCard(ctx context.Context, store translationCandidateStor
 		}
 		candidates[i] = c
 	}
-	return filterTranslationsForDisplay(candidates, settings.MaxTranslationsShown, settings.TranslationHideUnranked), nil
+	return filterTranslationsForDisplay(candidates, settings.MaxTranslationsShown+extraSlots, settings.TranslationHideUnranked), nil
 }
 
 // translationCandidate is one linked translation word with its stored
