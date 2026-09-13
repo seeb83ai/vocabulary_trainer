@@ -247,6 +247,7 @@ test.describe('Settings – Component training threshold', () => {
 
   test('component training section is visible with threshold input and coverage summary', async ({ page }) => {
     await page.goto('/settings');
+    await page.waitForSelector('[data-settings-loaded]');
     await expect(page.locator('#component-training-section')).toBeVisible();
     await expect(page.locator('#component-coverage-threshold')).toBeVisible();
     await expect(page.locator('#component-coverage-threshold')).toHaveValue('0');
@@ -255,6 +256,7 @@ test.describe('Settings – Component training threshold', () => {
 
   test('threshold can be changed and saved, and persists across reload', async ({ page }) => {
     await page.goto('/settings');
+    await page.waitForSelector('[data-settings-loaded]');
     const input = page.locator('#component-coverage-threshold');
     await expect(input).toHaveValue('0');
 
@@ -262,6 +264,7 @@ test.describe('Settings – Component training threshold', () => {
     await expect(page.locator('[data-testid="toast"]')).toBeVisible();
 
     await page.reload();
+    await page.waitForSelector('[data-settings-loaded]');
     await expect(page.locator('#component-coverage-threshold')).toHaveValue('5');
 
     const res = await page.request.get('/api/settings');
@@ -275,10 +278,8 @@ test.describe('Settings – Component training threshold', () => {
 
   test('rejects an out-of-range threshold', async ({ page }) => {
     await page.goto('/settings');
+    await page.waitForSelector('[data-settings-loaded]');
     const input = page.locator('#component-coverage-threshold');
-    // Wait for the async settings load to finish populating the field before
-    // typing into it, so the fetch response can't race the fill and clobber it.
-    await expect(input).toHaveValue('0');
 
     await input.fill('150');
     await expect(page.locator('[data-testid="toast"]')).toBeVisible();

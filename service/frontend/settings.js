@@ -288,6 +288,7 @@ async function loadSettings() {
     }
     const localURLEl = document.getElementById('llm-local-url');
     if (localURLEl && st.llm_local_url) localURLEl.value = st.llm_local_url;
+    document.body.dataset.settingsLoaded = 'true';
   } catch { /* ignore */ }
 }
 
