@@ -269,6 +269,31 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	}
 }
 
+// TestGetUserSettings_NewlyRegisteredUser_TranslationRankingDefaults verifies
+// that a freshly registered user (via CreateUserWithSettings, the real
+// sign-up path) gets "hide rare translations during training" preselected
+// with max translations shown = 4.
+func TestGetUserSettings_NewlyRegisteredUser_TranslationRankingDefaults(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	userID, err := s.CreateUserWithSettings(ctx, "newuser@example.de", "h", "", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("CreateUserWithSettings: %v", err)
+	}
+
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if !st.TranslationRankingEnabled {
+		t.Error("want translation_ranking_enabled=true by default for new users (hide rare translations preselected)")
+	}
+	if st.MaxTranslationsShown != 4 {
+		t.Errorf("want max_translations_shown=4 by default for new users, got %d", st.MaxTranslationsShown)
+	}
+}
+
 func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
