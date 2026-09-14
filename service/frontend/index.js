@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      window.location.replace('/train');
+      window.location.replace(data.redirect || '/train');
     } catch {
       errEl.textContent = 'Network error. Please try again.';
       errEl.classList.remove('hidden');

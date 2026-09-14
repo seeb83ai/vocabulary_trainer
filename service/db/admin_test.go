@@ -16,7 +16,7 @@ func TestGetAdminOverview_UserStats(t *testing.T) {
 		t.Fatalf("create extra user: %v", err)
 	}
 
-	ov, err := s.GetAdminOverview(ctx)
+	ov, err := s.GetAdminOverview(ctx, false)
 	if err != nil {
 		t.Fatalf("GetAdminOverview: %v", err)
 	}
@@ -41,6 +41,61 @@ func TestGetAdminOverview_UserStats(t *testing.T) {
 	}
 }
 
+func TestGetAdminOverview_ExcludeSeedUsers(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	// Template DB seeds id=1 (admin) and id=2 (plus). Add a real user id=3.
+	if _, err := s.CreateUser(ctx, "extra@example.de", "hash", "tok", time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("create extra user: %v", err)
+	}
+
+	// Activity/usage for the seed accounts (ids 1, 2) and the real user (id 3).
+	if _, err := s.RecordDailyStat(ctx, 2, true); err != nil {
+		t.Fatalf("record daily stat: %v", err)
+	}
+	if _, err := s.RecordDailyStat(ctx, 3, true); err != nil {
+		t.Fatalf("record daily stat: %v", err)
+	}
+	if err := s.RecordUsageEvent(ctx, 2, "GET /train"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordUsageEvent(ctx, 3, "GET /train"); err != nil {
+		t.Fatal(err)
+	}
+
+	ov, err := s.GetAdminOverview(ctx, true)
+	if err != nil {
+		t.Fatalf("GetAdminOverview: %v", err)
+	}
+
+	if ov.Users.Total != 1 {
+		t.Errorf("expected 1 non-seed user, got %d", ov.Users.Total)
+	}
+	if ov.Activity.ActiveLast7Days != 1 {
+		t.Errorf("expected 1 non-seed active user, got %d", ov.Activity.ActiveLast7Days)
+	}
+	if ov.Activity.ActiveLast30Days != 1 {
+		t.Errorf("expected 1 non-seed active user, got %d", ov.Activity.ActiveLast30Days)
+	}
+
+	found := false
+	for _, pv := range ov.PageViews {
+		if pv.Name == "GET /train" {
+			found = true
+			if pv.TotalCount != 1 {
+				t.Errorf("expected GET /train total_count 1 with seed users excluded, got %d", pv.TotalCount)
+			}
+			if pv.UniqueUsers != 1 {
+				t.Errorf("expected GET /train unique_users 1 with seed users excluded, got %d", pv.UniqueUsers)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected GET /train in page views")
+	}
+}
+
 func TestGetAdminOverview_QuizVolumeAndActivity(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
@@ -52,7 +107,7 @@ func TestGetAdminOverview_QuizVolumeAndActivity(t *testing.T) {
 		t.Fatalf("record daily stat: %v", err)
 	}
 
-	ov, err := s.GetAdminOverview(ctx)
+	ov, err := s.GetAdminOverview(ctx, false)
 	if err != nil {
 		t.Fatalf("GetAdminOverview: %v", err)
 	}
@@ -94,7 +149,7 @@ func TestGetAdminOverview_GuestActivityFromAuditLog(t *testing.T) {
 		t.Fatalf("record audit log: %v", err)
 	}
 
-	ov, err := s.GetAdminOverview(ctx)
+	ov, err := s.GetAdminOverview(ctx, false)
 	if err != nil {
 		t.Fatalf("GetAdminOverview: %v", err)
 	}
@@ -127,7 +182,7 @@ func TestGetAdminOverview_FeatureUsageSplitsPagesAndAPIs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ov, err := s.GetAdminOverview(ctx)
+	ov, err := s.GetAdminOverview(ctx, false)
 	if err != nil {
 		t.Fatalf("GetAdminOverview: %v", err)
 	}

@@ -203,7 +203,7 @@ type UserStore interface {
 
 // AdminStore: cross-user aggregate data for the admin dashboard.
 type AdminStore interface {
-	GetAdminOverview(ctx context.Context) (*models.AdminOverview, error)
+	GetAdminOverview(ctx context.Context, excludeSeedUsers bool) (*models.AdminOverview, error)
 	GetUserRole(ctx context.Context, userID int64) (string, error)
 }
 

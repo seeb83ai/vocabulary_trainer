@@ -742,7 +742,7 @@ The app records every request internally, in the `usage_events` table (`user_id`
 
 ## Admin dashboard
 
-Users with the `admin` role can view cross-user usage insights at `/admin-dashboard` (non-admins are redirected to `/`). It shows:
+Users with the `admin` role can view cross-user usage insights at `/admin-dashboard` (non-admins are redirected to `/`). Admins land here directly after signing in. It shows:
 
 - **Account overview** — total users, role breakdown (admin/plus/free), email verification status.
 - **Activity** — how many registered users trained in the last 7/30 days, and how many are dormant.
@@ -751,6 +751,8 @@ Users with the `admin` role can view cross-user usage insights at `/admin-dashbo
 - **Guest activity** — failed login attempts against unknown or wrong-password accounts (`user_id = 0` in `audit_log`), by day.
 - **DeepL / LLM usage** — total calls and unique users for `/api/translate` and the HMM scene-generation endpoints, drawn from `usage_events`.
 - **Page views / feature usage** — every tracked route from `usage_events`, split into page navigations and API calls, each with total hits, unique users, and last-seen timestamp.
+
+An "Exclude seed accounts" toggle hides the id=1 (admin/template) and id=2 (operator) accounts from every count and chart, via `GET /api/admin/overview?exclude_seed=1`. It's a UI toggle only — unchecked by default, not persisted.
 
 ### Funnel report
 
@@ -831,7 +833,7 @@ Stages: **registered** (accounts created) → **verified email** → **activated
 | `PATCH` | `/api/training-filters` | Persist training page filter state (mode, tier, langs, tags, mnemonics, components) server-side for cross-device sync |
 | `PUT` | `/api/settings/api-keys` | Encrypt and store personal DeepL / LLM API keys |
 | `POST` | `/api/settings/backfill-subwords` | Create sub-words for every multi-character zh word already in active training (one-time backfill for words added before auto-subwords existed) |
-| `GET` | `/api/admin/overview` | Cross-user usage insights: account/activity stats, signup and quiz-volume trends, guest activity, DeepL/LLM usage, page/feature usage (admin role only) |
+| `GET` | `/api/admin/overview` | Cross-user usage insights: account/activity stats, signup and quiz-volume trends, guest activity, DeepL/LLM usage, page/feature usage (admin role only). Add `?exclude_seed=1` to leave the seed accounts (id 1, 2) out of every count. |
 
 ## License
 

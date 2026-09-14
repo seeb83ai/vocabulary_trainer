@@ -10,11 +10,25 @@ test.describe('Admin dashboard', () => {
     await page.locator('#signin-email').fill(ADMIN_EMAIL);
     await page.locator('#signin-password').fill(ADMIN_PASSWORD);
     await page.locator('#signin-btn').click();
-    await expect(page).toHaveURL('/train', { timeout: 10_000 });
-
-    await page.goto('/admin-dashboard');
-    await expect(page).toHaveURL('/admin-dashboard');
+    await expect(page).toHaveURL('/admin-dashboard', { timeout: 10_000 });
     await expect(page.locator('#stat-tiles')).toContainText('Total users');
+    await expect(page.locator('#load-error')).toBeHidden();
+  });
+
+  test('exclude-seed-accounts toggle reloads the overview', async ({ page }) => {
+    await page.goto('/');
+    await openAuthModal(page);
+    await page.locator('#signin-email').fill(ADMIN_EMAIL);
+    await page.locator('#signin-password').fill(ADMIN_PASSWORD);
+    await page.locator('#signin-btn').click();
+    await expect(page).toHaveURL('/admin-dashboard', { timeout: 10_000 });
+    await expect(page.locator('#stat-tiles')).toContainText('Total users');
+
+    const [overviewResponse] = await Promise.all([
+      page.waitForResponse(resp => resp.url().includes('/api/admin/overview?exclude_seed=1')),
+      page.locator('#exclude-seed-toggle').check(),
+    ]);
+    expect(overviewResponse.ok()).toBeTruthy();
     await expect(page.locator('#load-error')).toBeHidden();
   });
 

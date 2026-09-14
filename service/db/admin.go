@@ -12,7 +12,13 @@ import (
 // aggregate quiz volume, guest (unauthenticated) activity from audit_log,
 // and per-route usage_events broken into page views vs. API features
 // (with DeepL/LLM call volume singled out).
-func (s *Store) GetAdminOverview(ctx context.Context) (*models.AdminOverview, error) {
+//
+// When excludeSeedUsers is true, the seed accounts created by every install
+// (id=1, the admin/template user, and id=2, the operator's personal account)
+// are left out of every user-scoped count so they don't skew real usage
+// numbers. Guest activity (audit_log rows with user_id=0) is unaffected —
+// it never belongs to a real user account.
+func (s *Store) GetAdminOverview(ctx context.Context, excludeSeedUsers bool) (*models.AdminOverview, error) {
 	ov := &models.AdminOverview{
 		Signups:       []models.DueDateCount{},
 		QuizVolume:    []models.AdminQuizDay{},
@@ -21,6 +27,10 @@ func (s *Store) GetAdminOverview(ctx context.Context) (*models.AdminOverview, er
 		FeatureUsage:  []models.AdminFeatureUsage{},
 	}
 
+	userFilter := ""
+	if excludeSeedUsers {
+		userFilter = "WHERE id >= 3"
+	}
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
 			COUNT(*),
@@ -29,17 +39,21 @@ func (s *Store) GetAdminOverview(ctx context.Context) (*models.AdminOverview, er
 			COALESCE(SUM(CASE WHEN role = 'free' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN email_verified = 1 THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN email_verified != 1 THEN 1 ELSE 0 END), 0)
-		FROM users`).Scan(
+		FROM users `+userFilter).Scan(
 		&ov.Users.Total, &ov.Users.Admins, &ov.Users.Plus, &ov.Users.Free,
 		&ov.Users.Verified, &ov.Users.Unverified,
 	); err != nil {
 		return nil, fmt.Errorf("get admin user stats: %w", err)
 	}
 
+	signupUserFilter := "created_at >= datetime('now', '-30 days')"
+	if excludeSeedUsers {
+		signupUserFilter += " AND id >= 3"
+	}
 	signupRows, err := s.db.QueryContext(ctx, `
 		SELECT date(created_at), COUNT(*)
 		FROM users
-		WHERE created_at >= datetime('now', '-30 days')
+		WHERE `+signupUserFilter+`
 		GROUP BY date(created_at)
 		ORDER BY date(created_at)`)
 	if err != nil {
@@ -59,13 +73,17 @@ func (s *Store) GetAdminOverview(ctx context.Context) (*models.AdminOverview, er
 	}
 	signupRows.Close()
 
+	dailyStatsUserFilter := ""
+	if excludeSeedUsers {
+		dailyStatsUserFilter = " AND user_id >= 3"
+	}
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT user_id) FROM daily_stats WHERE date >= date('now', '-7 days')`,
+		`SELECT COUNT(DISTINCT user_id) FROM daily_stats WHERE date >= date('now', '-7 days')`+dailyStatsUserFilter,
 	).Scan(&ov.Activity.ActiveLast7Days); err != nil {
 		return nil, fmt.Errorf("count active users (7d): %w", err)
 	}
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT user_id) FROM daily_stats WHERE date >= date('now', '-30 days')`,
+		`SELECT COUNT(DISTINCT user_id) FROM daily_stats WHERE date >= date('now', '-30 days')`+dailyStatsUserFilter,
 	).Scan(&ov.Activity.ActiveLast30Days); err != nil {
 		return nil, fmt.Errorf("count active users (30d): %w", err)
 	}
@@ -74,7 +92,7 @@ func (s *Store) GetAdminOverview(ctx context.Context) (*models.AdminOverview, er
 	quizRows, err := s.db.QueryContext(ctx, `
 		SELECT date, COALESCE(SUM(attempts), 0), COALESCE(SUM(mistakes), 0)
 		FROM daily_stats
-		WHERE date >= date('now', '-30 days')
+		WHERE date >= date('now', '-30 days')`+dailyStatsUserFilter+`
 		GROUP BY date
 		ORDER BY date`)
 	if err != nil {
@@ -117,9 +135,13 @@ func (s *Store) GetAdminOverview(ctx context.Context) (*models.AdminOverview, er
 	}
 	guestRows.Close()
 
+	usageUserFilter := ""
+	if excludeSeedUsers {
+		usageUserFilter = "WHERE user_id >= 3"
+	}
 	usageRows, err := s.db.QueryContext(ctx, `
 		SELECT name, SUM(count), COUNT(DISTINCT user_id), MAX(last_seen)
-		FROM usage_events
+		FROM usage_events `+usageUserFilter+`
 		GROUP BY name
 		ORDER BY SUM(count) DESC`)
 	if err != nil {
