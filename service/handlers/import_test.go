@@ -9,8 +9,12 @@ import (
 
 func TestImportSourceTags_ReturnsTags(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
-	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
+	// User 1 is a zh-words-and-tags-only template; translations for import
+	// come from cedict_entries, not from translations stored on user 1.
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "谢谢", "en", "thank you")
 	// User 2 has a different tag — should not appear
 	seedWordFull(t, s, 2, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK2"})
 
@@ -45,8 +49,11 @@ func TestImportSourceTags_ReturnsTags(t *testing.T) {
 
 func TestImportSourceTags_WithDeFlag(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"hallo"}, []string{"greetings"})
-	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"greetings"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"greetings"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", nil, nil, []string{"greetings"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "你好", "de", "hallo")
+	seedCedictEntry(t, s, "再见", "en", "goodbye")
 
 	r := newRouter(s)
 	rec := do(t, r, "GET", "/api/import/source-tags", nil)
@@ -90,8 +97,10 @@ func TestImportSourceTags_EmptyWhenNoWords(t *testing.T) {
 
 func TestImportSourceTags_HidesNonImportable(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"public"})
-	seedWordFull(t, s, 1, "秘密", "", []string{"secret"}, nil, []string{"private"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"public"})
+	seedWordFull(t, s, 1, "秘密", "", nil, nil, []string{"private"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "秘密", "en", "secret")
 	// Mark private tag as not importable.
 	if err := s.UpsertTagMeta(context.Background(), int64(1), "private", "", false); err != nil {
 		t.Fatalf("UpsertTagMeta: %v", err)
@@ -111,9 +120,13 @@ func TestImportSourceTags_HidesNonImportable(t *testing.T) {
 
 func TestImportPreview_ValidTag(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"hallo"}, []string{"HSK1"})
-	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
-	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", nil, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "你好", "de", "hallo")
+	seedCedictEntry(t, s, "谢谢", "en", "thank you")
+	seedCedictEntry(t, s, "再见", "en", "goodbye")
 
 	r := newRouter(s)
 	rec := do(t, r, "GET", "/api/import/preview?tag=HSK1", nil)
@@ -182,9 +195,12 @@ func TestImportPreview_MissingTag(t *testing.T) {
 
 func TestImport_Basic(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
-	seedWordFull(t, s, 1, "谢谢", "xiè xie", []string{"thank you"}, nil, []string{"HSK1"})
-	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "谢谢", "xiè xie", nil, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "谢谢", "en", "thank you")
+	seedCedictEntry(t, s, "再见", "en", "goodbye")
 
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/import", map[string]any{
@@ -223,8 +239,10 @@ func TestImport_Basic(t *testing.T) {
 
 func TestImport_SkipsDuplicates(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
-	seedWordFull(t, s, 1, "再见", "zài jiàn", []string{"goodbye"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "再见", "en", "goodbye")
 	// User 2 already has 你好
 	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, nil)
 
@@ -252,7 +270,9 @@ func TestImport_SkipsDuplicates(t *testing.T) {
 
 func TestImport_DeFlag(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"Hallo"}, []string{"HSK1"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "你好", "de", "Hallo")
 
 	r := newRouter(s)
 	// Import with DE
@@ -290,7 +310,9 @@ func TestImport_DeFlag(t *testing.T) {
 
 func TestImport_DeFlagFalse(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, []string{"Hallo"}, []string{"HSK1"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "你好", "de", "Hallo")
 
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/import", map[string]any{
@@ -319,7 +341,8 @@ func TestImport_DeFlagFalse(t *testing.T) {
 
 func TestImport_ApplyCustomTags(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
 
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/import", map[string]any{

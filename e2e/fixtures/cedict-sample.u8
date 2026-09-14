@@ -1,5 +1,39 @@
 # Tiny CEDICT-format fixture for E2E tests (sub-word auto-creation, free
-# dictionary lookup). Not a real CC-CEDICT dump — just enough entries to
-# exercise the segmentation + Translate-button flows end to end.
+# dictionary lookup, tag-based import). Not a real CC-CEDICT dump — just
+# enough entries to exercise the segmentation + Translate-button + import
+# flows end to end. Tag-based import reads translations from cedict_entries,
+# not from any translations stored on the source user (see global-setup.js's
+# "shared library user" seeding and onboarding.spec.js) — every zh word those
+# seed as importable must have a matching entry here.
 踢 踢 [ti1] /to kick/
 足球 足球 [zu2 qiu2] /football/soccer/
+一 一 [yi1] /one/
+人 人 [ren2] /person/people/
+大 大 [da4] /big/large/
+时间 时间 [shi2 jian1] /time/
+已经 已经 [yi3 jing1] /already/
+二 二 [er4] /two/
+三 三 [san1] /three/
+四 四 [si4] /four/
+五 五 [wu3] /five/
+六 六 [liu4] /six/
+七 七 [qi1] /seven/
+八 八 [ba1] /eight/
+九 九 [jiu3] /nine/
+十 十 [shi2] /ten/
+月 月 [yue4] /moon/month/
+日 日 [ri4] /day/sun/
+年 年 [nian2] /year/
+水 水 [shui3] /water/
+火 火 [huo3] /fire/
+山 山 [shan1] /mountain/
+土 土 [tu3] /earth/soil/
+木 木 [mu4] /wood/tree/
+金 金 [jin1] /gold/metal/
+风 风 [feng1] /wind/
+雨 雨 [yu3] /rain/
+云 云 [yun2] /cloud/
+雪 雪 [xue3] /snow/
+星 星 [xing1] /star/
+河 河 [he2] /river/
+湖 湖 [hu2] /lake/

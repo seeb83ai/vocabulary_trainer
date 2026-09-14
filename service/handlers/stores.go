@@ -72,6 +72,7 @@ type componentStore interface {
 
 type importStore interface {
 	db.WordStore
+	LookupDictionary(ctx context.Context, simplified, lang string) ([]string, error)
 }
 
 type llmStore interface {

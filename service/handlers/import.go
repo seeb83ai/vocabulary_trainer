@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -39,6 +40,27 @@ type importResponse struct {
 
 const sourceUserID int64 = 1
 
+// dictLangs are the languages the tag-based import feature can pull
+// translations for. User_id=1 stores only zh words and tags; translations
+// come live from cedict_entries (CC-CEDICT for en, HanDeDict for de).
+var dictLangs = []string{"en", "de"}
+
+// dictionaryTranslations looks up every cedict_entries definition for
+// zhText across dictLangs, keyed by language.
+func dictionaryTranslations(ctx context.Context, store importStore, zhText string) (map[string][]string, error) {
+	translations := map[string][]string{}
+	for _, lang := range dictLangs {
+		defs, err := store.LookupDictionary(ctx, zhText, lang)
+		if err != nil {
+			return nil, err
+		}
+		if len(defs) > 0 {
+			translations[lang] = defs
+		}
+	}
+	return translations, nil
+}
+
 // SourceTags returns importable tags belonging to the shared library user (user_id=1),
 // including each tag's description.
 func (h *ImportHandler) SourceTags(w http.ResponseWriter, r *http.Request) {
@@ -66,26 +88,31 @@ func (h *ImportHandler) Preview(w http.ResponseWriter, r *http.Request) {
 
 	availableLangs := map[string]int{}
 	examples := make([]importPreviewWord, 0, 50)
-	for _, w := range words {
-		for lang, texts := range w.Translations {
+	for _, word := range words {
+		translations, err := dictionaryTranslations(r.Context(), h.Store, word.ZhText)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load dictionary translations")
+			return
+		}
+		for lang, texts := range translations {
 			if len(texts) > 0 {
 				availableLangs[lang]++
 			}
 		}
 		if len(examples) < 50 {
 			pinyin := ""
-			if w.Pinyin != nil {
-				pinyin = *w.Pinyin
+			if word.Pinyin != nil {
+				pinyin = *word.Pinyin
 			}
 			preview := map[string][]string{}
-			for lang, texts := range w.Translations {
+			for lang, texts := range translations {
 				if len(texts) > 3 {
 					texts = texts[:3]
 				}
 				preview[lang] = texts
 			}
 			examples = append(examples, importPreviewWord{
-				ZhText:       w.ZhText,
+				ZhText:       word.ZhText,
 				Pinyin:       pinyin,
 				Translations: preview,
 			})
@@ -163,12 +190,17 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 			pinyin = *sw.Pinyin
 		}
 
+		dictTranslations, err := dictionaryTranslations(r.Context(), h.Store, sw.ZhText)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load dictionary translations")
+			return
+		}
 		importSet := map[string]bool{}
 		for _, l := range req.ImportLangs {
 			importSet[l] = true
 		}
 		translations := map[string][]string{}
-		for lang, texts := range sw.Translations {
+		for lang, texts := range dictTranslations {
 			if len(req.ImportLangs) == 0 || importSet[lang] {
 				translations[lang] = texts
 			}

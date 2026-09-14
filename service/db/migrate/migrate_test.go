@@ -448,3 +448,97 @@ func TestMigrate_TranslationsRankSourceColumns(t *testing.T) {
 		t.Errorf("expected default rank 0, got %d", rank)
 	}
 }
+
+// TestMigrate_User1TranslationsMoveToCedict verifies that translations owned
+// by the template user (user_id=1) are copied into cedict_entries (flagged
+// source='user') when no matching dictionary entry already exists, existing
+// cedict_entries rows are left untouched (no duplicate), and user_id=1's
+// translation words/links/progress are removed afterwards.
+func TestMigrate_User1TranslationsMoveToCedict(t *testing.T) {
+	db := openRawDB(t)
+	migrateUpTo(t, db, 20260913120002)
+
+	if _, err := db.Exec(`INSERT INTO words (text, language, pinyin, user_id) VALUES ('你好', 'zh', 'ni3hao3', 1)`); err != nil {
+		t.Fatalf("seed zh word: %v", err)
+	}
+	var zhID int64
+	if err := db.QueryRow(`SELECT id FROM words WHERE text = '你好' AND user_id = 1`).Scan(&zhID); err != nil {
+		t.Fatalf("lookup zh id: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO words (text, language, user_id) VALUES ('hello', 'en', 1), ('hallo', 'de', 1)`); err != nil {
+		t.Fatalf("seed translation words: %v", err)
+	}
+	var enID, deID int64
+	if err := db.QueryRow(`SELECT id FROM words WHERE text = 'hello' AND user_id = 1`).Scan(&enID); err != nil {
+		t.Fatalf("lookup en id: %v", err)
+	}
+	if err := db.QueryRow(`SELECT id FROM words WHERE text = 'hallo' AND user_id = 1`).Scan(&deID); err != nil {
+		t.Fatalf("lookup de id: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO translations (translation_word_id, zh_word_id) VALUES (?, ?), (?, ?)`, enID, zhID, deID, zhID); err != nil {
+		t.Fatalf("seed translation links: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO sm2_progress (word_id) VALUES (?), (?), (?)`, zhID, enID, deID); err != nil {
+		t.Fatalf("seed sm2_progress: %v", err)
+	}
+
+	// Pre-existing dictionary entry for the DE side only — must not be duplicated.
+	if _, err := db.Exec(`INSERT INTO cedict_entries (simplified, lang, pinyin, definition) VALUES ('你好', 'de', 'ni3hao3', 'hallo')`); err != nil {
+		t.Fatalf("seed pre-existing cedict entry: %v", err)
+	}
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	// EN side had no dictionary entry — must have been copied in, flagged 'user'.
+	var enSource string
+	if err := db.QueryRow(`SELECT source FROM cedict_entries WHERE simplified = '你好' AND lang = 'en' AND definition = 'hello'`).Scan(&enSource); err != nil {
+		t.Fatalf("expected copied en cedict entry: %v", err)
+	}
+	if enSource != "user" {
+		t.Errorf("copied en entry source = %q, want 'user'", enSource)
+	}
+
+	// DE side already had a dictionary entry — must not be duplicated.
+	var deCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM cedict_entries WHERE simplified = '你好' AND lang = 'de'`).Scan(&deCount); err != nil {
+		t.Fatalf("count de cedict entries: %v", err)
+	}
+	if deCount != 1 {
+		t.Errorf("de cedict entry count = %d, want 1 (no duplicate)", deCount)
+	}
+
+	// user_id=1's translation words, links and progress must be gone.
+	var wordCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM words WHERE user_id = 1 AND language != 'zh'`).Scan(&wordCount); err != nil {
+		t.Fatalf("count remaining user_id=1 translation words: %v", err)
+	}
+	if wordCount != 0 {
+		t.Errorf("remaining user_id=1 translation words = %d, want 0", wordCount)
+	}
+	var linkCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM translations WHERE zh_word_id = ?`, zhID).Scan(&linkCount); err != nil {
+		t.Fatalf("count remaining translation links: %v", err)
+	}
+	if linkCount != 0 {
+		t.Errorf("remaining translation links = %d, want 0", linkCount)
+	}
+	var progressCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sm2_progress WHERE word_id IN (?, ?)`, enID, deID).Scan(&progressCount); err != nil {
+		t.Fatalf("count remaining sm2_progress rows: %v", err)
+	}
+	if progressCount != 0 {
+		t.Errorf("remaining sm2_progress rows for translation words = %d, want 0", progressCount)
+	}
+
+	// The zh word and its own progress must be untouched.
+	var zhStillThere int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM words WHERE id = ?`, zhID).Scan(&zhStillThere); err != nil {
+		t.Fatalf("check zh word still present: %v", err)
+	}
+	if zhStillThere != 1 {
+		t.Errorf("zh word was removed, want it untouched")
+	}
+}
