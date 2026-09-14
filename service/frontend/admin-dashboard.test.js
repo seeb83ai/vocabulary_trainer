@@ -21,6 +21,22 @@ function overviewFixture(overrides = {}) {
   };
 }
 
+// ── countChartYAxisOptions ───────────────────────────────────────────────────
+// Inline from admin-dashboard.js to test in isolation.
+
+function countChartYAxisOptions() {
+  return { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } };
+}
+
+describe('countChartYAxisOptions', () => {
+  it('forces integer ticks with a step of 1', () => {
+    const opts = countChartYAxisOptions();
+    expect(opts.ticks.stepSize).toBe(1);
+    expect(opts.ticks.precision).toBe(0);
+    expect(opts.beginAtZero).toBe(true);
+  });
+});
+
 describe('buildStatTiles', () => {
   it('builds six tiles in a fixed order', () => {
     const tiles = buildStatTiles(overviewFixture());

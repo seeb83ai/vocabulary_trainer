@@ -10,9 +10,11 @@ type AdminHandler struct {
 	Store adminStore
 }
 
-// Overview handles GET /api/admin/overview.
+// Overview handles GET /api/admin/overview. The optional exclude_seed=1
+// query param leaves the seed accounts (id 1, 2) out of every count.
 func (h *AdminHandler) Overview(w http.ResponseWriter, r *http.Request) {
-	ov, err := h.Store.GetAdminOverview(r.Context())
+	excludeSeedUsers := r.URL.Query().Get("exclude_seed") == "1"
+	ov, err := h.Store.GetAdminOverview(r.Context(), excludeSeedUsers)
 	if err != nil {
 		internalError(w, err)
 		return

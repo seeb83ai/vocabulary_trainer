@@ -289,6 +289,20 @@ func TestLogin_CorrectCredentials(t *testing.T) {
 	sessionCookie(t, rec) // asserts cookie is present
 }
 
+func TestLogin_CorrectCredentials_RedirectsToTrain(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := loginReq(t, r, "me@example.de", "I learn zh")
+	var body struct {
+		Redirect string `json:"redirect"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Redirect != "/train" {
+		t.Errorf("want redirect /train for non-admin, got %q", body.Redirect)
+	}
+}
+
 func TestLogin_WrongPassword(t *testing.T) {
 	r := newAuthRouter(t)
 	rec := loginReq(t, r, "me@example.de", "wrong")
@@ -312,6 +326,20 @@ func TestLogin_AdminCredentials(t *testing.T) {
 		t.Fatalf("want 200 for admin login, got %d: %s", rec.Code, rec.Body)
 	}
 	sessionCookie(t, rec)
+}
+
+func TestLogin_AdminCredentials_RedirectsToAdminDashboard(t *testing.T) {
+	r := newAuthRouter(t)
+	rec := loginReq(t, r, "admin@example.de", "I am the admin")
+	var body struct {
+		Redirect string `json:"redirect"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Redirect != "/admin-dashboard" {
+		t.Errorf("want redirect /admin-dashboard for admin, got %q", body.Redirect)
+	}
 }
 
 func TestLogin_InvalidJSON(t *testing.T) {

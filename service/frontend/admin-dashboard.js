@@ -12,6 +12,12 @@ function buildStatTiles(ov) {
   ];
 }
 
+// Pure helper: y-axis options shared by the daily-count charts so counts
+// (which are always whole numbers) never render fractional tick labels.
+function countChartYAxisOptions() {
+  return { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } };
+}
+
 function formatDateLabel(dateStr) {
   // "2026-03-04" -> "Mar 4"
   const parts = dateStr.split('-');
@@ -29,14 +35,29 @@ function renderStatTiles(ov) {
   `).join('');
 }
 
+// Tracks live Chart.js instances by canvas id so a re-render (e.g. toggling
+// the seed-account filter) can destroy the old chart before drawing a new
+// one onto the same canvas.
+const charts = {};
+
+function destroyChart(canvasId) {
+  if (charts[canvasId]) {
+    charts[canvasId].destroy();
+    delete charts[canvasId];
+  }
+}
+
 function renderDailyCountChart(canvasId, emptyId, days, label, color) {
+  destroyChart(canvasId);
+  hide(emptyId);
   if (days.length === 0) {
     $(canvasId).style.display = 'none';
     show(emptyId);
     return;
   }
+  $(canvasId).style.display = '';
   const ctx = $(canvasId).getContext('2d');
-  new Chart(ctx, {
+  charts[canvasId] = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: days.map(d => formatDateLabel(d.date)),
@@ -46,20 +67,23 @@ function renderDailyCountChart(canvasId, emptyId, days, label, color) {
       responsive: true,
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
-        y: { beginAtZero: true },
+        y: countChartYAxisOptions(),
       },
     },
   });
 }
 
 function renderQuizVolumeChart(days) {
+  destroyChart('quiz-volume-chart');
+  hide('quiz-volume-empty');
   if (days.length === 0) {
     $('quiz-volume-chart').style.display = 'none';
     show('quiz-volume-empty');
     return;
   }
+  $('quiz-volume-chart').style.display = '';
   const ctx = $('quiz-volume-chart').getContext('2d');
-  new Chart(ctx, {
+  charts['quiz-volume-chart'] = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: days.map(d => formatDateLabel(d.date)),
@@ -82,7 +106,7 @@ function renderQuizVolumeChart(days) {
       responsive: true,
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
-        y: { beginAtZero: true, stacked: true },
+        y: { ...countChartYAxisOptions(), stacked: true },
       },
     },
   });
@@ -103,10 +127,12 @@ function renderUsageTable(tbodyId, rows) {
   `).join('');
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function loadAndRenderOverview(excludeSeedUsers) {
+  hide('load-error');
   let ov;
   try {
-    ov = await apiFetch('/api/admin/overview');
+    const qs = excludeSeedUsers ? '?exclude_seed=1' : '';
+    ov = await apiFetch(`/api/admin/overview${qs}`);
   } catch (err) {
     $('load-error').textContent = `Failed to load admin overview: ${err.message}`;
     show('load-error');
@@ -126,4 +152,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   renderUsageTable('page-views-tbody', ov.page_views);
   renderUsageTable('feature-usage-tbody', ov.feature_usage);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const toggle = $('exclude-seed-toggle');
+  toggle.addEventListener('change', () => loadAndRenderOverview(toggle.checked));
+  loadAndRenderOverview(toggle.checked);
 });

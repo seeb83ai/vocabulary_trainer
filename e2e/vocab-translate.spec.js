@@ -41,7 +41,7 @@ test.describe('Vocabulary — Auto-translate EN/DE fields', () => {
     await page.locator('#signin-email').fill(ADMIN_EMAIL);
     await page.locator('#signin-password').fill(ADMIN_PASSWORD);
     await page.locator('#signin-btn').click();
-    await expect(page).toHaveURL('/train', { timeout: 10_000 });
+    await expect(page).toHaveURL('/admin-dashboard', { timeout: 10_000 });
 
     // Reproduce the reported setup: primary language German, secondary English
     // (matches the issue screenshot, which shows "German Translation(s)" above

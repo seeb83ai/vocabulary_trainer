@@ -265,7 +265,11 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 	a.setSettingsKeyCookie(w, r, user.ID, req.Password)
 	_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLogin, ip, "")
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	redirect := "/train"
+	if user.Role == "admin" {
+		redirect = "/admin-dashboard"
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "redirect": redirect})
 }
 
 // Register handles POST /api/register.
