@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, TEST_EMAIL, TEST_PASSWORD } from './global-setup.js';
 import { openAuthModal } from './helpers/auth.js';
+import { captureForPR } from './helpers/screenshot.js';
 
 test.describe('Admin dashboard', () => {
   test('admin user sees usage insights', async ({ page }) => {
@@ -13,6 +14,7 @@ test.describe('Admin dashboard', () => {
     await expect(page).toHaveURL('/admin-dashboard', { timeout: 10_000 });
     await expect(page.locator('#stat-tiles')).toContainText('Total users');
     await expect(page.locator('#load-error')).toBeHidden();
+    await captureForPR(page, 'admin-dashboard-after-login');
   });
 
   test('exclude-seed-accounts toggle reloads the overview', async ({ page }) => {
@@ -30,6 +32,7 @@ test.describe('Admin dashboard', () => {
     ]);
     expect(overviewResponse.ok()).toBeTruthy();
     await expect(page.locator('#load-error')).toBeHidden();
+    await captureForPR(page, 'admin-dashboard-exclude-seed-toggle');
   });
 
   test('non-admin user is redirected away from the dashboard', async ({ page }) => {
