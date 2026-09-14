@@ -29,6 +29,42 @@ function matchGameOutcome(rightIdx, lIdx, rightText, leftTransls, matchedLeftIdx
   return 'wrong';
 }
 
+// A dictionary-derived translation string can bundle many senses plus German
+// example sentences into one semicolon-separated blob (e.g. HanDeDict
+// entries: "nah (Adj); in der Nähe (S); Bsp.: 附近 附近 -- ..."), which used to
+// be dumped whole into a match-game box. Keep only the first meaning, or the
+// first two when both are short enough to fit comfortably (issue #428).
+// isNoise (from train-answer.js) drops "Bsp.:"/"CL:"/"ZEW:" annotation
+// segments, which aren't real meanings.
+const MATCH_GAME_SHORT_MEANING_MAX_CHARS = 20;
+
+function shortenMatchGameTranslation(text) {
+  const parts = text.split(';').map(s => s.trim()).filter(s => s && !isNoise(s));
+  if (parts.length === 0) return text.trim();
+  if (parts.length === 1) return parts[0];
+  if (parts[0].length <= MATCH_GAME_SHORT_MEANING_MAX_CHARS &&
+      parts[1].length <= MATCH_GAME_SHORT_MEANING_MAX_CHARS) {
+    return `${parts[0]}; ${parts[1]}`;
+  }
+  return parts[0];
+}
+
+// Picks the translation text to show on a word's right-column box. Training
+// already hides CL:/Bsp.:/ZEW: example/measure-word entries via isNoise
+// (train-card.js) — the match game used to skip that filter entirely and
+// could surface a raw example sentence as the box's only content (issue
+// #429). Walks languages in the order they appear on the word and returns
+// the first non-noise translation found (shortened per issue #428); falls
+// back to fallbackText only when every translation across every language is
+// noise.
+function pickMatchGameTranslationText(translations, fallbackText) {
+  for (const texts of Object.values(translations || {})) {
+    const clean = (texts || []).filter(t => !isNoise(t));
+    if (clean.length > 0) return shortenMatchGameTranslation(clean[0]);
+  }
+  return fallbackText;
+}
+
 // showMatchGame accepts the flat words array returned by GET /api/quiz/match-game.
 // Each word: { zh_word_id, zh_text, pinyin, translations }
 // Left column shows Chinese words; right column shows one translation each, shuffled.
@@ -55,7 +91,7 @@ function showMatchGame(words) {
       : { zh_word_id: item.zh_word_id, correct };
     const rightItems = words.map((w, i) => ({
       idx: i,   // idx matches leftItems position — used to identify the correct pair
-      text: Object.values(w.translations || {})[0]?.[0] || w.zh_text,
+      text: pickMatchGameTranslationText(w.translations, w.zh_text),
     }));
     const shuffledRight = [...rightItems].sort(() => Math.random() - 0.5);
 
@@ -128,7 +164,13 @@ function showMatchGame(words) {
         if (matched.has(lIdx)) return;
         const rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
         const rightText = shuffledRight[rIdx].text;
-        const leftTransls = Object.values(words[lIdx].translations || {}).flat();
+        // Filtered/shortened the same way as the displayed rightText (skip
+        // noise entries, issue #429; collapse to the first short meaning(s),
+        // issue #428) so shared-translation detection (matchGameOutcome's
+        // "blocked" case) keeps comparing like with like.
+        const leftTransls = Object.values(words[lIdx].translations || {}).flat()
+          .filter(t => !isNoise(t))
+          .map(shortenMatchGameTranslation);
         const outcome = matchGameOutcome(rightIdx, lIdx, rightText, leftTransls, matched);
         maybeRevealPinyin(leftBoxes[lIdx], leftItems[lIdx], outcome);
 

@@ -468,6 +468,65 @@ test.describe('Gamification — match game', () => {
     }
   });
 
+  // Issue #428: a right-column translation box must not dump a word's full
+  // multi-meaning dictionary gloss (semicolon-separated senses plus "Bsp.:"
+  // example sentences) — only the first meaning, or the first two when both
+  // are short, per shortenMatchGameTranslation in train-matchgame.js.
+  test('match game shows only a short excerpt of a long dictionary translation (issue #428)', async ({ page }) => {
+    await page.goto(`${BASE_URL}/train`);
+    const words = [
+      {
+        zh_word_id: 9501, zh_text: '近', pinyin: 'jìn',
+        translations: {
+          de: ['nah (Adj); in der Nähe (S); Bsp.: 附近 附近 -- in der Nähe befindlich; in der Nachbarschaft; Bsp.: 靠近些。 靠近些。 -- Komm etw. näher!'],
+        },
+      },
+      { zh_word_id: 9502, zh_text: '懂', pinyin: 'dǒng', translations: { de: ['verstehen'] } },
+    ];
+    await page.evaluate((w) => {
+      // @ts-ignore
+      window.showMatchGame(w);
+    }, words);
+    await expect(page.locator('#match-game-overlay')).toBeVisible();
+
+    await captureForPR(page, 'match-game-short-translation');
+
+    const rightCol = page.locator('#match-game-overlay .grid > div:nth-child(2)');
+    await expect(rightCol.getByText('nah (Adj); in der Nähe (S)', { exact: true })).toBeVisible();
+    await expect(rightCol.getByText('Bsp.:', { exact: false })).toHaveCount(0);
+    await expect(rightCol.getByText('Nachbarschaft', { exact: false })).toHaveCount(0);
+
+    await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+  });
+
+  // Issue #429: training already hides CL:/Bsp.:/ZEW: example-sentence and
+  // measure-word translation entries (isNoise in train-answer.js); the match
+  // game must do the same instead of surfacing a raw noise entry when it
+  // happens to be first in the translations array.
+  test('match game skips a leading example-sentence translation entry (issue #429)', async ({ page }) => {
+    await page.goto(`${BASE_URL}/train`);
+    const words = [
+      {
+        zh_word_id: 9601, zh_text: '近', pinyin: 'jìn',
+        translations: { de: ['Bsp.: 附近 附近 -- in der Nähe befindlich', 'nah (Adj)'] },
+      },
+      { zh_word_id: 9602, zh_text: '懂', pinyin: 'dǒng', translations: { de: ['verstehen'] } },
+    ];
+    await page.evaluate((w) => {
+      // @ts-ignore
+      window.showMatchGame(w);
+    }, words);
+    await expect(page.locator('#match-game-overlay')).toBeVisible();
+
+    await captureForPR(page, 'match-game-skip-noise-translation');
+
+    const rightCol = page.locator('#match-game-overlay .grid > div:nth-child(2)');
+    await expect(rightCol.getByText('nah (Adj)', { exact: true })).toBeVisible();
+    await expect(rightCol.getByText('Bsp.:', { exact: false })).toHaveCount(0);
+
+    await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+  });
+
   test('settings page saves gamification toggle', async ({ page }) => {
     await page.goto(`${BASE_URL}/settings`);
     const checkbox = page.locator('#gamification-enabled');
