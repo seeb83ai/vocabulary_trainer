@@ -163,7 +163,7 @@ func (s *Store) ensureUserSettings(ctx context.Context, userID int64) error {
 		maxNew = 5
 	}
 	_, err := s.db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO user_settings (user_id, api_key_salt, max_new_words_per_day) VALUES (?, ?, ?)`,
+		`INSERT OR IGNORE INTO user_settings (user_id, api_key_salt, max_new_words_per_day, translation_ranking_enabled, max_translations_shown) VALUES (?, ?, ?, 1, 4)`,
 		userID, salt, maxNew)
 	return err
 }
