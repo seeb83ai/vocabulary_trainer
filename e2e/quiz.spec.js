@@ -2039,3 +2039,158 @@ test.describe('Quiz – equivalent ellipsis forms accepted (issue #343)', () => 
     await expect(page.locator('#new-word-got-it-btn')).toBeEnabled();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Capped translations are collapsed, not dropped (issue #431/#432/#433)
+//
+// A word with more translations than the user's configured
+// max_translations_shown used to either show them all unconditionally (when
+// user-added) or silently drop the excess. Both the question screen's yellow
+// "translations-hint" box (transl_to_zh mode) and the answer-result screen
+// must now cap the directly-visible list and collapse the rest into an
+// expandable "More info" details block instead.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)', () => {
+  const ALL_TRANSLATIONS = ['to hit', 'to play', 'to make', 'to fight', 'to call', 'dozen'];
+  const MAX_SHOWN = 4;
+
+  async function setupCappedTranslationsUser(page) {
+    const email = `e2e-translation-cap-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'TranslationCap123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '打', pinyin: 'dǎ',
+        translations: { en: ALL_TRANSLATIONS },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, translation_ranking_enabled: true, max_translations_shown: MAX_SHOWN, translation_hide_unranked: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+  }
+
+  // Splits a rendered translations box into the directly-visible entries and
+  // the entries collapsed inside its "More info" <details>, and asserts the
+  // counts match the configured cap (accounting for one entry consumed as the
+  // transl_to_zh prompt, when present).
+  // expectedHiddenCount differs by screen: the transl_to_zh question screen
+  // reserves one extra backend slot for its own prompt (see loadTranslationsForCard's
+  // extraSlots), so only 1 of the 6 seeded translations ends up collapsed there,
+  // versus 2 on the answer-result screen (no such reservation).
+  async function assertCappedAndCollapsible(container, expectedHiddenCount) {
+    const details = container.locator('details');
+    await expect(details).toHaveCount(1);
+    await expect(details.locator('summary')).toHaveText('More info');
+    const hiddenDiv = details.locator('div');
+    await expect(hiddenDiv).not.toBeVisible();
+
+    const visibleText = await container.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    });
+    const visibleCount = visibleText.split('·').map(s => s.trim()).filter(Boolean).length;
+    expect(visibleCount).toBe(MAX_SHOWN);
+
+    await details.locator('summary').click();
+    await expect(hiddenDiv).toBeVisible();
+    const hiddenText = (await hiddenDiv.textContent() || '').trim();
+    expect(hiddenText.length).toBeGreaterThan(0);
+    const hiddenCount = hiddenText.split('·').map(s => s.trim()).filter(Boolean).length;
+    expect(hiddenCount).toBe(expectedHiddenCount);
+  }
+
+  test('question screen (yellow box) shows only the configured max, collapses the rest', async ({ page }) => {
+    await setupCappedTranslationsUser(page);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#translations-hint')).toBeVisible();
+    await captureForPR(page, 'train-translations-capped-question');
+
+    await assertCappedAndCollapsible(page.locator('#translations-hint'), ALL_TRANSLATIONS.length - MAX_SHOWN - 1);
+    await captureForPR(page, 'train-translations-capped-question-expanded');
+  });
+
+  test('answer result screen shows only the configured max, collapses the rest', async ({ page }) => {
+    await setupCappedTranslationsUser(page);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // A wrong answer still renders the full translation breakdown in the
+    // green "correct answer" box — that's the box this fix caps.
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const greenBox = page.locator('#word-breakdown .bg-green-50');
+    await expect(greenBox).toBeVisible();
+    await captureForPR(page, 'train-translations-capped-result');
+
+    await assertCappedAndCollapsible(greenBox, ALL_TRANSLATIONS.length - MAX_SHOWN);
+    await captureForPR(page, 'train-translations-capped-result-expanded');
+  });
+
+  // Regression guard: even though the 6th translation is collapsed out of
+  // the visible list, it must still be accepted as a correct answer — the
+  // display cap must never narrow what counts as correct.
+  test('a collapsed (capped-out) translation is still accepted as a correct answer', async ({ page }) => {
+    await setupCappedTranslationsUser(page);
+
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+
+    // zh_to_transl's /api/quiz/next intentionally withholds translations
+    // (the user must supply them from memory), so ask which one(s) the
+    // result screen collapses out via a throwaway wrong answer first,
+    // rather than assuming an ordering.
+    const wrongRes = await page.request.post('/api/quiz/answer', {
+      data: { word_id: card.word_id, mode: 'zh_to_transl', answer: 'xxxxxxxxxxx' },
+    });
+    expect(wrongRes.ok()).toBe(true);
+    const wrongResult = await wrongRes.json();
+    const extraAnswer = wrongResult.translations_extra?.en?.[0];
+    expect(extraAnswer).toBeTruthy();
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill(extraAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+  });
+});

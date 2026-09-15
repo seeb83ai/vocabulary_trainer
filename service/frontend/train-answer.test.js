@@ -143,6 +143,44 @@ describe('isTransCorrect', () => {
   });
 });
 
+// ── Merging capped/extra translations for client-side validation ──────────────
+// Mirrors the pure helper added to train.js so answer validation (the
+// new-word "Got it" gate, the retype-on-wrong gate) keeps accepting
+// translations beyond the display cap even though they're shown collapsed
+// (issue #431/#432/#433).
+
+function mergeTranslationMaps(a, b) {
+  const merged = {};
+  for (const lang of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    merged[lang] = [...(a?.[lang] || []), ...(b?.[lang] || [])];
+  }
+  return merged;
+}
+
+describe('mergeTranslationMaps', () => {
+  it('concatenates per-language arrays from both maps', () => {
+    expect(mergeTranslationMaps({ en: ['hello'] }, { en: ['hi'] })).toEqual({ en: ['hello', 'hi'] });
+  });
+
+  it('includes languages present in only one map', () => {
+    expect(mergeTranslationMaps({ en: ['hello'] }, { de: ['hallo'] })).toEqual({ en: ['hello'], de: ['hallo'] });
+  });
+
+  it('handles an empty extra map', () => {
+    expect(mergeTranslationMaps({ en: ['hello'] }, {})).toEqual({ en: ['hello'] });
+  });
+
+  it('handles null/undefined maps', () => {
+    expect(mergeTranslationMaps(null, undefined)).toEqual({});
+    expect(mergeTranslationMaps({ en: ['hello'] }, null)).toEqual({ en: ['hello'] });
+  });
+
+  it('a translation only present in the extra map still validates', () => {
+    const merged = mergeTranslationMaps({ en: ['hello'] }, { en: ['hi'] });
+    expect(isTransCorrect('hi', merged)).toBe(true);
+  });
+});
+
 // ── Retype-on-wrong gate ─────────────────────────────────────────────────────
 // Mirrors the pure helper added to train.js that decides whether the retype
 // gate shown after a wrong answer is satisfied (reuses isZhCorrect/isTransCorrect,

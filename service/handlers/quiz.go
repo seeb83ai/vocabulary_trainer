@@ -280,14 +280,18 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			IsAlsoComponent:  isAlsoComponent,
 		}
 		card.Translations = map[string][]string{}
+		card.TranslationsExtra = map[string][]string{}
 		for _, lang := range langs {
-			texts, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings, 0)
+			texts, extra, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings, 0)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 			if len(texts) > 0 {
 				card.Translations[lang] = texts
+			}
+			if len(extra) > 0 {
+				card.TranslationsExtra[lang] = extra
 			}
 		}
 		writeJSON(w, http.StatusOK, card)
@@ -372,17 +376,21 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	case models.ModeTranslToZh:
 		// Load translations for ALL selected langs so the user sees every meaning as context.
 		translations := map[string][]string{}
+		translationsExtra := map[string][]string{}
 		for _, lang := range langs {
 			// +1: this card's own prompt word is drawn from these translations
 			// and then excluded from the displayed hint list (train-card.js), so
 			// request one extra to keep "max shown" accurate post-exclusion.
-			texts, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings, 1)
+			texts, extra, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings, 1)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
 			if len(texts) > 0 {
 				translations[lang] = texts
+			}
+			if len(extra) > 0 {
+				translationsExtra[lang] = extra
 			}
 		}
 		if len(translations) == 0 {
@@ -398,6 +406,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		card.Translations = translations
+		card.TranslationsExtra = translationsExtra
 		card.ZhText = word.Text
 		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
 		// Cycle mode skips the learning-phase hint: the user chose the step explicitly.
@@ -561,21 +570,28 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		log.Printf("answer: RecordDailyStat user %d: %v", UserIDFromContext(r.Context()), err)
 	}
 
+	resultTranslations, resultTranslationsExtra, err := loadTranslationsForResult(r.Context(), h.Store, req.WordID, zhWord.Translations, userSettings)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+
 	resp := models.AnswerResponse{
-		Correct:         correct,
-		CorrectAnswers:  correctTexts,
-		ZhText:          zhWord.ZhText,
-		Pinyin:          zhWord.Pinyin,
-		Translations:    zhWord.Translations,
-		NextDue:         updated.DueDate,
-		IntervalDays:    updated.IntervalDays,
-		TotalCorrect:    updated.TotalCorrect,
-		TotalAttempts:   updated.TotalAttempts,
-		StreakBonus:     updated.StreakBonus,
-		Repetitions:     updated.Repetitions,
-		GraduateReps:    sm2.LearningGraduateReps,
-		LearningNewWord: updated.LearningNewWord,
-		Graduated:       graduated,
+		Correct:           correct,
+		CorrectAnswers:    correctTexts,
+		ZhText:            zhWord.ZhText,
+		Pinyin:            zhWord.Pinyin,
+		Translations:      resultTranslations,
+		TranslationsExtra: resultTranslationsExtra,
+		NextDue:           updated.DueDate,
+		IntervalDays:      updated.IntervalDays,
+		TotalCorrect:      updated.TotalCorrect,
+		TotalAttempts:     updated.TotalAttempts,
+		StreakBonus:       updated.StreakBonus,
+		Repetitions:       updated.Repetitions,
+		GraduateReps:      sm2.LearningGraduateReps,
+		LearningNewWord:   updated.LearningNewWord,
+		Graduated:         graduated,
 	}
 
 	if sceneText, err := h.Store.GetHMMSceneText(r.Context(), req.WordID); err != nil {
@@ -655,6 +671,8 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userSettings, _ := h.Store.GetUserSettings(ctx, userID)
+
 	prev, err := h.Store.GetSM2PrevState(ctx, req.WordID)
 	if err != nil {
 		internalError(w, err)
@@ -702,21 +720,28 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	acceptResultTranslations, acceptResultTranslationsExtra, err := loadTranslationsForResult(ctx, h.Store, req.WordID, zhWord.Translations, userSettings)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+
 	resp := models.AnswerResponse{
-		Correct:         true,
-		CorrectAnswers:  correctTexts,
-		ZhText:          zhWord.ZhText,
-		Pinyin:          zhWord.Pinyin,
-		Translations:    zhWord.Translations,
-		NextDue:         updated.DueDate,
-		IntervalDays:    updated.IntervalDays,
-		TotalCorrect:    updated.TotalCorrect,
-		TotalAttempts:   updated.TotalAttempts,
-		StreakBonus:     updated.StreakBonus,
-		Repetitions:     updated.Repetitions,
-		GraduateReps:    sm2.LearningGraduateReps,
-		LearningNewWord: updated.LearningNewWord,
-		Graduated:       graduated,
+		Correct:           true,
+		CorrectAnswers:    correctTexts,
+		ZhText:            zhWord.ZhText,
+		Pinyin:            zhWord.Pinyin,
+		Translations:      acceptResultTranslations,
+		TranslationsExtra: acceptResultTranslationsExtra,
+		NextDue:           updated.DueDate,
+		IntervalDays:      updated.IntervalDays,
+		TotalCorrect:      updated.TotalCorrect,
+		TotalAttempts:     updated.TotalAttempts,
+		StreakBonus:       updated.StreakBonus,
+		Repetitions:       updated.Repetitions,
+		GraduateReps:      sm2.LearningGraduateReps,
+		LearningNewWord:   updated.LearningNewWord,
+		Graduated:         graduated,
 	}
 	if sessionStreak > 1 {
 		resp.SessionStreak = sessionStreak

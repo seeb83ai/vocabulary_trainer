@@ -43,6 +43,20 @@ function isNoise(text) {
   return /^(CL:|Bsp\.:|ZEW:)/.test(text);
 }
 
+// mergeTranslationMaps combines two {lang: [texts]} maps — e.g. a card's
+// capped `translations` with its collapsed `translations_extra` — into one,
+// concatenating per-language arrays. Client-side answer validation (the
+// new-word "Got it" gate and the retype-on-wrong gate) must keep accepting
+// translations beyond the display cap even though they're no longer shown
+// (issue #431/#432/#433).
+function mergeTranslationMaps(a, b) {
+  const merged = {};
+  for (const lang of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    merged[lang] = [...(a?.[lang] || []), ...(b?.[lang] || [])];
+  }
+  return merged;
+}
+
 function stripParens(s) {
   let prev;
   do {

@@ -24,46 +24,57 @@ func TestFilterTranslationsForDisplay(t *testing.T) {
 		candidates   []translationCandidate
 		maxShown     int
 		hideUnranked bool
-		want         []string
+		wantShown    []string
+		wantExtra    []string
 	}{
 		{
-			name:       "fewer than cap shows all",
+			name:       "fewer than cap shows all, no extra",
 			candidates: []translationCandidate{rankedCand("a", 5), rankedCand("b", 50)},
 			maxShown:   3,
-			want:       []string{"a", "b"},
+			wantShown:  []string{"a", "b"},
 		},
 		{
-			name:       "caps to rarest-last top N",
+			name:       "caps to rarest-last top N, rest goes to extra",
 			candidates: []translationCandidate{rankedCand("rare", 9000), rankedCand("common", 5), rankedCand("mid", 500)},
 			maxShown:   2,
-			want:       []string{"common", "mid"},
+			wantShown:  []string{"common", "mid"},
+			wantExtra:  []string{"rare"},
 		},
 		{
-			name:       "user translations always shown, not counted against cap",
+			// User translations are prioritized into the visible set, but still
+			// count against the cap — the rest is collapsed into extra rather
+			// than dropped or shown unconditionally (issue #431/#432/#433).
+			name:       "user translations prioritized but still count against cap",
 			candidates: []translationCandidate{userCand("manual1"), userCand("manual2"), rankedCand("common", 5), rankedCand("rare", 9000)},
 			maxShown:   1,
-			want:       []string{"manual1", "manual2", "common"},
+			wantShown:  []string{"manual1"},
+			wantExtra:  []string{"manual2", "common", "rare"},
 		},
 		{
-			name:         "unranked shown by default (hideUnranked=false) regardless of cap",
+			name:         "unranked prioritized but still counts against cap",
 			candidates:   []translationCandidate{unrankedCand("mystery"), rankedCand("common", 5), rankedCand("rare", 9000)},
 			maxShown:     1,
 			hideUnranked: false,
-			want:         []string{"mystery", "common"},
+			wantShown:    []string{"mystery"},
+			wantExtra:    []string{"common", "rare"},
 		},
 		{
 			name:         "unranked treated as lowest priority when hideUnranked=true",
 			candidates:   []translationCandidate{unrankedCand("mystery"), rankedCand("common", 5), rankedCand("rare", 9000)},
 			maxShown:     2,
 			hideUnranked: true,
-			want:         []string{"common", "rare"},
+			wantShown:    []string{"common", "rare"},
+			wantExtra:    []string{"mystery"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := filterTranslationsForDisplay(tt.candidates, tt.maxShown, tt.hideUnranked)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("got %v, want %v", got, tt.want)
+			gotShown, gotExtra := filterTranslationsForDisplay(tt.candidates, tt.maxShown, tt.hideUnranked)
+			if !reflect.DeepEqual(gotShown, tt.wantShown) {
+				t.Errorf("shown: got %v, want %v", gotShown, tt.wantShown)
+			}
+			if !reflect.DeepEqual(gotExtra, tt.wantExtra) {
+				t.Errorf("extra: got %v, want %v", gotExtra, tt.wantExtra)
 			}
 		})
 	}

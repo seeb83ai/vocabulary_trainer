@@ -29,8 +29,13 @@ function renderWordAnswerResult(result, answer) {
   const allTransTexts = selectedLangs.flatMap(lang => (result.translations || {})[lang] || []);
   const cleanTransTexts = allTransTexts.filter(x => !isNoise(x));
   const noiseTransTexts = allTransTexts.filter(isNoise);
-  const noiseHtml = noiseTransTexts.length > 0
-    ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${noiseTransTexts.map(escHtml).join(' · ')}</div></details>`
+  // Translations beyond the user's max-translations-shown cap (issue
+  // #431/#432/#433) are collapsed into the same "More info" details as noise
+  // instead of being dropped.
+  const extraTransTexts = selectedLangs.flatMap(lang => (result.translations_extra || {})[lang] || []);
+  const moreInfoTexts = [...extraTransTexts.filter(x => !isNoise(x)), ...noiseTransTexts];
+  const noiseHtml = moreInfoTexts.length > 0
+    ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
     : '';
   // For wrong answers use compact equal-sized display so zh and translations are easy to read side-by-side.
   // For correct answers keep the large Chinese character as a visual reward.
@@ -66,8 +71,13 @@ function renderWordAnswerResult(result, answer) {
         // Show all translations across all languages except the one already shown as prompt.
         const allTexts = Object.values(currentCard.translations || {}).flat();
         const others = allTexts.filter(txt => txt !== currentCard.prompt && !isNoise(txt));
-        if (others.length > 0) {
-          $('result-question-translations').innerHTML = others.map(escHtml).join(' · ');
+        const extraTexts = Object.values(currentCard.translations_extra || {})
+          .flat().filter(txt => txt !== currentCard.prompt && !isNoise(txt));
+        const extraHtml = extraTexts.length > 0
+          ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${extraTexts.map(escHtml).join(' · ')}</div></details>`
+          : '';
+        if (others.length > 0 || extraTexts.length > 0) {
+          $('result-question-translations').innerHTML = others.map(escHtml).join(' · ') + extraHtml;
           show('result-question-translations');
         } else {
           hide('result-question-translations');
@@ -183,7 +193,7 @@ function renderWordAnswerResult(result, answer) {
       // it without needing a retype.
       if (wrongAnswerRetryMode !== 'off') {
         const { requireZh, requireTrans } = wrongRetypeFieldsForCard(wrongAnswerRetryMode, currentCard.mode);
-        wrongRetypeTarget = { zhText: result.zh_text, translations: result.translations, requireZh, requireTrans };
+        wrongRetypeTarget = { zhText: result.zh_text, translations: mergeTranslationMaps(result.translations, result.translations_extra), requireZh, requireTrans };
         $('wrong-retype-zh-input').value = '';
         $('wrong-retype-trans-input').value = '';
         $('wrong-retype-zh-check').textContent = '';

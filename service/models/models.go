@@ -197,14 +197,18 @@ type SM2Progress struct {
 // API request/response structs
 
 type QuizCard struct {
-	WordID          int64               `json:"word_id"`
-	Mode            string              `json:"mode"`
-	Prompt          string              `json:"prompt"`
-	Pinyin          *string             `json:"pinyin"`
-	Translations    map[string][]string `json:"translations,omitempty"`
-	DueDate         time.Time           `json:"due_date"`
-	IntervalDays    int                 `json:"interval_days"`
-	LearningNewWord bool                `json:"learning_new_word"`
+	WordID       int64               `json:"word_id"`
+	Mode         string              `json:"mode"`
+	Prompt       string              `json:"prompt"`
+	Pinyin       *string             `json:"pinyin"`
+	Translations map[string][]string `json:"translations,omitempty"`
+	// TranslationsExtra holds translations that exceeded the user's
+	// max-translations-shown cap (translation-ranking settings). The frontend
+	// renders these collapsed, expandable on demand, instead of dropping them.
+	TranslationsExtra map[string][]string `json:"translations_extra,omitempty"`
+	DueDate           time.Time           `json:"due_date"`
+	IntervalDays      int                 `json:"interval_days"`
+	LearningNewWord   bool                `json:"learning_new_word"`
 	// SessionExtension is true when this card was not actually due today but was
 	// pulled in from a future due date solely to avoid immediately repeating a
 	// just-answered word (see GetNextCard's exclude-widening fallback). The
@@ -255,27 +259,31 @@ type ComponentAcceptCorrectRequest struct {
 }
 
 type AnswerResponse struct {
-	Correct          bool                `json:"correct"`
-	CorrectAnswers   []string            `json:"correct_answers"`
-	ZhText           string              `json:"zh_text"`
-	Pinyin           *string             `json:"pinyin"`
-	Translations     map[string][]string `json:"translations"`
-	NextDue          time.Time           `json:"next_due"`
-	IntervalDays     int                 `json:"interval_days"`
-	TotalCorrect     int                 `json:"total_correct"`
-	TotalAttempts    int                 `json:"total_attempts"`
-	StreakBonus      int                 `json:"streak_bonus"`
-	Repetitions      int                 `json:"repetitions"`
-	GraduateReps     int                 `json:"graduate_reps,omitempty"`
-	LearningNewWord  bool                `json:"learning_new_word"`
-	Graduated        bool                `json:"graduated,omitempty"`
-	ConfusedWith     *ConfusionDetail    `json:"confused_with,omitempty"`
-	SessionStreak    int                 `json:"session_streak,omitempty"`
-	Tier             string              `json:"tier,omitempty"`
-	PrevTier         string              `json:"prev_tier,omitempty"`
-	SceneText        string              `json:"scene_text,omitempty"`
-	Ambiguous        bool                `json:"ambiguous,omitempty"`
-	UserAnswerPinyin *string             `json:"user_answer_pinyin,omitempty"`
+	Correct        bool                `json:"correct"`
+	CorrectAnswers []string            `json:"correct_answers"`
+	ZhText         string              `json:"zh_text"`
+	Pinyin         *string             `json:"pinyin"`
+	Translations   map[string][]string `json:"translations"`
+	// TranslationsExtra mirrors QuizCard.TranslationsExtra: translations
+	// beyond the user's max-translations-shown cap, for the frontend to
+	// render collapsed on the result screen.
+	TranslationsExtra map[string][]string `json:"translations_extra,omitempty"`
+	NextDue           time.Time           `json:"next_due"`
+	IntervalDays      int                 `json:"interval_days"`
+	TotalCorrect      int                 `json:"total_correct"`
+	TotalAttempts     int                 `json:"total_attempts"`
+	StreakBonus       int                 `json:"streak_bonus"`
+	Repetitions       int                 `json:"repetitions"`
+	GraduateReps      int                 `json:"graduate_reps,omitempty"`
+	LearningNewWord   bool                `json:"learning_new_word"`
+	Graduated         bool                `json:"graduated,omitempty"`
+	ConfusedWith      *ConfusionDetail    `json:"confused_with,omitempty"`
+	SessionStreak     int                 `json:"session_streak,omitempty"`
+	Tier              string              `json:"tier,omitempty"`
+	PrevTier          string              `json:"prev_tier,omitempty"`
+	SceneText         string              `json:"scene_text,omitempty"`
+	Ambiguous         bool                `json:"ambiguous,omitempty"`
+	UserAnswerPinyin  *string             `json:"user_answer_pinyin,omitempty"`
 }
 
 // TranslationSources, when present, parallels Translations[lang] index-for-index:
