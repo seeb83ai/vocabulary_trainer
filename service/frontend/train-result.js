@@ -33,7 +33,10 @@ function renderWordAnswerResult(result, answer) {
   // #431/#432/#433) are collapsed into the same "More info" details as noise
   // instead of being dropped.
   const extraTransTexts = selectedLangs.flatMap(lang => (result.translations_extra || {})[lang] || []);
-  const moreInfoTexts = [...extraTransTexts.filter(x => !isNoise(x)), ...noiseTransTexts];
+  // extraTransTexts is added as-is (not re-filtered for noise) — a noise
+  // annotation capped out into "extra" still belongs in the collapse, same
+  // as one that stayed in the visible "shown" set.
+  const moreInfoTexts = [...extraTransTexts, ...noiseTransTexts];
   const noiseHtml = moreInfoTexts.length > 0
     ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
     : '';
@@ -69,14 +72,16 @@ function renderWordAnswerResult(result, answer) {
       }
       if (currentCard.mode === 'transl_to_zh') {
         // Show all translations across all languages except the one already shown as prompt.
-        const allTexts = Object.values(currentCard.translations || {}).flat();
-        const others = allTexts.filter(txt => txt !== currentCard.prompt && !isNoise(txt));
+        const allTexts = Object.values(currentCard.translations || {}).flat().filter(txt => txt !== currentCard.prompt);
+        const others = allTexts.filter(txt => !isNoise(txt));
+        const noiseTexts = allTexts.filter(isNoise);
         const extraTexts = Object.values(currentCard.translations_extra || {})
-          .flat().filter(txt => txt !== currentCard.prompt && !isNoise(txt));
-        const extraHtml = extraTexts.length > 0
-          ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${extraTexts.map(escHtml).join(' · ')}</div></details>`
+          .flat().filter(txt => txt !== currentCard.prompt);
+        const moreInfoTexts = [...extraTexts, ...noiseTexts];
+        const extraHtml = moreInfoTexts.length > 0
+          ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
           : '';
-        if (others.length > 0 || extraTexts.length > 0) {
+        if (others.length > 0 || moreInfoTexts.length > 0) {
           $('result-question-translations').innerHTML = others.map(escHtml).join(' · ') + extraHtml;
           show('result-question-translations');
         } else {
@@ -93,9 +98,16 @@ function renderWordAnswerResult(result, answer) {
           <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
           <div class="text-sm font-medium text-red-700">${escHtml(answer)}${yourAnswerPinyin}</div>
         </div>`;
+    // Same noise/cap split as the main "WORD" box above: annotation strings
+    // (CL:/Bsp.:/ZEW:) are never real translations, and anything beyond the
+    // cap is collapsed — neither belongs in the always-visible line.
+    const confusedAllTexts = cw ? Object.values(cw.confused_with_translations || {}).flat() : [];
+    const confusedCleanTexts = confusedAllTexts.filter(txt => !isNoise(txt));
+    const confusedNoiseTexts = confusedAllTexts.filter(isNoise);
     const confusedExtraTexts = cw ? Object.values(cw.confused_with_translations_extra || {}).flat() : [];
-    const confusedExtraHtml = confusedExtraTexts.length > 0
-      ? `<details class="mt-1"><summary class="text-xs text-yellow-600 cursor-pointer select-none">More info</summary><div class="text-gray-500 text-xs mt-0.5">${confusedExtraTexts.map(escHtml).join(' · ')}</div></details>`
+    const confusedMoreInfoTexts = [...confusedExtraTexts, ...confusedNoiseTexts];
+    const confusedExtraHtml = confusedMoreInfoTexts.length > 0
+      ? `<details class="mt-1"><summary class="text-xs text-yellow-600 cursor-pointer select-none">More info</summary><div class="text-gray-500 text-xs mt-0.5">${confusedMoreInfoTexts.map(escHtml).join(' · ')}</div></details>`
       : '';
     const confusedHtml = cw ? `
         <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
@@ -104,7 +116,7 @@ function renderWordAnswerResult(result, answer) {
             <div class="text-base font-semibold text-gray-800 min-w-0 overflow-hidden">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
             <button class="btn-confused-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
           </div>
-          <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
+          <div class="text-gray-500 text-sm mt-0.5">${confusedCleanTexts.map(escHtml).join(' · ')}</div>
           ${confusedExtraHtml}
         </div>` : '';
     // Renders the normal wrong-answer screen. Used directly for non-ambiguous

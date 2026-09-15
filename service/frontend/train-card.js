@@ -318,9 +318,11 @@ async function loadNextCard(trackCurrent = false) {
       newWordNoise.push(...noise);
     }
     // Translations beyond the user's max-translations-shown cap (issue
-    // #431/#432/#433) are collapsed into the same "More info" details as noise.
+    // #431/#432/#433) are collapsed into the same "More info" details as
+    // noise — added as-is (not re-filtered for noise) so a capped-out noise
+    // annotation still shows up here rather than being dropped.
     for (const texts of Object.values(currentCard.translations_extra || {})) {
-      newWordNoise.push(...(texts || []).filter(x => !isNoise(x)));
+      newWordNoise.push(...(texts || []));
     }
     const newWordNoiseHtml = newWordNoise.length > 0
       ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${newWordNoise.map(escHtml).join(' · ')}</div></details>`
@@ -480,17 +482,20 @@ function showCard() {
 
     if (currentCard.mode === 'transl_to_zh') {
       // Show all translations across all languages except the one already shown as prompt.
-      const allTexts = Object.values(currentCard.translations || {}).flat();
-      const others = allTexts.filter(t => t !== currentCard.prompt && !isNoise(t));
+      const allTexts = Object.values(currentCard.translations || {}).flat().filter(txt => txt !== currentCard.prompt);
+      const others = allTexts.filter(txt => !isNoise(txt));
+      const noiseTexts = allTexts.filter(isNoise);
       // Translations beyond the user's max-translations-shown cap (issue
       // #431/#432/#433) are collapsed instead of dropped — same pattern as
-      // the "More info" noise details below.
+      // the "More info" noise details below. A capped-out noise annotation
+      // stays in the collapse too, rather than being dropped either way.
       const extraTexts = Object.values(currentCard.translations_extra || {})
-        .flat().filter(txt => txt !== currentCard.prompt && !isNoise(txt));
-      const extraHtml = extraTexts.length > 0
-        ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${extraTexts.map(escHtml).join(' · ')}</div></details>`
+        .flat().filter(txt => txt !== currentCard.prompt);
+      const moreInfoTexts = [...extraTexts, ...noiseTexts];
+      const extraHtml = moreInfoTexts.length > 0
+        ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
         : '';
-      if (others.length > 0 || extraTexts.length > 0) {
+      if (others.length > 0 || moreInfoTexts.length > 0) {
         $('translations-hint').innerHTML = others.map(escHtml).join(' · ') + extraHtml;
         show('translations-hint');
       } else {

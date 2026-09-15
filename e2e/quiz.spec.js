@@ -2250,4 +2250,71 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     await assertCappedAndCollapsible(yellowBox, ALL_TRANSLATIONS.length - MAX_SHOWN);
     await captureForPR(page, 'train-mismatch-translations-capped-expanded');
   });
+
+  // Regression test: noise annotations (CL:/Bsp.:/ZEW: measure-word and
+  // example-sentence glosses, never real translations) must always collapse
+  // into "More info" — in both the green "WORD" box and the yellow "belongs
+  // to" box — rather than showing inline or, worse, being silently dropped
+  // when a capped-out item happened to be noise.
+  test('noise annotations always collapse into "More info", never shown inline or dropped', async ({ page }) => {
+    const email = `e2e-noise-collapse-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'NoiseCollapse123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const targetRes = await page.request.post('/api/words', {
+      data: { zh_text: '鞋', pinyin: 'xié', translations: { en: ['shoe', 'CL:雙[shuāng]'] }, tags: [], start_training: true },
+    });
+    expect(targetRes.ok()).toBeTruthy();
+    const target = await targetRes.json();
+
+    const confusedRes = await page.request.post('/api/words', {
+      data: { zh_text: '打', pinyin: 'dǎ', translations: { en: ['to hit', 'CL:下[xià]'] }, tags: [], start_training: true },
+    });
+    expect(confusedRes.ok()).toBeTruthy();
+
+    await page.route('**/api/quiz/next*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ word_id: target.id, mode: 'zh_to_transl', prompt: '鞋', pinyin: 'xié' }),
+      });
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // "to hit" is a valid translation of the OTHER seeded word (打), so
+    // this triggers DetectConfusion and populates the yellow box too.
+    await page.locator('#answer-input').fill('to hit');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const visibleTextExcludingDetails = async (locator) => (await locator.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    }));
+
+    const greenBox = page.locator('#word-breakdown .bg-green-50');
+    await expect(greenBox).toBeVisible();
+    const greenVisible = await visibleTextExcludingDetails(greenBox);
+    expect(greenVisible).toContain('shoe');
+    expect(greenVisible).not.toContain('CL:');
+    const greenDetails = greenBox.locator('details');
+    await expect(greenDetails).toHaveCount(1);
+    await greenDetails.locator('summary').click();
+    await expect(greenDetails).toContainText('CL:');
+
+    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
+    await expect(yellowBox).toBeVisible();
+    const yellowVisible = await visibleTextExcludingDetails(yellowBox);
+    expect(yellowVisible).toContain('to hit');
+    expect(yellowVisible).not.toContain('CL:');
+    const yellowDetails = yellowBox.locator('details');
+    await expect(yellowDetails).toHaveCount(1);
+    await yellowDetails.locator('summary').click();
+    await expect(yellowDetails).toContainText('CL:');
+  });
 });
