@@ -349,9 +349,13 @@ type ConfusionDetail struct {
 	ConfusedWithText         string              `json:"confused_with_text"`
 	ConfusedWithPinyin       *string             `json:"confused_with_pinyin"`
 	ConfusedWithTranslations map[string][]string `json:"confused_with_translations"`
-	Mode                     string              `json:"mode"`
-	Count                    int                 `json:"count"`
-	LastSeen                 time.Time           `json:"last_seen"`
+	// ConfusedWithTranslationsExtra mirrors QuizCard.TranslationsExtra: the
+	// confused-with word's translations beyond the user's max-translations-shown
+	// cap, for the frontend to render collapsed on the "belongs to" mismatch box.
+	ConfusedWithTranslationsExtra map[string][]string `json:"confused_with_translations_extra,omitempty"`
+	Mode                          string              `json:"mode"`
+	Count                         int                 `json:"count"`
+	LastSeen                      time.Time           `json:"last_seen"`
 }
 
 type WordListResponse struct {

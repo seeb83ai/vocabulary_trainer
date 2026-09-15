@@ -2193,4 +2193,61 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
   });
+
+  // Regression test: the yellow "belongs to" mismatch box (shown when a
+  // wrong answer turns out to be a valid translation of a different, known
+  // word) rendered that other word's full, unfiltered translation list,
+  // ignoring max_translations_shown entirely.
+  test('"belongs to" mismatch box shows only the configured max, collapses the rest', async ({ page }) => {
+    const email = `e2e-mismatch-cap-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'MismatchCap123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const targetRes = await page.request.post('/api/words', {
+      data: { zh_text: '鞋', pinyin: 'xié', translations: { en: ['shoe'] }, tags: [], start_training: true },
+    });
+    expect(targetRes.ok()).toBeTruthy();
+    const target = await targetRes.json();
+
+    const confusedRes = await page.request.post('/api/words', {
+      data: { zh_text: '打', pinyin: 'dǎ', translations: { en: ALL_TRANSLATIONS }, tags: [], start_training: true },
+    });
+    expect(confusedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, translation_ranking_enabled: true, max_translations_shown: MAX_SHOWN, translation_hide_unranked: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+
+    // Two words are now due — force the deterministic one (鞋) to be served
+    // as the card so answering with 打's translation reliably triggers
+    // DetectConfusion, rather than depending on GetNextCard's tie-break order.
+    await page.route('**/api/quiz/next*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ word_id: target.id, mode: 'zh_to_transl', prompt: '鞋', pinyin: 'xié' }),
+      });
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('鞋');
+
+    await page.locator('#answer-input').fill(ALL_TRANSLATIONS[0]);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
+    await expect(yellowBox).toBeVisible();
+    await captureForPR(page, 'train-mismatch-translations-capped');
+
+    await assertCappedAndCollapsible(yellowBox, ALL_TRANSLATIONS.length - MAX_SHOWN);
+    await captureForPR(page, 'train-mismatch-translations-capped-expanded');
+  });
 });

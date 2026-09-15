@@ -93,6 +93,10 @@ function renderWordAnswerResult(result, answer) {
           <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
           <div class="text-sm font-medium text-red-700">${escHtml(answer)}${yourAnswerPinyin}</div>
         </div>`;
+    const confusedExtraTexts = cw ? Object.values(cw.confused_with_translations_extra || {}).flat() : [];
+    const confusedExtraHtml = confusedExtraTexts.length > 0
+      ? `<details class="mt-1"><summary class="text-xs text-yellow-600 cursor-pointer select-none">More info</summary><div class="text-gray-500 text-xs mt-0.5">${confusedExtraTexts.map(escHtml).join(' · ')}</div></details>`
+      : '';
     const confusedHtml = cw ? `
         <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
           <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
@@ -101,6 +105,7 @@ function renderWordAnswerResult(result, answer) {
             <button class="btn-confused-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
           </div>
           <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
+          ${confusedExtraHtml}
         </div>` : '';
     // Renders the normal wrong-answer screen. Used directly for non-ambiguous
     // wrong answers, and as the fallback when the user continues past an

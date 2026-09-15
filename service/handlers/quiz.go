@@ -614,7 +614,13 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		if err == nil && found {
 			_ = h.Store.UpsertConfusion(r.Context(), userID, req.WordID, confusedWithID, req.Mode)
 			confusions, err := h.Store.GetConfusionDetail(r.Context(), userID, req.WordID, confusedWithID, req.Mode, langs)
-			if err == nil {
+			if err == nil && confusions != nil {
+				// Cap the "belongs to" mismatch box's translations the same
+				// way as the main result box (issue #431/#432/#433).
+				if shown, extra, capErr := loadTranslationsForResult(r.Context(), h.Store, confusions.ConfusedWithID, confusions.ConfusedWithTranslations, userSettings); capErr == nil {
+					confusions.ConfusedWithTranslations = shown
+					confusions.ConfusedWithTranslationsExtra = extra
+				}
 				resp.ConfusedWith = confusions
 			}
 			if req.Mode == models.ModeTranslToZh {
