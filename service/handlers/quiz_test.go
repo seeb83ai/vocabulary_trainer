@@ -539,11 +539,14 @@ func TestQuizCycleAdvances(t *testing.T) {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
 
-	// Set total_attempts=2 directly so position=(2-1)%3=1 → transl_to_zh.
+	// Graduate the word so cycle-position logic (not the new-word intro
+	// ladder) governs mode selection, then set total_attempts=2 directly so
+	// position=(2-1)%3=1 → transl_to_zh.
 	p, err := s.GetSM2Progress(ctx, id)
 	if err != nil || p == nil {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
 	}
+	p.LearningNewWord = false
 	p.TotalAttempts = 2
 	p.TotalCorrect = 1
 	p.DueDate = time.Now().UTC().Add(-time.Hour)
@@ -569,12 +572,11 @@ func TestQuizCycleWraps(t *testing.T) {
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	// Set total_attempts=4 so position=(4-1)%3=0 in the raw 3-step default
-	// sequence, wrapping back to position 0. The word stays in the "new"
-	// bucket (learning_new_word=true): unlike an already-graduated word, the
-	// intro-phase cycle position (SelectNewWordCycleMode) is not filtered by
-	// RandomModeConfig's per-tier bucket range, so the full 3-step sequence is
-	// used as configured (issue #416/#409).
+	// Set total_attempts=4 so position=(4-1)%3=0 in the default 3-step
+	// sequence, wrapping back to position 0. Graduated (learning_new_word=false)
+	// so cycle-position logic, not the new-word intro ladder, governs mode
+	// selection; all 3 default-sequence steps are eligible for the resulting
+	// "0-49" (Struggling) bucket under DefaultRandomModeConfig.
 	// AcknowledgeWord first to set first_seen_date (required for GetNextCard).
 	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
@@ -583,6 +585,7 @@ func TestQuizCycleWraps(t *testing.T) {
 	if err != nil || p == nil {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
 	}
+	p.LearningNewWord = false
 	p.TotalAttempts = 4
 	p.TotalCorrect = 1
 	p.DueDate = time.Now().UTC().Add(-time.Hour)
@@ -604,28 +607,50 @@ func TestQuizCycleWraps(t *testing.T) {
 	}
 }
 
-// TestQuizCycle_NewWordPhase_WalksFullSequence covers issue #416/#409: under
-// plain Cycle mode (no advance-on-known/success-only) with default settings,
-// a word still in the new-word intro phase must walk all 3 steps of the
-// default cycle_sequence in order as total_attempts advances — not collapse
-// to a 2-step oscillation that never reaches the 3rd step because
-// RandomModeConfig's default "new" bucket range excludes zh_to_transl.
-func TestQuizCycle_NewWordPhase_WalksFullSequence(t *testing.T) {
+// TestQuizCycle_NewWordPhase_IgnoresCycleSequence is a regression test for
+// issue #435: the user's overall training mode must never affect a word
+// still in the new-word intro phase (learning_new_word=true) — only the
+// new_word_mode_0/1/2 settings govern, keyed off total_correct. cycle_sequence
+// is deliberately configured to a different order than new_word_mode_0/1/2 so
+// the test fails if cycle mode's own sequence leaks into the intro phase.
+func TestQuizCycle_NewWordPhase_IgnoresCycleSequence(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
+	r := newRouter(s)
+
+	patchPayload := map[string]string{
+		"primary_lang":         "en",
+		"secondary_lang":       "",
+		"prog_new":             "transl_to_zh",
+		"prog_tier_struggling": "transl_to_zh",
+		"prog_tier_learning":   "zh_pinyin_to_transl",
+		"prog_tier_practicing": "zh_to_transl",
+		"prog_tier_mastered":   "random",
+		"new_word_mode_0":      "zh_to_transl",
+		"new_word_mode_1":      "zh_pinyin_to_transl",
+		"new_word_mode_2":      "transl_to_zh",
+		"cycle_sequence":       "transl_to_zh,zh_pinyin_to_transl,zh_to_transl",
+	}
+	rec := do(t, r, http.MethodPatch, "/api/settings", patchPayload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
-	r := newRouter(s)
 
-	wantModes := []string{models.ModeZhPinyinToTransl, models.ModeTranslToZh, models.ModeZhToTransl}
+	// total_attempts varies independently of total_correct to prove cycle
+	// position (which is normally driven by total_attempts) plays no role.
+	wantModes := []string{models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeTranslToZh}
 	for i, want := range wantModes {
 		p, err := s.GetSM2Progress(ctx, id)
 		if err != nil || p == nil {
 			t.Fatalf("iter %d: GetSM2Progress: %v / %v", i, err, p)
 		}
-		p.TotalAttempts = i + 1
+		p.TotalCorrect = i
+		p.TotalAttempts = i + 5
 		p.DueDate = time.Now().UTC().Add(-time.Hour)
 		if err := s.UpdateSM2Progress(ctx, *p); err != nil {
 			t.Fatalf("iter %d: UpdateSM2Progress: %v", i, err)
@@ -638,7 +663,7 @@ func TestQuizCycle_NewWordPhase_WalksFullSequence(t *testing.T) {
 		var card models.QuizCard
 		decodeJSON(t, rec, &card)
 		if card.Mode != want {
-			t.Errorf("iter %d (total_attempts=%d): want %s, got %s", i, i+1, want, card.Mode)
+			t.Errorf("iter %d (total_correct=%d): want %s, got %s", i, i, want, card.Mode)
 		}
 	}
 }
@@ -672,6 +697,19 @@ func TestQuizCycleCustomSequence(t *testing.T) {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
 
+	// Graduate the word so the custom cycle_sequence (not the new-word intro
+	// ladder) governs mode selection. total_attempts=1 → position 0.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.LearningNewWord = false
+	p.TotalAttempts = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
 	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
@@ -702,8 +740,9 @@ func TestQuizCycleMode_NoLearningPinyinHint(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	// Step 0 of default cycle is zh_pinyin_to_transl — that's fine to have pinyin.
-	// Advance to step 1 (transl_to_zh) by bumping TotalAttempts to 2.
+	// The intro phase is governed by new_word_mode_0/1/2 (default step 0 is
+	// transl_to_zh), not the cycle sequence, so total_attempts has no effect
+	// here — bump it anyway to confirm that.
 	p, err := s.GetSM2Progress(ctx, id)
 	if err != nil || p == nil {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
@@ -716,11 +755,11 @@ func TestQuizCycleMode_NoLearningPinyinHint(t *testing.T) {
 
 	rec = do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200 for cycle step 1, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	decodeJSON(t, rec, &card)
 	if card.Mode != models.ModeTranslToZh {
-		t.Fatalf("cycle step 1: want %s, got %s", models.ModeTranslToZh, card.Mode)
+		t.Fatalf("want %s, got %s", models.ModeTranslToZh, card.Mode)
 	}
 	if card.Pinyin != nil {
 		t.Errorf("cycle transl_to_zh step must not include pinyin hint, got %q", *card.Pinyin)
@@ -760,11 +799,13 @@ func TestQuizCycle_AdvanceOnSuccessOnly(t *testing.T) {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
 
-	// Set TotalAttempts=3, TotalCorrect=1: without the flag → position 2; with it → position 0.
+	// Graduate the word so cycle-position logic governs, then set
+	// TotalAttempts=3, TotalCorrect=1: without the flag → position 2; with it → position 0.
 	p, err := s.GetSM2Progress(ctx, id)
 	if err != nil || p == nil {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
 	}
+	p.LearningNewWord = false
 	p.TotalAttempts = 3
 	p.TotalCorrect = 1
 	p.DueDate = time.Now().UTC().Add(-time.Hour)
@@ -821,6 +862,7 @@ func TestQuizCycle_AdvanceOnKnownOnly(t *testing.T) {
 	if err != nil || p == nil {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
 	}
+	p.LearningNewWord = false
 	p.TotalAttempts = 5
 	p.TotalCorrect = 3
 	p.KnownCorrectCount = 1
@@ -983,9 +1025,14 @@ func TestQuizCycle_AdvanceOnKnownOnly_ViaGetNextCard(t *testing.T) {
 
 	// Answer correctly on the first try three times in a row (pulling the due
 	// date back before each Next() call so the word is immediately due again),
-	// which should push the word through learning-phase graduation and advance
-	// the cycle position twice: step 0 -> step 1 -> step 2.
-	wantModes := []string{models.ModeZhPinyinToTransl, models.ModeZhPinyinToTransl, models.ModeTranslToZh, models.ModeZhToTransl}
+	// which should push the word through learning-phase graduation. The first
+	// 3 iterations are still in the intro phase, so mode follows
+	// new_word_mode_0/1/2 (step 0 and step 1 both default to transl_to_zh,
+	// step 2 to zh_to_transl); only the 4th iteration is graduated and
+	// exercises the known_correct_count-driven cycle position this test
+	// guards against (KnownCorrectCount=3 after 3 first-try-correct answers →
+	// position (3-1)%3=2 → zh_to_transl).
+	wantModes := []string{models.ModeTranslToZh, models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhToTransl}
 	for i, want := range wantModes {
 		p, err := s.GetSM2Progress(ctx, id)
 		if err != nil || p == nil {

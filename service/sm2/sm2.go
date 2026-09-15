@@ -503,8 +503,8 @@ func ValidModeRange(v string) bool {
 
 // modeRangeValues returns, for each of the 5 controlled modes, its resolved
 // RandomModeConfig range value (cfg's field, falling back to
-// DefaultRandomModeConfig for an unset "" field). Shared by resolveEligibleModes
-// and isModeOff so both read the same resolution rule.
+// DefaultRandomModeConfig for an unset "" field). Used by resolveEligibleModes
+// so eligibility reads a single, consistent resolution rule.
 func modeRangeValues(cfg RandomModeConfig) []struct{ mode, value string } {
 	def := DefaultRandomModeConfig()
 	raw := []struct{ mode, value, fallback string }{
@@ -549,18 +549,6 @@ func resolveEligibleModes(bucket string, cfg RandomModeConfig) []string {
 		}
 	}
 	return eligible
-}
-
-// isModeOff reports whether mode is explicitly disabled ("off") in cfg,
-// falling back to DefaultRandomModeConfig for an unset field. A mode
-// RandomModeConfig doesn't govern (e.g. mask_pinyin) is never off.
-func isModeOff(mode string, cfg RandomModeConfig) bool {
-	for _, r := range modeRangeValues(cfg) {
-		if r.mode == mode {
-			return r.value == "off"
-		}
-	}
-	return false
 }
 
 // BucketsWithoutEligibleMode returns the bucket keys (in bucketOrder) that
@@ -649,41 +637,6 @@ func SelectCycleMode(totalAttempts int, sequence []string, bucket string, cfg Ra
 		pool = sequence
 	}
 	pos := totalAttempts - 1
-	if pos < 0 {
-		pos = 0
-	}
-	return pool[pos%len(pool)]
-}
-
-// SelectNewWordCycleMode returns the cycle-sequence mode for a word still in
-// the new-word intro phase (LearningNewWord). Unlike SelectCycleMode, it does
-// not filter the sequence down to RandomModeConfig's per-tier bucket range —
-// that range reflects accuracy-tier appropriateness for already-graduated
-// words, not the fixed intro sequence, and under the default config it
-// excludes zh_to_transl from the "new" bucket, which would otherwise silently
-// drop the 3rd step of a 3-step sequence for the entire intro phase (issue
-// #416/#409). A step the user explicitly turned "off" is still skipped; if
-// that empties the sequence, falls back to the full set of controlled modes
-// that aren't off.
-func SelectNewWordCycleMode(counter int, sequence []string, cfg RandomModeConfig) string {
-	filtered := make([]string, 0, len(sequence))
-	for _, m := range sequence {
-		if !isModeOff(m, cfg) {
-			filtered = append(filtered, m)
-		}
-	}
-	pool := filtered
-	if len(pool) == 0 {
-		for _, m := range allRandomModes {
-			if !isModeOff(m, cfg) {
-				pool = append(pool, m)
-			}
-		}
-	}
-	if len(pool) == 0 {
-		pool = sequence
-	}
-	pos := counter - 1
 	if pos < 0 {
 		pos = 0
 	}
