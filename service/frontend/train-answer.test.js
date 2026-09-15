@@ -143,6 +143,154 @@ describe('isTransCorrect', () => {
   });
 });
 
+// ── Merging capped/extra translations for client-side validation ──────────────
+// Mirrors the pure helper added to train.js so answer validation (the
+// new-word "Got it" gate, the retype-on-wrong gate) keeps accepting
+// translations beyond the display cap even though they're shown collapsed
+// (issue #431/#432/#433).
+
+function mergeTranslationMaps(a, b) {
+  const merged = {};
+  for (const lang of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    merged[lang] = [...(a?.[lang] || []), ...(b?.[lang] || [])];
+  }
+  return merged;
+}
+
+describe('mergeTranslationMaps', () => {
+  it('concatenates per-language arrays from both maps', () => {
+    expect(mergeTranslationMaps({ en: ['hello'] }, { en: ['hi'] })).toEqual({ en: ['hello', 'hi'] });
+  });
+
+  it('includes languages present in only one map', () => {
+    expect(mergeTranslationMaps({ en: ['hello'] }, { de: ['hallo'] })).toEqual({ en: ['hello'], de: ['hallo'] });
+  });
+
+  it('handles an empty extra map', () => {
+    expect(mergeTranslationMaps({ en: ['hello'] }, {})).toEqual({ en: ['hello'] });
+  });
+
+  it('handles null/undefined maps', () => {
+    expect(mergeTranslationMaps(null, undefined)).toEqual({});
+    expect(mergeTranslationMaps({ en: ['hello'] }, null)).toEqual({ en: ['hello'] });
+  });
+
+  it('a translation only present in the extra map still validates', () => {
+    const merged = mergeTranslationMaps({ en: ['hello'] }, { en: ['hi'] });
+    expect(isTransCorrect('hi', merged)).toBe(true);
+  });
+});
+
+// ── Ordering languages primary-first ───────────────────────────────────────────
+// Mirrors the pure helper added to train.js: selectedLangs' own order can
+// drift from primary-first after toggling a language off and back on (it
+// gets appended at the end), so every translation box reorders it before
+// grouping, keeping display order consistent with the primary-first
+// language chips regardless of toggle history.
+
+function orderLangsPrimaryFirst(langs, primaryLang, secondaryLang) {
+  const priority = [primaryLang, secondaryLang].filter(Boolean);
+  const ordered = priority.filter(l => langs.includes(l));
+  const rest = langs.filter(l => !ordered.includes(l));
+  return [...ordered, ...rest];
+}
+
+describe('orderLangsPrimaryFirst', () => {
+  it('leaves an already primary-first list unchanged', () => {
+    expect(orderLangsPrimaryFirst(['de', 'en'], 'de', 'en')).toEqual(['de', 'en']);
+  });
+
+  it('reorders a stale (toggle-drifted) selection to primary-first', () => {
+    expect(orderLangsPrimaryFirst(['en', 'de'], 'de', 'en')).toEqual(['de', 'en']);
+  });
+
+  it('handles a single selected language', () => {
+    expect(orderLangsPrimaryFirst(['en'], 'de', 'en')).toEqual(['en']);
+  });
+
+  it('appends languages beyond primary/secondary at the end', () => {
+    expect(orderLangsPrimaryFirst(['fr', 'en', 'de'], 'de', 'en')).toEqual(['de', 'en', 'fr']);
+  });
+
+  it('handles no secondary language configured', () => {
+    expect(orderLangsPrimaryFirst(['en', 'de'], 'de', '')).toEqual(['de', 'en']);
+  });
+});
+
+// ── Grouping capped translations by language for display ──────────────────────
+// Mirrors the pure helper added to train.js so every translation box (new-word
+// introduction, question hint, correct/wrong result, mismatch "belongs to")
+// shows the first selected language's translations, then the second's — never
+// interleaved — with the same grouping applied to the collapsed "More info"
+// list (issue #431/#432/#433 follow-up).
+
+function isNoise(text) {
+  return /^(CL:|Bsp\.:|ZEW:)/.test(text);
+}
+
+function groupTranslationsByLang(translations, extraTranslations, langs, excludeText) {
+  const shown = [];
+  const collapsed = [];
+  for (const lang of langs) {
+    const texts = ((translations || {})[lang] || []).filter(txt => txt !== excludeText);
+    const extra = ((extraTranslations || {})[lang] || []).filter(txt => txt !== excludeText);
+    shown.push(...texts.filter(txt => !isNoise(txt)));
+    collapsed.push(...texts.filter(isNoise), ...extra);
+  }
+  return { shown, collapsed };
+}
+
+describe('groupTranslationsByLang', () => {
+  it('orders shown translations by language, first language first', () => {
+    const { shown } = groupTranslationsByLang(
+      { en: ['hello', 'hi'], de: ['hallo'] }, {}, ['en', 'de']
+    );
+    expect(shown).toEqual(['hello', 'hi', 'hallo']);
+  });
+
+  it('flips order when the language list is flipped (second language first)', () => {
+    const { shown } = groupTranslationsByLang(
+      { en: ['hello', 'hi'], de: ['hallo'] }, {}, ['de', 'en']
+    );
+    expect(shown).toEqual(['hallo', 'hello', 'hi']);
+  });
+
+  it('groups the collapsed list by language too, not interleaved', () => {
+    const { collapsed } = groupTranslationsByLang(
+      {}, { en: ['rare-en-1', 'rare-en-2'], de: ['rare-de-1'] }, ['en', 'de']
+    );
+    expect(collapsed).toEqual(['rare-en-1', 'rare-en-2', 'rare-de-1']);
+  });
+
+  it('moves a noise annotation from shown to collapsed, in its own language slot', () => {
+    const { shown, collapsed } = groupTranslationsByLang(
+      { en: ['hello', 'CL:个'], de: ['hallo'] }, {}, ['en', 'de']
+    );
+    expect(shown).toEqual(['hello', 'hallo']);
+    expect(collapsed).toEqual(['CL:个']);
+  });
+
+  it('excludes a given text (e.g. the transl_to_zh prompt) from both lists', () => {
+    const { shown, collapsed } = groupTranslationsByLang(
+      { en: ['hello', 'hi'] }, { en: ['hi-extra'] }, ['en'], 'hi'
+    );
+    expect(shown).toEqual(['hello']);
+    expect(collapsed).toEqual(['hi-extra']);
+  });
+
+  it('skips languages missing from either map without erroring', () => {
+    const { shown, collapsed } = groupTranslationsByLang(
+      { en: ['hello'] }, {}, ['en', 'de']
+    );
+    expect(shown).toEqual(['hello']);
+    expect(collapsed).toEqual([]);
+  });
+
+  it('handles null/undefined maps', () => {
+    expect(groupTranslationsByLang(null, undefined, ['en'])).toEqual({ shown: [], collapsed: [] });
+  });
+});
+
 // ── Retype-on-wrong gate ─────────────────────────────────────────────────────
 // Mirrors the pure helper added to train.js that decides whether the retype
 // gate shown after a wrong answer is satisfied (reuses isZhCorrect/isTransCorrect,

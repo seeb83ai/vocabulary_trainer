@@ -1,8 +1,10 @@
 package handlers_test
 
 import (
+	"context"
 	"net/http"
 	"testing"
+	"vocabulary_trainer/models"
 )
 
 func TestMismatches_Empty(t *testing.T) {
@@ -151,6 +153,54 @@ func TestMismatches_EnToZh_Recorded(t *testing.T) {
 	decodeJSON(t, rec2, &items)
 	if len(items) != 1 {
 		t.Fatalf("want 1 mismatch, got %d", len(items))
+	}
+}
+
+// TestMismatches_ConfusedWithTranslations_CapsAndCollapses is a regression
+// test: the "belongs to" mismatch box on the answer-result screen rendered
+// the confused-with word's full, unfiltered translation list, ignoring
+// max_translations_shown entirely (reported against issue #431/#432/#433's
+// fix — the same cap must apply here too).
+func TestMismatches_ConfusedWithTranslations_CapsAndCollapses(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	xieID := seedWord(t, s, "鞋", "xié", []string{"shoe"})
+	bookTranslations := []string{"book", "volume", "text", "letter", "document", "register"}
+	bookID := seedWord(t, s, "书", "shū", bookTranslations)
+	markWordTrained(t, s, bookID)
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.TranslationRankingEnabled = true
+	st.MaxTranslationsShown = 4
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": xieID, "mode": "zh_to_transl", "answer": bookTranslations[0],
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct {
+		t.Fatal("expected incorrect answer")
+	}
+	if resp.ConfusedWith == nil {
+		t.Fatal("expected confused_with to be populated")
+	}
+	shown := resp.ConfusedWith.ConfusedWithTranslations["en"]
+	if len(shown) != 4 {
+		t.Errorf("want exactly 4 confused-with translations shown (the configured cap), got %d: %v", len(shown), shown)
+	}
+	extra := resp.ConfusedWith.ConfusedWithTranslationsExtra["en"]
+	if len(extra) != 2 {
+		t.Errorf("want the remaining 2 confused-with translations collapsed into extra, got %d: %v", len(extra), extra)
 	}
 }
 

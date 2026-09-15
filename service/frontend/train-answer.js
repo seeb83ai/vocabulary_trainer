@@ -43,6 +43,52 @@ function isNoise(text) {
   return /^(CL:|Bsp\.:|ZEW:)/.test(text);
 }
 
+// mergeTranslationMaps combines two {lang: [texts]} maps — e.g. a card's
+// capped `translations` with its collapsed `translations_extra` — into one,
+// concatenating per-language arrays. Client-side answer validation (the
+// new-word "Got it" gate and the retype-on-wrong gate) must keep accepting
+// translations beyond the display cap even though they're no longer shown
+// (issue #431/#432/#433).
+function mergeTranslationMaps(a, b) {
+  const merged = {};
+  for (const lang of new Set([...Object.keys(a || {}), ...Object.keys(b || {})])) {
+    merged[lang] = [...(a?.[lang] || []), ...(b?.[lang] || [])];
+  }
+  return merged;
+}
+
+// orderLangsPrimaryFirst reorders a language list (e.g. selectedLangs, whose
+// order can drift from primary-first after toggling languages off and back
+// on — see toggleLang in train-settings.js) so the user's primary language
+// always comes first, then secondary, then anything else, matching the
+// primary-first order the language chips are always displayed in.
+function orderLangsPrimaryFirst(langs, primaryLang, secondaryLang) {
+  const priority = [primaryLang, secondaryLang].filter(Boolean);
+  const ordered = priority.filter(l => langs.includes(l));
+  const rest = langs.filter(l => !ordered.includes(l));
+  return [...ordered, ...rest];
+}
+
+// groupTranslationsByLang flattens a {lang: [texts]} translations map (plus
+// its capped-out counterpart, if any) into two arrays ordered by `langs`:
+// every visible text for langs[0], then every visible text for langs[1],
+// and so on — never interleaved — with the same grouping applied to the
+// collapsed list. A noise annotation (isNoise) moves from "shown" to
+// "collapsed" for its own language rather than staying inline or being
+// dropped. `excludeText`, when given, is filtered out of both lists first
+// (used to keep a transl_to_zh card's own prompt out of its hint).
+function groupTranslationsByLang(translations, extraTranslations, langs, excludeText) {
+  const shown = [];
+  const collapsed = [];
+  for (const lang of langs) {
+    const texts = ((translations || {})[lang] || []).filter(txt => txt !== excludeText);
+    const extra = ((extraTranslations || {})[lang] || []).filter(txt => txt !== excludeText);
+    shown.push(...texts.filter(txt => !isNoise(txt)));
+    collapsed.push(...texts.filter(isNoise), ...extra);
+  }
+  return { shown, collapsed };
+}
+
 function stripParens(s) {
   let prev;
   do {

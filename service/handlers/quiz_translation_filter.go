@@ -25,22 +25,22 @@ type translationCandidateStore interface {
 // excludes it from the displayed hint (train-card.js), so that caller passes
 // extraSlots=1 — otherwise "max shown" translations become max-1 visible
 // once the prompt is drawn from them. Every other caller passes 0.
-func loadTranslationsForCard(ctx context.Context, store translationCandidateStore, wordID int64, lang string, settings *models.UserSettings, extraSlots int) ([]string, error) {
+func loadTranslationsForCard(ctx context.Context, store translationCandidateStore, wordID int64, lang string, settings *models.UserSettings, extraSlots int) (shown []string, extra []string, err error) {
 	if settings == nil || !settings.TranslationRankingEnabled {
 		words, err := store.GetTranslationsForWord(ctx, wordID, lang)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		texts := make([]string, len(words))
 		for i, w := range words {
 			texts[i] = w.Text
 		}
-		return texts, nil
+		return texts, nil, nil
 	}
 
 	rows, err := store.GetTranslationCandidatesForWord(ctx, wordID, lang)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	candidates := make([]translationCandidate, len(rows))
 	for i, row := range rows {
@@ -50,7 +50,30 @@ func loadTranslationsForCard(ctx context.Context, store translationCandidateStor
 		}
 		candidates[i] = c
 	}
-	return filterTranslationsForDisplay(candidates, settings.MaxTranslationsShown+extraSlots, settings.TranslationHideUnranked), nil
+	shown, extra = filterTranslationsForDisplay(candidates, settings.MaxTranslationsShown+extraSlots, settings.TranslationHideUnranked)
+	return shown, extra, nil
+}
+
+// loadTranslationsForResult builds the capped/extra translation maps shown
+// on the answer result screen, covering every language the word has a
+// translation in (mirrors zhWord.Translations' language coverage, unlike
+// loadTranslationsForCard which is called per-lang for a specific card).
+func loadTranslationsForResult(ctx context.Context, store translationCandidateStore, wordID int64, allTranslations map[string][]string, settings *models.UserSettings) (shown map[string][]string, extra map[string][]string, err error) {
+	shown = map[string][]string{}
+	extra = map[string][]string{}
+	for lang := range allTranslations {
+		texts, extraTexts, err := loadTranslationsForCard(ctx, store, wordID, lang, settings, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(texts) > 0 {
+			shown[lang] = texts
+		}
+		if len(extraTexts) > 0 {
+			extra[lang] = extraTexts
+		}
+	}
+	return shown, extra, nil
 }
 
 // translationCandidate is one linked translation word with its stored
@@ -62,23 +85,24 @@ type translationCandidate struct {
 }
 
 // filterTranslationsForDisplay picks which translations to show on a quiz
-// card when translation ranking is enabled. User-added translations are
-// always shown. Among CEDICT/HanDeDict-derived translations, unranked ones
-// (no frequency-list match) are always shown too unless hideUnranked is set,
-// in which case they're treated as lowest priority like any other ranked
-// gloss. The remaining ranked glosses are sorted rarest-last and capped at
-// maxShown total (counting only the capped set, not the always-shown ones).
-// Relative order within each group is preserved (stable) so results don't
-// jitter across calls with identical rank/source data.
-func filterTranslationsForDisplay(candidates []translationCandidate, maxShown int, hideUnranked bool) []string {
-	var alwaysShown, ranked []translationCandidate
+// card when translation ranking is enabled, and which to collapse into
+// "extra" for the frontend to reveal on demand. User-added translations and
+// (unless hideUnranked is set) unranked CEDICT/HanDeDict glosses are
+// prioritized into the visible set first; the remaining ranked glosses are
+// sorted rarest-last after them. All of it — prioritized and ranked alike —
+// still counts against maxShown: nothing bypasses the cap, it's just ordered
+// so the most important entries are the ones kept visible (issue
+// #431/#432/#433). Relative order within each group is preserved (stable)
+// so results don't jitter across calls with identical rank/source data.
+func filterTranslationsForDisplay(candidates []translationCandidate, maxShown int, hideUnranked bool) (shown []string, extra []string) {
+	var prioritized, ranked []translationCandidate
 	for _, c := range candidates {
 		if c.Source != "cedict" {
-			alwaysShown = append(alwaysShown, c)
+			prioritized = append(prioritized, c)
 			continue
 		}
 		if !c.Rank.Valid && !hideUnranked {
-			alwaysShown = append(alwaysShown, c)
+			prioritized = append(prioritized, c)
 			continue
 		}
 		ranked = append(ranked, c)
@@ -88,16 +112,29 @@ func filterTranslationsForDisplay(candidates []translationCandidate, maxShown in
 		return rankValue(ranked[i]) < rankValue(ranked[j])
 	})
 
-	if maxShown < len(ranked) {
-		ranked = ranked[:maxShown]
+	ordered := make([]translationCandidate, 0, len(prioritized)+len(ranked))
+	ordered = append(ordered, prioritized...)
+	ordered = append(ordered, ranked...)
+
+	if maxShown < 0 {
+		maxShown = 0
+	}
+	if maxShown > len(ordered) {
+		maxShown = len(ordered)
 	}
 
-	texts := make([]string, 0, len(alwaysShown)+len(ranked))
-	for _, c := range alwaysShown {
-		texts = append(texts, c.Text)
+	shown = candidateTexts(ordered[:maxShown])
+	extra = candidateTexts(ordered[maxShown:])
+	return shown, extra
+}
+
+func candidateTexts(candidates []translationCandidate) []string {
+	if len(candidates) == 0 {
+		return nil
 	}
-	for _, c := range ranked {
-		texts = append(texts, c.Text)
+	texts := make([]string, len(candidates))
+	for i, c := range candidates {
+		texts[i] = c.Text
 	}
 	return texts
 }
