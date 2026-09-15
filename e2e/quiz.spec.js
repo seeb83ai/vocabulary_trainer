@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { captureForPR } from './helpers/screenshot.js';
+import { syncNewWordMode } from './helpers/mode.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Main user — 3 acknowledged words (total_attempts=1, learning_new_word=1)
@@ -39,6 +40,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -300,6 +302,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
       await page.request.patch('/api/training-filters', {
         data: { mode: 'zh_to_transl', langs: ['en', 'de'], bucket: '', mnemonics: true, components: true, tags: [] },
       });
+      await syncNewWordMode(page, 'zh_to_transl');
       await page.addInitScript(() => {
         localStorage.setItem('quizMode', 'zh_to_transl');
         localStorage.setItem('quizLangs', JSON.stringify(['en', 'de']));
@@ -356,6 +359,7 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -366,6 +370,7 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
     await page.request.patch('/api/training-filters', {
       data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'transl_to_zh');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -444,6 +449,7 @@ test.describe('Quiz – blur pinyin (issue #201)', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_pinyin_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_pinyin_to_transl');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_pinyin_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -523,6 +529,7 @@ test.describe('Quiz – new word introduction (new-word user)', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -599,6 +606,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'transl_to_zh');
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -844,6 +852,7 @@ test.describe('Quiz – pinyin in answer boxes (issue #205)', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'transl_to_zh');
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -887,6 +896,7 @@ test.describe('Quiz – green result box title (issue #246)', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -894,13 +904,16 @@ test.describe('Quiz – green result box title (issue #246)', () => {
   }
 
   test('correct vocabulary answer shows "Word" label in green box, not "Correct"', async ({ page }) => {
+    // Mode must be synced (including the new-word intro ladder) before the
+    // pre-fetch below, or a still-in-intro word may return a stale mode
+    // left over from a previous test's settings (issue #435).
+    await useZhToTranslMode(page);
     const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
     expect(cardRes.ok()).toBe(true);
     const card = await cardRes.json();
     const correctAnswer = SEED_FIRST_ANSWERS[card.prompt];
     expect(correctAnswer).toBeTruthy();
 
-    await useZhToTranslMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
     await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
@@ -1084,6 +1097,7 @@ test.describe('Quiz – auto-play sound toggle', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -1094,6 +1108,7 @@ test.describe('Quiz – auto-play sound toggle', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'transl_to_zh');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -1304,6 +1319,7 @@ test.describe('Quiz – Chinese (no sound) mode', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl_no_sound', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl_no_sound');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl_no_sound');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -1311,13 +1327,16 @@ test.describe('Quiz – Chinese (no sound) mode', () => {
   }
 
   test('shows the Chinese prompt with the play button hidden', async ({ page }) => {
+    // Mode must be synced (including the new-word intro ladder) before the
+    // pre-fetch below, or a still-in-intro word may return a stale mode
+    // left over from a previous test's settings (issue #435).
+    await useNoSoundMode(page);
     const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl_no_sound&langs=en');
     expect(cardRes.ok()).toBe(true);
     const card = await cardRes.json();
     expect(card.mode).toBe('zh_to_transl_no_sound');
     expect(['你好', '谢谢', '再见']).toContain(card.prompt);
 
-    await useNoSoundMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
     await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
@@ -1434,6 +1453,7 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -1550,6 +1570,7 @@ test.describe('Quiz – retype on wrong answer', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -1560,6 +1581,7 @@ test.describe('Quiz – retype on wrong answer', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'transl_to_zh');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -1711,6 +1733,7 @@ test.describe('Quiz – retype on wrong answer', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -1768,6 +1791,7 @@ test.describe('Quiz – retype on wrong answer', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en', 'de'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en', 'de']));
@@ -1904,6 +1928,7 @@ test.describe('Quiz – scroll to top on new card', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
@@ -1970,6 +1995,7 @@ test.describe('Quiz – equivalent ellipsis forms accepted (issue #343)', () => 
     await page.request.patch('/api/training-filters', {
       data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'transl_to_zh');
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'transl_to_zh');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));

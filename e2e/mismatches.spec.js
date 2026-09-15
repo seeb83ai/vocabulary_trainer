@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { syncNewWordMode } from './helpers/mode.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Issue #280: component quiz answers must trigger the mismatch UI/tracking,
@@ -17,6 +18,7 @@ test.describe('Component mismatch detection (issue #280)', () => {
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    await syncNewWordMode(page, 'zh_to_transl');
     return page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));

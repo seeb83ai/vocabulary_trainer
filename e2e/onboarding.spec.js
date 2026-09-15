@@ -163,11 +163,16 @@ test.describe('One-button onboarding', () => {
     // Answer the first (already-acknowledged) word correctly, repeating up to
     // 3 times (as it takes to graduate it out of today's queue per
     // session-end.spec.js) or until the second, never-seen word is offered —
-    // whichever the SM2 due-date progression reaches first.
+    // whichever the SM2 due-date progression reaches first. While word1 is
+    // still in the new-word intro phase, the configured zh_to_transl mode
+    // doesn't apply (issue #435) — the intro ladder shows transl_to_zh first
+    // (prompt is the translation "I", answer with the zh word), then
+    // zh_to_transl once the word has enough correct answers to graduate.
     await waitForCardOrNewWord();
     for (let i = 0; i < 3 && !(await page.locator('#new-word-area').isVisible()); i++) {
       await expect(page.locator('#card-area')).toBeVisible();
-      await page.locator('#answer-input').fill('I');
+      const prompt = await page.locator('#prompt-word').innerText();
+      await page.locator('#answer-input').fill(prompt === '我' ? 'I' : '我');
       await page.locator('#answer-form button[type="submit"]').click();
       await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
       await page.locator('#next-btn').click();
