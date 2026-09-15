@@ -271,8 +271,10 @@ func TestMatchGame_DisabledModeNeverSelectedEvenWithCandidates(t *testing.T) {
 func TestMatchGame_OnlyNewestEnabled_ReturnsNewestCandidates(t *testing.T) {
 	s := openTestDB(t)
 	enableOnlyGameMode(t, s, "newest")
-	seedWord(t, s, "一", "", []string{"one"})
-	seedWord(t, s, "二", "", []string{"two"})
+	id1 := seedWord(t, s, "一", "", []string{"one"})
+	id2 := seedWord(t, s, "二", "", []string{"two"})
+	markWordTrained(t, s, id1)
+	markWordTrained(t, s, id2)
 
 	r := newRouter(s)
 	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
@@ -295,6 +297,8 @@ func TestMatchGame_NewestMode_MarksShownAndHidesUntilWrongAnswer(t *testing.T) {
 	enableOnlyGameMode(t, s, "newest")
 	a := seedWord(t, s, "买牛奶", "", []string{"buy milk"})
 	b := seedWord(t, s, "喝水", "", []string{"drink water"})
+	markWordTrained(t, s, a)
+	markWordTrained(t, s, b)
 	r := newRouter(s)
 
 	// First call returns both words and marks them shown.
@@ -343,7 +347,7 @@ func TestMatchGame_HidesPinyinAtOrAboveDefaultThreshold(t *testing.T) {
 	newID := seedWord(t, s, "去", "qù", []string{"go"})
 	// 10 attempts, 80% accuracy → Practicing tier (>= default threshold).
 	makeDifficultForTest(t, s, practicedID, 8, 10)
-	_ = newID // left at 0 attempts → TierNone, below threshold, pinyin stays shown.
+	markWordTrained(t, s, newID) // seen, but below threshold — pinyin stays shown.
 
 	r := newRouter(s)
 	rec := do(t, r, "GET", "/api/quiz/match-game", nil)

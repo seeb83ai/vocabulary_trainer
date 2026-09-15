@@ -188,6 +188,14 @@ func TestMarkWordsShownInGame_UpsertAndModeScoping(t *testing.T) {
 // test can seed exactly one word beyond it without hardcoding two "30"s.
 const newestWordsGamePoolSizeForTest = 30
 
+func markAllSeen(t *testing.T, s *Store) {
+	t.Helper()
+	if _, err := s.db.ExecContext(context.Background(),
+		`UPDATE sm2_progress SET first_seen_at = datetime('now') WHERE first_seen_at IS NULL`); err != nil {
+		t.Fatalf("markAllSeen: %v", err)
+	}
+}
+
 func TestGetNewestWordsForGame_OnlyWithinPoolWindow(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
@@ -195,6 +203,7 @@ func TestGetNewestWordsForGame_OnlyWithinPoolWindow(t *testing.T) {
 	for i := 0; i < newestWordsGamePoolSizeForTest+5; i++ {
 		ids = append(ids, seedWord(t, s, fmt.Sprintf("word%02d", i), "", []string{fmt.Sprintf("w%02d", i)}))
 	}
+	markAllSeen(t, s)
 	outsidePool := ids[:5] // oldest 5, created before the 30-newest window
 
 	counts := map[int64]int{}
@@ -227,6 +236,7 @@ func TestGetNewestWordsForGame_WeightDecaysWithAge(t *testing.T) {
 	for i := 0; i < newestWordsGamePoolSizeForTest; i++ {
 		ids = append(ids, seedWord(t, s, fmt.Sprintf("word%02d", i), "", []string{fmt.Sprintf("w%02d", i)}))
 	}
+	markAllSeen(t, s)
 	oldest := ids[0]
 	newest := ids[len(ids)-1]
 
@@ -249,6 +259,7 @@ func TestGetNewestWordsForGame_DistinctWithinRound(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		seedWord(t, s, fmt.Sprintf("word%02d", i), "", []string{fmt.Sprintf("w%02d", i)})
 	}
+	markAllSeen(t, s)
 
 	words, err := s.GetNewestWordsForGame(ctx, int64(2), 4)
 	if err != nil {
@@ -270,6 +281,7 @@ func TestGetNewestWordsForGame_FewerWordsThanRequested(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	seedWord(t, s, "一", "", []string{"one"})
+	markAllSeen(t, s)
 
 	words, err := s.GetNewestWordsForGame(ctx, int64(2), 4)
 	if err != nil {
@@ -290,6 +302,7 @@ func TestGetNewestWordsForGame_RepeatAvoidance(t *testing.T) {
 	ctx := context.Background()
 	a := seedWord(t, s, "买牛奶", "", []string{"buy milk"})
 	b := seedWord(t, s, "喝水", "", []string{"drink water"})
+	markAllSeen(t, s)
 
 	words, err := s.GetNewestWordsForGame(ctx, int64(2), 2)
 	if err != nil {
@@ -346,6 +359,35 @@ func setLastWrongOffset(t *testing.T, s *Store, wordID int64, offset string) {
 	if _, err := s.db.ExecContext(context.Background(),
 		`UPDATE sm2_progress SET last_wrong_at = datetime('now', ?) WHERE word_id = ?`, offset, wordID); err != nil {
 		t.Fatalf("setLastWrongOffset(%d): %v", wordID, err)
+	}
+}
+
+// TestGetNewestWordsForGame_OnlySeenWords covers issue #434: words the user has
+// never been quizzed on (first_seen_at IS NULL) must never appear in the game.
+func TestGetNewestWordsForGame_OnlySeenWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	unseen := seedWord(t, s, "未见", "", []string{"unseen"}) // first_seen_at stays NULL
+	seen := seedWord(t, s, "已见", "", []string{"seen"})
+	markWordTrained(t, s, seen)
+
+	words, err := s.GetNewestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range words {
+		if w.ZhWordID == unseen {
+			t.Errorf("unseen word %d appeared in match game", unseen)
+		}
+	}
+	found := false
+	for _, w := range words {
+		if w.ZhWordID == seen {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("seen word %d should appear in match game but did not", seen)
 	}
 }
 
