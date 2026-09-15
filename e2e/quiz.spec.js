@@ -2207,6 +2207,11 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
     });
+    // The seeded word is still in the new-word intro phase, which always
+    // follows new_word_mode_0/1/2 regardless of the configured mode above
+    // (issue #435) — sync it too, or the UI may prompt for the Chinese word
+    // instead of its translation.
+    await syncNewWordMode(page, 'zh_to_transl');
     await page.addInitScript(() => {
       localStorage.setItem('quizMode', 'zh_to_transl');
       localStorage.setItem('quizLangs', JSON.stringify(['en']));
