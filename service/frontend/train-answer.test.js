@@ -181,6 +181,42 @@ describe('mergeTranslationMaps', () => {
   });
 });
 
+// ── Ordering languages primary-first ───────────────────────────────────────────
+// Mirrors the pure helper added to train.js: selectedLangs' own order can
+// drift from primary-first after toggling a language off and back on (it
+// gets appended at the end), so every translation box reorders it before
+// grouping, keeping display order consistent with the primary-first
+// language chips regardless of toggle history.
+
+function orderLangsPrimaryFirst(langs, primaryLang, secondaryLang) {
+  const priority = [primaryLang, secondaryLang].filter(Boolean);
+  const ordered = priority.filter(l => langs.includes(l));
+  const rest = langs.filter(l => !ordered.includes(l));
+  return [...ordered, ...rest];
+}
+
+describe('orderLangsPrimaryFirst', () => {
+  it('leaves an already primary-first list unchanged', () => {
+    expect(orderLangsPrimaryFirst(['de', 'en'], 'de', 'en')).toEqual(['de', 'en']);
+  });
+
+  it('reorders a stale (toggle-drifted) selection to primary-first', () => {
+    expect(orderLangsPrimaryFirst(['en', 'de'], 'de', 'en')).toEqual(['de', 'en']);
+  });
+
+  it('handles a single selected language', () => {
+    expect(orderLangsPrimaryFirst(['en'], 'de', 'en')).toEqual(['en']);
+  });
+
+  it('appends languages beyond primary/secondary at the end', () => {
+    expect(orderLangsPrimaryFirst(['fr', 'en', 'de'], 'de', 'en')).toEqual(['de', 'en', 'fr']);
+  });
+
+  it('handles no secondary language configured', () => {
+    expect(orderLangsPrimaryFirst(['en', 'de'], 'de', '')).toEqual(['de', 'en']);
+  });
+});
+
 // ── Grouping capped translations by language for display ──────────────────────
 // Mirrors the pure helper added to train.js so every translation box (new-word
 // introduction, question hint, correct/wrong result, mismatch "belongs to")

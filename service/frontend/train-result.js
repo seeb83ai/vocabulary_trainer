@@ -26,12 +26,12 @@ function renderWordAnswerResult(result, answer) {
   // Build breakdown for both correct and wrong answers
   const breakdown = $('word-breakdown');
   const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
-  // Grouped by language (selectedLangs order — first language's translations,
-  // then the second's, never interleaved), with noise annotations and
-  // anything beyond the max-translations-shown cap (issue #431/#432/#433)
-  // collapsed into "More info" instead of shown inline or dropped.
+  // Grouped by language (primary language first, then secondary — never
+  // interleaved), with noise annotations and anything beyond the
+  // max-translations-shown cap (issue #431/#432/#433) collapsed into
+  // "More info" instead of shown inline or dropped.
   const { shown: cleanTransTexts, collapsed: moreInfoTexts } =
-    groupTranslationsByLang(result.translations, result.translations_extra, selectedLangs);
+    groupTranslationsByLang(result.translations, result.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang));
   const noiseHtml = moreInfoTexts.length > 0
     ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
     : '';
@@ -68,7 +68,7 @@ function renderWordAnswerResult(result, answer) {
       if (currentCard.mode === 'transl_to_zh') {
         // Show all translations across all languages except the one already shown as prompt.
         const { shown: others, collapsed: moreInfoTexts } =
-          groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, selectedLangs, currentCard.prompt);
+          groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt);
         const extraHtml = moreInfoTexts.length > 0
           ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
           : '';
@@ -91,7 +91,7 @@ function renderWordAnswerResult(result, answer) {
         </div>`;
     // Same language grouping / noise / cap split as the main "WORD" box above.
     const { shown: confusedCleanTexts, collapsed: confusedMoreInfoTexts } = cw
-      ? groupTranslationsByLang(cw.confused_with_translations, cw.confused_with_translations_extra, selectedLangs)
+      ? groupTranslationsByLang(cw.confused_with_translations, cw.confused_with_translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang))
       : { shown: [], collapsed: [] };
     const confusedExtraHtml = confusedMoreInfoTexts.length > 0
       ? `<details class="mt-1"><summary class="text-xs text-yellow-600 cursor-pointer select-none">More info</summary><div class="text-gray-500 text-xs mt-0.5">${confusedMoreInfoTexts.map(escHtml).join(' · ')}</div></details>`

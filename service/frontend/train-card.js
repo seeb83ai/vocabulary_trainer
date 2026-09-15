@@ -308,12 +308,12 @@ async function loadNextCard(trackCurrent = false) {
     scrollCardIntoView('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
-    // One line per language, in selectedLangs order (first language, then
-    // second); noise annotations and cap overflow collapse into the same
-    // "More info" details below (issue #431/#432/#433).
+    // One line per language, primary language first then secondary; noise
+    // annotations and cap overflow collapse into the same "More info"
+    // details below (issue #431/#432/#433).
     const transLines = [];
     const newWordNoise = [];
-    for (const lang of selectedLangs) {
+    for (const lang of orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang)) {
       const texts = (currentCard.translations || {})[lang] || [];
       const extra = (currentCard.translations_extra || {})[lang] || [];
       const clean = texts.filter(x => !isNoise(x));
@@ -478,11 +478,11 @@ function showCard() {
     }
 
     if (currentCard.mode === 'transl_to_zh') {
-      // Grouped by language (selectedLangs order), with the card's own
-      // prompt excluded, noise annotations and cap overflow collapsed
-      // (issue #431/#432/#433).
+      // Grouped by language (primary language first, then secondary), with
+      // the card's own prompt excluded, noise annotations and cap overflow
+      // collapsed (issue #431/#432/#433).
       const { shown: others, collapsed: moreInfoTexts } =
-        groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, selectedLangs, currentCard.prompt);
+        groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt);
       const extraHtml = moreInfoTexts.length > 0
         ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
         : '';

@@ -57,6 +57,18 @@ function mergeTranslationMaps(a, b) {
   return merged;
 }
 
+// orderLangsPrimaryFirst reorders a language list (e.g. selectedLangs, whose
+// order can drift from primary-first after toggling languages off and back
+// on — see toggleLang in train-settings.js) so the user's primary language
+// always comes first, then secondary, then anything else, matching the
+// primary-first order the language chips are always displayed in.
+function orderLangsPrimaryFirst(langs, primaryLang, secondaryLang) {
+  const priority = [primaryLang, secondaryLang].filter(Boolean);
+  const ordered = priority.filter(l => langs.includes(l));
+  const rest = langs.filter(l => !ordered.includes(l));
+  return [...ordered, ...rest];
+}
+
 // groupTranslationsByLang flattens a {lang: [texts]} translations map (plus
 // its capped-out counterpart, if any) into two arrays ordered by `langs`:
 // every visible text for langs[0], then every visible text for langs[1],
