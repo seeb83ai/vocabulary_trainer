@@ -299,56 +299,52 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mode string
-	switch requestedMode {
-	case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
-		mode = requestedMode
-	case models.ModeProgressive:
-		if progress.LearningNewWord {
-			mode = sm2.SelectNewWordMode(progress.TotalCorrect, nwCfg)
-		} else {
+	if progress.LearningNewWord {
+		// The new-word introduction phase always follows the configured
+		// new_word_mode_0/1/2 ladder, regardless of the user's overall training
+		// mode (fixed mode, progressive, cycle, ...) — issue #435.
+		mode = sm2.SelectNewWordMode(progress.TotalCorrect, nwCfg)
+	} else {
+		switch requestedMode {
+		case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
+			mode = requestedMode
+		case models.ModeProgressive:
 			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
-		}
-	case models.ModeCycle:
-		// Under advance-only-if-known/success, a wrong answer leaves the cycle
-		// position counter unchanged but can still shift the word's accuracy-tier
-		// bucket, which would otherwise re-filter the configured sequence into a
-		// different mode at the same position. Pin to the exact mode last shown
-		// (set by Answer on a wrong submission, cleared once the position actually
-		// advances) so the unresolved encounter keeps repeating the same question.
-		var pinnedMode string
-		if userSettings != nil && (userSettings.CycleAdvanceOnKnownOnly || userSettings.CycleAdvanceOnSuccessOnly) {
-			pinnedMode, err = h.Store.GetCyclePinMode(r.Context(), word.ID)
-			if err != nil {
-				log.Printf("quiz next: GetCyclePinMode word %d: %v", word.ID, err)
-				pinnedMode = ""
+		case models.ModeCycle:
+			// Under advance-only-if-known/success, a wrong answer leaves the cycle
+			// position counter unchanged but can still shift the word's accuracy-tier
+			// bucket, which would otherwise re-filter the configured sequence into a
+			// different mode at the same position. Pin to the exact mode last shown
+			// (set by Answer on a wrong submission, cleared once the position actually
+			// advances) so the unresolved encounter keeps repeating the same question.
+			var pinnedMode string
+			if userSettings != nil && (userSettings.CycleAdvanceOnKnownOnly || userSettings.CycleAdvanceOnSuccessOnly) {
+				pinnedMode, err = h.Store.GetCyclePinMode(r.Context(), word.ID)
+				if err != nil {
+					log.Printf("quiz next: GetCyclePinMode word %d: %v", word.ID, err)
+					pinnedMode = ""
+				}
 			}
-		}
-		if pinnedMode != "" {
-			mode = pinnedMode
-		} else {
-			seqStr := sm2.DefaultCycleSequence
-			if userSettings != nil && userSettings.CycleSequence != "" {
-				seqStr = userSettings.CycleSequence
-			}
-			cycleCounter := progress.TotalAttempts
-			if userSettings != nil && userSettings.CycleAdvanceOnKnownOnly {
-				cycleCounter = progress.KnownCorrectCount
-			} else if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
-				cycleCounter = progress.TotalCorrect
-			}
-			if progress.LearningNewWord {
-				// The intro phase walks the configured sequence as a fixed
-				// pedagogical order, not RandomModeConfig's accuracy-tier range
-				// (which would otherwise silently drop steps — issue #416/#409).
-				mode = sm2.SelectNewWordCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), randCfg)
+			if pinnedMode != "" {
+				mode = pinnedMode
 			} else {
+				seqStr := sm2.DefaultCycleSequence
+				if userSettings != nil && userSettings.CycleSequence != "" {
+					seqStr = userSettings.CycleSequence
+				}
+				cycleCounter := progress.TotalAttempts
+				if userSettings != nil && userSettings.CycleAdvanceOnKnownOnly {
+					cycleCounter = progress.KnownCorrectCount
+				} else if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
+					cycleCounter = progress.TotalCorrect
+				}
 				bucket := sm2.ClassifyTier(*progress).BucketKey()
 				mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), bucket, randCfg)
 			}
+		default:
+			bucket := sm2.ClassifyTier(*progress).BucketKey()
+			mode = sm2.SelectMode(bucket, randCfg)
 		}
-	default:
-		bucket := sm2.ClassifyTier(*progress).BucketKey()
-		mode = sm2.SelectMode(bucket, randCfg)
 	}
 
 	// mask_pinyin resolves to transl_to_zh with the pinyin hint forced on.

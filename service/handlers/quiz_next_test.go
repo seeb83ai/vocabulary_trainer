@@ -131,11 +131,14 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	ctx := context.Background()
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 
-	// Give the word some attempts so it is not returned as a new_word introduction.
+	// Graduate the word so it is not returned as a new_word introduction and a
+	// fixed mode request is honored as-is (an intro-phase word always follows
+	// new_word_mode_0/1/2 instead — issue #435).
 	p, err := s.GetSM2Progress(ctx, id)
 	if err != nil || p == nil {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
 	}
+	p.LearningNewWord = false
 	p.TotalAttempts = 1
 	p.TotalCorrect = 1
 	p.DueDate = time.Now().UTC().Add(-time.Hour)
@@ -183,6 +186,7 @@ func TestQuizNext_ZhToTranslNoSound_SameShapeAsZhToTransl(t *testing.T) {
 	if err != nil || p == nil {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
 	}
+	p.LearningNewWord = false
 	p.TotalAttempts = 1
 	p.TotalCorrect = 1
 	p.DueDate = time.Now().UTC().Add(-time.Hour)
@@ -927,7 +931,17 @@ func TestQuizNext_RandomMode_RespectsBucketRestriction(t *testing.T) {
 	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
-	// Word is now in the "new" bucket (learning_new_word=true).
+	// Graduate the word so random_mode_range settings apply — an intro-phase
+	// word ignores them entirely and always follows new_word_mode_0/1/2.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.LearningNewWord = false
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
 
 	for i := 0; i < 20; i++ {
 		rec := do(t, r, "GET", "/api/quiz/next?mode=random", nil)
@@ -964,6 +978,18 @@ func TestQuizNext_CycleMode_RespectsBucketRestriction(t *testing.T) {
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
 	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+	// Graduate the word so cycle-position/bucket-restriction logic applies —
+	// an intro-phase word ignores cycle_sequence and random_mode_range
+	// entirely and always follows new_word_mode_0/1/2.
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.LearningNewWord = false
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
 	}
 
 	rec := do(t, r, "GET", "/api/quiz/next?mode=cycle", nil)
@@ -1126,9 +1152,10 @@ func TestQuizNext_CycleMode(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	// total_attempts=1 after acknowledge → (1-1)%3=0 → zh_pinyin_to_transl
-	if card.Mode != models.ModeZhPinyinToTransl {
-		t.Errorf("cycle position 0: want %s, got %s", models.ModeZhPinyinToTransl, card.Mode)
+	// A freshly-acknowledged word is still in the new-word intro phase, so
+	// mode=cycle is ignored in favor of new_word_mode_0 (default transl_to_zh) — issue #435.
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("intro phase step 0: want %s, got %s", models.ModeTranslToZh, card.Mode)
 	}
 }
 
@@ -1141,6 +1168,7 @@ func TestQuizNext_VoiceToTransl_SameShapeAsZhToTransl(t *testing.T) {
 	if err != nil || p == nil {
 		t.Fatalf("GetSM2Progress: %v / %v", err, p)
 	}
+	p.LearningNewWord = false
 	p.TotalAttempts = 1
 	p.TotalCorrect = 1
 	p.DueDate = time.Now().UTC().Add(-time.Hour)

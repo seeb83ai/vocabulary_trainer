@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { captureForPR } from './helpers/screenshot.js';
 import { seedYesterdayBucketSnapshot } from './helpers/db.js';
+import { syncNewWordMode } from './helpers/mode.js';
 
 const PASSWORD = 'E2eSessionEndPass123!';
 
@@ -36,6 +37,7 @@ async function setupUserWithOneDueWord(page) {
   await page.request.patch('/api/training-filters', {
     data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
   });
+  await syncNewWordMode(page, 'zh_to_transl');
   await page.addInitScript(() => {
     localStorage.setItem('quizMode', 'zh_to_transl');
     localStorage.setItem('quizLangs', JSON.stringify(['en']));
