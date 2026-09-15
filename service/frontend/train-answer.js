@@ -57,6 +57,26 @@ function mergeTranslationMaps(a, b) {
   return merged;
 }
 
+// groupTranslationsByLang flattens a {lang: [texts]} translations map (plus
+// its capped-out counterpart, if any) into two arrays ordered by `langs`:
+// every visible text for langs[0], then every visible text for langs[1],
+// and so on — never interleaved — with the same grouping applied to the
+// collapsed list. A noise annotation (isNoise) moves from "shown" to
+// "collapsed" for its own language rather than staying inline or being
+// dropped. `excludeText`, when given, is filtered out of both lists first
+// (used to keep a transl_to_zh card's own prompt out of its hint).
+function groupTranslationsByLang(translations, extraTranslations, langs, excludeText) {
+  const shown = [];
+  const collapsed = [];
+  for (const lang of langs) {
+    const texts = ((translations || {})[lang] || []).filter(txt => txt !== excludeText);
+    const extra = ((extraTranslations || {})[lang] || []).filter(txt => txt !== excludeText);
+    shown.push(...texts.filter(txt => !isNoise(txt)));
+    collapsed.push(...texts.filter(isNoise), ...extra);
+  }
+  return { shown, collapsed };
+}
+
 function stripParens(s) {
   let prev;
   do {

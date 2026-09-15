@@ -308,21 +308,18 @@ async function loadNextCard(trackCurrent = false) {
     scrollCardIntoView('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
+    // One line per language, in selectedLangs order (first language, then
+    // second); noise annotations and cap overflow collapse into the same
+    // "More info" details below (issue #431/#432/#433).
     const transLines = [];
     const newWordNoise = [];
-    for (const texts of Object.values(currentCard.translations || {})) {
-      if (!texts?.length) continue;
+    for (const lang of selectedLangs) {
+      const texts = (currentCard.translations || {})[lang] || [];
+      const extra = (currentCard.translations_extra || {})[lang] || [];
       const clean = texts.filter(x => !isNoise(x));
       const noise = texts.filter(isNoise);
       if (clean.length) transLines.push(clean.map(escHtml).join(' · '));
-      newWordNoise.push(...noise);
-    }
-    // Translations beyond the user's max-translations-shown cap (issue
-    // #431/#432/#433) are collapsed into the same "More info" details as
-    // noise — added as-is (not re-filtered for noise) so a capped-out noise
-    // annotation still shows up here rather than being dropped.
-    for (const texts of Object.values(currentCard.translations_extra || {})) {
-      newWordNoise.push(...(texts || []));
+      newWordNoise.push(...noise, ...extra);
     }
     const newWordNoiseHtml = newWordNoise.length > 0
       ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${newWordNoise.map(escHtml).join(' · ')}</div></details>`
@@ -481,17 +478,11 @@ function showCard() {
     }
 
     if (currentCard.mode === 'transl_to_zh') {
-      // Show all translations across all languages except the one already shown as prompt.
-      const allTexts = Object.values(currentCard.translations || {}).flat().filter(txt => txt !== currentCard.prompt);
-      const others = allTexts.filter(txt => !isNoise(txt));
-      const noiseTexts = allTexts.filter(isNoise);
-      // Translations beyond the user's max-translations-shown cap (issue
-      // #431/#432/#433) are collapsed instead of dropped — same pattern as
-      // the "More info" noise details below. A capped-out noise annotation
-      // stays in the collapse too, rather than being dropped either way.
-      const extraTexts = Object.values(currentCard.translations_extra || {})
-        .flat().filter(txt => txt !== currentCard.prompt);
-      const moreInfoTexts = [...extraTexts, ...noiseTexts];
+      // Grouped by language (selectedLangs order), with the card's own
+      // prompt excluded, noise annotations and cap overflow collapsed
+      // (issue #431/#432/#433).
+      const { shown: others, collapsed: moreInfoTexts } =
+        groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, selectedLangs, currentCard.prompt);
       const extraHtml = moreInfoTexts.length > 0
         ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
         : '';

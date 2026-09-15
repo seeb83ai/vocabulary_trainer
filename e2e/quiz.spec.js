@@ -2317,4 +2317,79 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     await yellowDetails.locator('summary').click();
     await expect(yellowDetails).toContainText('CL:');
   });
+
+  // Regression test: with two active languages, translations must be
+  // grouped by language — every translation of the first selected language,
+  // then every translation of the second — never interleaved, in both the
+  // visible line and the collapsed "More info" list.
+  test('translations are grouped by language, first language first, in both the visible and collapsed lists', async ({ page }) => {
+    const email = `e2e-lang-order-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'LangOrder123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '打', pinyin: 'dǎ',
+        translations: {
+          de: ['d1', 'd2', 'd3', 'd4'],
+          en: ['e1', 'e2', 'e3', 'e4'],
+        },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, translation_ranking_enabled: true, max_translations_shown: 2, translation_hide_unranked: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+
+    // 'de' listed before 'en' — the first selected language.
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['de', 'en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['de', 'en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const greenBox = page.locator('#word-breakdown .bg-green-50');
+    await expect(greenBox).toBeVisible();
+
+    const visibleTextExcludingDetails = async (locator) => (await locator.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    }));
+
+    // Visible line: de's 2 shown translations, then en's 2 shown translations.
+    const visible = await visibleTextExcludingDetails(greenBox);
+    expect(visible.indexOf('d1')).toBeGreaterThanOrEqual(0);
+    expect(visible.indexOf('d1')).toBeLessThan(visible.indexOf('d2'));
+    expect(visible.indexOf('d2')).toBeLessThan(visible.indexOf('e1'));
+    expect(visible.indexOf('e1')).toBeLessThan(visible.indexOf('e2'));
+    expect(visible).not.toContain('d3');
+    expect(visible).not.toContain('e3');
+
+    // Collapsed list: de's capped-out translations, then en's.
+    const details = greenBox.locator('details');
+    await details.locator('summary').click();
+    const hiddenText = await details.locator('div').textContent();
+    expect(hiddenText.indexOf('d3')).toBeGreaterThanOrEqual(0);
+    expect(hiddenText.indexOf('d3')).toBeLessThan(hiddenText.indexOf('d4'));
+    expect(hiddenText.indexOf('d4')).toBeLessThan(hiddenText.indexOf('e3'));
+    expect(hiddenText.indexOf('e3')).toBeLessThan(hiddenText.indexOf('e4'));
+  });
 });

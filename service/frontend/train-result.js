@@ -26,17 +26,12 @@ function renderWordAnswerResult(result, answer) {
   // Build breakdown for both correct and wrong answers
   const breakdown = $('word-breakdown');
   const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
-  const allTransTexts = selectedLangs.flatMap(lang => (result.translations || {})[lang] || []);
-  const cleanTransTexts = allTransTexts.filter(x => !isNoise(x));
-  const noiseTransTexts = allTransTexts.filter(isNoise);
-  // Translations beyond the user's max-translations-shown cap (issue
-  // #431/#432/#433) are collapsed into the same "More info" details as noise
-  // instead of being dropped.
-  const extraTransTexts = selectedLangs.flatMap(lang => (result.translations_extra || {})[lang] || []);
-  // extraTransTexts is added as-is (not re-filtered for noise) — a noise
-  // annotation capped out into "extra" still belongs in the collapse, same
-  // as one that stayed in the visible "shown" set.
-  const moreInfoTexts = [...extraTransTexts, ...noiseTransTexts];
+  // Grouped by language (selectedLangs order — first language's translations,
+  // then the second's, never interleaved), with noise annotations and
+  // anything beyond the max-translations-shown cap (issue #431/#432/#433)
+  // collapsed into "More info" instead of shown inline or dropped.
+  const { shown: cleanTransTexts, collapsed: moreInfoTexts } =
+    groupTranslationsByLang(result.translations, result.translations_extra, selectedLangs);
   const noiseHtml = moreInfoTexts.length > 0
     ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
     : '';
@@ -72,12 +67,8 @@ function renderWordAnswerResult(result, answer) {
       }
       if (currentCard.mode === 'transl_to_zh') {
         // Show all translations across all languages except the one already shown as prompt.
-        const allTexts = Object.values(currentCard.translations || {}).flat().filter(txt => txt !== currentCard.prompt);
-        const others = allTexts.filter(txt => !isNoise(txt));
-        const noiseTexts = allTexts.filter(isNoise);
-        const extraTexts = Object.values(currentCard.translations_extra || {})
-          .flat().filter(txt => txt !== currentCard.prompt);
-        const moreInfoTexts = [...extraTexts, ...noiseTexts];
+        const { shown: others, collapsed: moreInfoTexts } =
+          groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, selectedLangs, currentCard.prompt);
         const extraHtml = moreInfoTexts.length > 0
           ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
           : '';
@@ -98,14 +89,10 @@ function renderWordAnswerResult(result, answer) {
           <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
           <div class="text-sm font-medium text-red-700">${escHtml(answer)}${yourAnswerPinyin}</div>
         </div>`;
-    // Same noise/cap split as the main "WORD" box above: annotation strings
-    // (CL:/Bsp.:/ZEW:) are never real translations, and anything beyond the
-    // cap is collapsed — neither belongs in the always-visible line.
-    const confusedAllTexts = cw ? Object.values(cw.confused_with_translations || {}).flat() : [];
-    const confusedCleanTexts = confusedAllTexts.filter(txt => !isNoise(txt));
-    const confusedNoiseTexts = confusedAllTexts.filter(isNoise);
-    const confusedExtraTexts = cw ? Object.values(cw.confused_with_translations_extra || {}).flat() : [];
-    const confusedMoreInfoTexts = [...confusedExtraTexts, ...confusedNoiseTexts];
+    // Same language grouping / noise / cap split as the main "WORD" box above.
+    const { shown: confusedCleanTexts, collapsed: confusedMoreInfoTexts } = cw
+      ? groupTranslationsByLang(cw.confused_with_translations, cw.confused_with_translations_extra, selectedLangs)
+      : { shown: [], collapsed: [] };
     const confusedExtraHtml = confusedMoreInfoTexts.length > 0
       ? `<details class="mt-1"><summary class="text-xs text-yellow-600 cursor-pointer select-none">More info</summary><div class="text-gray-500 text-xs mt-0.5">${confusedMoreInfoTexts.map(escHtml).join(' · ')}</div></details>`
       : '';
