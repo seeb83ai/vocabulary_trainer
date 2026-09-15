@@ -93,6 +93,7 @@ func (s *Store) GetNewestWordsForGame(ctx context.Context, userID int64, count i
 		LEFT JOIN word_game_shown g
 		  ON g.user_id = ? AND g.word_id = w.id AND g.game_mode = 'newest'
 		WHERE w.language = 'zh' AND w.user_id = ?
+		  AND p.first_seen_at IS NOT NULL
 		  AND (g.last_shown_in_game IS NULL
 		       OR (p.last_wrong_at IS NOT NULL AND p.last_wrong_at > g.last_shown_in_game))
 		ORDER BY w.created_at DESC, w.id DESC

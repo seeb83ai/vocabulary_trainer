@@ -2065,3 +2065,418 @@ test.describe('Quiz – equivalent ellipsis forms accepted (issue #343)', () => 
     await expect(page.locator('#new-word-got-it-btn')).toBeEnabled();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Capped translations are collapsed, not dropped (issue #431/#432/#433)
+//
+// A word with more translations than the user's configured
+// max_translations_shown used to either show them all unconditionally (when
+// user-added) or silently drop the excess. Both the question screen's yellow
+// "translations-hint" box (transl_to_zh mode) and the answer-result screen
+// must now cap the directly-visible list and collapse the rest into an
+// expandable "More info" details block instead.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)', () => {
+  const ALL_TRANSLATIONS = ['to hit', 'to play', 'to make', 'to fight', 'to call', 'dozen'];
+  const MAX_SHOWN = 4;
+
+  async function setupCappedTranslationsUser(page) {
+    const email = `e2e-translation-cap-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'TranslationCap123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '打', pinyin: 'dǎ',
+        translations: { en: ALL_TRANSLATIONS },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, translation_ranking_enabled: true, max_translations_shown: MAX_SHOWN, translation_hide_unranked: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+  }
+
+  // Splits a rendered translations box into the directly-visible entries and
+  // the entries collapsed inside its "More info" <details>, and asserts the
+  // counts match the configured cap (accounting for one entry consumed as the
+  // transl_to_zh prompt, when present).
+  // expectedHiddenCount differs by screen: the transl_to_zh question screen
+  // reserves one extra backend slot for its own prompt (see loadTranslationsForCard's
+  // extraSlots), so only 1 of the 6 seeded translations ends up collapsed there,
+  // versus 2 on the answer-result screen (no such reservation).
+  async function assertCappedAndCollapsible(container, expectedHiddenCount) {
+    const details = container.locator('details');
+    await expect(details).toHaveCount(1);
+    await expect(details.locator('summary')).toHaveText('More info');
+    const hiddenDiv = details.locator('div');
+    await expect(hiddenDiv).not.toBeVisible();
+
+    const visibleText = await container.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    });
+    const visibleCount = visibleText.split('·').map(s => s.trim()).filter(Boolean).length;
+    expect(visibleCount).toBe(MAX_SHOWN);
+
+    await details.locator('summary').click();
+    await expect(hiddenDiv).toBeVisible();
+    const hiddenText = (await hiddenDiv.textContent() || '').trim();
+    expect(hiddenText.length).toBeGreaterThan(0);
+    const hiddenCount = hiddenText.split('·').map(s => s.trim()).filter(Boolean).length;
+    expect(hiddenCount).toBe(expectedHiddenCount);
+  }
+
+  test('question screen (yellow box) shows only the configured max, collapses the rest', async ({ page }) => {
+    await setupCappedTranslationsUser(page);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#translations-hint')).toBeVisible();
+    await captureForPR(page, 'train-translations-capped-question');
+
+    await assertCappedAndCollapsible(page.locator('#translations-hint'), ALL_TRANSLATIONS.length - MAX_SHOWN - 1);
+    await captureForPR(page, 'train-translations-capped-question-expanded');
+  });
+
+  test('answer result screen shows only the configured max, collapses the rest', async ({ page }) => {
+    await setupCappedTranslationsUser(page);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // A wrong answer still renders the full translation breakdown in the
+    // green "correct answer" box — that's the box this fix caps.
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const greenBox = page.locator('#word-breakdown .bg-green-50');
+    await expect(greenBox).toBeVisible();
+    await captureForPR(page, 'train-translations-capped-result');
+
+    await assertCappedAndCollapsible(greenBox, ALL_TRANSLATIONS.length - MAX_SHOWN);
+    await captureForPR(page, 'train-translations-capped-result-expanded');
+  });
+
+  // Regression guard: even though the 6th translation is collapsed out of
+  // the visible list, it must still be accepted as a correct answer — the
+  // display cap must never narrow what counts as correct.
+  test('a collapsed (capped-out) translation is still accepted as a correct answer', async ({ page }) => {
+    await setupCappedTranslationsUser(page);
+
+    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+    expect(cardRes.ok()).toBe(true);
+    const card = await cardRes.json();
+
+    // zh_to_transl's /api/quiz/next intentionally withholds translations
+    // (the user must supply them from memory), so ask which one(s) the
+    // result screen collapses out via a throwaway wrong answer first,
+    // rather than assuming an ordering.
+    const wrongRes = await page.request.post('/api/quiz/answer', {
+      data: { word_id: card.word_id, mode: 'zh_to_transl', answer: 'xxxxxxxxxxx' },
+    });
+    expect(wrongRes.ok()).toBe(true);
+    const wrongResult = await wrongRes.json();
+    const extraAnswer = wrongResult.translations_extra?.en?.[0];
+    expect(extraAnswer).toBeTruthy();
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill(extraAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+  });
+
+  // Regression test: the yellow "belongs to" mismatch box (shown when a
+  // wrong answer turns out to be a valid translation of a different, known
+  // word) rendered that other word's full, unfiltered translation list,
+  // ignoring max_translations_shown entirely.
+  test('"belongs to" mismatch box shows only the configured max, collapses the rest', async ({ page }) => {
+    const email = `e2e-mismatch-cap-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'MismatchCap123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const targetRes = await page.request.post('/api/words', {
+      data: { zh_text: '鞋', pinyin: 'xié', translations: { en: ['shoe'] }, tags: [], start_training: true },
+    });
+    expect(targetRes.ok()).toBeTruthy();
+    const target = await targetRes.json();
+
+    const confusedRes = await page.request.post('/api/words', {
+      data: { zh_text: '打', pinyin: 'dǎ', translations: { en: ALL_TRANSLATIONS }, tags: [], start_training: true },
+    });
+    expect(confusedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, translation_ranking_enabled: true, max_translations_shown: MAX_SHOWN, translation_hide_unranked: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+
+    // Two words are now due — force the deterministic one (鞋) to be served
+    // as the card so answering with 打's translation reliably triggers
+    // DetectConfusion, rather than depending on GetNextCard's tie-break order.
+    await page.route('**/api/quiz/next*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ word_id: target.id, mode: 'zh_to_transl', prompt: '鞋', pinyin: 'xié' }),
+      });
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('鞋');
+
+    await page.locator('#answer-input').fill(ALL_TRANSLATIONS[0]);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
+    await expect(yellowBox).toBeVisible();
+    await captureForPR(page, 'train-mismatch-translations-capped');
+
+    await assertCappedAndCollapsible(yellowBox, ALL_TRANSLATIONS.length - MAX_SHOWN);
+    await captureForPR(page, 'train-mismatch-translations-capped-expanded');
+  });
+
+  // Regression test: noise annotations (CL:/Bsp.:/ZEW: measure-word and
+  // example-sentence glosses, never real translations) must always collapse
+  // into "More info" — in both the green "WORD" box and the yellow "belongs
+  // to" box — rather than showing inline or, worse, being silently dropped
+  // when a capped-out item happened to be noise.
+  test('noise annotations always collapse into "More info", never shown inline or dropped', async ({ page }) => {
+    const email = `e2e-noise-collapse-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'NoiseCollapse123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const targetRes = await page.request.post('/api/words', {
+      data: { zh_text: '鞋', pinyin: 'xié', translations: { en: ['shoe', 'CL:雙[shuāng]'] }, tags: [], start_training: true },
+    });
+    expect(targetRes.ok()).toBeTruthy();
+    const target = await targetRes.json();
+
+    const confusedRes = await page.request.post('/api/words', {
+      data: { zh_text: '打', pinyin: 'dǎ', translations: { en: ['to hit', 'CL:下[xià]'] }, tags: [], start_training: true },
+    });
+    expect(confusedRes.ok()).toBeTruthy();
+
+    await page.route('**/api/quiz/next*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ word_id: target.id, mode: 'zh_to_transl', prompt: '鞋', pinyin: 'xié' }),
+      });
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    // "to hit" is a valid translation of the OTHER seeded word (打), so
+    // this triggers DetectConfusion and populates the yellow box too.
+    await page.locator('#answer-input').fill('to hit');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const visibleTextExcludingDetails = async (locator) => (await locator.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    }));
+
+    const greenBox = page.locator('#word-breakdown .bg-green-50');
+    await expect(greenBox).toBeVisible();
+    const greenVisible = await visibleTextExcludingDetails(greenBox);
+    expect(greenVisible).toContain('shoe');
+    expect(greenVisible).not.toContain('CL:');
+    const greenDetails = greenBox.locator('details');
+    await expect(greenDetails).toHaveCount(1);
+    await greenDetails.locator('summary').click();
+    await expect(greenDetails).toContainText('CL:');
+
+    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
+    await expect(yellowBox).toBeVisible();
+    const yellowVisible = await visibleTextExcludingDetails(yellowBox);
+    expect(yellowVisible).toContain('to hit');
+    expect(yellowVisible).not.toContain('CL:');
+    const yellowDetails = yellowBox.locator('details');
+    await expect(yellowDetails).toHaveCount(1);
+    await yellowDetails.locator('summary').click();
+    await expect(yellowDetails).toContainText('CL:');
+  });
+
+  // Regression test: with two active languages, translations must be
+  // grouped by language — every translation of the first selected language,
+  // then every translation of the second — never interleaved, in both the
+  // visible line and the collapsed "More info" list.
+  test('translations are grouped by language, first language first, in both the visible and collapsed lists', async ({ page }) => {
+    const email = `e2e-lang-order-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'LangOrder123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '打', pinyin: 'dǎ',
+        translations: {
+          de: ['d1', 'd2', 'd3', 'd4'],
+          en: ['e1', 'e2', 'e3', 'e4'],
+        },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+    // Display order follows primary_lang/secondary_lang, not the raw
+    // training-filters/localStorage language selection order — see the
+    // "stale ... order" regression test below.
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, primary_lang: 'de', secondary_lang: 'en', translation_ranking_enabled: true, max_translations_shown: 2, translation_hide_unranked: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+
+    // 'de' listed before 'en' — the first selected language.
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['de', 'en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['de', 'en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const greenBox = page.locator('#word-breakdown .bg-green-50');
+    await expect(greenBox).toBeVisible();
+
+    const visibleTextExcludingDetails = async (locator) => (await locator.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    }));
+
+    // Visible line: de's 2 shown translations, then en's 2 shown translations.
+    const visible = await visibleTextExcludingDetails(greenBox);
+    expect(visible.indexOf('d1')).toBeGreaterThanOrEqual(0);
+    expect(visible.indexOf('d1')).toBeLessThan(visible.indexOf('d2'));
+    expect(visible.indexOf('d2')).toBeLessThan(visible.indexOf('e1'));
+    expect(visible.indexOf('e1')).toBeLessThan(visible.indexOf('e2'));
+    expect(visible).not.toContain('d3');
+    expect(visible).not.toContain('e3');
+
+    // Collapsed list: de's capped-out translations, then en's.
+    const details = greenBox.locator('details');
+    await details.locator('summary').click();
+    const hiddenText = await details.locator('div').textContent();
+    expect(hiddenText.indexOf('d3')).toBeGreaterThanOrEqual(0);
+    expect(hiddenText.indexOf('d3')).toBeLessThan(hiddenText.indexOf('d4'));
+    expect(hiddenText.indexOf('d4')).toBeLessThan(hiddenText.indexOf('e3'));
+    expect(hiddenText.indexOf('e3')).toBeLessThan(hiddenText.indexOf('e4'));
+  });
+
+  // Regression test: selectedLangs' own order can drift from primary-first
+  // after a language is toggled off and back on (it gets appended at the
+  // end — see toggleLang in train-settings.js), so the stored/localStorage
+  // order alone is not reliable. Display order must always follow the
+  // user's primary_lang/secondary_lang setting, regardless of that history.
+  test('translations follow primary_lang order even when the stored language selection order is stale', async ({ page }) => {
+    const email = `e2e-lang-order-stale-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'LangOrderStale123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '打', pinyin: 'dǎ',
+        translations: { de: ['d1'], en: ['e1'] },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    // primary_lang=de, secondary_lang=en — DE must render first.
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, primary_lang: 'de', secondary_lang: 'en' },
+    });
+    expect(patchRes.ok()).toBe(true);
+
+    // Stale selection order: EN before DE (as if the user had toggled DE
+    // off and back on at some point, appending it to the end).
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en', 'de'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en', 'de']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+
+    const greenBox = page.locator('#word-breakdown .bg-green-50');
+    await expect(greenBox).toBeVisible();
+    const visible = await greenBox.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    });
+    expect(visible.indexOf('d1')).toBeGreaterThanOrEqual(0);
+    expect(visible.indexOf('d1')).toBeLessThan(visible.indexOf('e1'));
+  });
+});

@@ -1159,6 +1159,56 @@ func TestQuizAnswer_EllipsisEquivalence(t *testing.T) {
 	}
 }
 
+// TestQuizAnswer_TranslationRanking_CapsResultTranslations is a regression
+// test for issue #431/#432/#433: the answer-result screen used to show
+// every linked translation unconditionally, ignoring max_translations_shown
+// entirely. It must now respect the same cap as the question screen, with
+// the rest collapsed into TranslationsExtra. Answer checking itself must
+// still accept any of the un-shown translations as correct.
+func TestQuizAnswer_TranslationRanking_CapsResultTranslations(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+	id := seedWord(t, s, "打", "dǎ", []string{"to hit"})
+	extraTexts := []string{"to play", "to make", "to fight", "to call", "dozen"}
+	for _, text := range extraTexts {
+		if err := s.AddTranslation(ctx, int64(2), id, "en", text); err != nil {
+			t.Fatalf("AddTranslation %q: %v", text, err)
+		}
+	}
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.TranslationRankingEnabled = true
+	st.MaxTranslationsShown = 4
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	// Answer with a translation beyond the cap — it must still be accepted.
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": id, "mode": "zh_to_transl", "answer": "dozen",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Errorf("a capped-out translation should still be accepted as correct")
+	}
+	texts := resp.Translations["en"]
+	if len(texts) != 4 {
+		t.Errorf("want exactly 4 translations shown (the configured cap), got %d: %v", len(texts), texts)
+	}
+	extra := resp.TranslationsExtra["en"]
+	if len(extra) != 2 {
+		t.Errorf("want the remaining 2 translations collapsed into extra, got %d: %v", len(extra), extra)
+	}
+}
+
 func TestFlagDifficult_FlagsServesAndClearsOnCorrect(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

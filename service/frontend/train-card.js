@@ -308,14 +308,18 @@ async function loadNextCard(trackCurrent = false) {
     scrollCardIntoView('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
+    // One line per language, primary language first then secondary; noise
+    // annotations and cap overflow collapse into the same "More info"
+    // details below (issue #431/#432/#433).
     const transLines = [];
     const newWordNoise = [];
-    for (const texts of Object.values(currentCard.translations || {})) {
-      if (!texts?.length) continue;
+    for (const lang of orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang)) {
+      const texts = (currentCard.translations || {})[lang] || [];
+      const extra = (currentCard.translations_extra || {})[lang] || [];
       const clean = texts.filter(x => !isNoise(x));
       const noise = texts.filter(isNoise);
       if (clean.length) transLines.push(clean.map(escHtml).join(' · '));
-      newWordNoise.push(...noise);
+      newWordNoise.push(...noise, ...extra);
     }
     const newWordNoiseHtml = newWordNoise.length > 0
       ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${newWordNoise.map(escHtml).join(' · ')}</div></details>`
@@ -474,11 +478,16 @@ function showCard() {
     }
 
     if (currentCard.mode === 'transl_to_zh') {
-      // Show all translations across all languages except the one already shown as prompt.
-      const allTexts = Object.values(currentCard.translations || {}).flat();
-      const others = allTexts.filter(t => t !== currentCard.prompt && !isNoise(t));
-      if (others.length > 0) {
-        $('translations-hint').innerHTML = others.map(escHtml).join(' · ');
+      // Grouped by language (primary language first, then secondary), with
+      // the card's own prompt excluded, noise annotations and cap overflow
+      // collapsed (issue #431/#432/#433).
+      const { shown: others, collapsed: moreInfoTexts } =
+        groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt);
+      const extraHtml = moreInfoTexts.length > 0
+        ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
+        : '';
+      if (others.length > 0 || moreInfoTexts.length > 0) {
+        $('translations-hint').innerHTML = others.map(escHtml).join(' · ') + extraHtml;
         show('translations-hint');
       } else {
         hide('translations-hint');
@@ -761,7 +770,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const zhVal    = $('new-word-zh-input').value;
     const transVal = $('new-word-trans-input').value;
     const zhCorrect    = isZhCorrect(zhVal, currentCard.prompt);
-    const transCorrect = isTransCorrect(transVal, currentCard.translations);
+    const transCorrect = isTransCorrect(transVal, mergeTranslationMaps(currentCard.translations, currentCard.translations_extra));
     const zhOk    = !requireNewWordZh    || zhCorrect;
     const transOk = !requireNewWordTrans || transCorrect;
     if (requireNewWordZh) {

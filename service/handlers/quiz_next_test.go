@@ -269,7 +269,7 @@ func TestQuizNext_TranslationRanking_HidesLowRankTranslations(t *testing.T) {
 		t.Fatalf("GetUserSettings: %v", err)
 	}
 	st.TranslationRankingEnabled = true
-	st.MaxTranslationsShown = 0
+	st.MaxTranslationsShown = 1
 	st.TranslationHideUnranked = true
 	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -289,6 +289,54 @@ func TestQuizNext_TranslationRanking_HidesLowRankTranslations(t *testing.T) {
 	texts := card.Translations["en"]
 	if len(texts) != 1 || texts[0] != "hello" {
 		t.Errorf("want only user-added translation [hello] shown, got %v", texts)
+	}
+	extra := card.TranslationsExtra["en"]
+	if len(extra) != 1 || extra[0] != "obscure greeting" {
+		t.Errorf("want the capped-out cedict translation collapsed into extra, got %v", extra)
+	}
+}
+
+// TestQuizNext_TranslationRanking_CapsUserAddedTranslationsToo is a
+// regression test for issue #431/#432/#433: user-added translations used to
+// bypass max_translations_shown entirely, so a word with more user-added
+// translations than the cap still showed all of them. They must now count
+// against the cap like any other translation, with the rest collapsed into
+// TranslationsExtra instead of dropped.
+func TestQuizNext_TranslationRanking_CapsUserAddedTranslationsToo(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "打", "dǎ", []string{"to hit"})
+	extraTexts := []string{"to play", "to make", "to fight", "to call", "dozen"}
+	for _, text := range extraTexts {
+		if err := s.AddTranslation(ctx, int64(2), id, "en", text); err != nil {
+			t.Fatalf("AddTranslation %q: %v", text, err)
+		}
+	}
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.TranslationRankingEnabled = true
+	st.MaxTranslationsShown = 4
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	texts := card.Translations["en"]
+	if len(texts) != 4 {
+		t.Errorf("want exactly 4 translations shown (the configured cap), got %d: %v", len(texts), texts)
+	}
+	extra := card.TranslationsExtra["en"]
+	if len(extra) != 2 {
+		t.Errorf("want the remaining 2 translations collapsed into extra, got %d: %v", len(extra), extra)
 	}
 }
 

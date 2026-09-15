@@ -26,11 +26,14 @@ function renderWordAnswerResult(result, answer) {
   // Build breakdown for both correct and wrong answers
   const breakdown = $('word-breakdown');
   const pinyin = result.pinyin ? `<span class="text-gray-400 text-base ml-2">${escHtml(result.pinyin)}</span>` : '';
-  const allTransTexts = selectedLangs.flatMap(lang => (result.translations || {})[lang] || []);
-  const cleanTransTexts = allTransTexts.filter(x => !isNoise(x));
-  const noiseTransTexts = allTransTexts.filter(isNoise);
-  const noiseHtml = noiseTransTexts.length > 0
-    ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${noiseTransTexts.map(escHtml).join(' · ')}</div></details>`
+  // Grouped by language (primary language first, then secondary — never
+  // interleaved), with noise annotations and anything beyond the
+  // max-translations-shown cap (issue #431/#432/#433) collapsed into
+  // "More info" instead of shown inline or dropped.
+  const { shown: cleanTransTexts, collapsed: moreInfoTexts } =
+    groupTranslationsByLang(result.translations, result.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang));
+  const noiseHtml = moreInfoTexts.length > 0
+    ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
     : '';
   // For wrong answers use compact equal-sized display so zh and translations are easy to read side-by-side.
   // For correct answers keep the large Chinese character as a visual reward.
@@ -64,10 +67,13 @@ function renderWordAnswerResult(result, answer) {
       }
       if (currentCard.mode === 'transl_to_zh') {
         // Show all translations across all languages except the one already shown as prompt.
-        const allTexts = Object.values(currentCard.translations || {}).flat();
-        const others = allTexts.filter(txt => txt !== currentCard.prompt && !isNoise(txt));
-        if (others.length > 0) {
-          $('result-question-translations').innerHTML = others.map(escHtml).join(' · ');
+        const { shown: others, collapsed: moreInfoTexts } =
+          groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt);
+        const extraHtml = moreInfoTexts.length > 0
+          ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
+          : '';
+        if (others.length > 0 || moreInfoTexts.length > 0) {
+          $('result-question-translations').innerHTML = others.map(escHtml).join(' · ') + extraHtml;
           show('result-question-translations');
         } else {
           hide('result-question-translations');
@@ -83,6 +89,13 @@ function renderWordAnswerResult(result, answer) {
           <div class="text-xs text-red-400 uppercase tracking-wide mb-1">${escHtml(t('result.yourAnswer'))}</div>
           <div class="text-sm font-medium text-red-700">${escHtml(answer)}${yourAnswerPinyin}</div>
         </div>`;
+    // Same language grouping / noise / cap split as the main "WORD" box above.
+    const { shown: confusedCleanTexts, collapsed: confusedMoreInfoTexts } = cw
+      ? groupTranslationsByLang(cw.confused_with_translations, cw.confused_with_translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang))
+      : { shown: [], collapsed: [] };
+    const confusedExtraHtml = confusedMoreInfoTexts.length > 0
+      ? `<details class="mt-1"><summary class="text-xs text-yellow-600 cursor-pointer select-none">More info</summary><div class="text-gray-500 text-xs mt-0.5">${confusedMoreInfoTexts.map(escHtml).join(' · ')}</div></details>`
+      : '';
     const confusedHtml = cw ? `
         <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
           <div class="text-xs text-yellow-600 uppercase tracking-wide mb-1">${escHtml(t('result.belongsTo'))}</div>
@@ -90,7 +103,8 @@ function renderWordAnswerResult(result, answer) {
             <div class="text-base font-semibold text-gray-800 min-w-0 overflow-hidden">${escHtml(cw.confused_with_text)}${cw.confused_with_pinyin ? `<span class="text-gray-400 text-sm ml-1">${escHtml(cw.confused_with_pinyin)}</span>` : ''}</div>
             <button class="btn-confused-play text-xl text-gray-400 hover:text-blue-500 transition leading-none shrink-0" title="Read aloud">🔊</button>
           </div>
-          <div class="text-gray-500 text-sm mt-0.5">${Object.values(cw.confused_with_translations || {}).flat().map(escHtml).join(' · ')}</div>
+          <div class="text-gray-500 text-sm mt-0.5">${confusedCleanTexts.map(escHtml).join(' · ')}</div>
+          ${confusedExtraHtml}
         </div>` : '';
     // Renders the normal wrong-answer screen. Used directly for non-ambiguous
     // wrong answers, and as the fallback when the user continues past an
@@ -183,7 +197,7 @@ function renderWordAnswerResult(result, answer) {
       // it without needing a retype.
       if (wrongAnswerRetryMode !== 'off') {
         const { requireZh, requireTrans } = wrongRetypeFieldsForCard(wrongAnswerRetryMode, currentCard.mode);
-        wrongRetypeTarget = { zhText: result.zh_text, translations: result.translations, requireZh, requireTrans };
+        wrongRetypeTarget = { zhText: result.zh_text, translations: mergeTranslationMaps(result.translations, result.translations_extra), requireZh, requireTrans };
         $('wrong-retype-zh-input').value = '';
         $('wrong-retype-trans-input').value = '';
         $('wrong-retype-zh-check').textContent = '';
