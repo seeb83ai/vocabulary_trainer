@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"vocabulary_trainer/models"
 )
 
 func TestGetHardestWordsForGame_RanksByLowestAccuracy(t *testing.T) {
@@ -388,6 +389,73 @@ func TestGetNewestWordsForGame_OnlySeenWords(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("seen word %d should appear in match game but did not", seen)
+	}
+}
+
+// TestGetRankedTranslationTextsForZhWord_OrdersByFrequency covers issue #440:
+// the match game must surface the most common gloss first, not whichever one
+// sorts alphabetically first.
+func TestGetRankedTranslationTextsForZhWord_OrdersByFrequency(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO word_frequency_lang (word, lang, rank) VALUES ('common', 'en', 5), ('arare', 'en', 7000)
+		 ON CONFLICT(word, lang) DO UPDATE SET rank = excluded.rank`,
+	); err != nil {
+		t.Fatalf("seed word_frequency_lang: %v", err)
+	}
+
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:             "试",
+		Translations:       map[string][]string{"en": {"arare", "common"}},
+		TranslationSources: map[string][]string{"en": {"cedict", "cedict"}},
+		StartTraining:      true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	texts, err := s.getRankedTranslationTextsForZhWord(ctx, id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(texts) != 2 {
+		t.Fatalf("expected 2 texts, got %d: %v", len(texts), texts)
+	}
+	if texts[0] != "common" {
+		t.Errorf("expected the most common gloss first, got %q (full: %v)", texts[0], texts)
+	}
+}
+
+// TestGetRankedTranslationTextsForZhWord_UserSourcedComesFirst covers a
+// user-added translation always outranking an alphabetically-earlier but
+// automatically-derived CEDICT/HanDeDict gloss.
+func TestGetRankedTranslationTextsForZhWord_UserSourcedComesFirst(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO word_frequency_lang (word, lang, rank) VALUES ('common', 'en', 5)
+		 ON CONFLICT(word, lang) DO UPDATE SET rank = excluded.rank`,
+	); err != nil {
+		t.Fatalf("seed word_frequency_lang: %v", err)
+	}
+
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:             "试",
+		Translations:       map[string][]string{"en": {"common", "my own gloss"}},
+		TranslationSources: map[string][]string{"en": {"cedict", "user"}},
+		StartTraining:      true,
+	})
+	if err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	texts, err := s.getRankedTranslationTextsForZhWord(ctx, id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(texts) != 2 || texts[0] != "my own gloss" {
+		t.Errorf("expected the user-sourced translation first, got %v", texts)
 	}
 }
 
