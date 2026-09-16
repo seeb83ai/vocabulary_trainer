@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
@@ -158,43 +159,55 @@ func (s *Store) getKnownWordSet(ctx context.Context, userID int64) (map[string]i
 	return known, rows.Err()
 }
 
-// dueZhWordIDsForSentenceBlank returns the user's due zh word IDs (excluding
-// sentence-tagged rows) ordered by due_date ascending — the queue
-// findSentenceBlank walks to pick the blank target.
-func (s *Store) dueZhWordIDsForSentenceBlank(ctx context.Context, userID int64) ([]int64, error) {
+// dueZhWordSet returns a map of word_id → due_date for due non-sentence zh
+// words belonging to the user, restricted to the given tags (same filter as
+// GetNextCard). No LIMIT — the full tag-filtered due set is needed so that
+// sentence-compatible words are not silently excluded by an arbitrary cutoff.
+func (s *Store) dueZhWordSet(ctx context.Context, userID int64, tags []string) (map[int64]time.Time, error) {
+	tagFilter := ""
+	var args []any
+	args = append(args, userID)
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		tagFilter = ` AND EXISTS (
+			SELECT 1 FROM word_tags wt JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT w.id FROM words w
+		SELECT w.id, p.due_date FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		WHERE w.language = 'zh' AND w.user_id = ?
-		  AND p.due_date <= CURRENT_TIMESTAMP
+		  AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter+`
 		  AND NOT EXISTS (
 		    SELECT 1 FROM word_tags wt JOIN tags tg ON tg.id = wt.tag_id
 		    WHERE wt.word_id = w.id AND tg.name LIKE '`+sentenceTagLike+`
 		  )
-		ORDER BY p.due_date ASC
-		LIMIT 200
-	`, userID)
+	`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get due zh words for sentence blank: %w", err)
 	}
 	defer rows.Close()
-	var ids []int64
+	due := map[int64]time.Time{}
 	for rows.Next() {
 		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var dueDateStr string
+		if err := rows.Scan(&id, &dueDateStr); err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		due[id] = parseDateTime(dueDateStr)
 	}
-	return ids, rows.Err()
+	return due, rows.Err()
 }
 
-// findSentenceBlank walks the user's due queue in due-date order and returns
-// the first due word that appears as a segment in a fully-eligible sentence
-// (see segmentSentence). Returns (nil, nil) when nothing matches.
-func (s *Store) findSentenceBlank(ctx context.Context, userID int64) (*sentenceBlankMatch, error) {
-	dueIDs, err := s.dueZhWordIDsForSentenceBlank(ctx, userID)
-	if err != nil || len(dueIDs) == 0 {
+// findSentenceBlank walks eligible sentences and returns the match whose due
+// word has the earliest due_date. Returns (nil, nil) when nothing matches.
+func (s *Store) findSentenceBlank(ctx context.Context, userID int64, tags []string) (*sentenceBlankMatch, error) {
+	due, err := s.dueZhWordSet(ctx, userID, tags)
+	if err != nil || len(due) == 0 {
 		return nil, err
 	}
 	known, err := s.getKnownWordSet(ctx, userID)
@@ -206,36 +219,30 @@ func (s *Store) findSentenceBlank(ctx context.Context, userID int64) (*sentenceB
 		return nil, err
 	}
 
-	type eligibleSentence struct {
-		sentence models.Word
-		segments []wordSegment
-	}
-	var eligible []eligibleSentence
+	var best *sentenceBlankMatch
+	var bestDue time.Time
 	for _, c := range candidates {
 		segs, ok := segmentSentence(stripSentencePunctuation(c.Text), known)
-		if ok && len(segs) > 0 {
-			eligible = append(eligible, eligibleSentence{sentence: c, segments: segs})
+		if !ok || len(segs) == 0 {
+			continue
 		}
-	}
-	if len(eligible) == 0 {
-		return nil, nil
-	}
-
-	for _, wordID := range dueIDs {
-		for _, e := range eligible {
-			for _, seg := range e.segments {
-				if seg.WordID == wordID {
-					return &sentenceBlankMatch{
-						SentenceID:   e.sentence.ID,
-						SentenceText: e.sentence.Text,
-						TargetWordID: wordID,
-						TargetText:   seg.Text,
-					}, nil
+		for _, seg := range segs {
+			dueDate, isDue := due[seg.WordID]
+			if !isDue {
+				continue
+			}
+			if best == nil || dueDate.Before(bestDue) {
+				best = &sentenceBlankMatch{
+					SentenceID:   c.ID,
+					SentenceText: c.Text,
+					TargetWordID: seg.WordID,
+					TargetText:   seg.Text,
 				}
+				bestDue = dueDate
 			}
 		}
 	}
-	return nil, nil
+	return best, nil
 }
 
 // locateTranslationBlank looks for any of wordTranslations as a
@@ -261,8 +268,8 @@ func locateTranslationBlank(sentenceTranslation string, wordTranslations []strin
 // eligible sentence and builds the fill-in-the-blank card for it, resolving
 // direction via the same progressive-mode logic normal word cards use.
 // Returns (nil, nil) when no eligible sentence/due-word pair exists.
-func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg models.ProgressiveModeConfig, nwCfg models.NewWordModeConfig, langs []string) (*models.QuizCard, error) {
-	match, err := s.findSentenceBlank(ctx, userID)
+func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg models.ProgressiveModeConfig, nwCfg models.NewWordModeConfig, langs []string, tags []string) (*models.QuizCard, error) {
+	match, err := s.findSentenceBlank(ctx, userID, tags)
 	if err != nil || match == nil {
 		return nil, err
 	}
