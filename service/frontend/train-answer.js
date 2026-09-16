@@ -77,14 +77,22 @@ function orderLangsPrimaryFirst(langs, primaryLang, secondaryLang) {
 // "collapsed" for its own language rather than staying inline or being
 // dropped. `excludeText`, when given, is filtered out of both lists first
 // (used to keep a transl_to_zh card's own prompt out of its hint).
-function groupTranslationsByLang(translations, extraTranslations, langs, excludeText) {
+// `dropNoise`, when true, drops noise annotations (e.g. CEDICT/HanDeDict
+// example sentences) entirely instead of moving them into "collapsed" — used
+// on the transl_to_zh question screen, where an example sentence could spoil
+// the zh answer the user is about to type (overflow translations still show).
+function groupTranslationsByLang(translations, extraTranslations, langs, excludeText, dropNoise = false) {
   const shown = [];
   const collapsed = [];
   for (const lang of langs) {
     const texts = ((translations || {})[lang] || []).filter(txt => txt !== excludeText);
     const extra = ((extraTranslations || {})[lang] || []).filter(txt => txt !== excludeText);
     shown.push(...texts.filter(txt => !isNoise(txt)));
-    collapsed.push(...texts.filter(isNoise), ...extra);
+    if (dropNoise) {
+      collapsed.push(...extra.filter(txt => !isNoise(txt)));
+    } else {
+      collapsed.push(...texts.filter(isNoise), ...extra);
+    }
   }
   return { shown, collapsed };
 }
