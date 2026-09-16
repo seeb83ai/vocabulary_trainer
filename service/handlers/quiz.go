@@ -131,7 +131,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	// the HMM/component candidate selection below entirely on a hit.
 	if !difficult && userSettings != nil && userSettings.SentenceBlankEnabled &&
 		rand.Intn(100) < userSettings.SentenceBlankRatio {
-		card, err := h.Store.NextSentenceBlankCard(r.Context(), userID, progCfg, nwCfg, langs)
+		card, err := h.Store.NextSentenceBlankCard(r.Context(), userID, progCfg, nwCfg, langs, tags)
 		if err != nil {
 			internalError(w, err)
 			return
