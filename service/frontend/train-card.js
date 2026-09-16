@@ -479,10 +479,12 @@ function showCard() {
 
     if (currentCard.mode === 'transl_to_zh') {
       // Grouped by language (primary language first, then secondary), with
-      // the card's own prompt excluded, noise annotations and cap overflow
-      // collapsed (issue #431/#432/#433).
+      // the card's own prompt excluded and cap overflow collapsed
+      // (issue #431/#432/#433). Noise annotations (e.g. CEDICT/HanDeDict
+      // example sentences) are dropped entirely here, not just collapsed —
+      // an example sentence could spoil the zh answer on this question screen.
       const { shown: others, collapsed: moreInfoTexts } =
-        groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt);
+        groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt, true);
       const extraHtml = moreInfoTexts.length > 0
         ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
         : '';

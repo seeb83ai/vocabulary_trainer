@@ -2349,6 +2349,63 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     await expect(yellowDetails).toContainText('CL:');
   });
 
+  // Regression test: the transl_to_zh question screen's yellow hint box
+  // must never reveal a CEDICT/HanDeDict example-sentence annotation — even
+  // inside its collapsed "More info" — because the example text can contain
+  // the zh answer the user is about to type. A capped-out real translation
+  // (not noise) must still show up in "More info" on this screen, though —
+  // only noise annotations are dropped.
+  test('question screen never reveals example-sentence noise, even in "More info"', async ({ page }) => {
+    const email = `e2e-noise-question-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'NoiseQuestion123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    // New users default to max_translations_shown=4, +1 reserved for this
+    // card's own prompt (see loadTranslationsForCard's extraSlots) = 5 shown.
+    // Of these 7 translations, the first 5 ("to hit".."to call") are shown
+    // (minus "to hit" itself, drawn as the prompt); "dozen" and the noise
+    // annotation land in the overflow "More info" list.
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '打', pinyin: 'dǎ',
+        translations: { en: [...ALL_TRANSLATIONS, 'Bsp.: 他打篮球。 -- He plays basketball.'] },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#translations-hint')).toBeVisible();
+    await captureForPR(page, 'train-question-screen-no-example-sentence');
+
+    const hintBox = page.locator('#translations-hint');
+    const visibleText = await hintBox.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    });
+    expect(visibleText).not.toContain('Bsp.:');
+
+    const details = hintBox.locator('details');
+    await expect(details).toHaveCount(1);
+    await details.locator('summary').click();
+    await captureForPR(page, 'train-question-screen-no-example-sentence-expanded');
+    const hiddenText = (await details.locator('div').textContent()) || '';
+    expect(hiddenText).not.toContain('Bsp.:');
+    expect(hiddenText).toContain('dozen');
+  });
+
   // Regression test: with two active languages, translations must be
   // grouped by language — every translation of the first selected language,
   // then every translation of the second — never interleaved, in both the
