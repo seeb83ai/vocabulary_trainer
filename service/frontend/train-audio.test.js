@@ -95,6 +95,10 @@ describe('shouldAutoPlayResult', () => {
     expect(shouldAutoPlayResult({ card_type: 'hmm' }, true, false)).toBe(false);
   });
 
+  it('returns true for sentence-blank cards on the result screen (answer is already revealed, issue #446)', () => {
+    expect(shouldAutoPlayResult({ card_type: 'sentence', mode: 'transl_to_zh' }, true, false)).toBe(true);
+  });
+
   it('returns true for component cards when not already played', () => {
     expect(shouldAutoPlayResult({ card_type: 'component', mode: undefined }, true, false)).toBe(true);
   });
