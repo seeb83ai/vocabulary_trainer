@@ -66,6 +66,26 @@ func TestFilterTranslationsForDisplay(t *testing.T) {
 			wantShown:    []string{"common", "rare"},
 			wantExtra:    []string{"mystery"},
 		},
+		{
+			// Within the prioritized tier, a short entry should be preferred over
+			// a long one even though the long one comes first in input order
+			// (issue #450).
+			name:       "prioritized tier prefers short entry over long entry ahead of it",
+			candidates: []translationCandidate{userCand("this is a very long translation phrase"), userCand("short")},
+			maxShown:   1,
+			wantShown:  []string{"short"},
+			wantExtra:  []string{"this is a very long translation phrase"},
+		},
+		{
+			// Within the ranked tier, a short entry should be preferred over a
+			// long one even though the long one has a numerically better
+			// (rarer-safe) frequency rank (issue #450).
+			name:       "ranked tier prefers short entry over long entry with better rank",
+			candidates: []translationCandidate{rankedCand("a very long translation phrase here", 5), rankedCand("short", 500)},
+			maxShown:   1,
+			wantShown:  []string{"short"},
+			wantExtra:  []string{"a very long translation phrase here"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

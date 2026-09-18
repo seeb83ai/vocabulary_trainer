@@ -92,8 +92,14 @@ type translationCandidate struct {
 // sorted rarest-last after them. All of it — prioritized and ranked alike —
 // still counts against maxShown: nothing bypasses the cap, it's just ordered
 // so the most important entries are the ones kept visible (issue
-// #431/#432/#433). Relative order within each group is preserved (stable)
-// so results don't jitter across calls with identical rank/source data.
+// #431/#432/#433). Within each tier, entries shorter than
+// maxPreferredTranslationLength runes are preferred over longer ones — a
+// long gloss is unlikely to be the most useful translation to show first
+// (issue #450) — but a tier that is entirely long entries still gets shown;
+// length only reorders within a tier, it never lets one tier jump ahead of
+// the other. Relative order within each group is otherwise preserved
+// (stable) so results don't jitter across calls with identical rank/source
+// data.
 func filterTranslationsForDisplay(candidates []translationCandidate, maxShown int, hideUnranked bool) (shown []string, extra []string) {
 	var prioritized, ranked []translationCandidate
 	for _, c := range candidates {
@@ -108,7 +114,14 @@ func filterTranslationsForDisplay(candidates []translationCandidate, maxShown in
 		ranked = append(ranked, c)
 	}
 
+	sort.SliceStable(prioritized, func(i, j int) bool {
+		return !isLong(prioritized[i]) && isLong(prioritized[j])
+	})
+
 	sort.SliceStable(ranked, func(i, j int) bool {
+		if isLong(ranked[i]) != isLong(ranked[j]) {
+			return !isLong(ranked[i])
+		}
 		return rankValue(ranked[i]) < rankValue(ranked[j])
 	})
 
@@ -144,4 +157,13 @@ func rankValue(c translationCandidate) int64 {
 		return math.MaxInt64
 	}
 	return c.Rank.Int64
+}
+
+// maxPreferredTranslationLength is the soft cap (in runes) below which a
+// translation is preferred over a longer one within its tier — a long gloss
+// is unlikely to be the most useful translation to show first (issue #450).
+const maxPreferredTranslationLength = 15
+
+func isLong(c translationCandidate) bool {
+	return len([]rune(c.Text)) >= maxPreferredTranslationLength
 }
