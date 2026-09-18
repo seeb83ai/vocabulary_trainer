@@ -490,12 +490,79 @@ func (s *Store) ClearCyclePinMode(ctx context.Context, wordID int64) error {
 	return err
 }
 
+// genericGlossThreshold is how many distinct zh words (for a given user and
+// language set) may share one translation-gloss variant before that variant
+// is treated as too generic to signal a real confusion/ambiguity between two
+// specific words (#444). A real confusable pair shares a specific gloss; a
+// common function-word gloss (e.g. "sofort") naturally recurs across many
+// unrelated CEDICT-derived gloss lists. 5 is a heuristic starting point
+// picked by judgement, not a calibrated SM-2 parameter — tune if it proves
+// too strict/loose in practice.
+const genericGlossThreshold = 5
+
+// genericGlossVariants returns the set of translation-gloss variants (after
+// sm2.ExpandVariants normalisation) that appear across more than
+// genericGlossThreshold distinct zh words for the given user in the given
+// languages. Callers exclude these from confusion/ambiguity matching so a
+// widely-shared generic gloss alone doesn't flag two unrelated words as
+// confusable (#444).
+func (s *Store) genericGlossVariants(ctx context.Context, userID int64, langs []string) (map[string]struct{}, error) {
+	if len(langs) == 0 {
+		langs = []string{"en"}
+	}
+	placeholders := make([]string, len(langs))
+	args := make([]any, len(langs)+1)
+	args[0] = userID
+	for i, l := range langs {
+		placeholders[i] = "?"
+		args[i+1] = l
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT t.zh_word_id, w.text FROM words wz
+		JOIN translations t ON t.zh_word_id = wz.id
+		JOIN words w ON w.id = t.translation_word_id
+		WHERE wz.user_id = ? AND wz.language = 'zh' AND w.language IN (`+strings.Join(placeholders, ",")+`)`,
+		args...)
+	if err != nil {
+		return nil, fmt.Errorf("generic gloss variants: %w", err)
+	}
+	defer rows.Close()
+	wordsByVariant := map[string]map[int64]struct{}{}
+	for rows.Next() {
+		var zhID int64
+		var text string
+		if err := rows.Scan(&zhID, &text); err != nil {
+			return nil, fmt.Errorf("generic gloss variants: %w", err)
+		}
+		for _, v := range sm2.ExpandVariants(text) {
+			ids, ok := wordsByVariant[v]
+			if !ok {
+				ids = map[int64]struct{}{}
+				wordsByVariant[v] = ids
+			}
+			ids[zhID] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("generic gloss variants: %w", err)
+	}
+	generic := map[string]struct{}{}
+	for v, ids := range wordsByVariant {
+		if len(ids) > genericGlossThreshold {
+			generic[v] = struct{}{}
+		}
+	}
+	return generic, nil
+}
+
 // SharesTranslation returns true when zhWordID1 and zhWordID2 share at least
 // one translation in the given languages. If langs is empty it falls back to
 // ["en"]. Matching is done in Go using sm2.ExpandVariants (the same
 // slash-alternative / optional-parens expansion CheckAnswer applies) rather
 // than raw string equality, so a multi-gloss entry like "Nudeln / Pasta"
 // correctly overlaps with a plain "Nudeln" translation on another word.
+// Overlaps consisting only of a generic gloss (shared by many other,
+// unrelated words — see genericGlossVariants) are ignored (#444).
 func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error) {
 	if len(langs) == 0 {
 		langs = []string{"en"}
@@ -539,7 +606,20 @@ func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, l
 	if err != nil {
 		return false, err
 	}
+
+	var userID int64
+	if err := s.db.QueryRowContext(ctx, `SELECT user_id FROM words WHERE id = ?`, wordID1).Scan(&userID); err != nil {
+		return false, fmt.Errorf("shares translation: %w", err)
+	}
+	generic, err := s.genericGlossVariants(ctx, userID, langs)
+	if err != nil {
+		return false, err
+	}
+
 	for v := range variants1 {
+		if _, ok := generic[v]; ok {
+			continue
+		}
 		if _, ok := variants2[v]; ok {
 			return true, nil
 		}

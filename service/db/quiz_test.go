@@ -755,6 +755,70 @@ func TestSharesTranslation_SlashVariantOverlap(t *testing.T) {
 	}
 }
 
+// TestSharesTranslation_GenericGlossExcluded reproduces #444: 等 ("wait") and
+// 就 ("then / immediately") only overlap on a generic function-word gloss
+// ("sofort") that also appears in many other unrelated words' DE gloss
+// lists. That overlap alone must not count as ambiguity — each word's other,
+// specific gloss ("warten" / "je nachdem") is distinct.
+func TestSharesTranslation_GenericGlossExcluded(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	id1, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "等",
+		Pinyin:       "děng",
+		Translations: map[string][]string{"de": {"warten", "sofort"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "就",
+		Pinyin:       "jiù",
+		Translations: map[string][]string{"de": {"je nachdem", "sofort"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed enough other unrelated words sharing the same generic gloss so it
+	// crosses the "too common to be meaningful" threshold.
+	fillerZh := []string{"马上", "立刻", "即刻", "随即"}
+	for i, zh := range fillerZh {
+		if _, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+			ZhText:       zh,
+			Pinyin:       "filler",
+			Translations: map[string][]string{"de": {"sofort"}},
+		}); err != nil {
+			t.Fatalf("seed filler word %d: %v", i, err)
+		}
+	}
+
+	shared, err := s.SharesTranslation(ctx, id1, id2, []string{"de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shared {
+		t.Error("expected shared=false: only overlap is a generic gloss shared by many unrelated words (#444)")
+	}
+}
+
+// TestSharesTranslation_SpecificSharedGlossStillDetected is the regression
+// guard for the fix above: two words genuinely sharing a specific, uncommon
+// gloss must still be flagged.
+func TestSharesTranslation_SpecificSharedGlossStillDetected(t *testing.T) {
+	s := openTestDB(t)
+	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
+	id2 := seedWord(t, s, "认识", "rènshi", []string{"know", "recognize"})
+
+	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shared {
+		t.Error("expected shared=true for two words genuinely sharing an uncommon gloss")
+	}
+}
+
 func TestRecordAnswerTimestamps_SetsAttemptAlwaysAndWrongOnlyOnWrong(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
