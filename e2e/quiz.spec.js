@@ -2485,3 +2485,48 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     expect(visible.indexOf('d1')).toBeLessThan(visible.indexOf('e1'));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: Translation display cleanup — hide short POS-tag brackets and
+// collapse same-language duplicates (issue #439)
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – translation display cleanup (issue #439)', () => {
+  test('new-word translation line hides short POS brackets and collapses duplicates within a language', async ({ page }) => {
+    const email = `e2e-439-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'Issue439Test!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    // 'Manager (S)' and 'Manager' are the same DE gloss once the short
+    // '(S)' part-of-speech tag is stripped for display — only one should
+    // remain visible. 'führen, verwalten (V)' keeps its text but loses '(V)'.
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '经理', pinyin: 'jīng lǐ',
+        translations: { de: ['Manager (S)', 'Manager', 'führen, verwalten (V)'] },
+        tags: [], start_training: false,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['de'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['de']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#new-word-zh')).toHaveText('经理');
+    await captureForPR(page, 'train-translation-cleanup');
+
+    const html = await page.locator('#new-word-en').innerHTML();
+    expect(html).not.toContain('(S)');
+    expect(html).not.toContain('(V)');
+    expect((html.match(/Manager/g) || []).length).toBe(1);
+    expect(html).toContain('führen, verwalten');
+  });
+});

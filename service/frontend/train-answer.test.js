@@ -730,3 +730,65 @@ describe('splitComponentDefs', () => {
     expect(splitComponentDefs({})).toEqual([]);
   });
 });
+
+// ── stripPosTag / dedupeTranslations ────────────────────────────────────────
+// Mirrors the display-cleanup helpers in train-answer.js (issue #439): hide
+// short HanDeDict/CEDICT part-of-speech tags like "(S)"/"(V)" and collapse
+// duplicate glosses within a single language's translation list.
+
+function stripPosTag(text) {
+  return text.replace(/\s*\([^()]{1,4}\)\s*$/, '').trim();
+}
+
+function dedupeTranslations(texts) {
+  const seen = new Set();
+  const result = [];
+  for (const text of texts) {
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+  }
+  return result;
+}
+
+describe('stripPosTag', () => {
+  it('strips a trailing 1-character POS tag', () => {
+    expect(stripPosTag('führen, verwalten (V)')).toBe('führen, verwalten');
+  });
+
+  it('strips a trailing short POS tag', () => {
+    expect(stripPosTag('Manager (S)')).toBe('Manager');
+  });
+
+  it('leaves a longer trailing parenthetical untouched', () => {
+    expect(stripPosTag('Manager (business context)')).toBe('Manager (business context)');
+  });
+
+  it('leaves text without a trailing bracket untouched', () => {
+    expect(stripPosTag('Manager')).toBe('Manager');
+  });
+
+  it('only strips a bracket at the end, not one in the middle', () => {
+    expect(stripPosTag('to (re)start')).toBe('to (re)start');
+  });
+});
+
+describe('dedupeTranslations', () => {
+  it('removes an exact duplicate', () => {
+    expect(dedupeTranslations(['Manager', 'Manager'])).toEqual(['Manager']);
+  });
+
+  it('removes a case-insensitive duplicate, keeping the first occurrence', () => {
+    expect(dedupeTranslations(['Manager', 'manager'])).toEqual(['Manager']);
+  });
+
+  it('keeps distinct entries and their order', () => {
+    expect(dedupeTranslations(['Manager', 'Director'])).toEqual(['Manager', 'Director']);
+  });
+
+  it('handles duplicates that only match after POS-tag stripping', () => {
+    const stripped = ['Manager (S)', 'Manager', 'führen, verwalten (V)'].map(stripPosTag);
+    expect(dedupeTranslations(stripped)).toEqual(['Manager', 'führen, verwalten']);
+  });
+});

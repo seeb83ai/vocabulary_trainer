@@ -43,6 +43,27 @@ function isNoise(text) {
   return /^(CL:|Bsp\.:|ZEW:)/.test(text);
 }
 
+// stripPosTag removes a trailing short part-of-speech annotation like
+// "(S)" or "(V)" from a HanDeDict/CEDICT gloss, for display only (issue #439).
+function stripPosTag(text) {
+  return text.replace(/\s*\([^()]{1,4}\)\s*$/, '').trim();
+}
+
+// dedupeTranslations collapses case-insensitive duplicate glosses within a
+// single language's translation list, keeping the first occurrence and
+// preserving order (issue #439).
+function dedupeTranslations(texts) {
+  const seen = new Set();
+  const result = [];
+  for (const text of texts) {
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+  }
+  return result;
+}
+
 // mergeTranslationMaps combines two {lang: [texts]} maps — e.g. a card's
 // capped `translations` with its collapsed `translations_extra` — into one,
 // concatenating per-language arrays. Client-side answer validation (the
@@ -76,14 +97,17 @@ function orderLangsPrimaryFirst(langs, primaryLang, secondaryLang) {
 // collapsed list. A noise annotation (isNoise) moves from "shown" to
 // "collapsed" for its own language rather than staying inline or being
 // dropped. `excludeText`, when given, is filtered out of both lists first
-// (used to keep a transl_to_zh card's own prompt out of its hint).
+// (used to keep a transl_to_zh card's own prompt out of its hint). Within
+// each language, short POS-tag brackets are stripped and duplicate glosses
+// are collapsed for display (issue #439).
 function groupTranslationsByLang(translations, extraTranslations, langs, excludeText) {
   const shown = [];
   const collapsed = [];
   for (const lang of langs) {
     const texts = ((translations || {})[lang] || []).filter(txt => txt !== excludeText);
     const extra = ((extraTranslations || {})[lang] || []).filter(txt => txt !== excludeText);
-    shown.push(...texts.filter(txt => !isNoise(txt)));
+    const clean = dedupeTranslations(texts.filter(txt => !isNoise(txt)).map(stripPosTag));
+    shown.push(...clean);
     collapsed.push(...texts.filter(isNoise), ...extra);
   }
   return { shown, collapsed };
