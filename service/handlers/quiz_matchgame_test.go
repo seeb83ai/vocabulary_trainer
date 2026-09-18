@@ -487,6 +487,158 @@ func TestMatchAnswer_Wrong(t *testing.T) {
 	}
 }
 
+// TestMatchAnswer_DoesNotRecordAnswerTimestamps guards against issue #449:
+// sm2_progress.last_attempt_at/last_wrong_at exist purely to drive the
+// "newest"/"last mistakes" match-game repeat-avoidance rules (see
+// RecordAnswerTimestamps and GetLastMistakesForGame) and must only reflect
+// real training answers (quiz.go's Answer handler). A match-game answer must
+// still update SM-2 scheduling but must NOT touch these timestamps — bumping
+// last_wrong_at from inside the match-game itself would immediately
+// re-satisfy its own repeat-avoidance check and let the word reappear in the
+// very next game round without ever going through regular training.
+func TestMatchAnswer_DoesNotRecordAnswerTimestamps(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "根据", "gēnjù", []string{"according to"})
+	// Give the word a prior real training wrong answer, as it would have to
+	// qualify for the "last mistakes" game mode in the first place.
+	const priorWrongAt = "2026-01-01 10:00:00"
+	if _, err := s.ExecForTest(`UPDATE sm2_progress SET last_attempt_at = ?, last_wrong_at = ? WHERE word_id = ?`,
+		priorWrongAt, priorWrongAt, id); err != nil {
+		t.Fatal(err)
+	}
+
+	r := newRouter(s)
+	body := map[string]any{"zh_word_id": id, "correct": false}
+	rec := do(t, r, "POST", "/api/quiz/match-answer", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+
+	attemptAt, wrongAt, err := s.GetAnswerTimestampsForTest(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attemptAt.String != priorWrongAt {
+		t.Errorf("expected last_attempt_at to stay at %q (a match-game answer must not update it), got %q", priorWrongAt, attemptAt.String)
+	}
+	if wrongAt.String != priorWrongAt {
+		t.Errorf("expected last_wrong_at to stay at %q (a match-game answer must not update it), got %q", priorWrongAt, wrongAt.String)
+	}
+}
+
+// TestMatchGame_LastMistakes_MatchGameAnswerDoesNotReQualify reproduces the
+// maintainer's exact clarified scenario for issue #449 end-to-end through
+// the real training and match-game HTTP endpoints:
+//
+//  1. word trained wrong (real training)        -> due for the game
+//  2. shown in the last-mistakes game            -> now suppressed
+//  3. answered inside the match-game (right or wrong) -> must STAY suppressed
+//     (a match-game answer must never re-qualify the word on its own)
+//  4. answered wrong again in real training       -> re-qualified
+//  5. shown in the game again                     -> confirmed re-eligible
+func TestMatchGame_LastMistakes_MatchGameAnswerDoesNotReQualify(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "last_mistakes")
+	// 'a' is the word under test. 'p' is a padding candidate that's kept
+	// independently re-qualified via real training wrong answers, purely so
+	// the mode has matchGameMinCandidates=2 eligible words and actually
+	// triggers at each step — the assertions below only ever check whether
+	// 'a' specifically is present.
+	a := seedWord(t, s, "根据", "gēnjù", []string{"according to"})
+	p := seedWord(t, s, "喝水", "hē shuǐ", []string{"drink water"})
+	markWordTrained(t, s, a)
+	markWordTrained(t, s, p)
+	r := newRouter(s)
+
+	wrongAnswer := func(wordID int64, wrongText string) {
+		t.Helper()
+		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": wordID,
+			"mode":    "zh_to_transl",
+			"answer":  wrongText,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer word %d: want 200, got %d: %s", wordID, rec.Code, rec.Body.String())
+		}
+	}
+	containsWord := func(resp models.MatchGameResponse, wordID int64) bool {
+		for _, w := range resp.Words {
+			if w.ZhWordID == wordID {
+				return true
+			}
+		}
+		return false
+	}
+	// backdateShown pushes every word_game_shown row for this game mode an
+	// hour further into the past. All the timestamps this test cares about
+	// (last_wrong_at, last_shown_in_game) share second-granularity columns,
+	// so successive real events within the same test run could otherwise tie
+	// instead of compare strictly greater. A full hour of separation between
+	// "shown" and the next real event removes that flakiness without
+	// weakening what's under test.
+	backdateShown := func() {
+		t.Helper()
+		if _, err := s.ExecForTest(`UPDATE word_game_shown SET last_shown_in_game = datetime(last_shown_in_game, '-1 hour') WHERE game_mode = 'last_mistakes'`); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Step 1: both words trained wrong via the real training answer path.
+	// Backdate the resulting last_wrong_at by 2 hours so it's unambiguously
+	// earlier than the "shown" timestamp round 1 is about to stamp (avoids
+	// same-second ties between successive real events below).
+	wrongAnswer(a, "definitely wrong")
+	wrongAnswer(p, "definitely wrong")
+	if _, err := s.ExecForTest(`UPDATE sm2_progress SET last_wrong_at = datetime(last_wrong_at, '-2 hours') WHERE word_id IN (?, ?)`, a, p); err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 2: both are due for the last-mistakes game and get shown.
+	rec1 := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp1 models.MatchGameResponse
+	decodeJSON(t, rec1, &resp1)
+	if !containsWord(resp1, a) || !containsWord(resp1, p) {
+		t.Fatalf("expected both words shown, got %+v", resp1.Words)
+	}
+	backdateShown()
+
+	// Step 3: answer 'a' wrong inside the match-game itself. This must not
+	// re-qualify 'a' for the game on its own.
+	rec2 := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"zh_word_id": a, "correct": false})
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("match-answer a: want 200, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	// Re-qualify 'p' via a real training wrong answer, so the mode has >= 2
+	// candidates and actually returns a round for this check.
+	wrongAnswer(p, "definitely wrong again")
+
+	// Step 3 (confirmation): 'a' must still be suppressed — a match-game
+	// wrong answer must not resurface it.
+	rec3 := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp3 models.MatchGameResponse
+	decodeJSON(t, rec3, &resp3)
+	if containsWord(resp3, a) {
+		t.Errorf("word %d reappeared in the game after only a match-game answer (no real training wrong answer since it was last shown) — got %+v", a, resp3.Words)
+	}
+	backdateShown()
+
+	// Step 4: word 'a' gets a NEW real training wrong answer.
+	wrongAnswer(a, "still wrong")
+	// Keep 'p' eligible too so the mode still has >= 2 candidates.
+	wrongAnswer(p, "definitely wrong once more")
+
+	// Step 5: 'a' is eligible again now that it has a real training wrong
+	// answer since it was last shown in the game.
+	rec4 := do(t, r, "GET", "/api/quiz/match-game", nil)
+	var resp4 models.MatchGameResponse
+	decodeJSON(t, rec4, &resp4)
+	if !containsWord(resp4, a) {
+		t.Errorf("expected word %d re-eligible after a fresh real training wrong answer, got %+v", a, resp4.Words)
+	}
+}
+
 // TestMatchAnswer_LearningNewWord_UsesLearningPhase guards against issue #398:
 // a word still in the new-word introduction phase (learning_new_word=1)
 // answered correctly via the match-game widget must go through the same

@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -290,9 +289,14 @@ func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	if err := h.Store.RecordAnswerTimestamps(r.Context(), req.ZhWordID, req.Correct); err != nil {
-		log.Printf("match-answer: RecordAnswerTimestamps word %d: %v", req.ZhWordID, err)
-	}
+	// Deliberately does NOT call h.Store.RecordAnswerTimestamps: last_attempt_at/
+	// last_wrong_at exist purely to drive the "newest"/"last mistakes"
+	// match-game repeat-avoidance rules (see RecordAnswerTimestamps and
+	// GetLastMistakesForGame) and must only reflect real training answers
+	// (quiz.go's Answer handler). Stamping them here would let a word answered
+	// inside the match-game immediately re-satisfy its own repeat-avoidance
+	// check and reappear in the very next round without ever being answered
+	// in regular training (issue #449).
 
 	writeJSON(w, http.StatusOK, models.AnswerResponse{
 		Correct:       req.Correct,
