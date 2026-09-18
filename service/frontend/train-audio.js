@@ -59,10 +59,12 @@ function autoPlayCard(currentCard) {
 // was skipped for some other reason, e.g. the blur guard in autoPlayCard) —
 // except for card types/modes that must always stay silent (hmm cards have
 // no audio; zh_to_transl_no_sound is deliberately silent) (issue #272).
+// Sentence-blank cards ARE read out here: they stay silent on the question
+// screen to avoid spoiling the blank, but once the answer is revealed on the
+// result screen there's no reason to withhold audio (issue #446).
 function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   if (!autoPlayEnabled || !currentCard) return false;
   if (currentCard.card_type === 'hmm') return false;
-  if (currentCard.card_type === 'sentence') return false;
   return !alreadyPlayed;
 }
 
