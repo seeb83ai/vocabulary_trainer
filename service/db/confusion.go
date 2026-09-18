@@ -112,6 +112,14 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			args = append(args, l)
 		}
 		args = append(args, zhWordID)
+		generic, gErr := s.genericGlossVariants(ctx, userID, langs)
+		if gErr != nil {
+			return 0, false, gErr
+		}
+		if _, ok := generic[normalized]; ok {
+			return 0, false, nil
+		}
+
 		rows, qErr := s.db.QueryContext(ctx, translToZhConfusionQuery(strings.Join(placeholders, ",")), args...)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion translations: %w", qErr)
