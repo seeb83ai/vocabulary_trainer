@@ -95,6 +95,7 @@ const I18N = {
 
     // Card area
     'card.placeholder': 'Type your answer…',
+    'card.placeholderSentence': 'Type the missing word…',
     'card.submit': 'Submit',
     'card.skipToday': 'Skip for Today',
     'card.readAloud': 'Read aloud',
@@ -860,6 +861,7 @@ const I18N = {
 
     // Card area
     'card.placeholder': '输入你的答案…',
+    'card.placeholderSentence': '输入缺失的词…',
     'card.submit': '提交',
     'card.skipToday': '今天跳过',
     'card.readAloud': '朗读',
@@ -1625,6 +1627,7 @@ const I18N = {
 
     // Card area
     'card.placeholder': 'Deine Antwort eingeben…',
+    'card.placeholderSentence': 'Das fehlende Wort eingeben…',
     'card.submit': 'Absenden',
     'card.skipToday': 'Heute überspringen',
     'card.readAloud': 'Vorlesen',

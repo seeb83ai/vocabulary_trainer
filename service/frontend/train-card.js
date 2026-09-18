@@ -388,8 +388,13 @@ async function loadNextCard(trackCurrent = false) {
   await loadStats();
 }
 
+function placeholderKeyForCard(cardType) {
+  return cardType === 'sentence' ? 'card.placeholderSentence' : 'card.placeholder';
+}
+
 function showCard() {
   show('card-area');
+  $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type));
 
   if (currentCard.card_type === 'component') {
     const compLabel = currentCard.is_also_word ? t('component.modeLabelAlsoWord') : t('component.modeLabel');

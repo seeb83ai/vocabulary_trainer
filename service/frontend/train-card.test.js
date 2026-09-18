@@ -1,5 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// ── Answer input placeholder ───────────────────────────────────────────────
+// Mirrors the i18n key selection in showCard(): sentence fill-in-the-blank
+// cards get a placeholder telling the user to type the missing word;
+// every other card type keeps the generic answer placeholder.
+
+function placeholderKeyForCard(cardType) {
+  return cardType === 'sentence' ? 'card.placeholderSentence' : 'card.placeholder';
+}
+
+describe('placeholderKeyForCard', () => {
+  it('uses the sentence-specific placeholder key for sentence cards', () => {
+    expect(placeholderKeyForCard('sentence')).toBe('card.placeholderSentence');
+  });
+
+  it('uses the generic placeholder key for component cards', () => {
+    expect(placeholderKeyForCard('component')).toBe('card.placeholder');
+  });
+
+  it('uses the generic placeholder key for hmm cards', () => {
+    expect(placeholderKeyForCard('hmm')).toBe('card.placeholder');
+  });
+
+  it('uses the generic placeholder key for word cards', () => {
+    expect(placeholderKeyForCard('word')).toBe('card.placeholder');
+  });
+});
+
 // ── Answer submission state machine helpers ───────────────────────────────────
 // These mirror the guard logic in submitAnswer.
 
