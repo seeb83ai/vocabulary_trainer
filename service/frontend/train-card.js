@@ -69,17 +69,6 @@ let recentWordIDs = [];
 // Characters of the last two answered components, used to avoid immediate re-show.
 let recentComponentChars = [];
 
-// Prepends wordID to recentWordIDs, capped at maxLen. Shared by the regular
-// training-card flow (loadNextCard) and the post-answer match-game
-// (train-matchgame.js): a word answered correctly in the match-game also
-// pushes its SM2 due_date into the future, so it must be excluded from the
-// very next GetNextCard call the same way a just-shown training card already
-// is — otherwise GetNextCard's due-date-ignoring session-extension fallback
-// can immediately re-serve it as the next training card (issue #449).
-function addRecentWordID(recentWordIDs, wordID, maxLen = 2) {
-  return [wordID, ...recentWordIDs].slice(0, maxLen);
-}
-
 // ── Training-time tracking ──────────────────────────────────────────────────
 // Counts seconds while this tab is visible, the window has focus, and a card
 // is available to train. Timer pauses on success-state / empty-state.
@@ -187,7 +176,7 @@ async function loadNextCard(trackCurrent = false) {
   // Track the word we're leaving so it isn't immediately re-shown.
   // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
   if (trackCurrent && currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
-    recentWordIDs = addRecentWordID(recentWordIDs, currentCard.word_id);
+    recentWordIDs = [currentCard.word_id, ...recentWordIDs].slice(0, 2);
   }
   // Same tracking for components, so a wrong-answered component isn't
   // immediately re-shown while another component is also due (#391).

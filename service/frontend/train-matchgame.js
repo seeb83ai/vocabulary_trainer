@@ -181,16 +181,6 @@ function showMatchGame(words) {
           box.classList.add('border-green-500', 'bg-green-50', 'cursor-default');
           matched.add(lIdx);
           selectedLeft = null;
-          // A correct match-game answer pushes the word's SM2 due_date into
-          // the future via match-answer just like a correct training-card
-          // answer does, so exclude it from the very next GetNextCard call
-          // the same way (issue #449) — otherwise it can immediately
-          // reappear as the next training card via the due-date-ignoring
-          // session-extension fallback. Component tiles use their own
-          // recentComponentChars exclusion instead.
-          if (leftItems[lIdx].kind !== 'component') {
-            recentWordIDs = addRecentWordID(recentWordIDs, leftItems[lIdx].zh_word_id);
-          }
           try {
             await apiFetch('/api/quiz/match-answer', {
               method: 'POST',
