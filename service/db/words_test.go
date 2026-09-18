@@ -488,6 +488,44 @@ func TestGetNextCard_MostOverduFirst(t *testing.T) {
 	}
 }
 
+// TestGetNextCard_SkipsNewWordAlreadyKnownAsComponent covers issue #448: a
+// single-character zh word must not get its own "new word" introduction when
+// the same character is already an introduced (known) component for this
+// user. The word should be silently promoted to "seen" (so it still enters
+// normal review rotation via first_seen_at) rather than being dropped from
+// candidate selection or shown as new.
+func TestGetNextCard_SkipsNewWordAlreadyKnownAsComponent(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "口", "mouth")
+	idKnownAsComponent := seedWord(t, s, "口", "kǒu", []string{"mouth"})
+
+	// "口" is already an introduced (known) component for this user.
+	s.InsertComponentProgressForTest(ctx, int64(2), "口", time.Now().Add(-time.Hour))
+	s.SetComponentSeenForTest(ctx, int64(2), "口")
+
+	idOther := seedWord(t, s, "二", "èr", []string{"two"})
+
+	w, _, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.ID != idOther {
+		t.Fatalf("expected the other unseen word (id=%d) to be introduced instead, got %v", idOther, w)
+	}
+
+	// The colliding word must not simply vanish from training — it should be
+	// promoted to "seen" so it still enters the normal due-review rotation.
+	var firstSeen sql.NullString
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT first_seen_at FROM sm2_progress WHERE word_id = ?`, idKnownAsComponent).Scan(&firstSeen); err != nil {
+		t.Fatal(err)
+	}
+	if !firstSeen.Valid {
+		t.Error("expected first_seen_at to be set for the word colliding with a known component, got NULL")
+	}
+}
+
 func TestGetNextCard_DailyNewWordLimit(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

@@ -289,6 +289,10 @@ type componentCard struct {
 // another component due today is available. When no other component is
 // available, the excluded one is still returned rather than nothing (#391).
 func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []string, excludeChars []string) (*componentCard, error) {
+	if err := s.backfillComponentsCollidingWithKnownWords(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	// Only return cards the user can answer in one of langs (defaulting to EN).
 	if len(langs) == 0 {
 		langs = []string{"en"}
@@ -470,6 +474,51 @@ func (s *Store) MarkComponentForReview(userID int64, character string) error {
 		userID, character,
 	)
 	return err
+}
+
+// backfillComponentsCollidingWithKnownWords handles issue #448: a component
+// must not get its own "new component" introduction when a same-text zh word
+// is already introduced (known) for this user — that would double-introduce
+// the same character. Rather than filtering such a component out of
+// selection (which would leave it permanently new, since the collision
+// condition stays true once the word is known), it is silently promoted to
+// "seen" via MarkComponentSeen. It still enters the normal due-review
+// rotation via its existing due_date, it just never shows its own "new
+// component" screen.
+func (s *Store) backfillComponentsCollidingWithKnownWords(ctx context.Context, userID int64) error {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT cp.character FROM component_progress cp
+		 WHERE cp.user_id = ? AND cp.first_seen_date IS NULL
+		   AND EXISTS (
+		       SELECT 1 FROM words w
+		       JOIN sm2_progress p ON p.word_id = w.id
+		       WHERE w.user_id = cp.user_id AND w.language = 'zh' AND w.text = cp.character
+		         AND p.first_seen_at IS NOT NULL)`,
+		userID)
+	if err != nil {
+		return fmt.Errorf("find components colliding with known words: %w", err)
+	}
+	var chars []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan colliding component: %w", err)
+		}
+		chars = append(chars, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, c := range chars {
+		if err := s.MarkComponentSeen(ctx, userID, c); err != nil {
+			return fmt.Errorf("mark component colliding with known word as seen (%q): %w", c, err)
+		}
+	}
+	return nil
 }
 
 // MarkComponentSeen sets first_seen_date = date('now') if it is currently NULL.
