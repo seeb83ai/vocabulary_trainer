@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { captureForPR } from './helpers/screenshot.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sentence fill-in-the-blank training mode.
@@ -92,6 +93,10 @@ test.describe('Sentence-blank training mode', () => {
     await expect(page.locator('#sentence-context')).toBeVisible();
     await expect(page.locator('#sentence-context')).toContainText('I buy milk');
     await expect(page.locator('#prompt-word')).toContainText('___');
+    // Issue #445: the shared answer input's placeholder must say "type the
+    // missing word" for sentence-blank cards, not the generic answer prompt.
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the missing word…');
+    await captureForPR(page, 'sentence-placeholder');
 
     await page.locator('#answer-input').fill(correctZh);
     await page.locator('#answer-form button[type="submit"]').click();
