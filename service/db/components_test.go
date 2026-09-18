@@ -983,6 +983,34 @@ func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
 	}
 }
 
+// TestGetNextComponentCard_SkipsNewComponentAlreadyKnownAsWord covers issue
+// #448: a component must not get its own "new component" introduction when
+// a same-text zh word is already introduced (known) for this user. The
+// component should be silently promoted to "seen" (first_seen_date set) so
+// it still enters normal review rotation, rather than being shown as new.
+func TestGetNextComponentCard_SkipsNewComponentAlreadyKnownAsWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "口", "mouth")
+	s.InsertComponentProgressForTest(ctx, int64(2), "口", time.Now().Add(-time.Hour))
+	// "口" is left unseen (first_seen_date NULL) so far.
+
+	// A same-text zh word is already introduced (known) for this user.
+	id := seedWord(t, s, "口", "kǒu", []string{"mouth"})
+	markWordTrained(t, s, id)
+
+	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, nil)
+	if err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	if card == nil {
+		t.Fatal("want a card, got nil")
+	}
+	if card.Progress.FirstSeenDate == nil {
+		t.Error("expected the component colliding with a known word to be promoted to seen (FirstSeenDate set), got nil")
+	}
+}
+
 func TestRecordComponentAnswer_UpdatesProgress(t *testing.T) {
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman")
