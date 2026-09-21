@@ -257,6 +257,98 @@ func TestGetWords_SearchByZh(t *testing.T) {
 	}
 }
 
+// TestGetWords_SearchRelevance_ExactZhMatchFirst covers issue #460: an exact
+// zh-text match should rank above a partial match, even when the default
+// sort (created_at desc) would otherwise put the more-recently-created
+// partial match first.
+func TestGetWords_SearchRelevance_ExactZhMatchFirst(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})        // exact match
+	seedWord(t, s, "谢谢你", "xiè xiè nǐ", []string{"thanks a lot"}) // partial match
+
+	// "thanks a lot" > "thank you" alphabetically, so sorting by en desc
+	// would put the partial match first without the relevance fix.
+	words, total, err := s.GetWords(context.Background(), int64(2), "谢谢", 1, 20, "en", "desc", nil, false, false, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(words) != 2 {
+		t.Fatalf("want 2 results, got %d/%d", total, len(words))
+	}
+	if words[0].ZhText != "谢谢" {
+		t.Errorf("want exact match 谢谢 first, got %q first", words[0].ZhText)
+	}
+}
+
+// TestGetWords_SearchRelevance_ExplicitSortBrokenWithinTier covers the grill
+// decision that relevance always wins over an explicit column sort, but the
+// chosen sort still breaks ties within each relevance tier.
+func TestGetWords_SearchRelevance_ExplicitSortBrokenWithinTier(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "谢谢你", "xiè xiè nǐ", []string{"thanks a lot"}) // partial match
+	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})        // exact match
+
+	// Sort by zh asc would normally put 谢谢 before 谢谢你 anyway (correct
+	// order), so instead sort desc: without relevance ranking this would put
+	// 谢谢你 first; with relevance it must still be 谢谢 first.
+	words, _, err := s.GetWords(context.Background(), int64(2), "谢谢", 1, 20, "zh", "desc", nil, false, false, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 2 {
+		t.Fatalf("want 2 results, got %d", len(words))
+	}
+	if words[0].ZhText != "谢谢" {
+		t.Errorf("relevance should win over explicit sort: want 谢谢 first, got %q first", words[0].ZhText)
+	}
+}
+
+// TestGetWords_SearchRelevance_ExactPinyinMatchFirst covers the grill
+// decisions to include pinyin in the exact-match tier alongside zh text and
+// translations, and to match case-insensitively (ASCII pinyin, no tone
+// marks, avoids unicode-casing edge cases in the assertion).
+func TestGetWords_SearchRelevance_ExactPinyinMatchFirst(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "买", "mai", []string{"to buy"})        // exact pinyin match
+	seedWord(t, s, "买卖", "mai mai", []string{"business"}) // partial pinyin match
+
+	// "business" < "to buy" alphabetically, so sorting by en asc would put
+	// the partial match first without the relevance fix. Uppercase query
+	// also confirms exact matching is case-insensitive.
+	words, total, err := s.GetWords(context.Background(), int64(2), "MAI", 1, 20, "en", "asc", nil, false, false, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(words) != 2 {
+		t.Fatalf("want 2 results, got %d/%d", total, len(words))
+	}
+	if words[0].ZhText != "买" {
+		t.Errorf("want exact case-insensitive pinyin match 买 first, got %q first", words[0].ZhText)
+	}
+}
+
+// TestGetWords_SearchRelevance_ExactTranslationMatchFirst covers the exact
+// match tier for translations (single tier — no zh/translation priority
+// distinction per the grill decision).
+func TestGetWords_SearchRelevance_ExactTranslationMatchFirst(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "书", "shū", []string{"a good book to read"}) // partial translation match
+	seedWord(t, s, "本", "běn", []string{"book"})                // exact translation match
+
+	// 书 (U+4E66) < 本 (U+672C), so sorting by zh asc would put the partial
+	// match first without the relevance fix.
+	words, total, err := s.GetWords(context.Background(), int64(2), "book", 1, 20, "zh", "asc", nil, false, false, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 || len(words) != 2 {
+		t.Fatalf("want 2 results, got %d/%d", total, len(words))
+	}
+	if words[0].ZhText != "本" {
+		t.Errorf("want exact translation match 本 first, got %q first", words[0].ZhText)
+	}
+}
+
 func TestGetWords_IsAlsoComponent(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
