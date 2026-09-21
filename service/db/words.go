@@ -104,6 +104,13 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		orderTerms[i] = t + " " + sortDir
 	}
 	orderClause := strings.Join(orderTerms, ", ")
+	// When searching, an exact match (zh text, pinyin, or a translation —
+	// case-insensitive) always ranks above a partial match, ahead of
+	// whatever sort the caller picked; the chosen sort only breaks ties
+	// within each relevance tier (issue #460).
+	if q != "" {
+		orderClause = "match_rank ASC, " + orderClause
+	}
 
 	limitClause := "\n\t\tLIMIT ? OFFSET ?"
 	if exportAll {
@@ -122,6 +129,15 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		       COALESCE(w.needs_review, 0),
 		       COALESCE(p.learning_new_word, 1),
 		       cp.character IS NOT NULL AS is_also_component,
+		       CASE WHEN ? != '' AND (
+		           w.text = ? COLLATE NOCASE
+		           OR w.pinyin = ? COLLATE NOCASE
+		           OR EXISTS (
+		               SELECT 1 FROM words ew
+		               JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
+		               WHERE ew.text = ? COLLATE NOCASE
+		           )
+		       ) THEN 0 ELSE 1 END AS match_rank,
 		       COUNT(*) OVER() AS total
 		FROM words w
 		LEFT JOIN sm2_progress p ON p.word_id = w.id
@@ -136,7 +152,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		           WHERE ew.text LIKE '%' || ? || '%'
 		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + missingLangFilter + `
 		ORDER BY ` + orderClause + limitClause
-	listArgs := []any{userID, q, q, q, q}
+	listArgs := []any{q, q, q, q, userID, q, q, q, q}
 	listArgs = append(listArgs, tagArgs...)
 	listArgs = append(listArgs, missingLangArgs...)
 	if !exportAll {
@@ -153,13 +169,13 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 	for rows.Next() {
 		var wd models.WordDetail
 		var createdAt, dueDate string
-		var needsReview, learning int
+		var needsReview, learning, matchRank int
 		if err := rows.Scan(
 			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
 			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
 			&dueDate, &needsReview, &learning, &wd.IsAlsoComponent,
-			&total,
+			&matchRank, &total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
 		}
