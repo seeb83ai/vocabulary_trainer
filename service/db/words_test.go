@@ -263,7 +263,7 @@ func TestGetWords_SearchByZh(t *testing.T) {
 // partial match first.
 func TestGetWords_SearchRelevance_ExactZhMatchFirst(t *testing.T) {
 	s := openTestDB(t)
-	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})     // exact match
+	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})        // exact match
 	seedWord(t, s, "谢谢你", "xiè xiè nǐ", []string{"thanks a lot"}) // partial match
 
 	// "thanks a lot" > "thank you" alphabetically, so sorting by en desc
@@ -286,7 +286,7 @@ func TestGetWords_SearchRelevance_ExactZhMatchFirst(t *testing.T) {
 func TestGetWords_SearchRelevance_ExplicitSortBrokenWithinTier(t *testing.T) {
 	s := openTestDB(t)
 	seedWord(t, s, "谢谢你", "xiè xiè nǐ", []string{"thanks a lot"}) // partial match
-	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})     // exact match
+	seedWord(t, s, "谢谢", "xiè xiè", []string{"thank you"})        // exact match
 
 	// Sort by zh asc would normally put 谢谢 before 谢谢你 anyway (correct
 	// order), so instead sort desc: without relevance ranking this would put
@@ -309,7 +309,7 @@ func TestGetWords_SearchRelevance_ExplicitSortBrokenWithinTier(t *testing.T) {
 // marks, avoids unicode-casing edge cases in the assertion).
 func TestGetWords_SearchRelevance_ExactPinyinMatchFirst(t *testing.T) {
 	s := openTestDB(t)
-	seedWord(t, s, "买", "mai", []string{"to buy"})          // exact pinyin match
+	seedWord(t, s, "买", "mai", []string{"to buy"})        // exact pinyin match
 	seedWord(t, s, "买卖", "mai mai", []string{"business"}) // partial pinyin match
 
 	// "business" < "to buy" alphabetically, so sorting by en asc would put
