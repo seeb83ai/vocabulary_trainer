@@ -242,6 +242,9 @@ async function loadSettings() {
     if (maxTranslationsShownEl) maxTranslationsShownEl.value = st.max_translations_shown ?? 3;
     const translationHideUnrankedEl = document.getElementById('translation-hide-unranked');
     if (translationHideUnrankedEl) translationHideUnrankedEl.checked = !!st.translation_hide_unranked;
+    const translationUserOrderEl = document.getElementById('translation-user-order');
+    if (translationUserOrderEl) translationUserOrderEl.value = st.translation_user_order === 'last' ? 'last' : 'first';
+    syncTranslationUserOrderEnabled();
 
     // Daily learning
     const maxNewEl = document.getElementById('max-new-words');
@@ -314,6 +317,14 @@ for (const m of RANDOM_MODES) {
   if (fromEl) populateBucketSelect(fromEl, '');
   if (toEl) populateBucketSelect(toEl, '');
 }
+
+// The user translation order only applies while translation ranking is on.
+function syncTranslationUserOrderEnabled() {
+  const orderEl = document.getElementById('translation-user-order');
+  if (!orderEl) return;
+  orderEl.disabled = !document.getElementById('translation-ranking-enabled')?.checked;
+}
+document.getElementById('translation-ranking-enabled')?.addEventListener('change', syncTranslationUserOrderEnabled);
 
 // Wire each random-mode "Off" checkbox to enable/disable its bucket selects.
 for (const m of RANDOM_MODES) {
@@ -406,6 +417,7 @@ function buildModePayload() {
     translation_ranking_enabled: !!(document.getElementById('translation-ranking-enabled')?.checked),
     max_translations_shown:      parseInt(document.getElementById('max-translations-shown')?.value || '3', 10),
     translation_hide_unranked:   !!(document.getElementById('translation-hide-unranked')?.checked),
+    translation_user_order:      document.getElementById('translation-user-order')?.value || 'first',
   };
 }
 

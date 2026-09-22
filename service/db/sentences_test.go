@@ -116,7 +116,7 @@ func TestFindSentenceBlank_ReturnsEarliestDueWordInEligibleSentence(t *testing.T
 	markReviewed(t, s, mai, 1, 1, now.Add(-1*time.Hour)) // earliest due
 	markReviewed(t, s, niunai, 1, 1, now.Add(3*time.Hour))
 
-	match, err := s.findSentenceBlank(ctx, testUserID)
+	match, err := s.findSentenceBlank(ctx, testUserID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestFindSentenceBlank_NoDueWords_ReturnsNil(t *testing.T) {
 	markReviewed(t, s, mai, 1, 1, future)
 	markReviewed(t, s, niunai, 1, 1, future)
 
-	match, err := s.findSentenceBlank(ctx, testUserID)
+	match, err := s.findSentenceBlank(ctx, testUserID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,12 +164,58 @@ func TestFindSentenceBlank_SentenceNotFullyCovered_NotEligible(t *testing.T) {
 	markReviewed(t, s, wo, 1, 1, now.Add(-2*time.Hour))
 	markReviewed(t, s, mai, 1, 1, now.Add(-1*time.Hour))
 
-	match, err := s.findSentenceBlank(ctx, testUserID)
+	match, err := s.findSentenceBlank(ctx, testUserID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if match != nil {
 		t.Errorf("expected nil match when the sentence isn't fully covered, got %+v", match)
+	}
+}
+
+func TestFindSentenceBlank_TagFilterRestrictsToTrainedWords(t *testing.T) {
+	// Verify that the tag filter is applied: a due word in an untrained tag
+	// must not be selected as the blank target, even when it appears in an
+	// eligible sentence.
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	wo, mai, niunai, _ := seedSentenceScenario(t, s)
+	now := time.Now().UTC()
+	// All three words are due and known.
+	markReviewed(t, s, wo, 1, 1, now.Add(-3*time.Hour))
+	markReviewed(t, s, mai, 1, 1, now.Add(-2*time.Hour))
+	markReviewed(t, s, niunai, 1, 1, now.Add(-1*time.Hour))
+
+	// Tag all three as "other" only (not in the training tag the caller requests).
+	addTag := func(wordID int64, tagName string) {
+		t.Helper()
+		s.db.ExecContext(ctx, `INSERT OR IGNORE INTO tags (name, user_id) VALUES (?, ?)`, tagName, testUserID)
+		var tagID int64
+		s.db.QueryRowContext(ctx, `SELECT id FROM tags WHERE name=? AND user_id=?`, tagName, testUserID).Scan(&tagID)
+		s.db.ExecContext(ctx, `INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`, wordID, tagID)
+	}
+	addTag(wo, "other")
+	addTag(mai, "other")
+	addTag(niunai, "other")
+
+	// With filter ["trained"]: none of wo/mai/niunai are in that tag →
+	// due-word set is empty → no sentence blank card.
+	match, err := s.findSentenceBlank(ctx, testUserID, []string{"trained"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match != nil {
+		t.Errorf("expected nil when no due word is in the trained tag, got %+v", match)
+	}
+
+	// With filter ["other"]: all words are in that tag → sentence blank found.
+	match, err = s.findSentenceBlank(ctx, testUserID, []string{"other", "s_test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match == nil {
+		t.Fatal("expected a match when tag filter includes sentence-word candidates")
 	}
 }
 
@@ -187,7 +233,7 @@ func TestNextSentenceBlankCard_ZhBlankDirection(t *testing.T) {
 
 	cfg := defaultProgCfg()
 	nwCfg := defaultNWCfg()
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"})
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +271,7 @@ func TestNextSentenceBlankCard_TranslationBlankDirection(t *testing.T) {
 	cfg := defaultProgCfg()
 	cfg.Mastered = models.ModeZhToTransl // pin instead of "random" for a deterministic test
 	nwCfg := defaultNWCfg()
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"})
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +311,7 @@ func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *test
 	cfg := defaultProgCfg()
 	cfg.Mastered = models.ModeZhToTransl
 	nwCfg := defaultNWCfg()
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"})
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +335,7 @@ func TestNextSentenceBlankCard_NoEligibleSentence_ReturnsNil(t *testing.T) {
 	id := seedWord(t, s, "水", "shuǐ", []string{"water"})
 	markReviewed(t, s, id, 1, 1, time.Now().UTC().Add(-1*time.Hour))
 
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, defaultProgCfg(), defaultNWCfg(), []string{"en"})
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, defaultProgCfg(), defaultNWCfg(), []string{"en"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

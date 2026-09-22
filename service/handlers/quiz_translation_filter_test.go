@@ -24,6 +24,7 @@ func TestFilterTranslationsForDisplay(t *testing.T) {
 		candidates   []translationCandidate
 		maxShown     int
 		hideUnranked bool
+		userLast     bool
 		wantShown    []string
 		wantExtra    []string
 	}{
@@ -66,10 +67,59 @@ func TestFilterTranslationsForDisplay(t *testing.T) {
 			wantShown:    []string{"common", "rare"},
 			wantExtra:    []string{"mystery"},
 		},
+		{
+			// Within the prioritized tier, a short entry should be preferred over
+			// a long one even though the long one comes first in input order
+			// (issue #450).
+			name:       "prioritized tier prefers short entry over long entry ahead of it",
+			candidates: []translationCandidate{userCand("this is a very long translation phrase"), userCand("short")},
+			maxShown:   1,
+			wantShown:  []string{"short"},
+			wantExtra:  []string{"this is a very long translation phrase"},
+		},
+		{
+			// Within the ranked tier, a short entry should be preferred over a
+			// long one even though the long one has a numerically better
+			// (rarer-safe) frequency rank (issue #450).
+			name:       "ranked tier prefers short entry over long entry with better rank",
+			candidates: []translationCandidate{rankedCand("a very long translation phrase here", 5), rankedCand("short", 500)},
+			maxShown:   1,
+			wantShown:  []string{"short"},
+			wantExtra:  []string{"a very long translation phrase here"},
+		},
+		{
+			name:       "user first puts user translations ahead of unranked ones listed before them",
+			candidates: []translationCandidate{unrankedCand("mystery"), userCand("mine"), rankedCand("common", 5)},
+			maxShown:   3,
+			wantShown:  []string{"mine", "mystery", "common"},
+		},
+		{
+			name:       "user last orders ranked, then unranked, then user",
+			candidates: []translationCandidate{userCand("mine"), unrankedCand("mystery"), rankedCand("rare", 9000), rankedCand("common", 5)},
+			maxShown:   2,
+			userLast:   true,
+			wantShown:  []string{"common", "rare"},
+			wantExtra:  []string{"mystery", "mine"},
+		},
+		{
+			name:         "user last with hideUnranked keeps unranked after ranked and before user",
+			candidates:   []translationCandidate{userCand("mine"), unrankedCand("mystery"), rankedCand("common", 5)},
+			maxShown:     3,
+			hideUnranked: true,
+			userLast:     true,
+			wantShown:    []string{"common", "mystery", "mine"},
+		},
+		{
+			name:       "user last still prefers short user entries over long ones",
+			candidates: []translationCandidate{userCand("this is a very long translation phrase"), userCand("short"), rankedCand("common", 5)},
+			maxShown:   3,
+			userLast:   true,
+			wantShown:  []string{"common", "short", "this is a very long translation phrase"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotShown, gotExtra := filterTranslationsForDisplay(tt.candidates, tt.maxShown, tt.hideUnranked)
+			gotShown, gotExtra := filterTranslationsForDisplay(tt.candidates, tt.maxShown, tt.hideUnranked, tt.userLast)
 			if !reflect.DeepEqual(gotShown, tt.wantShown) {
 				t.Errorf("shown: got %v, want %v", gotShown, tt.wantShown)
 			}

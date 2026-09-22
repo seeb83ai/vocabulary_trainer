@@ -228,14 +228,18 @@ function isNoise(text) {
   return /^(CL:|Bsp\.:|ZEW:)/.test(text);
 }
 
-function groupTranslationsByLang(translations, extraTranslations, langs, excludeText) {
+function groupTranslationsByLang(translations, extraTranslations, langs, excludeText, dropNoise = false) {
   const shown = [];
   const collapsed = [];
   for (const lang of langs) {
     const texts = ((translations || {})[lang] || []).filter(txt => txt !== excludeText);
     const extra = ((extraTranslations || {})[lang] || []).filter(txt => txt !== excludeText);
     shown.push(...texts.filter(txt => !isNoise(txt)));
-    collapsed.push(...texts.filter(isNoise), ...extra);
+    if (dropNoise) {
+      collapsed.push(...extra.filter(txt => !isNoise(txt)));
+    } else {
+      collapsed.push(...texts.filter(isNoise), ...extra);
+    }
   }
   return { shown, collapsed };
 }
@@ -288,6 +292,21 @@ describe('groupTranslationsByLang', () => {
 
   it('handles null/undefined maps', () => {
     expect(groupTranslationsByLang(null, undefined, ['en'])).toEqual({ shown: [], collapsed: [] });
+  });
+
+  it('drops noise annotations entirely when dropNoise is set, keeping overflow translations', () => {
+    const { shown, collapsed } = groupTranslationsByLang(
+      { en: ['hello', 'Bsp.: 你好吗？'] }, { en: ['hi-extra'] }, ['en'], undefined, true
+    );
+    expect(shown).toEqual(['hello']);
+    expect(collapsed).toEqual(['hi-extra']);
+  });
+
+  it('drops a noise annotation found in the overflow list too when dropNoise is set', () => {
+    const { collapsed } = groupTranslationsByLang(
+      { en: ['hello'] }, { en: ['hi-extra', 'Bsp.: 你好吗？'] }, ['en'], undefined, true
+    );
+    expect(collapsed).toEqual(['hi-extra']);
   });
 });
 

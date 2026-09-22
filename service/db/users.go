@@ -257,7 +257,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(auto_subwords, 1),
 		       COALESCE(translation_ranking_enabled, 0),
 		       COALESCE(max_translations_shown, 3),
-		       COALESCE(translation_hide_unranked, 0)
+		       COALESCE(translation_hide_unranked, 0),
+		       COALESCE(translation_user_order, 'first')
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -312,6 +313,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.TranslationRankingEnabled,
 		&st.MaxTranslationsShown,
 		&st.TranslationHideUnranked,
+		&st.TranslationUserOrder,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
@@ -436,7 +438,8 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			auto_subwords                   = ?,
 			translation_ranking_enabled     = ?,
 			max_translations_shown          = ?,
-			translation_hide_unranked       = ?
+			translation_hide_unranked       = ?,
+			translation_user_order          = ?
 		WHERE user_id = ?`,
 		st.PrimaryLang, st.SecondaryLang,
 		st.ProgNew, st.ProgTierStruggling, st.ProgTierLearning,
@@ -484,6 +487,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.TranslationRankingEnabled,
 		st.MaxTranslationsShown,
 		st.TranslationHideUnranked,
+		st.TranslationUserOrder,
 		userID,
 	)
 	if err == nil {

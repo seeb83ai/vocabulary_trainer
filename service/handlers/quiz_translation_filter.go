@@ -50,7 +50,7 @@ func loadTranslationsForCard(ctx context.Context, store translationCandidateStor
 		}
 		candidates[i] = c
 	}
-	shown, extra = filterTranslationsForDisplay(candidates, settings.MaxTranslationsShown+extraSlots, settings.TranslationHideUnranked)
+	shown, extra = filterTranslationsForDisplay(candidates, settings.MaxTranslationsShown+extraSlots, settings.TranslationHideUnranked, settings.TranslationUserOrder == "last")
 	return shown, extra, nil
 }
 
@@ -86,35 +86,57 @@ type translationCandidate struct {
 
 // filterTranslationsForDisplay picks which translations to show on a quiz
 // card when translation ranking is enabled, and which to collapse into
-// "extra" for the frontend to reveal on demand. User-added translations and
-// (unless hideUnranked is set) unranked CEDICT/HanDeDict glosses are
-// prioritized into the visible set first; the remaining ranked glosses are
-// sorted rarest-last after them. All of it — prioritized and ranked alike —
-// still counts against maxShown: nothing bypasses the cap, it's just ordered
-// so the most important entries are the ones kept visible (issue
-// #431/#432/#433). Relative order within each group is preserved (stable)
-// so results don't jitter across calls with identical rank/source data.
-func filterTranslationsForDisplay(candidates []translationCandidate, maxShown int, hideUnranked bool) (shown []string, extra []string) {
-	var prioritized, ranked []translationCandidate
+// "extra" for the frontend to reveal on demand. Candidates fall into three
+// tiers: user-added translations, unranked CEDICT/HanDeDict glosses (unless
+// hideUnranked is set, which files them at the end of the ranked tier), and
+// ranked glosses sorted rarest-last. By default the tiers are ordered user →
+// unranked → ranked; userLast reverses that to ranked → unranked → user.
+// Everything counts against maxShown: nothing bypasses the cap, it's just
+// ordered so the most important entries are the ones kept visible (issue
+// #431/#432/#433). Within each tier, entries shorter than
+// maxPreferredTranslationLength runes are preferred over longer ones — a
+// long gloss is unlikely to be the most useful translation to show first
+// (issue #450) — but a tier that is entirely long entries still gets shown;
+// length only reorders within a tier, it never lets one tier jump ahead of
+// another. Relative order within each group is otherwise preserved
+// (stable) so results don't jitter across calls with identical rank/source
+// data.
+func filterTranslationsForDisplay(candidates []translationCandidate, maxShown int, hideUnranked bool, userLast bool) (shown []string, extra []string) {
+	var user, unranked, ranked []translationCandidate
 	for _, c := range candidates {
-		if c.Source != "cedict" {
-			prioritized = append(prioritized, c)
-			continue
+		switch {
+		case c.Source != "cedict":
+			user = append(user, c)
+		case !c.Rank.Valid && !hideUnranked:
+			unranked = append(unranked, c)
+		default:
+			ranked = append(ranked, c)
 		}
-		if !c.Rank.Valid && !hideUnranked {
-			prioritized = append(prioritized, c)
-			continue
-		}
-		ranked = append(ranked, c)
 	}
 
+	shortFirst := func(group []translationCandidate) {
+		sort.SliceStable(group, func(i, j int) bool {
+			return !isLong(group[i]) && isLong(group[j])
+		})
+	}
+	shortFirst(user)
+	shortFirst(unranked)
+
 	sort.SliceStable(ranked, func(i, j int) bool {
+		if isLong(ranked[i]) != isLong(ranked[j]) {
+			return !isLong(ranked[i])
+		}
 		return rankValue(ranked[i]) < rankValue(ranked[j])
 	})
 
-	ordered := make([]translationCandidate, 0, len(prioritized)+len(ranked))
-	ordered = append(ordered, prioritized...)
-	ordered = append(ordered, ranked...)
+	tiers := [][]translationCandidate{user, unranked, ranked}
+	if userLast {
+		tiers = [][]translationCandidate{ranked, unranked, user}
+	}
+	ordered := make([]translationCandidate, 0, len(candidates))
+	for _, tier := range tiers {
+		ordered = append(ordered, tier...)
+	}
 
 	if maxShown < 0 {
 		maxShown = 0
@@ -144,4 +166,13 @@ func rankValue(c translationCandidate) int64 {
 		return math.MaxInt64
 	}
 	return c.Rank.Int64
+}
+
+// maxPreferredTranslationLength is the soft cap (in runes) below which a
+// translation is preferred over a longer one within its tier — a long gloss
+// is unlikely to be the most useful translation to show first (issue #450).
+const maxPreferredTranslationLength = 15
+
+func isLong(c translationCandidate) bool {
+	return len([]rune(c.Text)) >= maxPreferredTranslationLength
 }

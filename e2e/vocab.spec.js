@@ -61,6 +61,26 @@ test.describe('Vocabulary Management', () => {
     await expect(row).toBeVisible({ timeout: 8_000 });
   });
 
+  test('search ranks an exact match above a partial match (issue #460)', async ({ page }) => {
+    // globalSetup seeds 谢谢 ("thank you"). Add 谢谢你 ("thanks a lot"), a
+    // partial match on the same query, created after (and thus sorted
+    // before under the default created_at-desc order) — searching should
+    // still put the exact match 谢谢 first.
+    await page.goto('/vocab');
+    await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
+
+    await page.locator('#form-zh').fill('谢谢你');
+    await page.locator('#en-inputs-container .en-input').first().fill('thanks a lot');
+    await page.locator('#form-start-training').check();
+    await page.locator('#word-form button[type="submit"]').click();
+    await expect(page.locator('#words-tbody')).toContainText('谢谢你', { timeout: 8_000 });
+
+    await page.locator('#search-input').fill('谢谢');
+    const firstRow = page.locator('#words-tbody tr').first();
+    await expect(firstRow).toContainText('谢谢', { timeout: 8_000 });
+    await expect(firstRow).not.toContainText('谢谢你');
+  });
+
   test('translate button uses the free local dictionary before DeepL', async ({ page }) => {
     // 足球 is covered by the cedict fixture imported in globalSetup, so the
     // Translate button should fill it in via the free local lookup — no

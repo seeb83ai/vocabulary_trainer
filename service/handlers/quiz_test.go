@@ -1295,3 +1295,38 @@ func TestClearDifficult_EmptiesPoolAndDrillReturns404(t *testing.T) {
 		t.Fatalf("expected 404 for empty drill, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestQuizAnswer_SentenceCard_IncludesZhText is a regression test for issue
+// #446: the result screen's auto-play audio needs zh_text to know which
+// clip to play. word_id in a sentence-blank AnswerRequest is always the
+// blanked zh word's own ID (see NextSentenceBlankCard), so the Answer
+// handler's existing GetWordByID(word_id) lookup already resolves it —
+// this locks that in.
+func TestQuizAnswer_SentenceCard_IncludesZhText(t *testing.T) {
+	s := openTestDB(t)
+	seedSentenceScenario(t, s, 2)
+	enableSentenceBlank(t, s, 2, true, 100)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/next?langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("next: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.CardType != "sentence" {
+		t.Fatalf("want card_type=sentence, got %q (body: %s)", card.CardType, rec.Body)
+	}
+
+	rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": card.WordID, "mode": card.Mode, "answer": "wrong-on-purpose",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.ZhText == "" {
+		t.Error("sentence card answer response must include zh_text so the result screen can auto-play the right audio")
+	}
+}

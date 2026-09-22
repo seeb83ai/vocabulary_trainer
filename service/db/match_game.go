@@ -31,7 +31,7 @@ func (s *Store) wordToMatchGameWord(ctx context.Context, userID, wordID int64, l
 	}
 	translations := map[string][]string{}
 	for _, lang := range langs {
-		texts, terr := s.getTranslationTextsForZhWord(ctx, wordID, lang)
+		texts, terr := s.getRankedTranslationTextsForZhWord(ctx, wordID, lang)
 		if terr != nil {
 			return models.MatchGameWord{}, false, terr
 		}
@@ -49,6 +49,40 @@ func (s *Store) wordToMatchGameWord(ctx context.Context, userID, wordID int64, l
 		word.Pinyin = pinyin.String
 	}
 	return word, true, nil
+}
+
+// getRankedTranslationTextsForZhWord is like getTranslationTextsForZhWord but
+// orders results so the most plausible gloss comes first: user-added
+// translations first, then CEDICT/HanDeDict glosses by ascending frequency
+// rank (lower rank = more common), unranked CEDICT/HanDeDict glosses last.
+// Used by the match game, which shows only a single translation per word and
+// must not pick an obscure alphabetically-first gloss (issue #440).
+func (s *Store) getRankedTranslationTextsForZhWord(ctx context.Context, zhID int64, lang string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT w.text FROM words w
+		 JOIN translations t ON t.translation_word_id = w.id
+		 WHERE t.zh_word_id = ? AND w.language = ?
+		 ORDER BY
+		   CASE WHEN t.source = 'cedict' THEN 1 ELSE 0 END,
+		   CASE WHEN t.rank IS NULL THEN 1 ELSE 0 END,
+		   t.rank ASC,
+		   w.text ASC`, zhID, lang)
+	if err != nil {
+		return nil, fmt.Errorf("get ranked %s texts: %w", lang, err)
+	}
+	defer rows.Close()
+	var texts []string
+	for rows.Next() {
+		var txt string
+		if err := rows.Scan(&txt); err != nil {
+			return nil, err
+		}
+		texts = append(texts, txt)
+	}
+	if texts == nil {
+		texts = []string{}
+	}
+	return texts, rows.Err()
 }
 
 // wordIDsToMatchGameWords resolves a slice of zh word ids (already ordered by

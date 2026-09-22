@@ -1,5 +1,6 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
+import { captureForPR } from './helpers/screenshot.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sentence fill-in-the-blank training mode.
@@ -92,6 +93,10 @@ test.describe('Sentence-blank training mode', () => {
     await expect(page.locator('#sentence-context')).toBeVisible();
     await expect(page.locator('#sentence-context')).toContainText('I buy milk');
     await expect(page.locator('#prompt-word')).toContainText('___');
+    // Issue #445: the shared answer input's placeholder must say "type the
+    // missing word" for sentence-blank cards, not the generic answer prompt.
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the missing word…');
+    await captureForPR(page, 'sentence-placeholder');
 
     await page.locator('#answer-input').fill(correctZh);
     await page.locator('#answer-form button[type="submit"]').click();
@@ -168,6 +173,45 @@ test.describe('Sentence-blank training mode', () => {
     expect(card.card_type).toBe('sentence');
     expect(Object.keys(idToZh).map(Number)).toContain(card.word_id);
     expect(card.sentence_blank).toContain('___');
+  });
+
+  // issue #446: sentence-blank cards stay silent on the question screen (the
+  // audio would give away the blanked word), but once the answer is revealed
+  // on the result screen auto-play must read it out, same as every other
+  // card type.
+  test('auto-play reads out the answer on the sentence-blank result screen (issue #446)', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    const { idToZh } = await registerUserWithSentence(page);
+
+    const cardRes = await page.request.get('/api/quiz/next?langs=en');
+    const card = await cardRes.json();
+    const correctZh = idToZh[card.word_id];
+    expect(correctZh).toBeTruthy();
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await captureForPR(page, 'sentence-question-screen');
+
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    // The question screen must stay silent — playing the blanked word's
+    // audio before the user answers would give the answer away.
+    await page.waitForTimeout(500);
+    expect(audioRequests.length).toBe(0);
+
+    await page.locator('#answer-input').fill(correctZh);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await captureForPR(page, 'sentence-answer-autoplay');
+
+    // The result screen reveals the answer, so it must now play the audio.
+    await expect.poll(() => audioRequests.length, { timeout: 5_000 }).toBeGreaterThan(0);
   });
 
   test('sentence-blank mode is never attempted when disabled in settings', async ({ page }) => {
