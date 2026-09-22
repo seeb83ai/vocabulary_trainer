@@ -667,6 +667,23 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#disambig-input')).not.toBeVisible();
   });
 
+  // Issue #465: the gray question-recap box on the ambiguous screen must not
+  // show example-sentence noise (Bsp.:) — not inline and not in "More info" —
+  // just like the transl_to_zh question screen, since the user still has to
+  // type the zh answer there.
+  test('gray question-recap box hides example sentences on the ambiguous screen (issue #465)', async ({ page }) => {
+    await setupAmbiguousResult(page, {
+      '知道': ['know', 'Bsp.: 我知道。 -- I know.'],
+      '认识': ['know', 'recognize', 'Bsp.: 我认识他。 -- I know him.'],
+    });
+    const recap = page.locator('#result-question');
+    await expect(recap).toBeVisible();
+    await captureForPR(page, 'train-ambiguous-no-example-sentence');
+    const recapText = await recap.evaluate(el => el.textContent || '');
+    expect(recapText).not.toContain('Bsp.:');
+    expect(recapText).not.toContain('I know');
+  });
+
   // Issue #244: gray question-recap box must be hidden after disambiguation resolves to Correct.
   test('gray question-recap box is hidden after disambiguation resolves to Correct (issue #244)', async ({ page }) => {
     const { quizZh } = await setupAmbiguousResult(page);
