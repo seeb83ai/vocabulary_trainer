@@ -63,6 +63,16 @@ func (s *Store) ExecForTest(query string, args ...any) (sql.Result, error) {
 	return s.db.Exec(query, args...)
 }
 
+// GetAnswerTimestampsForTest reads sm2_progress.last_attempt_at/last_wrong_at
+// for a word. Only for use in tests (e.g. to assert a match-game answer does
+// NOT touch these match-game repeat-avoidance timestamps, issue #449).
+func (s *Store) GetAnswerTimestampsForTest(ctx context.Context, wordID int64) (attemptAt, wrongAt sql.NullString, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`SELECT last_attempt_at, last_wrong_at FROM sm2_progress WHERE word_id = ?`, wordID,
+	).Scan(&attemptAt, &wrongAt)
+	return
+}
+
 // OpenMigratedTemplate creates a fresh SQLite database file at path with all
 // schema migrations applied, using the default journal mode (not WAL) so the
 // resulting file is self-contained and safe to copy byte-for-byte. Only for
