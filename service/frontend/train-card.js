@@ -316,7 +316,7 @@ async function loadNextCard(trackCurrent = false) {
     for (const lang of orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang)) {
       const texts = (currentCard.translations || {})[lang] || [];
       const extra = (currentCard.translations_extra || {})[lang] || [];
-      const clean = texts.filter(x => !isNoise(x));
+      const clean = dedupeTranslations(texts.filter(x => !isNoise(x)).map(stripPosTag));
       const noise = texts.filter(isNoise);
       if (clean.length) transLines.push(clean.map(escHtml).join(' · '));
       newWordNoise.push(...noise, ...extra);
