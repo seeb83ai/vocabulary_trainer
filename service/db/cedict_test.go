@@ -354,3 +354,92 @@ func TestLookupDictionary_SplitsSemicolons(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitSenses(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"to cross; to go over", []string{"to cross", "to go over"}},
+		{"wegen, um (P), im Bestreben (S)", []string{"wegen", "um (P)", "im Bestreben (S)"}},
+		{"fungieren als, verhalten als; für", []string{"fungieren als", "verhalten als", "für"}},
+		{"as (in the capacity of, as a)", []string{"as (in the capacity of, as a)"}},
+		{"see 为[wei4, wei2], also", []string{"see 为[wei4, wei2]", "also"}},
+		{"Ding （a，b）, Sache", []string{"Ding （a，b）", "Sache"}},
+		{" , ;; ", nil},
+	}
+	for _, c := range cases {
+		got := splitSenses(c.in)
+		if len(got) != len(c.want) {
+			t.Errorf("splitSenses(%q) = %q, want %q", c.in, got, c.want)
+			continue
+		}
+		for i := range c.want {
+			if got[i] != c.want[i] {
+				t.Errorf("splitSenses(%q)[%d] = %q, want %q", c.in, i, got[i], c.want[i])
+			}
+		}
+	}
+}
+
+func TestLookupDictionary_SplitsCommas(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedCedictEntryForTest(ctx, "为", "de", "wèi", "wegen, um (P), im Bestreben (S); für"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.LookupDictionary(ctx, "为", "de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"wegen", "um (P)", "im Bestreben (S)", "für"}
+	if len(got) != len(want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	for i, w := range want {
+		if got[i] != w {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], w)
+		}
+	}
+}
+
+func TestCreateSubwordsForWord_SplitsCommaDefinitions(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedCedictEntryForTest(ctx, "炒饭", "de", "chǎo fàn", "gebratener Reis"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "炒", "de", "chǎo", "braten, schmoren (V)"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.CreateWord(ctx, 2, models.CreateWordRequest{
+		ZhText:        "炒饭",
+		Translations:  map[string][]string{"de": {"gebratener Reis"}},
+		StartTraining: true,
+	}); err != nil {
+		t.Fatalf("CreateWord: %v", err)
+	}
+
+	for _, text := range []string{"braten", "schmoren (V)"} {
+		var cnt int
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM words WHERE text = ? AND language = 'de' AND user_id = 2`, text,
+		).Scan(&cnt); err != nil {
+			t.Fatal(err)
+		}
+		if cnt != 1 {
+			t.Errorf("want sense %q stored as its own translation word, got %d", text, cnt)
+		}
+	}
+	var rawCount int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM words WHERE text = 'braten, schmoren (V)' AND user_id = 2`,
+	).Scan(&rawCount); err != nil {
+		t.Fatal(err)
+	}
+	if rawCount != 0 {
+		t.Error("comma-joined definition was stored as one word — want it split")
+	}
+}
