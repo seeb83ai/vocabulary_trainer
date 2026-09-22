@@ -205,6 +205,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
 | `service/db/funnel.go` | Signup → activation → retention funnel (`GetFunnelReport`) |
+| `service/db/lookalikes.go` | Look-alike character pairs (`GetLookalikes`) for the quiz-card "≠ 口" hint |
 
 ### Handlers (`service/handlers/`)
 | Path | Purpose |
@@ -277,6 +278,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
+| `e2e/lookalike.spec.js` | Browser tests: look-alike character hint (囗/口) on quiz cards |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
 
 ### Deployment

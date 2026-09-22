@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/handlers"
 	"vocabulary_trainer/models"
 
@@ -1233,5 +1235,115 @@ func TestQuizNext_VoiceToTransl_SameShapeAsZhToTransl(t *testing.T) {
 	}
 	if card.Prompt != "你好" {
 		t.Errorf("want prompt=你好, got %q", card.Prompt)
+	}
+}
+
+// Issue #466: cards for characters with a known look-alike (囗/口) carry the
+// look-alike and its definitions so the frontend can show "≠ 口 (mouth)".
+func TestQuizNext_ComponentCard_IncludesLookalikes(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	for char, def := range map[string]string{"囗": "enclosure", "口": "mouth"} {
+		if err := s.SeedHanziDecompositionForTest(ctx, char, def); err != nil {
+			t.Fatalf("seed hanzi %s: %v", char, err)
+		}
+	}
+	past := time.Now().Add(-48 * time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "囗", past)
+	s.SetComponentSeenForTest(ctx, int64(2), "囗")
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodGet, "/api/quiz/next?trainComponents=1&mnemonics=false&langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.CardType != "component" || card.Prompt != "囗" {
+		t.Fatalf("want component card 囗, got %q %q", card.CardType, card.Prompt)
+	}
+	want := []models.Lookalike{{Character: "口", Definitions: map[string]string{"en": "mouth"}}}
+	if !reflect.DeepEqual(card.Lookalikes, want) {
+		t.Errorf("lookalikes = %+v, want %+v", card.Lookalikes, want)
+	}
+}
+
+func seedDueLookalikeWord(t *testing.T, s *db.Store) {
+	t.Helper()
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "囗", "enclosure"); err != nil {
+		t.Fatalf("seed hanzi: %v", err)
+	}
+	id := seedWord(t, s, "口", "kǒu", []string{"mouth"})
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.LearningNewWord = false
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+}
+
+func TestQuizNext_WordCard_ZhPrompt_IncludesLookalikes(t *testing.T) {
+	for _, mode := range []string{models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound} {
+		t.Run(mode, func(t *testing.T) {
+			s := openTestDB(t)
+			seedDueLookalikeWord(t, s)
+
+			rec := do(t, newRouter(s), http.MethodGet, "/api/quiz/next?langs=en&mode="+mode, nil)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var card models.QuizCard
+			decodeJSON(t, rec, &card)
+			if card.Mode != mode {
+				t.Fatalf("want mode=%s, got %s", mode, card.Mode)
+			}
+			want := []models.Lookalike{{Character: "囗", Definitions: map[string]string{"en": "enclosure"}}}
+			if !reflect.DeepEqual(card.Lookalikes, want) {
+				t.Errorf("lookalikes = %+v, want %+v", card.Lookalikes, want)
+			}
+		})
+	}
+}
+
+// The hint names the prompt's own character by elimination, so it must not be
+// sent when the Chinese text is the answer (transl_to_zh) or hidden (voice).
+func TestQuizNext_WordCard_NonZhPrompt_OmitsLookalikes(t *testing.T) {
+	for _, mode := range []string{models.ModeTranslToZh, models.ModeMaskPinyin, models.ModeVoiceToTransl} {
+		t.Run(mode, func(t *testing.T) {
+			s := openTestDB(t)
+			seedDueLookalikeWord(t, s)
+
+			rec := do(t, newRouter(s), http.MethodGet, "/api/quiz/next?langs=en&mode="+mode, nil)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var card models.QuizCard
+			decodeJSON(t, rec, &card)
+			if card.Mode != models.ModeTranslToZh && card.Mode != models.ModeVoiceToTransl {
+				t.Fatalf("mode %s resolved to unexpected %s", mode, card.Mode)
+			}
+			if len(card.Lookalikes) != 0 {
+				t.Errorf("want no lookalikes in mode %s, got %+v", mode, card.Lookalikes)
+			}
+		})
+	}
+}
+
+func TestQuizNext_WordCard_NoLookalikeWord_OmitsLookalikes(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	rec := do(t, newRouter(s), http.MethodGet, "/api/quiz/next?mode=zh_to_transl", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "lookalikes") {
+		t.Errorf("want no lookalikes field, got %s", rec.Body.String())
 	}
 }

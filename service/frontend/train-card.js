@@ -392,9 +392,25 @@ function placeholderKeyForCard(cardType) {
   return cardType === 'sentence' ? 'card.placeholderSentence' : 'card.placeholder';
 }
 
+// Issue #466: hint that tells look-alike characters apart (囗 vs 口) when the
+// pinyin is hidden. The server sends lookalikes only for Chinese prompts.
+function formatLookalikeHint(lookalikes, langs) {
+  if (!lookalikes || !lookalikes.length) return '';
+  return lookalikes.map(l => {
+    const defs = l.definitions || {};
+    const lang = langs.find(g => defs[g]);
+    const gloss = lang ? defs[lang].split(';')[0].trim() : '';
+    return gloss ? `≠ ${l.character} (${gloss})` : `≠ ${l.character}`;
+  }).join(' · ');
+}
+
 function showCard() {
   show('card-area');
   $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type));
+
+  const lookalikeHint = formatLookalikeHint(currentCard.lookalikes, selectedLangs);
+  setText('lookalike-hint', lookalikeHint);
+  lookalikeHint ? show('lookalike-hint') : hide('lookalike-hint');
 
   if (currentCard.card_type === 'component') {
     const compLabel = currentCard.is_also_word ? t('component.modeLabelAlsoWord') : t('component.modeLabel');
