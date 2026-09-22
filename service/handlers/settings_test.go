@@ -1248,6 +1248,51 @@ func TestSettingsPatch_TranslationRanking(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_TranslationUserOrder(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["translation_user_order"] != "first" {
+		t.Errorf("translation_user_order: want first by default, got %v", st["translation_user_order"])
+	}
+
+	body := baseSettingsPatch()
+	body["translation_user_order"] = "last"
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	decodeJSON(t, do(t, r, "GET", "/api/settings", nil), &st)
+	if st["translation_user_order"] != "last" {
+		t.Errorf("translation_user_order: want last after update, got %v", st["translation_user_order"])
+	}
+
+	// Omitting the field (older clients) falls back to the default.
+	rec = do(t, r, "PATCH", "/api/settings", baseSettingsPatch())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	decodeJSON(t, do(t, r, "GET", "/api/settings", nil), &st)
+	if st["translation_user_order"] != "first" {
+		t.Errorf("translation_user_order: want first when omitted, got %v", st["translation_user_order"])
+	}
+}
+
+func TestSettingsPatch_TranslationUserOrder_Invalid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["translation_user_order"] = "middle"
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for invalid translation_user_order, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

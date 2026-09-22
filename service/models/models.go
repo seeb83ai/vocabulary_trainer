@@ -82,6 +82,7 @@ type UserSettings struct {
 	TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
 	MaxTranslationsShown             int      `json:"max_translations_shown"`
 	TranslationHideUnranked          bool     `json:"translation_hide_unranked"`
+	TranslationUserOrder             string   `json:"translation_user_order"` // "first" (default) or "last"
 }
 
 // ProgressiveModeConfig holds per-tier mode overrides for SelectProgressiveMode.

@@ -2542,3 +2542,83 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     expect(visible.indexOf('d1')).toBeLessThan(visible.indexOf('e1'));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group: User translation order setting
+//
+// With translation ranking on, the user picks in Settings whether their own
+// translations come first (user → unranked → ranked) or last
+// (ranked → unranked → user) on quiz cards.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – user translation order setting', () => {
+  async function setupUserOrderWord(page) {
+    const email = `e2e-user-order-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'UserOrder123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    // Seed the dictionary glosses before the user's own translation so the
+    // input order alone cannot put the user translation first.
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '月', pinyin: 'yuè',
+        translations: { en: ['moon', 'month', 'my own moon'] },
+        translation_sources: { en: ['cedict', 'cedict', 'user'] },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    expect(settingsRes.ok()).toBe(true);
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, translation_ranking_enabled: true, max_translations_shown: 3, translation_hide_unranked: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await syncNewWordMode(page, 'zh_to_transl');
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+  }
+
+  async function resultTranslations(page) {
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    const greenBox = page.locator('#word-breakdown .bg-green-50');
+    await expect(greenBox).toBeVisible();
+    return (await greenBox.textContent()) || '';
+  }
+
+  test('user translations appear first by default', async ({ page }) => {
+    await setupUserOrderWord(page);
+
+    const text = await resultTranslations(page);
+    expect(text.indexOf('my own moon')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('my own moon')).toBeLessThan(text.indexOf('month'));
+    await captureForPR(page, 'train-user-translations-first');
+  });
+
+  test('user translations appear last after choosing "last" in settings', async ({ page }) => {
+    await setupUserOrderWord(page);
+
+    await page.goto('/settings');
+    await expect(page.locator('#translation-user-order')).toBeEnabled();
+    await page.locator('#translation-user-order').selectOption('last');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+
+    const text = await resultTranslations(page);
+    expect(text.indexOf('month')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('month')).toBeLessThan(text.indexOf('my own moon'));
+    await captureForPR(page, 'train-user-translations-last');
+  });
+});
