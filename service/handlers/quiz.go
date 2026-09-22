@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -246,6 +247,11 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		if cc.Pinyin != "" {
 			compQuizCard.Pinyin = &cc.Pinyin
 		}
+		compQuizCard.Lookalikes, err = loadLookalikes(r.Context(), h.Store, UserIDFromContext(r.Context()), cc.Character, langs)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
 		writeJSON(w, http.StatusOK, compQuizCard)
 		return
 	}
@@ -426,7 +432,36 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		card.Pinyin = word.Pinyin
 	}
 
+	// Look-alike hints only when the Chinese text is the visible prompt: in
+	// transl_to_zh it is the answer, in voice_to_transl it is hidden.
+	switch card.Mode {
+	case models.ModeZhToTransl, models.ModeZhToTranslNoSound, models.ModeZhPinyinToTransl:
+		card.Lookalikes, err = loadLookalikes(r.Context(), h.Store, UserIDFromContext(r.Context()), word.Text, langs)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, card)
+}
+
+// loadLookalikes returns the characters that look like text, each with its
+// definitions in langs, or nil when text has no known look-alike.
+func loadLookalikes(ctx context.Context, store db.ComponentStore, userID int64, text string, langs []string) ([]models.Lookalike, error) {
+	chars, err := store.GetLookalikes(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	var out []models.Lookalike
+	for _, c := range chars {
+		defs, err := store.GetComponentDefinitions(ctx, userID, c, langs)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, models.Lookalike{Character: c, Definitions: defs})
+	}
+	return out, nil
 }
 
 // Answer processes a submitted answer and updates SM-2 progress.

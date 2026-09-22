@@ -240,6 +240,17 @@ type QuizCard struct {
 	// IsAlsoComponent is set on word cards whose zh text is also tracked as a
 	// hanzi component — the reciprocal of IsAlsoWord.
 	IsAlsoComponent bool `json:"is_also_component,omitempty"`
+	// Lookalikes lists characters that look like the Chinese prompt (e.g. 口
+	// for 囗), so the card can tell them apart without pinyin (issue #466).
+	// Only set when the Chinese text is shown as the prompt.
+	Lookalikes []Lookalike `json:"lookalikes,omitempty"`
+}
+
+// Lookalike is a character that looks like a card's prompt, with its
+// definitions keyed by lowercase lang code.
+type Lookalike struct {
+	Character   string            `json:"character"`
+	Definitions map[string]string `json:"definitions,omitempty"`
 }
 
 type AnswerRequest struct {
