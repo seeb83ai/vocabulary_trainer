@@ -1658,42 +1658,67 @@ test.describe('Quiz – retype on wrong answer', () => {
   // 1-character-off typo that accept_correct_mode: 'typo' should still offer.
   // Clicking it must still advance straight to the next card (bypassing the
   // retype requirement), same as when the retype gate is off.
+  //
+  // A fresh isolated user + word is required (mirrors the adjacent issue
+  // #372 test): the shared main user's rotating 3-word pool made this test
+  // flaky under CI timing — a card pre-fetched via a read-only GET could
+  // land on a different word than the one the page itself requests a moment
+  // later once due-dates for the shared pool have drifted from many earlier
+  // tests. An isolated user with exactly one word removes that ambiguity.
   test('"Accept as correct (typo)" button still shows and advances when the retype gate is active (issue #389)', async ({ page }) => {
+    const email = `e2e-389-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'Issue389Test123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '橙子',
+        pinyin: 'chéngzi',
+        translations: { en: ['orange'] },
+        tags: [],
+        start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
     const settingsRes = await page.request.get('/api/settings');
     const originalSettings = await settingsRes.json();
     await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'both', accept_correct_mode: 'typo' } });
 
-    try {
-      await useZhToTranslMode(page);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    // The freshly seeded word stays in the new-word intro ladder for its
+    // first few reviews regardless of start_training, and that ladder always
+    // follows new_word_mode_0/1/2 rather than the training-filters mode
+    // above (issue #435) — sync it too, or the prompt direction is wrong.
+    await syncNewWordMode(page, 'zh_to_transl');
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
 
-      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
-      expect(cardRes.ok()).toBe(true);
-      const card = await cardRes.json();
-      const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
-      expect(correctAnswer).toBeTruthy();
-      const typoAnswer = correctAnswer.slice(0, -1); // one character short — levenshtein distance 1
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('橙子');
 
-      await page.goto('/train');
-      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-      await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+    const typoAnswer = 'orang'; // one character short — levenshtein distance 1 from 'orange'
+    await page.locator('#answer-input').fill(typoAnswer);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
 
-      await page.locator('#answer-input').fill(typoAnswer);
-      await page.locator('#answer-form button[type="submit"]').click();
-      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    // Retype gate is showing (proves the suppression path is exercised)...
+    await expect(page.locator('#wrong-retype-area')).toBeVisible();
+    // ...but the typo-accept button must still be offered.
+    await expect(page.locator('#accept-correct-btn')).toBeVisible();
+    await page.locator('#accept-correct-btn').scrollIntoViewIfNeeded();
+    await captureForPR(page, 'accept-typo-with-retype-gate');
 
-      // Retype gate is showing (proves the suppression path is exercised)...
-      await expect(page.locator('#wrong-retype-area')).toBeVisible();
-      // ...but the typo-accept button must still be offered.
-      await expect(page.locator('#accept-correct-btn')).toBeVisible();
-      await page.locator('#accept-correct-btn').scrollIntoViewIfNeeded();
-      await captureForPR(page, 'accept-typo-with-retype-gate');
-
-      // Clicking it advances straight to the next card without retyping.
-      await page.locator('#accept-correct-btn').click();
-      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
-    } finally {
-      await page.request.patch('/api/settings', { data: originalSettings });
-    }
+    // Clicking it advances straight to the next card without retyping.
+    await page.locator('#accept-correct-btn').click();
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
   // Regression test for issue #372: the same #346 refactor that regressed
