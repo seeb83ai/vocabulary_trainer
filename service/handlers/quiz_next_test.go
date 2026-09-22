@@ -296,6 +296,51 @@ func TestQuizNext_TranslationRanking_HidesLowRankTranslations(t *testing.T) {
 	}
 }
 
+// TestQuizNext_TranslationRanking_UserOrderLast verifies that
+// translation_user_order=last moves user-added translations behind the
+// dictionary glosses, so they can be capped out into TranslationsExtra.
+func TestQuizNext_TranslationRanking_UserOrderLast(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	if err := s.AddTranslation(ctx, int64(2), id, "en", "greeting"); err != nil {
+		t.Fatalf("AddTranslation: %v", err)
+	}
+	if _, err := s.ExecForTest(
+		`UPDATE translations SET source = 'cedict', rank = 100
+		 WHERE zh_word_id = ? AND translation_word_id = (SELECT id FROM words WHERE text = 'greeting')`,
+		id,
+	); err != nil {
+		t.Fatalf("mark extra translation cedict-sourced: %v", err)
+	}
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.TranslationRankingEnabled = true
+	st.MaxTranslationsShown = 1
+	st.TranslationUserOrder = "last"
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if texts := card.Translations["en"]; len(texts) != 1 || texts[0] != "greeting" {
+		t.Errorf("want the ranked cedict translation [greeting] shown first, got %v", texts)
+	}
+	if extra := card.TranslationsExtra["en"]; len(extra) != 1 || extra[0] != "hello" {
+		t.Errorf("want the user-added translation [hello] moved into extra, got %v", extra)
+	}
+}
+
 // TestQuizNext_TranslationRanking_CapsUserAddedTranslationsToo is a
 // regression test for issue #431/#432/#433: user-added translations used to
 // bypass max_translations_shown entirely, so a word with more user-added

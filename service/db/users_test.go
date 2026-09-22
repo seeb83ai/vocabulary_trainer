@@ -267,6 +267,9 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.WrongAnswerRetryMode != "off" {
 		t.Errorf("want wrong_answer_retry_mode=off by default, got %q", st.WrongAnswerRetryMode)
 	}
+	if st.TranslationUserOrder != "first" {
+		t.Errorf("want translation_user_order=first by default, got %q", st.TranslationUserOrder)
+	}
 }
 
 // TestGetUserSettings_NewlyRegisteredUser_TranslationRankingDefaults verifies
@@ -318,6 +321,7 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 		CelebrateBucketChange:       true,
 		VoiceUnavailable:            true,
 		WrongAnswerRetryMode:        "matched",
+		TranslationUserOrder:        "last",
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -358,6 +362,9 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if out.WrongAnswerRetryMode != "matched" {
 		t.Errorf("wrong_answer_retry_mode: want matched after update, got %q", out.WrongAnswerRetryMode)
+	}
+	if out.TranslationUserOrder != "last" {
+		t.Errorf("translation_user_order: want last after update, got %q", out.TranslationUserOrder)
 	}
 }
 
