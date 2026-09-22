@@ -90,6 +90,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
 		MaxTranslationsShown             int      `json:"max_translations_shown"`
 		TranslationHideUnranked          bool     `json:"translation_hide_unranked"`
+		TranslationUserOrder             string   `json:"translation_user_order"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -167,6 +168,14 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidWrongAnswerRetryMode(req.WrongAnswerRetryMode) {
 		writeError(w, http.StatusBadRequest, "invalid wrong_answer_retry_mode: must be off, matched, or both")
+		return
+	}
+
+	if req.TranslationUserOrder == "" {
+		req.TranslationUserOrder = "first"
+	}
+	if req.TranslationUserOrder != "first" && req.TranslationUserOrder != "last" {
+		writeError(w, http.StatusBadRequest, "invalid translation_user_order: must be first or last")
 		return
 	}
 
@@ -333,6 +342,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		TranslationRankingEnabled:        req.TranslationRankingEnabled,
 		MaxTranslationsShown:             resolvedMaxTranslationsShown,
 		TranslationHideUnranked:          req.TranslationHideUnranked,
+		TranslationUserOrder:             req.TranslationUserOrder,
 	}
 	if err := h.store.UpdateUserSettings(r.Context(), userID, st); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

@@ -240,6 +240,29 @@ test.describe('Settings – Translation ranking', () => {
     await page.locator('#translation-hide-unranked').uncheck();
     await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
+
+  test('user translation order dropdown defaults to "first", is disabled while ranking is off, and persists', async ({ page }) => {
+    await page.goto('/settings');
+    const select = page.locator('#translation-user-order');
+    await expect(select).toHaveValue('first');
+    await expect(select).toBeDisabled();
+
+    await page.locator('#translation-ranking-enabled').check();
+    await expect(select).toBeEnabled();
+    await select.selectOption('last');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+    await captureForPR(page, 'settings-translation-user-order');
+
+    await page.reload();
+    await expect(select).toHaveValue('last');
+    const res = await page.request.get('/api/settings');
+    expect((await res.json()).translation_user_order).toBe('last');
+
+    // Reset to default.
+    await select.selectOption('first');
+    await page.locator('#translation-ranking-enabled').uncheck();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
 });
 
 // Wrong answer retry: choose whether/what to require retyping after a wrong
