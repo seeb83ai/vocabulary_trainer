@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"vocabulary_trainer/models"
 )
 
 // SegmentToken is one piece of a segmented zh string: either a single Han
@@ -139,9 +140,27 @@ func (s *Store) LookupDictionary(ctx context.Context, simplified, lang string) (
 }
 
 // splitSenses splits a stored dictionary definition into its individual
-// senses on ";" and "," (HanDeDict separates senses with commas). Commas
-// inside brackets, e.g. "(in the capacity of, as)", do not split.
+// senses on ";" and "," (HanDeDict separates senses with commas), and on the
+// "/" between CEDICT senses (issue #474). Separators inside brackets, e.g.
+// "(in the capacity of, as)", do not split.
 func splitSenses(def string) []string {
+	return splitTopLevel(def, ";,/")
+}
+
+// dictionarySenses splits a stored dictionary definition into its "/"
+// senses, and each sense into its glosses the same way splitSenses does
+// (issue #474).
+func dictionarySenses(def string) [][]string {
+	var senses [][]string
+	for _, sense := range splitTopLevel(def, "/") {
+		senses = append(senses, splitTopLevel(sense, ";,"))
+	}
+	return senses
+}
+
+// splitTopLevel splits def at every rune of seps that is not inside
+// brackets, trimming the parts and dropping empty ones.
+func splitTopLevel(def, seps string) []string {
 	var senses []string
 	depth := 0
 	start := 0
@@ -158,8 +177,8 @@ func splitSenses(def string) []string {
 			if depth > 0 {
 				depth--
 			}
-		case ';', ',':
-			if depth == 0 {
+		default:
+			if depth == 0 && strings.ContainsRune(seps, r) {
 				flush(i)
 				start = i + 1
 			}
@@ -167,6 +186,59 @@ func splitSenses(def string) []string {
 	}
 	flush(len(def))
 	return senses
+}
+
+// setDictionaryPositions fills DictPos of every dictionary-sourced candidate
+// of the zh word wordID with its first position in the word's lang
+// dictionary entries (issue #474). Candidates not found keep a nil DictPos.
+func (s *Store) setDictionaryPositions(ctx context.Context, wordID int64, lang string, candidates []models.TranslationCandidate) error {
+	var zhText string
+	if err := s.db.QueryRowContext(ctx, `SELECT text FROM words WHERE id = ?`, wordID).Scan(&zhText); err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		return fmt.Errorf("dictionary positions word %d: %w", wordID, err)
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT definition FROM cedict_entries WHERE simplified = ? AND lang = ? ORDER BY id`, zhText, lang)
+	if err != nil {
+		return fmt.Errorf("dictionary positions %q/%s: %w", zhText, lang, err)
+	}
+	var defs []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan dictionary row: %w", err)
+		}
+		defs = append(defs, d)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	positions := map[string]models.DictPosition{}
+	sense := 0
+	for _, d := range defs {
+		for _, glosses := range dictionarySenses(d) {
+			for item, gloss := range glosses {
+				if _, seen := positions[gloss]; !seen {
+					positions[gloss] = models.DictPosition{Sense: sense, Item: item}
+				}
+			}
+			sense++
+		}
+	}
+	for i := range candidates {
+		if candidates[i].Source != "cedict" {
+			continue
+		}
+		if pos, ok := positions[strings.TrimSpace(candidates[i].Text)]; ok {
+			candidates[i].DictPos = &pos
+		}
+	}
+	return nil
 }
 
 // SeedCedictEntryForTest inserts a cedict_entries row. Intended for use in tests only.

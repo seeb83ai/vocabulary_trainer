@@ -8,7 +8,8 @@
 // We store simplified text only (this app is simplified-only), pinyin
 // converted from CEDICT's numbered form to tone-mark form (matching the
 // convention used everywhere else in the app), and all /-delimited
-// definitions joined into one display string.
+// definitions joined into one string with " / " between them. A new import
+// of a language replaces all of its existing entries.
 //
 // Usage:
 //
@@ -21,6 +22,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
@@ -67,19 +69,42 @@ func main() {
 	}
 	defer f.Close()
 
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
+	inserted, skipped, failed, err := importDictionary(db, f, *lang, *dryRun)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	var inserted, skipped, failed int
+	action := "inserted"
+	if *dryRun {
+		action = "would insert"
+	}
+	log.Printf("Done: %s %d, skipped %d, failed %d (lang=%s)", action, inserted, skipped, failed, *lang)
+}
+
+// importDictionary reads CEDICT-format lines from r and replaces every
+// cedict_entries row of lang with them, in one transaction, so a re-import
+// never duplicates entries (issue #474). The senses of an entry are joined
+// with " / ", which keeps the sense borders for sorting translations by
+// sense (db.dictionarySenses). With dryRun it only parses and counts.
+func importDictionary(db *sql.DB, r io.Reader, lang string, dryRun bool) (inserted, skipped, failed int, err error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
 
 	tx, err := db.Begin()
 	if err != nil {
-		log.Fatalf("begin tx: %v", err)
+		return 0, 0, 0, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if !dryRun {
+		if _, err := tx.Exec(`DELETE FROM cedict_entries WHERE lang = ?`, lang); err != nil {
+			return 0, 0, 0, fmt.Errorf("clear %s entries: %w", lang, err)
+		}
 	}
 
 	stmt, err := tx.Prepare(`INSERT INTO cedict_entries (simplified, lang, pinyin, definition) VALUES (?, ?, ?, ?)`)
 	if err != nil {
-		log.Fatalf("prepare: %v", err)
+		return 0, 0, 0, fmt.Errorf("prepare: %w", err)
 	}
 	defer stmt.Close()
 
@@ -96,19 +121,19 @@ func main() {
 		}
 		simplified := m[2]
 		pinyin := toneMarkPinyin(m[3])
-		definition := strings.Join(splitDefs(m[4]), "; ")
+		definition := strings.Join(splitDefs(m[4]), " / ")
 
 		if simplified == "" || definition == "" {
 			skipped++
 			continue
 		}
 
-		if *dryRun {
+		if dryRun {
 			inserted++
 			continue
 		}
 
-		if _, err := stmt.Exec(simplified, *lang, pinyin, definition); err != nil {
+		if _, err := stmt.Exec(simplified, lang, pinyin, definition); err != nil {
 			log.Printf("WARN: insert %q: %v", simplified, err)
 			failed++
 			continue
@@ -117,20 +142,15 @@ func main() {
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatalf("scan error: %v", err)
+		return 0, 0, 0, fmt.Errorf("scan error: %w", err)
 	}
 
-	if !*dryRun {
+	if !dryRun {
 		if err := tx.Commit(); err != nil {
-			log.Fatalf("commit: %v", err)
+			return 0, 0, 0, fmt.Errorf("commit: %w", err)
 		}
 	}
-
-	action := "inserted"
-	if *dryRun {
-		action = "would insert"
-	}
-	log.Printf("Done: %s %d, skipped %d, failed %d (lang=%s)", action, inserted, skipped, failed, *lang)
+	return inserted, skipped, failed, nil
 }
 
 // splitDefs splits a CEDICT "/def1/def2/.../" body (already stripped of the

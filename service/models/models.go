@@ -174,9 +174,19 @@ type Word struct {
 // the importance data used to rank/hide it during training (see
 // db.computeTranslationRank and the translations.source/rank columns).
 type TranslationCandidate struct {
-	Text   string
-	Source string // "user" or "cedict"
-	Rank   *int64 // nil when unranked (no frequency-list match)
+	Text    string
+	Source  string        // "user" or "cedict"
+	Rank    *int64        // nil when unranked (no frequency-list match)
+	DictPos *DictPosition // nil for a user translation or a gloss not in the dictionary
+}
+
+// DictPosition is where a dictionary-sourced translation stands in its zh
+// word's CEDICT/HanDeDict entries (issue #474): Sense is the index of the
+// "/"-separated sense (counted across all entries of the word), Item the
+// index of the gloss inside that sense.
+type DictPosition struct {
+	Sense int
+	Item  int
 }
 
 type SM2Progress struct {

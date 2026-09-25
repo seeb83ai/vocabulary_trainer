@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"math"
 	"sort"
+	"strings"
 	"vocabulary_trainer/models"
 )
 
@@ -44,7 +45,7 @@ func loadTranslationsForCard(ctx context.Context, store translationCandidateStor
 	}
 	candidates := make([]translationCandidate, len(rows))
 	for i, row := range rows {
-		c := translationCandidate{Text: row.Text, Source: row.Source}
+		c := translationCandidate{Text: row.Text, Source: row.Source, DictPos: row.DictPos}
 		if row.Rank != nil {
 			c.Rank = sql.NullInt64{Int64: *row.Rank, Valid: true}
 		}
@@ -79,18 +80,23 @@ func loadTranslationsForResult(ctx context.Context, store translationCandidateSt
 // translationCandidate is one linked translation word with its stored
 // importance data (see db.computeTranslationRank / translations.source).
 type translationCandidate struct {
-	Text   string
-	Source string // "user" or "cedict"
-	Rank   sql.NullInt64
+	Text    string
+	Source  string // "user" or "cedict"
+	Rank    sql.NullInt64
+	DictPos *models.DictPosition // position in the dictionary entry (issue #474); nil if unknown
 }
 
 // filterTranslationsForDisplay picks which translations to show on a quiz
 // card when translation ranking is enabled, and which to collapse into
-// "extra" for the frontend to reveal on demand. Candidates fall into three
-// tiers: user-added translations, unranked CEDICT/HanDeDict glosses (unless
-// hideUnranked is set, which files them at the end of the ranked tier), and
-// ranked glosses sorted rarest-last. By default the tiers are ordered user →
-// unranked → ranked; userLast reverses that to ranked → unranked → user.
+// "extra" for the frontend to reveal on demand. Candidates fall into four
+// tiers: user-added translations; CEDICT/HanDeDict glosses found in the
+// word's dictionary entry, in dictionary order — the first gloss of every
+// sense, then the second ones, and so on, with Bsp.:/CL:/ZEW: annotations
+// last (issue #474); unranked glosses without a dictionary position (unless
+// hideUnranked is set, which files every unranked gloss at the end of the
+// ranked tier); and ranked glosses without a dictionary position, sorted
+// rarest-last. By default the tiers are ordered user → dictionary →
+// unranked → ranked; userLast gives dictionary → ranked → unranked → user.
 // Everything counts against maxShown: nothing bypasses the cap, it's just
 // ordered so the most important entries are the ones kept visible (issue
 // #431/#432/#433). Within each tier, entries shorter than
@@ -102,11 +108,13 @@ type translationCandidate struct {
 // (stable) so results don't jitter across calls with identical rank/source
 // data.
 func filterTranslationsForDisplay(candidates []translationCandidate, maxShown int, hideUnranked bool, userLast bool) (shown []string, extra []string) {
-	var user, unranked, ranked []translationCandidate
+	var user, dict, unranked, ranked []translationCandidate
 	for _, c := range candidates {
 		switch {
 		case c.Source != "cedict":
 			user = append(user, c)
+		case c.DictPos != nil && (c.Rank.Valid || !hideUnranked):
+			dict = append(dict, c)
 		case !c.Rank.Valid && !hideUnranked:
 			unranked = append(unranked, c)
 		default:
@@ -122,6 +130,20 @@ func filterTranslationsForDisplay(candidates []translationCandidate, maxShown in
 	shortFirst(user)
 	shortFirst(unranked)
 
+	sort.SliceStable(dict, func(i, j int) bool {
+		a, b := dict[i], dict[j]
+		if isDictionaryAnnotation(a.Text) != isDictionaryAnnotation(b.Text) {
+			return !isDictionaryAnnotation(a.Text)
+		}
+		if isLong(a) != isLong(b) {
+			return !isLong(a)
+		}
+		if a.DictPos.Item != b.DictPos.Item {
+			return a.DictPos.Item < b.DictPos.Item
+		}
+		return a.DictPos.Sense < b.DictPos.Sense
+	})
+
 	sort.SliceStable(ranked, func(i, j int) bool {
 		if isLong(ranked[i]) != isLong(ranked[j]) {
 			return !isLong(ranked[i])
@@ -129,9 +151,9 @@ func filterTranslationsForDisplay(candidates []translationCandidate, maxShown in
 		return rankValue(ranked[i]) < rankValue(ranked[j])
 	})
 
-	tiers := [][]translationCandidate{user, unranked, ranked}
+	tiers := [][]translationCandidate{user, dict, unranked, ranked}
 	if userLast {
-		tiers = [][]translationCandidate{ranked, unranked, user}
+		tiers = [][]translationCandidate{dict, ranked, unranked, user}
 	}
 	ordered := make([]translationCandidate, 0, len(candidates))
 	for _, tier := range tiers {
@@ -175,4 +197,12 @@ const maxPreferredTranslationLength = 15
 
 func isLong(c translationCandidate) bool {
 	return len([]rune(c.Text)) >= maxPreferredTranslationLength
+}
+
+// isDictionaryAnnotation reports whether a dictionary gloss is an example
+// sentence or measure-word note (Bsp.:/CL:/ZEW:, see isNoise in
+// frontend/train-answer.js) rather than a meaning; such glosses sort after
+// the real meanings of the dictionary tier (issue #474).
+func isDictionaryAnnotation(text string) bool {
+	return strings.HasPrefix(text, "Bsp.:") || strings.HasPrefix(text, "CL:") || strings.HasPrefix(text, "ZEW:")
 }
