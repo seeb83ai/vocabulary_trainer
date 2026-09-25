@@ -1330,3 +1330,57 @@ func TestQuizAnswer_SentenceCard_IncludesZhText(t *testing.T) {
 		t.Error("sentence card answer response must include zh_text so the result screen can auto-play the right audio")
 	}
 }
+
+// TestQuizNext_TranslToZh_PromptSkipsExampleSentence covers issue #475: a
+// dictionary example sentence ("Bsp.: …") or a CL:/ZEW: annotation must never
+// become the transl_to_zh prompt, even when it is the first translation.
+func TestQuizNext_TranslToZh_PromptSkipsExampleSentence(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	id := seedWord(t, s, "客人", "kèrén", []string{"Bsp.: 新来的客人 -- newly arrived guest", "CL:位[wei4]", "guest"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=transl_to_zh&langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeTranslToZh {
+		t.Fatalf("want mode %s, got %s", models.ModeTranslToZh, card.Mode)
+	}
+	if card.Prompt != "guest" {
+		t.Errorf("want prompt %q, got %q", "guest", card.Prompt)
+	}
+}
+
+// TestQuizNext_TranslToZh_OnlyNoiseTranslations_FallsBackToZhToTransl covers
+// issue #475: with no real translation to prompt with, the card falls back to
+// zh_to_transl (like a word with no translations in the selected languages).
+func TestQuizNext_TranslToZh_OnlyNoiseTranslations_FallsBackToZhToTransl(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	id := seedWord(t, s, "客人", "kèrén", []string{"Bsp.: 新来的客人 -- newly arrived guest"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=transl_to_zh&langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeZhToTransl {
+		t.Errorf("want mode %s, got %s", models.ModeZhToTransl, card.Mode)
+	}
+	if card.Prompt != "客人" {
+		t.Errorf("want prompt %q, got %q", "客人", card.Prompt)
+	}
+}

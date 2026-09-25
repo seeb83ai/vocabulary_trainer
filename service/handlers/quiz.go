@@ -389,17 +389,13 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 				translationsExtra[lang] = extra
 			}
 		}
-		if len(translations) == 0 {
+		// Use the first real translation (never a Bsp.:/CL:/ZEW: annotation,
+		// issue #475) of the first selected lang with one as the prompt word.
+		card.Prompt = firstPromptTranslation(langs, translations)
+		if card.Prompt == "" {
 			card.Mode = models.ModeZhToTransl
 			card.Prompt = word.Text
-		} else {
-			// Use the first translation of the first selected lang with results as the prompt word.
-			for _, lang := range langs {
-				if texts := translations[lang]; len(texts) > 0 {
-					card.Prompt = texts[0]
-					break
-				}
-			}
+			break
 		}
 		card.Translations = translations
 		card.TranslationsExtra = translationsExtra
@@ -973,4 +969,30 @@ func (h *QuizHandler) ClearDifficult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]int{"flagged": 0})
+}
+
+// firstPromptTranslation returns the first translation, walking langs in
+// order, that can be a transl_to_zh prompt word: a dictionary example
+// sentence ("Bsp.:") or a measure-word annotation ("CL:"/"ZEW:") never can,
+// since it is no translation and can contain the Chinese answer (issue #475).
+// Returns "" when there is none.
+func firstPromptTranslation(langs []string, translations map[string][]string) string {
+	for _, lang := range langs {
+		for _, text := range translations[lang] {
+			if !isNoiseTranslation(text) {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+// isNoiseTranslation mirrors isNoise in frontend/train-answer.js.
+func isNoiseTranslation(text string) bool {
+	for _, prefix := range []string{"CL:", "Bsp.:", "ZEW:"} {
+		if strings.HasPrefix(text, prefix) {
+			return true
+		}
+	}
+	return false
 }
