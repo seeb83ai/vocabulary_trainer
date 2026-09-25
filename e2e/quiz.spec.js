@@ -2542,3 +2542,49 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     expect(visible.indexOf('d1')).toBeLessThan(visible.indexOf('e1'));
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #475: the transl_to_zh question screen must never use a dictionary
+// example sentence ("Bsp.: …") — or any other CL:/ZEW: annotation — as its
+// prompt word, even when it is the first translation of the word.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – example sentence is never the prompt (issue #475)', () => {
+  test('transl_to_zh prompt skips a leading example-sentence translation', async ({ page }) => {
+    const email = `e2e-example-prompt-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'ExamplePrompt123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '客人', pinyin: 'kèrén',
+        translations: { en: ['Bsp.: 新来的客人 -- newly arrived guest', 'guest'] },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    // Ranking off: translations keep their stored order, so the example
+    // sentence really is the first one.
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, translation_ranking_enabled: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('guest');
+    await expect(page.locator('#card-area')).not.toContainText('Bsp.:');
+    await captureForPR(page, 'train-transl-to-zh-no-example-prompt');
+  });
+});
