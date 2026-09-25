@@ -21,8 +21,12 @@ async function _maybeShowMatchGame() {
 // word when they share a translation text — but only once its true owner is
 // already matched elsewhere. Otherwise the claim is "blocked": accepting it
 // would visually strand the true owner's only matching box (issue #215).
-function matchGameOutcome(rightIdx, lIdx, rightText, leftTransls, matchedLeftIdxs) {
+// A box that shows exactly the same text as the left word's own box is
+// interchangeable with it: "swap" — correct, and the two boxes trade owners
+// so the other word can still take the left word's own box (issue #473).
+function matchGameOutcome(rightIdx, lIdx, rightText, leftShownText, leftTransls, matchedLeftIdxs) {
   if (rightIdx === lIdx) return 'correct';
+  if (rightText === leftShownText) return 'swap';
   if (leftTransls.includes(rightText)) {
     return matchedLeftIdxs.has(rightIdx) ? 'correct' : 'blocked';
   }
@@ -162,7 +166,7 @@ function showMatchGame(words) {
         if (selectedLeft === null) return;
         const lIdx = selectedLeft;
         if (matched.has(lIdx)) return;
-        const rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
+        let rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
         const rightText = shuffledRight[rIdx].text;
         // Filtered/shortened the same way as the displayed rightText (skip
         // noise entries, issue #429; collapse to the first short meaning(s),
@@ -171,7 +175,14 @@ function showMatchGame(words) {
         const leftTransls = Object.values(words[lIdx].translations || {}).flat()
           .filter(t => !isNoise(t))
           .map(shortenMatchGameTranslation);
-        const outcome = matchGameOutcome(rightIdx, lIdx, rightText, leftTransls, matched);
+        let outcome = matchGameOutcome(rightIdx, lIdx, rightText, rightItems[lIdx].text, leftTransls, matched);
+        if (outcome === 'swap') {
+          const ownBox = shuffledRight.find(item => item.idx === lIdx);
+          ownBox.idx = rightIdx;
+          shuffledRight[rIdx].idx = lIdx;
+          rightIdx = lIdx;
+          outcome = 'correct';
+        }
         maybeRevealPinyin(leftBoxes[lIdx], leftItems[lIdx], outcome);
 
         if (outcome === 'correct') {
