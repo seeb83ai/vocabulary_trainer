@@ -714,3 +714,33 @@ test.describe('Settings – Toast notifications (issue #347)', () => {
     }
   });
 });
+
+// Issue #472: a gamification setting decides whether match-game answers
+// change training (SM-2) progress — never, only wrong answers, or always.
+test.describe('Settings – Match game progress', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('match-game progress setting defaults to always, saves and persists across reload', async ({ page }) => {
+    await page.goto('/settings');
+    const select = page.locator('#match-game-sm2-update');
+    await expect(select).toBeVisible();
+    await expect(select).toHaveValue('always');
+    await expect(select.locator('option')).toHaveText(['Never', 'Only wrong answers', 'Always']);
+
+    await select.selectOption('wrong_only');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+    await select.scrollIntoViewIfNeeded();
+    await captureForPR(page, 'settings-gamification-match-game-progress');
+
+    await page.reload();
+    await expect(page.locator('#match-game-sm2-update')).toHaveValue('wrong_only');
+
+    const res = await page.request.get('/api/settings');
+    const settings = await res.json();
+    expect(settings.match_game_sm2_update).toBe('wrong_only');
+
+    // Reset to default.
+    await page.locator('#match-game-sm2-update').selectOption('always');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
+});
