@@ -2692,3 +2692,58 @@ test.describe('Quiz – user translation order setting', () => {
     await captureForPR(page, 'train-user-translations-last');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #474: with translation ranking on, dictionary (CEDICT/HanDeDict)
+// translations follow the dictionary's sense order — first the first item of
+// every "/" sense, then the second items, and so on — instead of word
+// frequency, which put function words like "to" first. Uses the 对 fixture
+// entry: /opposite, facing (P)/correct; right (Adj)/to; at; for (P)/pair, couple (S)/
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Quiz – dictionary translations follow sense order (issue #474)', () => {
+  test('transl_to_zh shows the first item of each sense first', async ({ page }) => {
+    const email = `e2e-sense-order-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'SenseOrder123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const glosses = ['to', 'at', 'for (P)', 'pair', 'couple (S)', 'opposite', 'facing (P)', 'correct', 'right (Adj)'];
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '对', pinyin: 'duì',
+        translations: { en: glosses },
+        translation_sources: { en: glosses.map(() => 'cedict') },
+        tags: [], start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...originalSettings, translation_ranking_enabled: true, max_translations_shown: 4, translation_hide_unranked: false },
+    });
+    expect(patchRes.ok()).toBe(true);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'transl_to_zh');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('opposite');
+    const hint = page.locator('#translations-hint');
+    await expect(hint).toBeVisible();
+    const visibleText = await hint.evaluate(el => {
+      const clone = el.cloneNode(true);
+      clone.querySelector('details')?.remove();
+      return clone.textContent || '';
+    });
+    expect(visibleText.split('·').map(s => s.trim()).filter(Boolean)).toEqual(['correct', 'to', 'pair', 'facing']);
+    await captureForPR(page, 'train-translations-sense-order');
+  });
+});

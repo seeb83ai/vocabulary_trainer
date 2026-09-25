@@ -754,12 +754,12 @@ func (s *Store) GetTranslationCandidatesForWord(ctx context.Context, wordID int6
 	if err != nil {
 		return nil, fmt.Errorf("get translation candidates: %w", err)
 	}
-	defer rows.Close()
 	var out []models.TranslationCandidate
 	for rows.Next() {
 		var c models.TranslationCandidate
 		var rank sql.NullInt64
 		if err := rows.Scan(&c.Text, &c.Source, &rank); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		if rank.Valid {
@@ -767,7 +767,14 @@ func (s *Store) GetTranslationCandidatesForWord(ctx context.Context, wordID int6
 		}
 		out = append(out, c)
 	}
-	return out, rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.setDictionaryPositions(ctx, wordID, targetLang, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error) {

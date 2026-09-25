@@ -796,6 +796,59 @@ func TestGetTranslationCandidatesForWord(t *testing.T) {
 	}
 }
 
+// TestGetTranslationCandidatesForWord_DictionaryPosition covers issue #474:
+// every dictionary-sourced candidate carries its position (sense index, item
+// index within the sense) in the word's dictionary entries, so display can
+// follow the dictionary's sense order. Senses continue across several
+// entries of the same word; the first position of a repeated gloss wins. A
+// user translation and a gloss missing from the dictionary have no position.
+func TestGetTranslationCandidatesForWord_DictionaryPosition(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedCedictEntryForTest(ctx, "对", "en", "duì", "opposite, facing (P) / correct; right (Adj) / to; at; opposite"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "对", "en", "duì", "pair, couple (S)"); err != nil {
+		t.Fatal(err)
+	}
+	texts := []string{"at", "right (Adj)", "opposite", "couple (S)", "gone", "mine"}
+	id, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:             "对",
+		Pinyin:             "duì",
+		Translations:       map[string][]string{"en": texts},
+		TranslationSources: map[string][]string{"en": {"cedict", "cedict", "cedict", "cedict", "cedict", "user"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := s.GetTranslationCandidatesForWord(ctx, id, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]*models.DictPosition{
+		"at":          {Sense: 2, Item: 1},
+		"right (Adj)": {Sense: 1, Item: 1},
+		"opposite":    {Sense: 0, Item: 0},
+		"couple (S)":  {Sense: 3, Item: 1},
+		"gone":        nil,
+		"mine":        nil,
+	}
+	if len(candidates) != len(want) {
+		t.Fatalf("got %d candidates, want %d", len(candidates), len(want))
+	}
+	for _, c := range candidates {
+		w, ok := want[c.Text]
+		if !ok {
+			t.Errorf("unexpected candidate %q", c.Text)
+			continue
+		}
+		if (w == nil) != (c.DictPos == nil) || (w != nil && *w != *c.DictPos) {
+			t.Errorf("%q: DictPos = %+v, want %+v", c.Text, c.DictPos, w)
+		}
+	}
+}
+
 func TestGetTranslationsForWord_EmptyWhenNone(t *testing.T) {
 	s := openTestDB(t)
 	// Manually insert a zh word with no en links
