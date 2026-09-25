@@ -273,6 +273,8 @@ async function loadSettings() {
     if (hidePinyinBucketEl) hidePinyinBucketEl.value = st.gamification_hide_pinyin_from_bucket || '70-84';
     const matchGamePinyinRevealEl = document.getElementById('match-game-pinyin-reveal');
     if (matchGamePinyinRevealEl) matchGamePinyinRevealEl.value = st.match_game_pinyin_reveal || 'always';
+    const matchGameSm2UpdateEl = document.getElementById('match-game-sm2-update');
+    if (matchGameSm2UpdateEl) matchGameSm2UpdateEl.value = st.match_game_sm2_update || 'always';
 
     const compThresholdEl = document.getElementById('component-coverage-threshold');
     if (compThresholdEl) compThresholdEl.value = st.component_coverage_threshold ?? 0;
@@ -716,6 +718,7 @@ function buildFullSettingsPayload() {
     game_mode_last_mistakes: !!(document.getElementById('game-mode-last-mistakes')?.checked),
     gamification_hide_pinyin_from_bucket: document.getElementById('gamification-hide-pinyin-bucket')?.value || '70-84',
     match_game_pinyin_reveal: document.getElementById('match-game-pinyin-reveal')?.value || 'always',
+    match_game_sm2_update: document.getElementById('match-game-sm2-update')?.value || 'always',
     component_coverage_threshold: parseFloat(document.getElementById('component-coverage-threshold')?.value || '0'),
   };
 }

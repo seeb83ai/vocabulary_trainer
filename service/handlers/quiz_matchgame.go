@@ -224,8 +224,23 @@ func mismatchPairsToMatchGameWords(pairs []models.ConfusionDetail) []models.Matc
 	return words
 }
 
+// matchGameAnswerUpdatesProgress reports whether a match-game answer changes
+// word/component progress under the match_game_sm2_update setting (issue #472).
+func matchGameAnswerUpdatesProgress(setting string, correct bool) bool {
+	switch setting {
+	case models.MatchGameSM2UpdateNever:
+		return false
+	case models.MatchGameSM2UpdateWrongOnly:
+		return !correct
+	default:
+		return true
+	}
+}
+
 // MatchAnswer handles POST /api/quiz/match-answer.
-// Updates SM-2 (word) or component-progress state after a match-game interaction.
+// Updates SM-2 (word) or component-progress state after a match-game
+// interaction, unless the user's match_game_sm2_update setting excludes this
+// answer (issue #472) — then it only echoes the answer back.
 func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
 	var req models.MatchAnswerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -235,9 +250,20 @@ func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
 
 	userID := UserIDFromContext(r.Context())
 
+	st, err := h.Store.GetUserSettings(r.Context(), userID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	updateProgress := matchGameAnswerUpdatesProgress(st.MatchGameSM2Update, req.Correct)
+
 	if req.Kind == models.ConfusionKindComponent {
 		if req.Character == "" {
 			writeError(w, http.StatusBadRequest, "character is required")
+			return
+		}
+		if !updateProgress {
+			writeJSON(w, http.StatusOK, models.AnswerResponse{Correct: req.Correct, ZhText: req.Character})
 			return
 		}
 		progress, _, err := h.Store.RecordComponentAnswer(r.Context(), userID, req.Character, req.Correct)
@@ -271,6 +297,10 @@ func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 	if zhWord == nil {
 		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+	if !updateProgress {
+		writeJSON(w, http.StatusOK, models.AnswerResponse{Correct: req.Correct, ZhText: zhWord.ZhText, Pinyin: zhWord.Pinyin})
 		return
 	}
 

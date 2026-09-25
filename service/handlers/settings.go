@@ -73,6 +73,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GameModeLastMistakes             bool     `json:"game_mode_last_mistakes"`
 		GamificationHidePinyinFromBucket string   `json:"gamification_hide_pinyin_from_bucket"`
 		MatchGamePinyinReveal            string   `json:"match_game_pinyin_reveal"`
+		MatchGameSM2Update               string   `json:"match_game_sm2_update"`
 		BlurPinyin                       bool     `json:"blur_pinyin"`
 		NoAutoVoiceOnBlur                bool     `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange            bool     `json:"celebrate_bucket_change"`
@@ -159,6 +160,14 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 	if !isValidMatchGamePinyinReveal(req.MatchGamePinyinReveal) {
 		writeError(w, http.StatusBadRequest, "invalid match_game_pinyin_reveal: must be off, always, or after_correct")
+		return
+	}
+
+	if req.MatchGameSM2Update == "" {
+		req.MatchGameSM2Update = models.MatchGameSM2UpdateAlways
+	}
+	if !isValidMatchGameSM2Update(req.MatchGameSM2Update) {
+		writeError(w, http.StatusBadRequest, "invalid match_game_sm2_update: must be never, wrong_only, or always")
 		return
 	}
 
@@ -316,6 +325,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GameModeLastMistakes:             req.GameModeLastMistakes,
 		GamificationHidePinyinFromBucket: req.GamificationHidePinyinFromBucket,
 		MatchGamePinyinReveal:            req.MatchGamePinyinReveal,
+		MatchGameSM2Update:               req.MatchGameSM2Update,
 		BlurPinyin:                       req.BlurPinyin,
 		NoAutoVoiceOnBlur:                req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:            req.CelebrateBucketChange,
@@ -578,6 +588,16 @@ var validMatchGamePinyinReveal = map[string]bool{
 
 func isValidMatchGamePinyinReveal(m string) bool {
 	return validMatchGamePinyinReveal[m]
+}
+
+var validMatchGameSM2Update = map[string]bool{
+	models.MatchGameSM2UpdateNever:     true,
+	models.MatchGameSM2UpdateWrongOnly: true,
+	models.MatchGameSM2UpdateAlways:    true,
+}
+
+func isValidMatchGameSM2Update(m string) bool {
+	return validMatchGameSM2Update[m]
 }
 
 var validWrongAnswerRetryModes = map[string]bool{

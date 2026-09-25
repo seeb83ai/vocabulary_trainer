@@ -1471,3 +1471,61 @@ func TestSettingsPatch_MatchGamePinyinReveal_EmptyDefaultsToAlways(t *testing.T)
 		t.Errorf("empty match_game_pinyin_reveal should default to always, got %v", st["match_game_pinyin_reveal"])
 	}
 }
+
+func TestSettingsPatch_MatchGameSM2Update(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["match_game_sm2_update"] != "always" {
+		t.Errorf("default match_game_sm2_update: want %q, got %v", "always", st["match_game_sm2_update"])
+	}
+
+	for _, v := range []string{"never", "wrong_only", "always"} {
+		body := baseSettingsPatch()
+		body["match_game_sm2_update"] = v
+		rec = do(t, r, "PATCH", "/api/settings", body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("patch %q status %d: %s", v, rec.Code, rec.Body.String())
+		}
+		rec2 := do(t, r, "GET", "/api/settings", nil)
+		decodeJSON(t, rec2, &st)
+		if st["match_game_sm2_update"] != v {
+			t.Errorf("match_game_sm2_update after update to %q: %v", v, st["match_game_sm2_update"])
+		}
+	}
+}
+
+func TestSettingsPatch_MatchGameSM2Update_Invalid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["match_game_sm2_update"] = "bogus"
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid match_game_sm2_update, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSettingsPatch_MatchGameSM2Update_EmptyDefaultsToAlways(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	body := baseSettingsPatch()
+	body["match_game_sm2_update"] = "never"
+	do(t, r, "PATCH", "/api/settings", body)
+	body["match_game_sm2_update"] = ""
+	rec := do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec2, &st)
+	if st["match_game_sm2_update"] != "always" {
+		t.Errorf("empty match_game_sm2_update should default to always, got %v", st["match_game_sm2_update"])
+	}
+}

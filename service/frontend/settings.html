@@ -439,6 +439,15 @@
         </select>
       </div>
       <p class="text-xs text-gray-500 mb-4" data-i18n="settings.matchGameRevealDesc">Controls when a word tile's pinyin hint is shown, if not already shown.</p>
+      <div class="flex items-center gap-3 flex-wrap mb-1">
+        <label for="match-game-sm2-update" class="text-sm text-gray-700" data-i18n="settings.matchGameSm2Update">Match-game answers change training progress</label>
+        <select id="match-game-sm2-update" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="never" data-i18n="settings.sm2UpdateNever">Never</option>
+          <option value="wrong_only" data-i18n="settings.sm2UpdateWrongOnly">Only wrong answers</option>
+          <option value="always" data-i18n="settings.sm2UpdateAlways">Always</option>
+        </select>
+      </div>
+      <p class="text-xs text-gray-500 mb-4" data-i18n="settings.matchGameSm2UpdateDesc">Controls which matches in the mini-game count as a training answer for the word or component.</p>
     </div>
 
     <!-- Component Training -->

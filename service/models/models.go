@@ -59,6 +59,7 @@ type UserSettings struct {
 	GameModeLastMistakes             bool     `json:"game_mode_last_mistakes"`
 	GamificationHidePinyinFromBucket string   `json:"gamification_hide_pinyin_from_bucket"`
 	MatchGamePinyinReveal            string   `json:"match_game_pinyin_reveal"`
+	MatchGameSM2Update               string   `json:"match_game_sm2_update"`
 	TrainMode                        string   `json:"train_mode"`
 	TrainBucket                      string   `json:"train_bucket"`
 	TrainLangs                       []string `json:"train_langs"`
@@ -334,6 +335,14 @@ type WordDetail struct {
 const (
 	ConfusionKindWord      = "word"
 	ConfusionKindComponent = "component"
+)
+
+// MatchGameSM2Update* are the values of the match_game_sm2_update setting
+// (issue #472): which match-game answers change word/component progress.
+const (
+	MatchGameSM2UpdateNever     = "never"
+	MatchGameSM2UpdateWrongOnly = "wrong_only"
+	MatchGameSM2UpdateAlways    = "always"
 )
 
 type ConfusionDetail struct {
