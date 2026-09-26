@@ -75,6 +75,7 @@ type QuizStore interface {
 	GetDailyStatsHistory(ctx context.Context, userID int64) ([]models.DailyStat, error)
 	GetWordStats(ctx context.Context, userID int64, tags []string) (*models.WordStatsResponse, error)
 	GetTodaySessionInfo(ctx context.Context, userID int64) (attempts, mistakes, availableToAdvance int, err error)
+	GetRecentAccuracy(ctx context.Context, userID int64, days int) (pct float64, ok bool, err error)
 	AdvanceDueDates(ctx context.Context, userID int64, n int) (int, error)
 	SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error)
 	FlagDifficultWords(ctx context.Context, userID int64, count int) (int, error)

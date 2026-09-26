@@ -84,6 +84,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			LearningValue:     userSettings.BaselineLearningValue,
 			NewBucketEnabled:  userSettings.BaselineNewBucketEnabled,
 			NewBucketValue:    userSettings.BaselineNewBucketValue,
+			AccuracyEnabled:   userSettings.BaselineAccuracyEnabled,
+			AccuracyValue:     userSettings.BaselineAccuracyValue,
 			CooldownMinutes:   userSettings.NewWordCooldownMinutes,
 		}
 	}

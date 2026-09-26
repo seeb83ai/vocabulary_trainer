@@ -1045,8 +1045,14 @@ type NewWordBaselines struct {
 	LearningValue     int // max allowed learning count
 	NewBucketEnabled  bool
 	NewBucketValue    int // max allowed New-bucket count
+	AccuracyEnabled   bool
+	AccuracyValue     int // min accuracy in percent over the previous 3 days
 	CooldownMinutes   int // minutes that must pass since last new word (0 = disabled)
 }
+
+// AccuracyBaselineDays is how many days before today the accuracy baseline
+// pools its answers over (issue #484).
+const AccuracyBaselineDays = 3
 
 // GetNextCard returns the most-overdue card. Falls back to nearest upcoming if none are due.
 // Returns (word, progress, extended, nil) or (nil, nil, false, nil) if no words exist.
@@ -1181,6 +1187,16 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				return nil, nil, false, fmt.Errorf("count new bucket: %w", err)
 			}
 			if newBucket >= baselines.NewBucketValue {
+				newWordFilter = " AND p.first_seen_at IS NOT NULL"
+				newWordsBlocked = true
+			}
+		}
+		if newWordFilter == "" && baselines.AccuracyEnabled {
+			pct, ok, err := s.GetRecentAccuracy(ctx, userID, AccuracyBaselineDays)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			if ok && pct < float64(baselines.AccuracyValue) {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}

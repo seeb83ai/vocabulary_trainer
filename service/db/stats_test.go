@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
@@ -516,5 +517,41 @@ func TestAdvanceDueDates_ClusteredDueDates_OnlyAdvancesN(t *testing.T) {
 	}
 	if future != 10 {
 		t.Errorf("expected 10 words still in the future, got %d", future)
+	}
+}
+
+func seedDailyAttempts(t *testing.T, s *Store, daysAgo, attempts, mistakes int) {
+	t.Helper()
+	if _, err := s.db.Exec(
+		`INSERT INTO daily_stats (user_id, date, attempts, mistakes) VALUES (2, date('now', ?), ?, ?)`,
+		fmt.Sprintf("-%d days", daysAgo), attempts, mistakes); err != nil {
+		t.Fatalf("seed daily_stats: %v", err)
+	}
+}
+
+// TestGetRecentAccuracy_PoolsPreviousDays covers issue #484: accuracy is total
+// correct / total attempts over the N days before today; today is ignored.
+func TestGetRecentAccuracy_PoolsPreviousDays(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedDailyAttempts(t, s, 0, 100, 100) // today: ignored
+	seedDailyAttempts(t, s, 1, 10, 5)
+	seedDailyAttempts(t, s, 3, 30, 3)
+	seedDailyAttempts(t, s, 4, 100, 100) // older than 3 days: ignored
+
+	pct, ok, err := s.GetRecentAccuracy(ctx, 2, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || pct != 80 {
+		t.Errorf("want 80%% (32/40), got %v ok=%v", pct, ok)
+	}
+}
+
+func TestGetRecentAccuracy_NoDataIsNotOK(t *testing.T) {
+	s := openTestDB(t)
+	seedDailyAttempts(t, s, 0, 10, 10)
+	if _, ok, err := s.GetRecentAccuracy(context.Background(), 2, 3); err != nil || ok {
+		t.Errorf("want ok=false without attempts on previous days, got ok=%v err=%v", ok, err)
 	}
 }

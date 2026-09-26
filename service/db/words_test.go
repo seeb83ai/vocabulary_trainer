@@ -2569,3 +2569,45 @@ func TestGetNextCard_UsesUserLanguageIndex(t *testing.T) {
 		t.Error("want words scan to use an index, got a full table scan")
 	}
 }
+
+// TestGetNextCard_BaselineAccuracy covers issue #484: new words are blocked
+// while the pooled accuracy of the previous 3 days is below the threshold.
+func TestGetNextCard_BaselineAccuracy(t *testing.T) {
+	tests := []struct {
+		name               string
+		attempts, mistakes int
+		wantNew            bool
+	}{
+		{"below threshold blocks", 10, 4, false},
+		{"at threshold allows", 10, 3, true},
+		{"no data allows", 0, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := openTestDB(t)
+			ctx := context.Background()
+			seen := seedWord(t, s, "水", "", []string{"water"})
+			if err := s.AcknowledgeWord(ctx, 2, seen); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.db.Exec(`UPDATE sm2_progress SET due_date = datetime('now', '+1 day') WHERE word_id = ?`, seen); err != nil {
+				t.Fatal(err)
+			}
+			seedWord(t, s, "火", "", []string{"fire"})
+			if tt.attempts > 0 {
+				if _, err := s.db.Exec(`INSERT INTO daily_stats (user_id, date, attempts, mistakes) VALUES (2, date('now', '-1 day'), ?, ?)`, tt.attempts, tt.mistakes); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			baselines := &NewWordBaselines{AccuracyEnabled: true, AccuracyValue: 70}
+			w, _, _, err := s.GetNextCard(ctx, 2, nil, 100, "", false, baselines, nil, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := w != nil && w.Text == "火"; got != tt.wantNew {
+				t.Errorf("new word 火 served = %v, want %v (got %+v)", got, tt.wantNew, w)
+			}
+		})
+	}
+}

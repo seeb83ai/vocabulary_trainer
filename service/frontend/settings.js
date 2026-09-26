@@ -259,6 +259,7 @@ async function loadSettings() {
     setBaselineRow('baseline-struggling', st.baseline_struggling_enabled, st.baseline_struggling_value ?? 10);
     setBaselineRow('baseline-learning', st.baseline_learning_enabled, st.baseline_learning_value ?? 20);
     setBaselineRow('baseline-new-bucket', st.baseline_new_bucket_enabled, st.baseline_new_bucket_value ?? 10);
+    setBaselineRow('baseline-accuracy', st.baseline_accuracy_enabled, st.baseline_accuracy_value ?? 70);
 
     const gamEnabledEl = document.getElementById('gamification-enabled');
     if (gamEnabledEl) gamEnabledEl.checked = !!st.gamification_enabled;
@@ -437,6 +438,8 @@ function buildDailyPayload() {
     baseline_learning_value:       parseInt(document.getElementById('baseline-learning-value')?.value || '20', 10),
     baseline_new_bucket_enabled:   !!(document.getElementById('baseline-new-bucket-enabled')?.checked),
     baseline_new_bucket_value:     parseInt(document.getElementById('baseline-new-bucket-value')?.value || '10', 10),
+    baseline_accuracy_enabled:     !!(document.getElementById('baseline-accuracy-enabled')?.checked),
+    baseline_accuracy_value:       parseInt(document.getElementById('baseline-accuracy-value')?.value || '70', 10),
   };
 }
 
@@ -451,7 +454,7 @@ function setBaselineRow(prefix, enabled, value) {
 }
 
 // Wire each baseline checkbox to enable/disable its threshold input.
-for (const prefix of ['baseline-due-today', 'baseline-struggling', 'baseline-learning', 'baseline-new-bucket']) {
+for (const prefix of ['baseline-due-today', 'baseline-struggling', 'baseline-learning', 'baseline-new-bucket', 'baseline-accuracy']) {
   document.getElementById(prefix + '-enabled')?.addEventListener('change', e => {
     const valEl = document.getElementById(prefix + '-value');
     if (valEl) valEl.disabled = !e.target.checked;

@@ -65,6 +65,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineLearningValue            int      `json:"baseline_learning_value"`
 		BaselineNewBucketEnabled         bool     `json:"baseline_new_bucket_enabled"`
 		BaselineNewBucketValue           int      `json:"baseline_new_bucket_value"`
+		BaselineAccuracyEnabled          bool     `json:"baseline_accuracy_enabled"`
+		BaselineAccuracyValue            int      `json:"baseline_accuracy_value"`
 		GamificationEnabled              *bool    `json:"gamification_enabled"`
 		GamificationFrequency            *int     `json:"gamification_frequency"`
 		GameModeMismatch                 bool     `json:"game_mode_mismatch"`
@@ -220,6 +222,10 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "baseline_new_bucket_value must be >= 0")
 		return
 	}
+	if req.BaselineAccuracyValue < 0 || req.BaselineAccuracyValue > 100 {
+		writeError(w, http.StatusBadRequest, "baseline_accuracy_value must be between 0 and 100")
+		return
+	}
 	if req.SentenceBlankRatio < 0 || req.SentenceBlankRatio > 100 {
 		writeError(w, http.StatusBadRequest, "sentence_blank_ratio must be between 0 and 100")
 		return
@@ -326,6 +332,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineLearningValue:            req.BaselineLearningValue,
 		BaselineNewBucketEnabled:         req.BaselineNewBucketEnabled,
 		BaselineNewBucketValue:           req.BaselineNewBucketValue,
+		BaselineAccuracyEnabled:          req.BaselineAccuracyEnabled,
+		BaselineAccuracyValue:            req.BaselineAccuracyValue,
 		GamificationEnabled:              resolvedGamificationEnabled,
 		GamificationFrequency:            resolvedFrequency,
 		GameModeMismatch:                 req.GameModeMismatch,
