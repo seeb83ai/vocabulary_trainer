@@ -171,3 +171,5 @@ jobs:
 
       - name: Run E2E tests
         run: npx playwright test
+        env:
+          NODE_OPTIONS: --experimental-sqlite

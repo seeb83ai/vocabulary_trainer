@@ -147,7 +147,7 @@ test-js:
 
 ## test-e2e: run end-to-end browser tests with Playwright (builds the Go binary first)
 test-e2e:
-	npx playwright test
+	NODE_OPTIONS=--experimental-sqlite npx playwright test
 
 ## test-all: run all tests — Go unit tests, JS unit tests, and E2E browser tests
 test-all: test-go test-js test-e2e
