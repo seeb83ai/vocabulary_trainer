@@ -67,8 +67,10 @@ function renderWordAnswerResult(result, answer) {
       }
       if (currentCard.mode === 'transl_to_zh') {
         // Show all translations across all languages except the one already shown as prompt.
+        // Example-sentence noise is dropped, as on the question screen: the user
+        // still has to type the zh answer here (issue #465).
         const { shown: others, collapsed: moreInfoTexts } =
-          groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt);
+          groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt, true);
         const extraHtml = moreInfoTexts.length > 0
           ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
           : '';
