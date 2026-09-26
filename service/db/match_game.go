@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"time"
 	"vocabulary_trainer/models"
+	"vocabulary_trainer/sm2"
 )
 
 // This file holds the word-based match-game modes added in issue #288
@@ -17,7 +18,8 @@ import (
 // wordToMatchGameWord resolves a zh word id into a MatchGameWord, hydrating
 // its translations across every known language (mirrors the word branch of
 // resolveConfusionEntity). ok=false means the word no longer exists for this
-// user and the caller should skip it.
+// user, or has no gloss usable as a match-game answer
+// (sm2.MatchGameTranslations), and the caller should skip it.
 func (s *Store) wordToMatchGameWord(ctx context.Context, userID, wordID int64, langs []string) (word models.MatchGameWord, ok bool, err error) {
 	var text string
 	var pinyin sql.NullString
@@ -39,11 +41,15 @@ func (s *Store) wordToMatchGameWord(ctx context.Context, userID, wordID int64, l
 			translations[lang] = texts
 		}
 	}
+	usable := sm2.MatchGameTranslations(translations, pinyin.String)
+	if len(usable) == 0 && len(translations) > 0 {
+		return models.MatchGameWord{}, false, nil
+	}
 	word = models.MatchGameWord{
 		Kind:         models.ConfusionKindWord,
 		ZhWordID:     wordID,
 		ZhText:       text,
-		Translations: translations,
+		Translations: usable,
 	}
 	if pinyin.Valid {
 		word.Pinyin = pinyin.String

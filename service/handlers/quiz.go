@@ -282,7 +282,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		card.Translations = map[string][]string{}
 		card.TranslationsExtra = map[string][]string{}
 		for _, lang := range langs {
-			texts, extra, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings, 0)
+			texts, extra, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, derefPinyin(word.Pinyin), lang, userSettings, 0)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -377,7 +377,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			// +1: this card's own prompt word is drawn from these translations
 			// and then excluded from the displayed hint list (train-card.js), so
 			// request one extra to keep "max shown" accurate post-exclusion.
-			texts, extra, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, lang, userSettings, 1)
+			texts, extra, err := loadTranslationsForCard(r.Context(), h.Store, word.ID, derefPinyin(word.Pinyin), lang, userSettings, 1)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
@@ -562,7 +562,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		log.Printf("answer: RecordDailyStat user %d: %v", UserIDFromContext(r.Context()), err)
 	}
 
-	resultTranslations, resultTranslationsExtra, err := loadTranslationsForResult(r.Context(), h.Store, req.WordID, zhWord.Translations, userSettings)
+	resultTranslations, resultTranslationsExtra, err := loadTranslationsForResult(r.Context(), h.Store, req.WordID, derefPinyin(zhWord.Pinyin), zhWord.Translations, userSettings)
 	if err != nil {
 		internalError(w, err)
 		return
@@ -609,7 +609,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			if err == nil && confusions != nil {
 				// Cap the "belongs to" mismatch box's translations the same
 				// way as the main result box (issue #431/#432/#433).
-				if shown, extra, capErr := loadTranslationsForResult(r.Context(), h.Store, confusions.ConfusedWithID, confusions.ConfusedWithTranslations, userSettings); capErr == nil {
+				if shown, extra, capErr := loadTranslationsForResult(r.Context(), h.Store, confusions.ConfusedWithID, derefPinyin(confusions.ConfusedWithPinyin), confusions.ConfusedWithTranslations, userSettings); capErr == nil {
 					confusions.ConfusedWithTranslations = shown
 					confusions.ConfusedWithTranslationsExtra = extra
 				}
@@ -718,7 +718,7 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	acceptResultTranslations, acceptResultTranslationsExtra, err := loadTranslationsForResult(ctx, h.Store, req.WordID, zhWord.Translations, userSettings)
+	acceptResultTranslations, acceptResultTranslationsExtra, err := loadTranslationsForResult(ctx, h.Store, req.WordID, derefPinyin(zhWord.Pinyin), zhWord.Translations, userSettings)
 	if err != nil {
 		internalError(w, err)
 		return

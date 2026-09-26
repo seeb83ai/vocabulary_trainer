@@ -208,17 +208,22 @@ func mismatchPairsToMatchGameWords(pairs []models.ConfusionDetail) []models.Matc
 			{p.ConfusedWithKind, p.ConfusedWithComponent, p.ConfusedWithID, p.ConfusedWithText, ptrStr(p.ConfusedWithPinyin), p.ConfusedWithTranslations},
 		} {
 			key := candidate.kind + ":" + strconv.FormatInt(candidate.id, 10) + ":" + candidate.character
-			if !seen[key] {
-				seen[key] = true
-				words = append(words, models.MatchGameWord{
-					Kind:         candidate.kind,
-					ZhWordID:     candidate.id,
-					Character:    candidate.character,
-					ZhText:       candidate.text,
-					Pinyin:       candidate.pinyin,
-					Translations: candidate.translations,
-				})
+			if seen[key] {
+				continue
 			}
+			seen[key] = true
+			translations := sm2.MatchGameTranslations(candidate.translations, candidate.pinyin)
+			if len(translations) == 0 && len(candidate.translations) > 0 {
+				continue
+			}
+			words = append(words, models.MatchGameWord{
+				Kind:         candidate.kind,
+				ZhWordID:     candidate.id,
+				Character:    candidate.character,
+				ZhText:       candidate.text,
+				Pinyin:       candidate.pinyin,
+				Translations: translations,
+			})
 		}
 	}
 	return words

@@ -469,3 +469,32 @@ func setWordGameShownOffset(t *testing.T, s *Store, userID, wordID int64, mode, 
 		t.Fatalf("setWordGameShownOffset(%d): %v", wordID, err)
 	}
 }
+
+// TestGetNewestWordsForGame_DropsBracketOnlyAndPinyinTranslations covers
+// issues #482/#464: a gloss that is only a bracket phrase, or only the word's
+// pinyin, is never a match-game answer; a word left with no other gloss is
+// skipped.
+func TestGetNewestWordsForGame_DropsBracketOnlyAndPinyinTranslations(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "把", "bǎ", []string{"(Partikel, der ein direktes Objekt kennzeichnet)"})
+	seedWord(t, s, "南", "nán", []string{"Nan (Eig, Fam)", "(bound form) south", "south"})
+	markAllSeen(t, s)
+
+	words, err := s.GetNewestWordsForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 1 {
+		t.Fatalf("want only 南 (把 has no usable gloss), got %d: %+v", len(words), words)
+	}
+	got := words[0].Translations["en"]
+	if words[0].ZhText != "南" || len(got) != 2 || got[0] != "(bound form) south" && got[0] != "south" {
+		t.Errorf("want 南 with [(bound form) south, south], got %s %v", words[0].ZhText, got)
+	}
+	for _, g := range got {
+		if g == "Nan (Eig, Fam)" {
+			t.Errorf("pinyin-equal gloss must be dropped, got %v", got)
+		}
+	}
+}

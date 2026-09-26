@@ -1384,3 +1384,80 @@ func TestQuizNext_TranslToZh_OnlyNoiseTranslations_FallsBackToZhToTransl(t *test
 		t.Errorf("want prompt %q, got %q", "客人", card.Prompt)
 	}
 }
+
+// TestQuizNext_TranslToZh_HidesPinyinTranslation covers issues #464/#481: a
+// translation that is only the word's pinyin ("Nan (Eig, Fam)" for 南 nán)
+// is neither the prompt nor a hint when a real translation exists.
+func TestQuizNext_TranslToZh_HidesPinyinTranslation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	id := seedWord(t, s, "南", "nán", []string{"Nan (Eig, Fam)", "south"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	for i := 0; i < 5; i++ {
+		rec := do(t, r, "GET", "/api/quiz/next?mode=transl_to_zh&langs=en", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.Prompt != "south" {
+			t.Errorf("want prompt %q, got %q", "south", card.Prompt)
+		}
+		if got := card.Translations["en"]; len(got) != 1 || got[0] != "south" {
+			t.Errorf("want translations [south], got %v", got)
+		}
+	}
+}
+
+// TestQuizNext_KeepsPinyinTranslationWhenOnlyOne covers issue #464: a
+// pinyin-equal translation stays when it is the only one in that language.
+func TestQuizNext_KeepsPinyinTranslationWhenOnlyOne(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	id := seedWord(t, s, "南", "nán", []string{"Nan (Eig, Fam)"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=zh_to_transl&langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if got := card.Translations["en"]; len(got) != 1 || got[0] != "Nan (Eig, Fam)" {
+		t.Errorf("want translations [Nan (Eig, Fam)], got %v", got)
+	}
+}
+
+// TestQuizAnswer_ResultHidesPinyinTranslation covers issue #464: the result
+// screen also drops a translation that is only the word's pinyin.
+func TestQuizAnswer_ResultHidesPinyinTranslation(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	id := seedWord(t, s, "南", "nán", []string{"Nan (Eig, Fam)", "south"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+		"word_id": id, "mode": models.ModeZhToTransl, "answer": "south", "langs": []string{"en"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if got := resp.Translations["en"]; len(got) != 1 || got[0] != "south" {
+		t.Errorf("want result translations [south], got %v", got)
+	}
+}
