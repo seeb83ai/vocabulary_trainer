@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -299,6 +300,9 @@ func (h *QuizHandler) MatchAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !updateProgress {
+		if err := h.Store.RecordAnswerTimestamps(r.Context(), req.ZhWordID, req.Correct); err != nil {
+			log.Printf("match-answer: RecordAnswerTimestamps word %d: %v", req.ZhWordID, err)
+		}
 		writeJSON(w, http.StatusOK, models.AnswerResponse{Correct: req.Correct, ZhText: zhWord.ZhText, Pinyin: zhWord.Pinyin})
 		return
 	}

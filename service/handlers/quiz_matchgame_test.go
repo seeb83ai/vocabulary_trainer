@@ -768,3 +768,51 @@ func TestMatchAnswer_SM2UpdateSetting(t *testing.T) {
 		})
 	}
 }
+
+// TestMatchAnswer_SM2UpdateSetting_StampsTimestampsWhenProgressSuppressed guards
+// against the regression fixed alongside issue #472: when match_game_sm2_update
+// suppresses SM-2 progress updates (the early-return path), last_attempt_at and
+// last_wrong_at must still be stamped so the repeat-avoidance queries in
+// GetMatchGameWords (which compare those columns against last_shown_in_game) can
+// prevent the word from appearing again immediately.
+// Note: when the normal SM-2 path runs (setting=always, or wrong_only+wrong),
+// timestamps are intentionally NOT stamped by design (issue #449).
+func TestMatchAnswer_SM2UpdateSetting_StampsTimestampsWhenProgressSuppressed(t *testing.T) {
+	cases := []struct {
+		setting          string
+		correct          bool
+		wantWrongStamped bool
+	}{
+		{"never", true, false},
+		{"never", false, true},
+		{"wrong_only", true, false}, // correct answer suppressed → early-return → stamps
+	}
+	for _, c := range cases {
+		name := fmt.Sprintf("%s/correct=%v", c.setting, c.correct)
+		t.Run(name, func(t *testing.T) {
+			s := openTestDB(t)
+			id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+			r := newRouter(s)
+			setMatchGameSM2Update(t, r, c.setting)
+
+			rec := do(t, r, "POST", "/api/quiz/match-answer", map[string]any{"zh_word_id": id, "correct": c.correct})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+			}
+
+			attemptAt, wrongAt, err := s.GetAnswerTimestampsForTest(context.Background(), id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !attemptAt.Valid || attemptAt.String == "" {
+				t.Errorf("setting=%s correct=%v: expected last_attempt_at to be stamped, got empty", c.setting, c.correct)
+			}
+			if c.wantWrongStamped && (!wrongAt.Valid || wrongAt.String == "") {
+				t.Errorf("setting=%s correct=%v: expected last_wrong_at to be stamped, got empty", c.setting, c.correct)
+			}
+			if !c.wantWrongStamped && wrongAt.Valid && wrongAt.String != "" {
+				t.Errorf("setting=%s correct=%v: expected last_wrong_at to be empty, got %s", c.setting, c.correct, wrongAt.String)
+			}
+		})
+	}
+}
