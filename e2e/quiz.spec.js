@@ -2685,6 +2685,12 @@ test.describe('Quiz – user translation order setting', () => {
     await expect(page.locator('#translation-user-order')).toBeEnabled();
     await page.locator('#translation-user-order').selectOption('last');
     await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+    // Confirm the save persisted before navigating away (guards against a CI
+    // timing flake where the toast appeared but the setting wasn't yet committed).
+    await expect.poll(async () => {
+      const s = await (await page.request.get('/api/settings')).json();
+      return s.translation_user_order;
+    }, { timeout: 3000 }).toBe('last');
 
     const text = await resultTranslations(page);
     expect(text.indexOf('month')).toBeGreaterThanOrEqual(0);
