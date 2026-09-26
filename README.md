@@ -223,6 +223,8 @@ The **Progressive** quiz mode introduces new words gently and increases difficul
 
 You can customize the quiz format for each tier, and for each step of the new-word learning phase, in **Settings → Training Mode**. The available formats are: *Translation → Chinese*, *Chinese → Translation*, *Chinese + Pinyin → Translation*, *Translation → Chinese (pinyin hint)*, and *Random*.
 
+A *Translation → Chinese* question never shows a dictionary example sentence (`Bsp.:`) or a measure-word annotation (`CL:`/`ZEW:`) as the prompt word. The app uses the first real translation. If a word has only such entries in the selected languages, the card uses *Chinese → Translation*.
+
 **Learning phase ("New" bucket):**
 
 When you acknowledge a new word by clicking "Got it," it enters the learning phase. During this phase:
