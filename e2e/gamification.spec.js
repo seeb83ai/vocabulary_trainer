@@ -468,6 +468,49 @@ test.describe('Gamification — match game', () => {
     }
   });
 
+  // Issue #473: two words whose boxes show exactly the same text (帮忙 and
+  // 帮助 both "Hilfe") — either "Hilfe" box is a correct match for either
+  // word. The boxes are shuffled, so play two rounds that pick a different
+  // "Hilfe" box first: in one of them the box belongs to the other word,
+  // which used to flash yellow ("blocked") instead of green.
+  for (const firstBox of [0, 1]) {
+    test(`identical shown translations are interchangeable (issue #473, first box ${firstBox})`, async ({ page }) => {
+      await page.goto(`${BASE_URL}/train`);
+      const words = [
+        { zh_word_id: 9701, zh_text: '帮忙', pinyin: 'bāngmáng', translations: { de: ['Hilfe'] } },
+        { zh_word_id: 9702, zh_text: '帮助', pinyin: 'bāngzhù', translations: { de: ['Hilfe'] } },
+      ];
+      await page.evaluate((w) => {
+        // @ts-ignore
+        window.__mgDone = false;
+        // @ts-ignore
+        window.showMatchGame(w).then(() => { window.__mgDone = true; });
+      }, words);
+      await expect(page.locator('#match-game-overlay')).toBeVisible();
+
+      const bangmangBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('帮忙', { exact: true }) });
+      const bangzhuBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('帮助', { exact: true }) });
+      const hilfeBoxes = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('Hilfe', { exact: true }) });
+      await expect(hilfeBoxes).toHaveCount(2);
+
+      await bangmangBox.click();
+      await hilfeBoxes.nth(firstBox).click();
+      await expect(bangmangBox).toHaveClass(/border-green-500/);
+      await expect(hilfeBoxes.nth(firstBox)).toHaveClass(/border-green-500/);
+      if (firstBox === 1) {
+        await page.waitForTimeout(300); // let the colour transition finish for the screenshot
+        await captureForPR(page, 'match-game-identical-translations');
+      }
+
+      await bangzhuBox.click();
+      await hilfeBoxes.nth(1 - firstBox).click();
+      await expect(bangzhuBox).toHaveClass(/border-green-500/);
+
+      await expect(page.locator('#match-game-overlay')).toBeHidden({ timeout: 3000 });
+      expect(await page.evaluate(() => /** @ts-ignore */ window.__mgDone)).toBe(true);
+    });
+  }
+
   // Issue #428: a right-column translation box must not dump a word's full
   // multi-meaning dictionary gloss (semicolon-separated senses plus "Bsp.:"
   // example sentences) — only the first meaning, or the first two when both
