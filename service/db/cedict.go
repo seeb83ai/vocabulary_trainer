@@ -133,13 +133,40 @@ func (s *Store) LookupDictionary(ctx context.Context, simplified, lang string) (
 		if err := rows.Scan(&d); err != nil {
 			return nil, fmt.Errorf("scan dictionary row: %w", err)
 		}
-		for _, part := range strings.Split(d, ";") {
-			if s := strings.TrimSpace(part); s != "" {
-				defs = append(defs, s)
+		defs = append(defs, splitSenses(d)...)
+	}
+	return defs, rows.Err()
+}
+
+// splitSenses splits a stored dictionary definition into its individual
+// senses on ";" and "," (HanDeDict separates senses with commas). Commas
+// inside brackets, e.g. "(in the capacity of, as)", do not split.
+func splitSenses(def string) []string {
+	var senses []string
+	depth := 0
+	start := 0
+	flush := func(end int) {
+		if s := strings.TrimSpace(def[start:end]); s != "" {
+			senses = append(senses, s)
+		}
+	}
+	for i, r := range def {
+		switch r {
+		case '(', '[', '（':
+			depth++
+		case ')', ']', '）':
+			if depth > 0 {
+				depth--
+			}
+		case ';', ',':
+			if depth == 0 {
+				flush(i)
+				start = i + 1
 			}
 		}
 	}
-	return defs, rows.Err()
+	flush(len(def))
+	return senses
 }
 
 // SeedCedictEntryForTest inserts a cedict_entries row. Intended for use in tests only.
@@ -300,11 +327,7 @@ func (s *Store) createSubword(ctx context.Context, userID int64, tok SegmentToke
 		if pair.def == "" {
 			continue
 		}
-		for _, sense := range strings.Split(pair.def, ";") {
-			sense = strings.TrimSpace(sense)
-			if sense == "" {
-				continue
-			}
+		for _, sense := range splitSenses(pair.def) {
 			transID, err := upsertWord(ctx, tx, sense, pair.lang, nil, userID)
 			if err != nil {
 				return err
