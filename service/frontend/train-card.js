@@ -921,7 +921,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Onboarding import (shown when user has zero words)
   let obAllTags = [];
-  let obSelectedTag = '';
+  let obSelectedTags = [];
+  let obQuickVersion = 3;
   let obFilterLangs = new Set();
   let obFilterMode = 'any';
   let obApplyTags = [];
@@ -945,32 +946,39 @@ document.addEventListener('DOMContentLoaded', () => {
     const list = $('ob-tag-list');
     list.innerHTML = '';
     const visible = obAllTags.filter(obTagMatchesFilter);
+    // Selected lists that a filter now hides are dropped from the selection.
+    const visibleNames = visible.map(tg => tg.name);
+    const kept = obSelectedTags.filter(n => visibleNames.includes(n));
+    const selectionChanged = kept.length !== obSelectedTags.length;
+    obSelectedTags = kept;
     if (visible.length === 0) {
       list.innerHTML = `<span class="text-sm text-gray-400">${escHtml(obAllTags.length === 0 ? t('vocab.importNoTags') : t('vocab.importNoTagsMatch'))}</span>`;
-      if (obSelectedTag) { obSelectedTag = ''; $('ob-next-btn').disabled = true; hide('ob-preview'); }
-      return;
     }
-    let selectedStillVisible = false;
     for (const tag of visible) {
       const pill = document.createElement('button');
       pill.type = 'button';
-      const isSelected = tag.name === obSelectedTag;
-      if (isSelected) selectedStillVisible = true;
+      const isSelected = obSelectedTags.includes(tag.name);
+      pill.setAttribute('aria-pressed', String(isSelected));
       pill.className = 'px-3 py-1 rounded-full text-sm font-medium border transition ' +
         (isSelected ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600');
       pill.textContent = tag.name;
       if (tag.description) pill.title = tag.description;
-      pill.addEventListener('click', () => obSelectTag(tag));
+      pill.addEventListener('click', () => obToggleTag(tag));
       list.appendChild(pill);
     }
-    if (!selectedStillVisible && obSelectedTag) { obSelectedTag = ''; $('ob-next-btn').disabled = true; hide('ob-preview'); }
+    if (selectionChanged) obLoadPreview();
   }
 
-  async function obSelectTag(tag) {
-    obSelectedTag = tag.name;
-    $('ob-next-btn').disabled = true;
-    hide('ob-preview');
+  async function obToggleTag(tag) {
+    obSelectedTags = toggleListSelection(obSelectedTags, tag.name);
     obRenderTagPills();
+    await obLoadPreview();
+  }
+
+  async function obLoadPreview() {
+    $('ob-next-btn').disabled = true;
+    if (obSelectedTags.length === 0) { hide('ob-preview'); return; }
+    const requested = [...obSelectedTags];
     const descEl = $('ob-preview-desc');
     const statsEl = $('ob-preview-stats');
     const tableWrap = $('ob-preview-table-wrap');
@@ -981,9 +989,14 @@ document.addEventListener('DOMContentLoaded', () => {
     tbody.innerHTML = '';
     show('ob-preview');
     try {
-      const data = await apiFetch('/api/import/preview?tag=' + encodeURIComponent(tag.name));
-      if (tag.description) { descEl.textContent = tag.description; descEl.classList.remove('hidden'); }
-      if (data.total === 0) { statsEl.textContent = t('vocab.importPreviewEmpty'); $('ob-next-btn').disabled = true; return; }
+      const data = await apiFetch(importPreviewURL(requested));
+      // A newer selection has started its own preview; drop this result.
+      if (requested.join(',') !== obSelectedTags.join(',')) return;
+      const descriptions = obAllTags
+        .filter(tg => requested.includes(tg.name) && tg.description)
+        .map(tg => tg.description);
+      if (descriptions.length > 0) { descEl.textContent = descriptions.join(' · '); descEl.classList.remove('hidden'); }
+      if (data.total === 0) { statsEl.textContent = t('vocab.importPreviewEmpty'); return; }
       const parts = [`${data.total} ${t('vocab.importPreviewWords')}`];
       for (const [lang, count] of Object.entries(data.available_langs || {}).sort()) {
         if (count > 0) parts.push(`${count} ${lang.toUpperCase()}`);
@@ -1003,7 +1016,6 @@ document.addEventListener('DOMContentLoaded', () => {
       $('ob-next-btn').disabled = false;
     } catch (e) {
       statsEl.textContent = e.message;
-      $('ob-next-btn').disabled = true;
     }
   }
 
@@ -1027,30 +1039,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Show the one-button level chooser when the library offers HSK lists;
   // the manual tag picker stays available behind the "choose myself" option.
+  // A version toggle (HSK 3.0 by default) picks which lists the buttons use.
   function obApplyQuickStart() {
-    const plan = quickStartPlan((obAllTags || []).map(tg => tg.name));
-    if (!plan.hsk1 && plan.hsk23.length === 0) return;
-    $('ob-qs-hsk1').classList.toggle('hidden', !plan.hsk1);
-    $('ob-qs-hsk23').classList.toggle('hidden', plan.hsk23.length === 0);
+    const names = (obAllTags || []).map(tg => tg.name);
+    const versions = hskVersions(names);
+    if (versions.length === 0) return;
+    if (!versions.includes(obQuickVersion)) obQuickVersion = versions[0];
+    $('ob-qs-versions').classList.toggle('hidden', versions.length < 2);
+    for (const v of [2, 3]) {
+      const btn = $('ob-qs-version-' + v);
+      const active = v === obQuickVersion;
+      btn.classList.toggle('hidden', !versions.includes(v));
+      btn.setAttribute('aria-pressed', String(active));
+      btn.classList.toggle('bg-blue-600', active);
+      btn.classList.toggle('text-white', active);
+      btn.classList.toggle('border-blue-600', active);
+      btn.classList.toggle('text-gray-600', !active);
+      btn.classList.toggle('border-gray-300', !active);
+    }
+    const plan = hskQuickStart(names, obQuickVersion);
+    $('ob-qs-beginner').classList.toggle('hidden', plan.beginner.length === 0);
+    $('ob-qs-basics').classList.toggle('hidden', plan.basics.length === 0);
     show('ob-quickstart');
     hide('ob-step1');
   }
 
   async function obQuickImport(tags) {
-    const buttons = ['ob-qs-hsk1', 'ob-qs-hsk23', 'ob-qs-custom'];
+    const buttons = ['ob-qs-beginner', 'ob-qs-basics', 'ob-qs-custom', 'ob-qs-version-2', 'ob-qs-version-3'];
     const statusEl = $('ob-qs-status');
     for (const id of buttons) $(id).disabled = true;
     statusEl.className = 'text-sm text-gray-500';
     statusEl.textContent = t('empty.qsImporting');
     show('ob-qs-status');
     try {
-      for (const tag of tags) {
-        await apiFetch('/api/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tag, apply_tags: [tag] }),
-        });
-      }
+      await importLists(tags, tags, true, true);
       hide('empty-state');
       loadNextCard();
     } catch (e) {
@@ -1069,24 +1091,15 @@ document.addEventListener('DOMContentLoaded', () => {
     statusEl.textContent = '';
     show('ob-status');
     try {
-      const result = await apiFetch('/api/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tag: obSelectedTag,
-          import_en: $('ob-import-en').checked,
-          import_de: $('ob-import-de').checked,
-          apply_tags: [...obApplyTags],
-        }),
-      });
+      const result = await importLists(obSelectedTags, obApplyTags,
+        $('ob-import-en').checked, $('ob-import-de').checked);
       // Imported words are left unseen (not force-acknowledged) so they are
       // introduced one at a time through the normal new-word pacing cap,
       // exactly like a manually-added word or the quick-start import — see
       // issue #344 (bulk import used to flood the first session by marking
       // every imported word as immediately due/already-seen).
-      const skippedNote = result.skipped > 0 ? `, ${t('vocab.importSkipped')} ${result.skipped} ${t('vocab.importAlreadyOwned')}` : '';
       statusEl.className = 'mt-3 text-sm text-green-600';
-      statusEl.textContent = `${t('vocab.importDone')} ${result.imported} ${t('vocab.importWords2')}${skippedNote}.`;
+      statusEl.textContent = importResultText(result);
       setTimeout(() => {
         hide('empty-state');
         loadNextCard();
@@ -1167,13 +1180,20 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[name="ob-filter-mode"]').forEach(radio => {
     radio.addEventListener('change', () => { obFilterMode = radio.value; obRenderTagPills(); });
   });
-  $('ob-qs-hsk1').addEventListener('click', () => obQuickImport(['hsk1']));
-  $('ob-qs-hsk23').addEventListener('click', () =>
-    obQuickImport(quickStartPlan((obAllTags || []).map(tg => tg.name)).hsk23));
+  const obQuickPlan = () => hskQuickStart((obAllTags || []).map(tg => tg.name), obQuickVersion);
+  $('ob-qs-beginner').addEventListener('click', () => obQuickImport(obQuickPlan().beginner));
+  $('ob-qs-basics').addEventListener('click', () => obQuickImport(obQuickPlan().basics));
+  for (const v of [2, 3]) {
+    $('ob-qs-version-' + v).addEventListener('click', () => { obQuickVersion = v; obApplyQuickStart(); });
+  }
   $('ob-qs-custom').addEventListener('click', () => { hide('ob-quickstart'); show('ob-step1'); });
   $('ob-next-btn').addEventListener('click', () => obShowStep(2));
   $('ob-back1-btn').addEventListener('click', () => obShowStep(1));
-  $('ob-next2-btn').addEventListener('click', () => obShowStep(3));
+  $('ob-next2-btn').addEventListener('click', () => {
+    obApplyTags = [...obSelectedTags];
+    obRenderApplyTags();
+    obShowStep(3);
+  });
   $('ob-back2-btn').addEventListener('click', () => obShowStep(2));
   $('ob-submit-btn').addEventListener('click', obExecuteImport);
 

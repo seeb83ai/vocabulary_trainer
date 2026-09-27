@@ -170,6 +170,29 @@ func TestImportPreview_ValidTag(t *testing.T) {
 	}
 }
 
+func TestImportPreview_MultipleTagsCountsUniqueWords(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "一", "yī", nil, nil, []string{"hsk2-1", "hsk3-1"})
+	seedWordFull(t, s, 1, "人", "rén", nil, nil, []string{"hsk3-1"})
+	seedWordFull(t, s, 1, "时间", "shí jiān", nil, nil, []string{"hsk2-1"})
+	seedWordFull(t, s, 1, "已经", "yǐ jīng", nil, nil, []string{"hsk3-3"})
+	seedCedictEntry(t, s, "一", "en", "one")
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/preview?tag=hsk2-1&tag=hsk3-1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Total int `json:"total"`
+	}
+	decodeJSON(t, rec, &resp)
+	// 一 is in both lists but counts once.
+	if resp.Total != 3 {
+		t.Errorf("want total 3, got %d", resp.Total)
+	}
+}
+
 func TestImportPreview_UnknownTag(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "GET", "/api/import/preview?tag=nonexistent", nil)

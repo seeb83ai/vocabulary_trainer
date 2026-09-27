@@ -73,15 +73,22 @@ func (h *ImportHandler) SourceTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tags)
 }
 
-// Preview returns a brief summary of words that would be imported for a given tag.
+// Preview returns a brief summary of words that would be imported for one or
+// more tags (?tag=a&tag=b). A word in several of the tags counts once.
 func (h *ImportHandler) Preview(w http.ResponseWriter, r *http.Request) {
-	tag := strings.TrimSpace(r.URL.Query().Get("tag"))
-	if tag == "" {
+	var tags []string
+	for _, tg := range r.URL.Query()["tag"] {
+		if tg = strings.TrimSpace(tg); tg != "" {
+			tags = append(tags, tg)
+		}
+	}
+	if len(tags) == 0 {
 		writeError(w, http.StatusBadRequest, "tag is required")
 		return
 	}
+	tag := strings.Join(tags, ",")
 
-	words, total, err := h.Store.GetWords(r.Context(), sourceUserID, "", 1, 0, "", "", []string{tag}, false, false, "", "", "")
+	words, total, err := h.Store.GetWords(r.Context(), sourceUserID, "", 1, 0, "", "", tags, false, false, "", "", "")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load preview")
 		return

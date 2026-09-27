@@ -77,6 +77,8 @@ const I18N = {
     'empty.quickStartQuestion': 'How much Chinese do you know?',
     'empty.qsBeginner': "I'm new — start with HSK 1",
     'empty.qsBasics': 'I know the basics — HSK 2–3',
+    'empty.qsVersion3': 'HSK 3.0 (new)',
+    'empty.qsVersion2': 'HSK 2.0 (old)',
     'empty.qsCustom': 'Let me choose word lists myself',
     'empty.qsImporting': 'Importing your word list…',
     'empty.qsFailed': 'Import failed. Please pick a list manually below.',
@@ -206,7 +208,7 @@ const I18N = {
 
     // Import tab
     'vocab.importWords': 'Import',
-    'vocab.importPickTag': 'Select a tag to import from the shared library:',
+    'vocab.importPickTag': 'Select one or more tags to import from the shared library:',
     'vocab.importLoadingTags': 'Loading tags…',
     'vocab.next': 'Next',
     'vocab.importPickLangs': 'Which translations do you want to import?',
@@ -223,9 +225,10 @@ const I18N = {
     'vocab.importPreviewWords': 'words',
     'vocab.importing': 'Importing…',
     'vocab.importSkipped': 'skipped',
-    'vocab.importAlreadyOwned': 'already in your vocabulary',
     'vocab.importDone': 'Imported',
     'vocab.importWords2': 'word(s)',
+    'vocab.importTagged': 'tagged',
+    'vocab.importTaggedOwned': 'word(s) you already had',
 
     // Download modal
     'download.title': 'Download Vocabulary',
@@ -500,7 +503,7 @@ const I18N = {
     'landing.hero.feature3.bold': 'Character breakdowns and movie-method mnemonics',
     'landing.hero.feature3.rest': 'help you remember words long term.',
     'landing.hero.tryDemo': 'Try five cards first →',
-    'landing.hero.footnote': 'Free · Open source · HSK 1–6 word lists included',
+    'landing.hero.footnote': 'Free · Open source · HSK 2.0 & 3.0 word lists included',
 
     'landing.demo.title': 'Try it — no account needed',
     'landing.demo.subtitle': 'Translate five Chinese words to see how the trainer works.',
@@ -548,7 +551,7 @@ const I18N = {
     'landing.teaser.stats.summary': 'Daily attempts, accuracy and streaks, plus per-word statistics, your five hardest words and how many reviews are due on each of the next 30 days.',
     'landing.teaser.vocabulary.category': 'Your word list',
     'landing.teaser.vocabulary.title': 'HSK lists in, or your own words',
-    'landing.teaser.vocabulary.summary': 'Start with HSK 1–6 in one click, or add words yourself — the Translate button fills in pinyin and meanings. Tag anything, filter by tag, and train just that set.',
+    'landing.teaser.vocabulary.summary': 'Start with an HSK 3.0 or HSK 2.0 list in one click, or add words yourself — the Translate button fills in pinyin and meanings. Tag anything, filter by tag, and train just that set.',
     'landing.teaser.vendor-lock-in.category': 'Your data',
     'landing.teaser.vendor-lock-in.title': 'No vendor lock-in',
     'landing.teaser.vendor-lock-in.summary': 'Import new words at any time, export all your words and translations and progress, for free.',
@@ -851,6 +854,8 @@ const I18N = {
     'empty.quickStartQuestion': '你的中文水平如何？',
     'empty.qsBeginner': '我是新手——从 HSK 1 开始',
     'empty.qsBasics': '我有基础——HSK 2–3',
+    'empty.qsVersion3': 'HSK 3.0（新）',
+    'empty.qsVersion2': 'HSK 2.0（旧）',
     'empty.qsCustom': '让我自己选择词汇表',
     'empty.qsImporting': '正在导入词汇表……',
     'empty.qsFailed': '导入失败，请在下方手动选择词汇表。',
@@ -980,7 +985,7 @@ const I18N = {
 
     // Import tab
     'vocab.importWords': '导入',
-    'vocab.importPickTag': '从共享库中选择一个标签导入：',
+    'vocab.importPickTag': '从共享库中选择一个或多个标签导入：',
     'vocab.importLoadingTags': '加载标签中…',
     'vocab.next': '下一步',
     'vocab.importPickLangs': '您希望导入哪些翻译？',
@@ -997,9 +1002,10 @@ const I18N = {
     'vocab.importPreviewWords': '个词汇',
     'vocab.importing': '导入中…',
     'vocab.importSkipped': '跳过',
-    'vocab.importAlreadyOwned': '已在您的词汇中',
     'vocab.importDone': '已导入',
     'vocab.importWords2': '个词汇',
+    'vocab.importTagged': '已为',
+    'vocab.importTaggedOwned': '个已有词汇添加标签',
 
     // Download modal
     'download.title': '下载词汇',
@@ -1274,7 +1280,7 @@ const I18N = {
     'landing.hero.feature3.bold': '汉字拆解与电影记忆法',
     'landing.hero.feature3.rest': '帮助你长期记住词汇。',
     'landing.hero.tryDemo': '先试玩五张卡片 →',
-    'landing.hero.footnote': '免费 · 开源 · 内置 HSK 1–6 词表',
+    'landing.hero.footnote': '免费 · 开源 · 内置 HSK 2.0 和 3.0 词表',
 
     'landing.demo.title': '立即试玩——无需注册',
     'landing.demo.subtitle': '翻译五个中文词，看看这个训练工具如何运作。',
@@ -1322,7 +1328,7 @@ const I18N = {
     'landing.teaser.stats.summary': '每日练习次数、准确率与连续天数，加上每个词的单独统计、你最难的五个词，以及未来30天每天到期的复习数量。',
     'landing.teaser.vocabulary.category': '你的词表',
     'landing.teaser.vocabulary.title': '导入 HSK 词表，或添加自己的词',
-    'landing.teaser.vocabulary.summary': '一键导入 HSK 1–6，或自己添加词汇——翻译按钮会自动填写拼音和释义。为词汇打标签、按标签筛选，只训练特定的一组词。',
+    'landing.teaser.vocabulary.summary': '一键导入 HSK 3.0 或 HSK 2.0 词表，或自己添加词汇——翻译按钮会自动填写拼音和释义。为词汇打标签、按标签筛选，只训练特定的一组词。',
     'landing.teaser.vendor-lock-in.category': '你的数据',
     'landing.teaser.vendor-lock-in.title': '不被任何平台锁定',
     'landing.teaser.vendor-lock-in.summary': '随时导入新词，免费导出你的全部词汇、翻译和学习进度。',
@@ -1625,6 +1631,8 @@ const I18N = {
     'empty.quickStartQuestion': 'Wie gut kannst du schon Chinesisch?',
     'empty.qsBeginner': 'Ich bin neu — fang mit HSK 1 an',
     'empty.qsBasics': 'Ich kann die Grundlagen — HSK 2–3',
+    'empty.qsVersion3': 'HSK 3.0 (neu)',
+    'empty.qsVersion2': 'HSK 2.0 (alt)',
     'empty.qsCustom': 'Ich wähl die Wortlisten lieber selbst',
     'empty.qsImporting': 'Deine Wortliste wird importiert…',
     'empty.qsFailed': 'Import fehlgeschlagen. Wähl unten bitte manuell eine Liste.',
@@ -1754,7 +1762,7 @@ const I18N = {
 
     // Import tab
     'vocab.importWords': 'Import',
-    'vocab.importPickTag': 'Wähl einen Tag aus der geteilten Bibliothek zum Importieren:',
+    'vocab.importPickTag': 'Wähl einen oder mehrere Tags aus der geteilten Bibliothek zum Importieren:',
     'vocab.importLoadingTags': 'Tags werden geladen…',
     'vocab.next': 'Weiter',
     'vocab.importPickLangs': 'Welche Übersetzungen möchtest du importieren?',
@@ -1771,9 +1779,10 @@ const I18N = {
     'vocab.importPreviewWords': 'Wörter',
     'vocab.importing': 'Wird importiert…',
     'vocab.importSkipped': 'übersprungen',
-    'vocab.importAlreadyOwned': 'schon in deinen Vokabeln',
     'vocab.importDone': 'Importiert',
     'vocab.importWords2': 'Wort/Wörter',
+    'vocab.importTagged': 'getaggt:',
+    'vocab.importTaggedOwned': 'Wort/Wörter, die du schon hattest',
 
     // Download modal
     'download.title': 'Vokabeln herunterladen',
@@ -2048,7 +2057,7 @@ const I18N = {
     'landing.hero.feature3.bold': 'Zeichen-Zerlegungen und Eselsbrücken nach der Movie Method',
     'landing.hero.feature3.rest': 'helfen dir, Wörter langfristig zu behalten.',
     'landing.hero.tryDemo': 'Erst mal fünf Karten testen →',
-    'landing.hero.footnote': 'Kostenlos · Open Source · HSK-1–6-Wortlisten dabei',
+    'landing.hero.footnote': 'Kostenlos · Open Source · HSK-2.0- und -3.0-Wortlisten dabei',
 
     'landing.demo.title': 'Ausprobieren — kein Konto nötig',
     'landing.demo.subtitle': 'Übersetz fünf chinesische Wörter und schau, wie der Trainer funktioniert.',
@@ -2096,7 +2105,7 @@ const I18N = {
     'landing.teaser.stats.summary': 'Tägliche Versuche, Trefferquote und Serien, dazu Statistiken pro Wort, deine fünf schwersten Wörter und wie viele Wiederholungen an jedem der nächsten 30 Tage anstehen.',
     'landing.teaser.vocabulary.category': 'Deine Wortliste',
     'landing.teaser.vocabulary.title': 'HSK-Listen rein — oder deine eigenen Wörter',
-    'landing.teaser.vocabulary.summary': 'Starte mit HSK 1–6 per Klick oder füg eigene Wörter hinzu — der Übersetzen-Button füllt Pinyin und Bedeutung gleich mit aus. Tagge alles, filter nach Tag und trainier genau diese Auswahl.',
+    'landing.teaser.vocabulary.summary': 'Starte per Klick mit einer HSK-3.0- oder HSK-2.0-Liste oder füg eigene Wörter hinzu — der Übersetzen-Button füllt Pinyin und Bedeutung gleich mit aus. Tagge alles, filter nach Tag und trainier genau diese Auswahl.',
     'landing.teaser.vendor-lock-in.category': 'Deine Daten',
     'landing.teaser.vendor-lock-in.title': 'Keine Abhängigkeit von einem Anbieter',
     'landing.teaser.vendor-lock-in.summary': 'Importier jederzeit neue Wörter und exportier alle deine Wörter, Übersetzungen und Fortschritte — kostenlos.',

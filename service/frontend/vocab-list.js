@@ -31,7 +31,7 @@ let compSearchTimer = null;
 let compReviewFilterActive = false;
 
 // Import tab state
-let importSelectedTag = '';
+let importSelectedTags = [];
 let importApplyTags = [];
 let importSourceTagsLoaded = false;
 let importAllTags = [];          // full tag list from server
@@ -599,7 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('import-next-btn').addEventListener('click', () => showImportStep(2));
   $('import-back1-btn').addEventListener('click', () => showImportStep(1));
   $('import-next2-btn').addEventListener('click', () => {
-    importApplyTags = importSelectedTag ? [importSelectedTag] : [];
+    importApplyTags = [...importSelectedTags];
     renderImportApplyTags();
     showImportStep(3);
   });

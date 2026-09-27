@@ -28,14 +28,34 @@ test.describe('One-button onboarding', () => {
     await expect(page.locator('#ob-quickstart')).toBeVisible();
     // The detailed tag picker stays hidden behind the "choose myself" option.
     await expect(page.locator('#ob-step1')).toBeHidden();
+    // HSK 3.0 is the default version.
+    await expect(page.locator('#ob-qs-version-3')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#ob-qs-version-2')).toHaveAttribute('aria-pressed', 'false');
+    await captureForPR(page, 'train-onboarding-hsk-version-toggle');
 
-    await page.locator('#ob-qs-hsk1').click();
+    await page.locator('#ob-qs-beginner').click();
 
     // Import runs, then the first card appears — for a fresh user that is
     // the new-word introduction screen.
     await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('#new-word-zh')).not.toBeEmpty();
     await expect(page.locator('#empty-state')).toBeHidden();
+
+    const tags = await page.evaluate(() => fetch('/api/tags').then(r => r.json()));
+    expect(tags).toEqual(['hsk3-1']);
+  });
+
+  test('the version toggle switches the quick start to HSK 2.0', async ({ page }) => {
+    await registerFreshUser(page);
+
+    await expect(page.locator('#ob-quickstart')).toBeVisible({ timeout: 10_000 });
+    await page.locator('#ob-qs-version-2').click();
+    await expect(page.locator('#ob-qs-version-2')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#ob-qs-basics').click();
+
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 15_000 });
+    const tags = await page.evaluate(() => fetch('/api/tags').then(r => r.json()));
+    expect(tags).toEqual(['hsk2-2']);
   });
 
   test('the custom option reveals the existing tag picker', async ({ page }) => {
@@ -46,6 +66,39 @@ test.describe('One-button onboarding', () => {
 
     await expect(page.locator('#ob-step1')).toBeVisible();
     await expect(page.locator('#ob-quickstart')).toBeHidden();
+  });
+
+  test('the custom picker imports several lists at once and each word keeps its own list tag', async ({ page }) => {
+    await registerFreshUser(page);
+
+    await expect(page.locator('#ob-quickstart')).toBeVisible({ timeout: 10_000 });
+    await page.locator('#ob-qs-custom').click();
+    await expect(page.locator('#ob-step1')).toBeVisible();
+
+    await page.locator('#ob-tag-list button', { hasText: /^hsk3-1$/ }).click();
+    await page.locator('#ob-tag-list button', { hasText: /^hsk2-2$/ }).click();
+    await expect(page.locator('#ob-tag-list button[aria-pressed="true"]')).toHaveCount(2);
+    // Preview counts the unique words of both lists: 一, 人 + 时间, 已经.
+    await expect(page.locator('#ob-preview-stats')).toContainText('4', { timeout: 10_000 });
+    await captureForPR(page, 'train-onboarding-custom-multi-select');
+
+    await page.locator('#ob-next-btn').click();
+    await page.locator('#ob-next2-btn').click();
+    await expect(page.locator('#ob-step3')).toBeVisible();
+    await expect(page.locator('#ob-apply-tags')).toContainText('hsk3-1');
+    await expect(page.locator('#ob-apply-tags')).toContainText('hsk2-2');
+    await page.locator('#ob-submit-btn').click();
+
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 15_000 });
+
+    const words = await page.evaluate(() => fetch('/api/words/?per_page=50').then(r => r.json()));
+    const tagsByWord = Object.fromEntries(words.words.map(w => [w.zh_text, w.tags]));
+    expect(tagsByWord).toEqual({
+      '一': ['hsk3-1'],
+      '人': ['hsk3-1'],
+      '时间': ['hsk2-2'],
+      '已经': ['hsk2-2'],
+    });
   });
 
   // Issue #344: bulk-importing a large word list (e.g. 20+ HSK1 words) used
