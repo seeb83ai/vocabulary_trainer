@@ -462,6 +462,13 @@ type TagDetail struct {
 	WordCount      int      `json:"word_count,omitempty"`
 }
 
+// TopicCandidate is a word to classify into topic lists: the zh text and its
+// first CC-CEDICT English gloss (empty when CEDICT has none).
+type TopicCandidate struct {
+	Zh string
+	En string
+}
+
 type UpsertTagMetaRequest struct {
 	Description string `json:"description"`
 	Importable  bool   `json:"importable"`

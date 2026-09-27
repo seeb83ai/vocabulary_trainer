@@ -270,6 +270,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-cedict/main.go` | Import CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for sub-word segmentation + free dictionary lookup |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 | `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
+| `service/cmd/classify-topics/main.go` | Sort HSK + top-frequency words into `data/topics/<topic>.csv` lists with Claude (resumable) |
 
 ### E2E tests (`e2e/`)
 | Path | Purpose |
