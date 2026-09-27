@@ -4,7 +4,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Features
 
-- **One-button onboarding.** When a new account opens the training page with no vocabulary and the shared library offers HSK lists, the empty state asks "How much Chinese do you know?" and offers one-click starts: *I'm new — start with HSK 1* and *I know the basics — HSK 2–3*. One click imports the list and shows the first new-word introduction immediately. A third option, *Let me choose word lists myself*, opens the existing tag picker with language filters and preview. Every import path (quick-start or custom) leaves the imported words unseen so they are introduced one at a time through the normal daily new-word cap, just like a manually-added word — a bulk import never floods the first session with dozens of never-practiced words at once.
+- **One-button onboarding.** When a new account opens the training page with no vocabulary and the shared library offers HSK lists, the empty state asks "How much Chinese do you know?" and offers one-click starts: *I'm new — start with HSK 1* and *I know the basics — HSK 2–3*. A toggle above the buttons selects the HSK version: **HSK 3.0** (2025 syllabus, default) or **HSK 2.0**. One click imports the list and shows the first new-word introduction immediately. A third option, *Let me choose word lists myself*, opens the tag picker with language filters and preview. In this picker, and in **Vocabulary → Import**, you can select more than one list. Each imported word gets the tag of its own list. If you already have a word, the import does not add it again. It only adds the tag of the new list to your word. Every import path (quick-start or custom) leaves the imported words unseen so they are introduced one at a time through the normal daily new-word cap, just like a manually-added word — a bulk import never floods the first session with dozens of never-practiced words at once.
 - **Landing page for signed-out visitors.** The root page (`/`) shows the value proposition — spaced repetition, native audio and pinyin drills, character mnemonics — next to the sign-in/register card, with a "Create free account" call to action. The page carries SEO and Open Graph meta tags so it can be found and shared.
 - **Try-before-signup demo quiz.** Signed-out visitors can answer five fixed demo cards (Chinese + pinyin → English) directly on the root page, with no account. Answers are checked server-side with the same flexible matching logic as the real quiz, wrong answers reveal the accepted translations, and finishing the demo leads to a "Create free account" prompt. The endpoints (`GET /api/demo/cards`, `POST /api/demo/answer`) are public, stateless, and store nothing.
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
@@ -36,7 +36,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - **Blur pinyin.** This optional setting is in Settings → Training Mode → Quiz Display. It blurs the pinyin hint on quiz cards, so you cannot read it at a glance. Tap or click the hint to reveal it. The hint blurs again on the next card.
 - **Bucket growth indicator.** The result screen shows one growth icon (🌰🌱🌿🌳🌸) for each accuracy tier: New, Struggling, Learning, Practicing, or Mastered. The icon marks the current tier of a word, HMM entity, or component, on both correct and wrong answers.
   - **Celebrate bucket changes** is an optional setting, off by default, in Settings → Training Mode → Quiz Display. When a correct answer advances a word's tier, this setting shows a full-screen "Level up!" interstitial before the result screen. The old tier's icon dissolves into the new one.
-- **Sentence fill-in-the-blank.** An optional training mode, off by default, in Settings → Training Mode → Quiz Display ("Sentence fill-in-the-blank" + a frequency percentage). Tag a zh word with an `s_`-prefixed tag (for example `s_hsk1`) to mark it as a sentence. When enabled, the training page occasionally shows one of your sentences with one word blanked out instead of a plain word card — either the Chinese word is blanked (translation shown as context) or a word inside the sentence's translation is blanked (Chinese shown as context), following the same direction logic as progressive mode. A sentence only becomes eligible once every word it contains (punctuation aside — commas, quotation marks, etc. are skipped) has been reviewed at least once, and the app always blanks whichever of those words is next due, so the mode reinforces words you already know in context. Answering updates that word's own SM-2 progress, the same as answering it in a normal quiz card would.
+- **Sentence fill-in-the-blank.** An optional training mode, off by default, in Settings → Training Mode → Quiz Display ("Sentence fill-in-the-blank" + a frequency percentage). Tag a zh word with an `s_`-prefixed tag (for example `s_hsk2-1`) to mark it as a sentence. When enabled, the training page occasionally shows one of your sentences with one word blanked out instead of a plain word card — either the Chinese word is blanked (translation shown as context) or a word inside the sentence's translation is blanked (Chinese shown as context), following the same direction logic as progressive mode. A sentence only becomes eligible once every word it contains (punctuation aside — commas, quotation marks, etc. are skipped) has been reviewed at least once, and the app always blanks whichever of those words is next due, so the mode reinforces words you already know in context. Answering updates that word's own SM-2 progress, the same as answering it in a normal quiz card would.
 - **Translation ranking.** An optional setting in Settings → Training Mode → Quiz Display ("Hide rare translations during training") — preselected for newly registered users, with max translations shown defaulting to 4 (existing users keep whatever they already had, off by default). CC-CEDICT/HanDeDict-derived translations are ranked by how common each gloss's rarest word is, using bundled English/German word-frequency lists (from [hermitdave/FrequencyWords](https://github.com/hermitdave/FrequencyWords), same source as the existing Chinese frequency list). When enabled, only the top N translations per language (configurable) are shown directly on quiz cards; translations you added or edited yourself are prioritized into that visible set first, but still count against the cap like any other translation. Anything over the cap is collapsed into a "More info" toggle right below the visible list (both on the question screen's translation hint and on the answer-result screen), so you can still see it on demand instead of it being silently dropped — and it always stays a valid answer, cap or no cap. On the *Translation → Chinese* question screen specifically, and in the gray question box on the "Ambiguous" screen (where you still have to type the Chinese answer), CEDICT/HanDeDict example-sentence annotations are left out of "More info" entirely (rather than just collapsed), since an example sentence can contain the Chinese answer you're about to type; they still show in "More info" everywhere else (new-word introduction, answer-result screen). A separate "Also hide translations with no frequency data" toggle controls whether a gloss with no match in the frequency list counts as low-priority (collapsed if over the cap) or is prioritized into the visible set like your own translations — off by default. A "My own translations" dropdown (only active while ranking is on) sets where your own translations go: "Show first" (default) orders them your own → no frequency data → ranked; "Show last" orders them ranked → no frequency data → your own, so your own translations can end up in "More info" when the cap is reached. Within each language's shown list, a trailing short HanDeDict/CEDICT part-of-speech tag like `(S)` or `(V)` is hidden, and an exact duplicate gloss (case-insensitive, after that tag is hidden) is collapsed to a single entry — this is display-only and does not change the cap, the "More info" list, or which answers are accepted.
 - **Pinyin-only translations are hidden.** Some dictionary glosses are only the pinyin of the word, for example the surname gloss "Nan (Eig, Fam)" for 南 nán. Training does not show such a translation, and does not use it as the *Translation → Chinese* prompt or as a match-game answer. The check ignores case, tone marks, spaces and parts in brackets. If this translation is the only one in a language, training shows it. The translation stays a valid answer, and the vocabulary editor still shows it.
 - **Tags.** You can assign tags to vocabulary words, for example "HSK1", "food", or "travel". You can filter by tag on the vocabulary list and the training page. When you select multiple tags, the app applies OR logic. An autocomplete input creates tags on the fly, and the app removes unused tags automatically.
@@ -53,7 +53,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - **Hanzi Movie Method mnemonics.** For single-character words, a mnemonic scene builder based on the [Hanzi Movie Method](https://www.mandarinblueprint.com/blog/movie-method/) helps you memorize characters. It maps pinyin initials to **actors**, finals to **locations**, tones to **rooms**, and radicals to **props**. Configure your personal library at `/mnemonics`, and compose scenes in the vocabulary edit form. Saved scenes appear automatically during training: expanded on wrong answers, and collapsed on correct answers. The app remembers your choices globally, so setting an actor for "b" once pre-fills it everywhere. You can also write mnemonic scenes for component characters (radicals and sub-parts) on the component edit tab of the `/vocab` page. Component quiz result cards show these scenes the same way as word scenes.
 - **Component training coverage target.** Settings (`/settings`) has a "Component Training" card with a target word-coverage percentage (0–100%, default 0 = no filtering). When a new word starts training, only enough hanzi components are added to your training rotation to cover that share of your current Chinese vocabulary — greedily picking, each step, whichever not-yet-trained component unlocks the most words you haven't covered yet, until the target is reached (or every qualifying component is exhausted). The card shows only a summary, not a full component list: how many components you are already training right now (independent of the previewed target); how many of every qualifying component would be added to reach the currently-typed target, both as a count and as a share; and, of your already-trained components, how many exceed what's needed for that target and so would not have been added if you were starting fresh at this level — informational only, since components already being trained are never removed by this setting; it only affects future additions.
 - **Pinyin listening training.** The `/pinyin` page trains tone and sound discrimination. You hear a pinyin syllable and identify it: by multiple choice in the learning phase, or by typing an answer, for example `ba1`, in the review phase. SM-2 spaced repetition tracks your progress per sound, across about 1,600 syllable and tone combinations from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. You can filter by consonant group, for example b/p/m/f or zh/ch/sh/r. The page also tracks confusion between commonly mixed-up sounds.
-- HSK vocabulary import (HSK 1-6) fetches vocabulary directly from mandarinbean.com and applies `hsk-N` tags automatically. See `service/cmd/import-hsk`.
+- HSK word lists for the shared library: HSK 2.0 (tags `hsk2-1` to `hsk2-6`) and HSK 3.0, 2025 syllabus (tags `hsk3-1` to `hsk3-6`, and `hsk3-7` for the combined levels 7–9). See `service/cmd/import-hsk`.
 - Optional single-user password protection. Set `AUTH_USER` and `AUTH_PASSWORD` in `.env`.
 - The app stores its SQLite database on the host filesystem.
 - The app runs in Docker or natively. The static frontend is embedded in the Go binary, so the app needs no Python or other external tools.
@@ -415,7 +415,7 @@ When you configure a local model, it takes precedence over any cloud API keys th
 | `make dev` | Run locally without Docker (requires Go 1.24+) |
 | `make tidy` | Tidy Go module dependencies |
 | `make import` | Import vocabulary from a text file (see below) |
-| `make import-hsk` | Fetch and import HSK 1-6 vocabulary from mandarinbean.com (see below) |
+| `make import-hsk` | Import an HSK word list into the shared library (`VERSION=3` or `VERSION=2`, see below) |
 | `make import-pinyin` | Import pinyin audio files for listening training (see below) |
 | `make import-frequency` | Import an alternative/updated Chinese word-frequency list used to order new-word introduction — the bundled list is already auto-imported on startup (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
@@ -448,26 +448,29 @@ Duplicate detection prevents the app from re-inserting entries where both the Ch
 
 ## HSK vocabulary import
 
-This tool fetches vocabulary directly from [mandarinbean.com](https://mandarinbean.com) and inserts it into the database. It tags each word `hsk-1` through `hsk-6`. If a word already exists, the tool still applies the tag. If the exact Chinese-English pair already exists, the tool skips the row.
+This tool adds an HSK word list to the shared library user (id=1). Users then import the list from the library on the training page or in **Vocabulary → Import**.
+
+The source is `complete.json` from [drkameleon/complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary) (MIT licence). The tool downloads the file, or reads a local copy with `-file`.
+
+| `-version` | List | Tags |
+|---|---|---|
+| `3` (default) | HSK 3.0, 2025 syllabus | `hsk3-1` … `hsk3-6`, `hsk3-7` (levels 7–9) |
+| `2` | HSK 2.0 | `hsk2-1` … `hsk2-6` |
+
+The library stores only the Chinese word, the pinyin and the tag. Translations come from CC-CEDICT/HanDeDict (see `make import-cedict`) when a user imports a list. If a word is already in the library, the tool does not add it again. It only adds the tag. The tool marks each tag as importable and gives it a description, for example "HSK 3.0 – Level 1". You can run the tool again safely.
 
 ```bash
-# Import all HSK levels (1-6)
+# Import HSK 3.0 (2025 syllabus)
 make import-hsk
 
-# Import only HSK 1 and 2
-make import-hsk LEVELS=1,2
-
-# Import with German translations (requires DEEPL_API_KEY)
-DEEPL_API_KEY=your-key go run ./service/cmd/import-hsk -lang de
+# Import HSK 2.0
+make import-hsk VERSION=2
 
 # Custom DB path
 make import-hsk DB=/path/to/vocab.db
 
-# Preview without writing
-go run ./service/cmd/import-hsk -dry-run
-
-# Single level, dry-run
-go run ./service/cmd/import-hsk -levels 3 -dry-run
+# Use a local copy of complete.json and preview without writing
+go run ./service/cmd/import-hsk -file complete.json -dry-run
 ```
 
 Flags:
@@ -475,11 +478,12 @@ Flags:
 | Flag | Default | Description |
 |---|---|---|
 | `-db` | `data/vocab.db` | Path to SQLite database |
-| `-levels` | `1,2,3,4,5,6` | Comma-separated HSK levels to import |
-| `-lang` | `en` | DeepL target language code (e.g. `de`, `fr`, `es`); requires `DEEPL_API_KEY` env var |
-| `-dry-run` | false | Parse and check duplicates without writing |
+| `-version` | `3` | HSK version: `3` (HSK 3.0, 2025 syllabus) or `2` (HSK 2.0) |
+| `-file` | – | Read `complete.json` from this file instead of downloading it |
+| `-url` | GitHub raw URL | Download URL of `complete.json` |
+| `-dry-run` | false | Show what would change without writing |
 
-When you set `-lang` to anything other than `en`, the tool translates each English translation from the source table with the [DeepL API](https://www.deepl.com/en/products/api) before storing it. The tool always stores translations as `language='en'` rows, so the existing quiz logic works unchanged. If `DEEPL_API_KEY` is not set, the tool uses the original English text and prints a warning.
+Older versions of the app used the tags `hsk1` … `hsk6` for HSK 2.0. A migration renames them to `hsk2-1` … `hsk2-6` (and `s_hsk1` … to `s_hsk2-1` …) for all users, and updates saved training filters.
 
 ## Word-frequency import
 
@@ -714,7 +718,7 @@ vocabulary_trainer/
 │   │   ├── cedict.go        # CC-CEDICT/HanDeDict segmentation, sub-word auto-creation, dictionary lookup
 │   │   └── pinyin.go        # Data access layer — pinyin listening
 │   ├── cmd/import/main.go   # Standalone vocabulary import tool (text file)
-│   ├── cmd/import-hsk/main.go # HSK vocabulary import from mandarinbean.com
+│   ├── cmd/import-hsk/main.go # HSK 2.0/3.0 word lists into the shared library
 │   ├── cmd/import-hanzi/main.go # makemeahanzi character decomposition import
 │   ├── cmd/import-cedict/main.go # CC-CEDICT/HanDeDict bilingual dictionary import
 │   ├── cmd/import-pinyin/main.go # Pinyin audio import tool

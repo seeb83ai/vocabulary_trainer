@@ -319,7 +319,9 @@ export default async function globalSetup() {
 
   // ── 9. Seed the shared library user (id=1) with importable HSK tags ─────────
   // The one-button onboarding on the empty training page offers "start with
-  // HSK 1 / HSK 2–3" quick-start imports from this library.
+  // HSK 1 / HSK 2–3" quick-start imports from this library, for HSK 3.0
+  // (hsk3-N, default) or HSK 2.0 (hsk2-N). Words shared by both lists carry
+  // both tags, like the real library built by cmd/import-hsk.
   const adminLoginRes = await fetch(`${BASE_URL}/api/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -332,16 +334,16 @@ export default async function globalSetup() {
   const adminCookieHeader = adminCookies.map(c => `${c.name}=${c.value}`).join('; ');
 
   const libraryWords = [
-    { zh: '一', pinyin: 'yī', en: ['one'], tags: ['hsk1'] },
-    { zh: '人', pinyin: 'rén', en: ['person', 'people'], tags: ['hsk1'] },
-    { zh: '大', pinyin: 'dà', en: ['big', 'large'], tags: ['hsk1'] },
-    { zh: '时间', pinyin: 'shí jiān', en: ['time'], tags: ['hsk2'] },
-    { zh: '已经', pinyin: 'yǐ jīng', en: ['already'], tags: ['hsk2'] },
+    { zh: '一', pinyin: 'yī', en: ['one'], tags: ['hsk2-1', 'hsk3-1'] },
+    { zh: '人', pinyin: 'rén', en: ['person', 'people'], tags: ['hsk2-1', 'hsk3-1'] },
+    { zh: '大', pinyin: 'dà', en: ['big', 'large'], tags: ['hsk2-1', 'hsk3-2'] },
+    { zh: '时间', pinyin: 'shí jiān', en: ['time'], tags: ['hsk2-2', 'hsk3-2'] },
+    { zh: '已经', pinyin: 'yǐ jīng', en: ['already'], tags: ['hsk2-2', 'hsk3-3'] },
   ];
   for (const word of libraryWords) {
     await seedWord(BASE_URL, adminCookieHeader, word, false);
   }
-  for (const tag of ['hsk1', 'hsk2']) {
+  for (const tag of ['hsk2-1', 'hsk2-2', 'hsk3-1', 'hsk3-2', 'hsk3-3']) {
     const tagRes = await fetch(`${BASE_URL}/api/tags/${tag}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Cookie: adminCookieHeader },
@@ -351,7 +353,7 @@ export default async function globalSetup() {
       throw new Error(`Marking ${tag} importable failed (${tagRes.status}): ${await tagRes.text()}`);
     }
   }
-  console.log('[E2E] Seeded importable library words (hsk1, hsk2) for user 1');
+  console.log('[E2E] Seeded importable library words (hsk2-1..2, hsk3-1..3) for user 1');
 
   console.log('[E2E] Global setup complete ✓');
 }

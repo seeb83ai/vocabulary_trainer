@@ -245,6 +245,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/frontend/vocab-list.js` | Word table/pagination/filters, page init |
 | `service/frontend/vocab-form.js` | Add/edit/delete word form, translate/pinyin lookup |
 | `service/frontend/vocab-tags.js` | Tag autocomplete for the edit form |
+| `service/frontend/import-lists.js` | Shared library-list import helpers (multi-select, HSK version quick start) for onboarding and Vocabulary → Import |
 | `service/frontend/vocab-import.js` | CSV upload and tag-based import |
 | `service/frontend/vocab-download.js` | Vocabulary export/download |
 | `service/frontend/vocab-components.js` | Components tab (hanzi component list/edit) |
@@ -260,7 +261,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | Path | Purpose |
 |---|---|
 | `service/cmd/import/main.go` | Standalone vocabulary import tool |
-| `service/cmd/import-hsk/main.go` | Import HSK word lists |
+| `service/cmd/import-hsk/main.go` | Import HSK 2.0 (`hsk2-N`) / HSK 3.0 (`hsk3-N`) word lists into the shared library user |
 | `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
 | `service/cmd/import-hanzi/main.go` | Import hanzi decomposition dataset |
 | `service/cmd/import-cedict/main.go` | Import CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for sub-word segmentation + free dictionary lookup |
@@ -276,6 +277,8 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
+| `e2e/onboarding.spec.js` | Browser tests: quick-start HSK version toggle, multi-select custom import |
+| `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
 

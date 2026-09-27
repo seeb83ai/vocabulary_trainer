@@ -193,53 +193,50 @@ function renderImportTagPills() {
   const list = $('import-tag-list');
   list.innerHTML = '';
   const visible = importAllTags.filter(importTagMatchesFilter);
+  // Selected lists that a filter now hides are dropped from the selection.
+  const visibleNames = visible.map(tg => tg.name);
+  const kept = importSelectedTags.filter(n => visibleNames.includes(n));
+  const selectionChanged = kept.length !== importSelectedTags.length;
+  importSelectedTags = kept;
   if (visible.length === 0) {
     list.innerHTML = `<span class="text-sm text-gray-400">${escHtml(importAllTags.length === 0 ? t('vocab.importNoTags') : t('vocab.importNoTagsMatch'))}</span>`;
-    // If selected tag is now hidden, clear selection and preview.
-    if (importSelectedTag) {
-      importSelectedTag = '';
-      $('import-next-btn').disabled = true;
-      hide('import-preview');
-    }
-    return;
   }
-  let selectedStillVisible = false;
   for (const tag of visible) {
     const pill = document.createElement('button');
     pill.type = 'button';
     pill.dataset.tagName = tag.name;
-    const isSelected = tag.name === importSelectedTag;
-    if (isSelected) selectedStillVisible = true;
+    const isSelected = importSelectedTags.includes(tag.name);
+    pill.setAttribute('aria-pressed', String(isSelected));
     pill.className = 'import-source-tag px-3 py-1 rounded-full text-sm font-medium border transition ' +
       (isSelected
         ? 'bg-blue-600 text-white border-blue-600'
         : 'border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600');
     pill.textContent = tag.name;
     if (tag.description) pill.title = tag.description;
-    pill.addEventListener('click', () => selectImportSourceTag(tag, pill));
+    pill.addEventListener('click', () => toggleImportSourceTag(tag));
     list.appendChild(pill);
   }
-  if (!selectedStillVisible && importSelectedTag) {
-    importSelectedTag = '';
-    $('import-next-btn').disabled = true;
-    hide('import-preview');
-  }
+  if (selectionChanged) loadImportPreview();
 }
 
-async function selectImportSourceTag(tag) {
-  importSelectedTag = tag.name;
-  $('import-next-btn').disabled = true;
-  hide('import-preview');
+async function toggleImportSourceTag(tag) {
+  importSelectedTags = toggleListSelection(importSelectedTags, tag.name);
   renderImportTagPills();
-  await loadImportPreview(tag.name, tag.description);
+  await loadImportPreview();
 }
 
-async function loadImportPreview(tagName, tagDescription) {
+async function loadImportPreview() {
   const descEl = $('import-preview-desc');
   const statsEl = $('import-preview-stats');
   const tableWrap = $('import-preview-table-wrap');
   const tbody = $('import-preview-tbody');
 
+  $('import-next-btn').disabled = true;
+  if (importSelectedTags.length === 0) {
+    hide('import-preview');
+    return;
+  }
+  const requested = [...importSelectedTags];
   statsEl.textContent = t('vocab.importLoading');
   descEl.classList.add('hidden');
   tableWrap.classList.add('hidden');
@@ -247,11 +244,16 @@ async function loadImportPreview(tagName, tagDescription) {
   show('import-preview');
 
   try {
-    const data = await apiFetch('/api/import/preview?tag=' + encodeURIComponent(tagName));
+    const data = await apiFetch(importPreviewURL(requested));
+    // A newer selection has started its own preview; drop this result.
+    if (requested.join(',') !== importSelectedTags.join(',')) return;
 
     // Description line
-    if (tagDescription) {
-      descEl.textContent = tagDescription;
+    const descriptions = importAllTags
+      .filter(tg => requested.includes(tg.name) && tg.description)
+      .map(tg => tg.description);
+    if (descriptions.length > 0) {
+      descEl.textContent = descriptions.join(' · ');
       descEl.classList.remove('hidden');
     } else {
       descEl.classList.add('hidden');
@@ -357,23 +359,10 @@ async function executeImport() {
   show('import-status');
 
   try {
-    const result = await apiFetch('/api/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tag: importSelectedTag,
-        import_langs: [
-          ...($('import-en').checked ? ['en'] : []),
-          ...($('import-de').checked ? ['de'] : []),
-        ],
-        apply_tags: [...importApplyTags],
-      }),
-    });
-    const skippedNote = result.skipped > 0
-      ? `, ${t('vocab.importSkipped')} ${result.skipped} ${t('vocab.importAlreadyOwned')}`
-      : '';
+    const result = await importLists(importSelectedTags, importApplyTags,
+      $('import-en').checked, $('import-de').checked);
     statusEl.className = 'mt-3 text-sm text-green-600';
-    statusEl.textContent = `${t('vocab.importDone')} ${result.imported} ${t('vocab.importWords2')}${skippedNote}.`;
+    statusEl.textContent = importResultText(result);
     loadTags();
     loadWords();
   } catch (e) {
@@ -386,7 +375,7 @@ async function executeImport() {
 }
 
 function resetImportPanel() {
-  importSelectedTag = '';
+  importSelectedTags = [];
   importApplyTags = [];
   importFilterLangs = new Set();
   importFilterMode = 'any';

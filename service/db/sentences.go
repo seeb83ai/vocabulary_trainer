@@ -15,7 +15,7 @@ import (
 const sentenceBlankToken = "___"
 
 // sentenceTagLike is the SQL LIKE pattern (with its ESCAPE clause) that
-// identifies a "sentence" tag by the `s_` prefix convention (e.g. s_hsk1).
+// identifies a "sentence" tag by the `s_` prefix convention (e.g. s_hsk2-1).
 const sentenceTagLike = `s\_%' ESCAPE '\'`
 
 // wordSegment is one token produced by segmentSentence: the matched text and

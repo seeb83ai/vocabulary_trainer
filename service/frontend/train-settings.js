@@ -63,13 +63,6 @@ function applyTierPills() {
   }
 }
 
-// quickStartPlan decides which one-click onboarding buttons to offer for a
-// given list of importable library tag names.
-function quickStartPlan(tagNames) {
-  const has = n => tagNames.includes(n);
-  return { hsk1: has('hsk1'), hsk23: ['hsk2', 'hsk3'].filter(has) };
-}
-
 function applyMnemonicPill() {
   const active = includeMnemonics;
   const cls = active
