@@ -67,9 +67,9 @@ import-hsk:
 	mkdir -p data
 	cd service && go run ./cmd/import-hsk -db $(or $(DB),../data/vocab.db) -version $(or $(VERSION),3)
 
-## classify-topics: sort HSK + top-frequency words into data/topics/<topic>.csv with Claude (needs ANTHROPIC_API_KEY; DRY=1 only counts; DB=data/vocab.db OUT=data/topics)
+## classify-topics: sort HSK + top-frequency words into data/topics/<topic>.csv with Claude (needs ANTHROPIC_API_KEY, or CLI=claude to use the Claude Code subscription login; DRY=1 only counts; DB=data/vocab.db OUT=data/topics)
 classify-topics:
-	cd service && go run ./cmd/classify-topics -db $(or $(DB),../data/vocab.db) -out $(or $(OUT),../data/topics) $(if $(DRY),-dry-run)
+	cd service && go run ./cmd/classify-topics -db $(or $(DB),../data/vocab.db) -out $(or $(OUT),../data/topics) $(if $(DRY),-dry-run) $(if $(CLI),-claude-cli $(CLI))
 
 ## import-pinyin: import pinyin audio files (SOURCE=mp3-chinese-pinyin-sound/mp3 DB=data/vocab.db PINYIN_AUDIO_DIR=data/pinyin-audio)
 ## git clone https://github.com/davinfifield/mp3-chinese-pinyin-sound.git

@@ -12,9 +12,11 @@
 // Usage:
 //
 //	ANTHROPIC_API_KEY=... go run ./cmd/classify-topics [-db data/vocab.db] [-out data/topics] [-dry-run]
+//	go run ./cmd/classify-topics -claude-cli claude   # use the Claude Code subscription login instead
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"errors"
@@ -24,6 +26,7 @@ import (
 	"log"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -75,6 +78,7 @@ func main() {
 	model := flag.String("model", "claude-opus-5", "Claude model ID")
 	effort := flag.String("effort", "low", "Claude effort level (low|medium|high)")
 	dryRun := flag.Bool("dry-run", false, "print how many words would be classified, without calling Claude")
+	claudeBin := flag.String("claude-cli", "", `run requests through this Claude Code binary (e.g. "claude") with your subscription login instead of ANTHROPIC_API_KEY`)
 	flag.Parse()
 
 	store, err := vocabdb.Open(*dbPath)
@@ -103,9 +107,17 @@ func main() {
 		return
 	}
 
-	client := llm.NewClientFromConfig("anthropic", os.Getenv("ANTHROPIC_API_KEY"), "")
-	if client == nil {
-		log.Fatal("ANTHROPIC_API_KEY environment variable is required")
+	generate := func(system, user string) (string, error) {
+		return claudeCLI(ctx, *claudeBin, *model, *effort, system, user)
+	}
+	if *claudeBin == "" {
+		client := llm.NewClientFromConfig("anthropic", os.Getenv("ANTHROPIC_API_KEY"), "")
+		if client == nil {
+			log.Fatal("ANTHROPIC_API_KEY environment variable is required (or use -claude-cli claude)")
+		}
+		generate = func(system, user string) (string, error) {
+			return client.Generate(ctx, llm.Request{System: system, User: user, Model: *model, Effort: *effort})
+		}
 	}
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
 		log.Fatalf("create %s: %v", *outDir, err)
@@ -115,7 +127,7 @@ func main() {
 	var classified, missing int
 	for i := 0; i < len(todo); i += *chunk {
 		batch := todo[i:min(i+*chunk, len(todo))]
-		text, err := client.Generate(ctx, llm.Request{System: system, User: userPrompt(batch), Model: *model, Effort: *effort})
+		text, err := generate(system, userPrompt(batch))
 		if err != nil {
 			// ponytail: no retry loop — rerunning the tool resumes where it stopped.
 			log.Fatalf("classify words %d-%d: %v", i+1, i+len(batch), err)
@@ -132,6 +144,27 @@ func main() {
 	if missing > 0 {
 		fmt.Println("Rerun the tool to classify the missing words.")
 	}
+}
+
+// claudeCLI sends one request through Claude Code in print mode, so it runs on
+// the logged-in Claude subscription. Tools are disabled and the system prompt
+// replaces Claude Code's own, so the answer is plain text like the API's.
+func claudeCLI(ctx context.Context, bin, model, effort, system, user string) (string, error) {
+	cmd := exec.CommandContext(ctx, bin, "-p",
+		"--model", model,
+		"--effort", effort,
+		"--system-prompt", system,
+		"--tools", "",
+		"--no-session-persistence",
+		"--output-format", "text")
+	cmd.Stdin = strings.NewReader(user)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("%s: %w: %s", bin, err, strings.TrimSpace(stderr.String()))
+	}
+	return string(out), nil
 }
 
 func systemPrompt() string {

@@ -581,6 +581,9 @@ make classify-topics DRY=1
 
 ANTHROPIC_API_KEY=... make classify-topics
 
+# Or use your Claude subscription through a logged-in Claude Code install (no API key)
+make classify-topics CLI=claude
+
 # On the server, `make release` ships a prebuilt binary:
 ANTHROPIC_API_KEY=... ./classify-topics -db data/vocab.db -out data/topics
 ```
@@ -593,6 +596,7 @@ ANTHROPIC_API_KEY=... ./classify-topics -db data/vocab.db -out data/topics
 | `-chunk` | `100` | Words per Claude request |
 | `-model` | `claude-opus-5` | Claude model ID |
 | `-effort` | `low` | Claude effort level |
+| `-claude-cli` | (empty) | Path or name of a Claude Code binary (for example `claude`). When set, each request runs through `claude -p` with your Claude Code login (subscription) instead of `ANTHROPIC_API_KEY`. Tools are turned off and the tool's system prompt replaces Claude Code's own. Subscription usage limits apply; when you reach a limit, the tool stops, and you can run it again later to continue. |
 | `-dry-run` | false | Print the number of words to classify, without calling Claude |
 
 With HSK 2.0 + 3.0 and `-freq 8000`, there are about 12,600 candidate words (about 126 requests).

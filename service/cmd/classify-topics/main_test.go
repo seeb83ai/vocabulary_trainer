@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"vocabulary_trainer/models"
@@ -62,5 +64,37 @@ func TestWriteResults_AndLoadDone(t *testing.T) {
 	want := map[string]bool{"护照": true, "的": true, "签证": true}
 	if !reflect.DeepEqual(done, want) {
 		t.Errorf("done = %v, want %v", done, want)
+	}
+}
+
+func TestClaudeCLI(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "claude")
+	// The fake prints its arguments, one per line, then echoes stdin.
+	script := "#!/bin/sh\nfor a in \"$@\"; do echo \"arg:$a\"; done\ncat\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := claudeCLI(context.Background(), bin, "claude-opus-5", "low", "SYS", "护照\tpassport\n")
+	if err != nil {
+		t.Fatalf("claudeCLI: %v", err)
+	}
+	for _, want := range []string{"arg:-p", "arg:--model\narg:claude-opus-5", "arg:--effort\narg:low",
+		"arg:--system-prompt\narg:SYS", "arg:--tools\narg:\n", "护照\tpassport"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestClaudeCLI_Error(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'usage limit reached' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := claudeCLI(context.Background(), bin, "m", "low", "s", "u")
+	if err == nil || !strings.Contains(err.Error(), "usage limit reached") {
+		t.Errorf("err = %v, want stderr in error", err)
 	}
 }
