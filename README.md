@@ -577,9 +577,12 @@ The candidates are every library word tagged with an HSK level (`hsk2-N` or `hsk
 
 ```bash
 # See how many words would be classified (no API calls)
-go run ./service/cmd/classify-topics -dry-run
+make classify-topics DRY=1
 
-ANTHROPIC_API_KEY=... go run ./service/cmd/classify-topics
+ANTHROPIC_API_KEY=... make classify-topics
+
+# On the server, `make release` ships a prebuilt binary:
+ANTHROPIC_API_KEY=... ./classify-topics -db data/vocab.db -out data/topics
 ```
 
 | Flag | Default | Description |

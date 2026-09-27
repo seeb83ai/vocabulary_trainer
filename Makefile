@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr generate-landing
+.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk classify-topics import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr generate-landing
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -67,6 +67,10 @@ import-hsk:
 	mkdir -p data
 	cd service && go run ./cmd/import-hsk -db $(or $(DB),../data/vocab.db) -version $(or $(VERSION),3)
 
+## classify-topics: sort HSK + top-frequency words into data/topics/<topic>.csv with Claude (needs ANTHROPIC_API_KEY; DRY=1 only counts; DB=data/vocab.db OUT=data/topics)
+classify-topics:
+	cd service && go run ./cmd/classify-topics -db $(or $(DB),../data/vocab.db) -out $(or $(OUT),../data/topics) $(if $(DRY),-dry-run)
+
 ## import-pinyin: import pinyin audio files (SOURCE=mp3-chinese-pinyin-sound/mp3 DB=data/vocab.db PINYIN_AUDIO_DIR=data/pinyin-audio)
 ## git clone https://github.com/davinfifield/mp3-chinese-pinyin-sound.git
 ## make import-pinyin SOURCE=mp3-chinese-pinyin-sound/mp3
@@ -116,6 +120,7 @@ release: generate-landing
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-frequency ./cmd/import-frequency
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../fill-translations ./cmd/fill-translations
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-cedict ./cmd/import-cedict
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../classify-topics ./cmd/classify-topics
 	rsync -avz --progress \
 	    Makefile \
 	    dictionary.txt \
@@ -125,6 +130,7 @@ release: generate-landing
 		import-pinyin \
 		import-frequency \
 		import-cedict \
+		classify-topics \
 		service/cmd/import-frequency/frequency_data.txt \
 		fill-translations \
 		.env.example \

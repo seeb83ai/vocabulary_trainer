@@ -8,6 +8,7 @@ import-frequency
 import-cedict
 fill-translations
 fill-hanzi-translations
+classify-topics
 
 # Database
 data/
