@@ -27,9 +27,12 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"syscall"
 
 	vocabdb "vocabulary_trainer/db"
 	"vocabulary_trainer/llm"
@@ -78,6 +81,7 @@ func main() {
 	model := flag.String("model", "claude-opus-5", "Claude model ID")
 	effort := flag.String("effort", "low", "Claude effort level (low|medium|high)")
 	dryRun := flag.Bool("dry-run", false, "print how many words would be classified, without calling Claude")
+	workers := flag.Int("workers", 4, "Claude requests to run at the same time")
 	claudeBin := flag.String("claude-cli", "", `run requests through this Claude Code binary (e.g. "claude") with your subscription login instead of ANTHROPIC_API_KEY`)
 	flag.Parse()
 
@@ -87,7 +91,14 @@ func main() {
 	}
 	defer store.Close()
 
-	ctx := context.Background()
+	// Ctrl-C stops new requests but lets running ones finish and be written.
+	// A second Ctrl-C quits at once (the running requests are then redone next run).
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-ctx.Done()
+		stop()
+		fmt.Println("\nStopping: finishing the requests in flight. Press Ctrl-C again to quit now.")
+	}()
 	cands, err := store.GetTopicCandidates(ctx, *maxFreq)
 	if err != nil {
 		log.Fatalf("load candidates: %v", err)
@@ -108,7 +119,7 @@ func main() {
 	}
 
 	generate := func(system, user string) (string, error) {
-		return claudeCLI(ctx, *claudeBin, *model, *effort, system, user)
+		return claudeCLI(context.Background(), *claudeBin, *model, *effort, system, user)
 	}
 	if *claudeBin == "" {
 		client := llm.NewClientFromConfig("anthropic", os.Getenv("ANTHROPIC_API_KEY"), "")
@@ -116,7 +127,7 @@ func main() {
 			log.Fatal("ANTHROPIC_API_KEY environment variable is required (or use -claude-cli claude)")
 		}
 		generate = func(system, user string) (string, error) {
-			return client.Generate(ctx, llm.Request{System: system, User: user, Model: *model, Effort: *effort})
+			return client.Generate(context.Background(), llm.Request{System: system, User: user, Model: *model, Effort: *effort})
 		}
 	}
 	if err := os.MkdirAll(*outDir, 0o755); err != nil {
@@ -124,26 +135,73 @@ func main() {
 	}
 
 	system := systemPrompt()
-	var classified, missing int
-	for i := 0; i < len(todo); i += *chunk {
-		batch := todo[i:min(i+*chunk, len(todo))]
-		text, err := generate(system, userPrompt(batch))
-		if err != nil {
-			// ponytail: no retry loop — rerunning the tool resumes where it stopped.
-			log.Fatalf("classify words %d-%d: %v", i+1, i+len(batch), err)
-		}
-		res := parseResponse(text, batch)
-		if err := writeResults(*outDir, batch, res); err != nil {
-			log.Fatalf("write results: %v", err)
-		}
-		classified += len(res)
-		missing += len(batch) - len(res)
-		fmt.Printf("  %d/%d classified\n", i+len(batch), len(todo))
+	classified, missing, err := classifyAll(ctx, todo, *chunk, *workers, *outDir, func(user string) (string, error) {
+		return generate(system, user)
+	})
+	fmt.Printf("\nclassified=%d  missing=%d\n", classified, missing)
+	if err != nil {
+		// ponytail: no retry loop — rerunning the tool resumes where it stopped.
+		log.Fatalf("stopped: %v\nRerun the tool to continue.", err)
 	}
-	fmt.Printf("\nDone. classified=%d  missing=%d\n", classified, missing)
 	if missing > 0 {
 		fmt.Println("Rerun the tool to classify the missing words.")
 	}
+}
+
+// classifyAll sends todo to generate in chunks, running up to workers chunks
+// at once, and appends each answer to the CSVs as soon as it arrives. After
+// the first error, or when ctx is cancelled (Ctrl-C), no new chunks start;
+// chunks already in flight still finish and get written.
+func classifyAll(ctx context.Context, todo []models.TopicCandidate, chunk, workers int, outDir string, generate func(user string) (string, error)) (classified, missing int, err error) {
+	batches := make(chan []models.TopicCandidate)
+	var mu sync.Mutex // guards the CSV files, the counters and err
+	stopped := func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return err != nil || ctx.Err() != nil
+	}
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for batch := range batches {
+				if stopped() {
+					continue
+				}
+				text, genErr := generate(userPrompt(batch))
+				mu.Lock()
+				if genErr == nil {
+					res := parseResponse(text, batch)
+					genErr = writeResults(outDir, batch, res)
+					if genErr == nil {
+						classified += len(res)
+						missing += len(batch) - len(res)
+						fmt.Printf("  %d/%d words done\n", classified+missing, len(todo))
+					}
+				}
+				if genErr != nil && err == nil {
+					err = genErr
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+
+dispatch:
+	for i := 0; i < len(todo) && !stopped(); i += chunk {
+		select {
+		case batches <- todo[i:min(i+chunk, len(todo))]:
+		case <-ctx.Done():
+			break dispatch
+		}
+	}
+	close(batches)
+	wg.Wait()
+	if err == nil {
+		err = ctx.Err()
+	}
+	return classified, missing, err
 }
 
 // claudeCLI sends one request through Claude Code in print mode, so it runs on
@@ -158,6 +216,8 @@ func claudeCLI(ctx context.Context, bin, model, effort, system, user string) (st
 		"--no-session-persistence",
 		"--output-format", "text")
 	cmd.Stdin = strings.NewReader(user)
+	// Own process group, so a Ctrl-C in the terminal doesn't kill a request in flight.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

@@ -573,7 +573,7 @@ Like `import-hanzi`, this is a manual, one-time (or re-run-on-update) operationa
 
 A one-off tool that sorts vocabulary into topic word lists (travel, food, body, health, …, 28 topics in total) with Claude. The lists prepare topic-based learning tracks; nothing in the app reads them yet.
 
-The candidates are every library word tagged with an HSK level (`hsk2-N` or `hsk3-N`) and every word in the top `-freq` of the zh frequency list that has a CC-CEDICT entry, so run `import-hsk` (both versions) and `import-cedict` first. Claude gives each word 0–2 topics. The tool appends each word to `<out>/<topic>.csv` (columns `zh,en`, where `en` is the first CC-CEDICT gloss). Words that fit no topic go to `<out>/_none.csv`. The tool skips every word that is already in a CSV file, so after an error or a Ctrl-C you can run it again and it continues where it stopped.
+The candidates are every library word tagged with an HSK level (`hsk2-N` or `hsk3-N`) and every word in the top `-freq` of the zh frequency list that has a CC-CEDICT entry, so run `import-hsk` (both versions) and `import-cedict` first. Claude gives each word 0–2 topics. The tool appends each word to `<out>/<topic>.csv` (columns `zh,en`, where `en` is the first CC-CEDICT gloss). Words that fit no topic go to `<out>/_none.csv`. The tool skips every word that is already in a CSV file, so after an error or a Ctrl-C you can run it again and it continues where it stopped. On Ctrl-C, the tool starts no new requests but waits for the running requests and writes their results. A second Ctrl-C quits at once, and the running requests are done again on the next run.
 
 ```bash
 # See how many words would be classified (no API calls)
@@ -594,6 +594,7 @@ ANTHROPIC_API_KEY=... ./classify-topics -db data/vocab.db -out data/topics
 | `-out` | `data/topics` | Directory for the `<topic>.csv` files |
 | `-freq` | `8000` | Also classify non-HSK words up to this zh frequency rank |
 | `-chunk` | `100` | Words per Claude request |
+| `-workers` | `4` | Claude requests to run at the same time |
 | `-model` | `claude-opus-5` | Claude model ID |
 | `-effort` | `low` | Claude effort level |
 | `-claude-cli` | (empty) | Path or name of a Claude Code binary (for example `claude`). When set, each request runs through `claude -p` with your Claude Code login (subscription) instead of `ANTHROPIC_API_KEY`. Tools are turned off and the tool's system prompt replaces Claude Code's own. Subscription usage limits apply; when you reach a limit, the tool stops, and you can run it again later to continue. |
