@@ -139,6 +139,11 @@ release: generate-landing
 		deploy/vocab-trainer-watcher.path \
 		deploy/nginx.conf \
 		$(RSYNC_DEST)/
+	@if [ -d data/topics ]; then \
+		rsync -avz --progress data/topics $(RSYNC_DEST)/data/; \
+	else \
+		echo "data/topics not found: skipping topic lists (see make classify-topics)"; \
+	fi
 
 ## test: run all tests (Go + JS)
 test: test-go test-js

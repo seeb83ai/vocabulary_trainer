@@ -584,7 +584,8 @@ ANTHROPIC_API_KEY=... make classify-topics
 # Or use your Claude subscription through a logged-in Claude Code install (no API key)
 make classify-topics CLI=claude
 
-# On the server, `make release` ships a prebuilt binary:
+# `make release` ships a prebuilt binary and copies data/topics/ (if present) to data/topics/ on the server.
+# To run the classification on the server instead:
 ANTHROPIC_API_KEY=... ./classify-topics -db data/vocab.db -out data/topics
 ```
 
