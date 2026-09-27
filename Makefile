@@ -62,10 +62,10 @@ import-handedict:
 	mkdir -p data
 	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../handedict.u8) -lang de
 
-## import-hsk: fetch and import HSK vocabulary from mandarinbean.com (LEVELS=1,2,3,4,5,6 DB=data/vocab.db)
+## import-hsk: import an HSK word list into the shared library (VERSION=3 for HSK 3.0, 2 for HSK 2.0; DB=data/vocab.db)
 import-hsk:
 	mkdir -p data
-	cd service && go run ./cmd/import-hsk -db $(or $(DB),../data/vocab.db) -levels $(or $(LEVELS),1,2,3,4,5,6)
+	cd service && go run ./cmd/import-hsk -db $(or $(DB),../data/vocab.db) -version $(or $(VERSION),3)
 
 ## import-pinyin: import pinyin audio files (SOURCE=mp3-chinese-pinyin-sound/mp3 DB=data/vocab.db PINYIN_AUDIO_DIR=data/pinyin-audio)
 ## git clone https://github.com/davinfifield/mp3-chinese-pinyin-sound.git

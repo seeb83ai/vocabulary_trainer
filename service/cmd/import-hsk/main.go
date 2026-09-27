@@ -1,497 +1,221 @@
-// cmd/import-hsk/main.go — Import HSK vocabulary from mandarinbean.com into the trainer DB.
+// cmd/import-hsk/main.go — Import an HSK word list into the shared library (user 1).
 //
-// Fetches https://mandarinbean.com/hsk-N-vocabulary-list/ for each requested level,
-// parses the vocabulary table, and inserts new zh/en word pairs. Duplicate pairs
-// (same zh text + same translation) are skipped; the HSK tag is still attached to
-// already-existing words. Each zh word is tagged with "hsk1", "hsk2", ....
+// Reads complete.json from https://github.com/drkameleon/complete-hsk-vocabulary
+// (MIT licence) and adds the words of one HSK version to the library user:
 //
-// Optionally translates the English source text via the DeepL API before inserting.
-// Set DEEPL_API_KEY in the environment and pass -lang <code> (e.g. -lang de).
-// If the key is absent, translation is silently skipped and the original English is used.
+//	-version 2  HSK 2.0 (levels 1-6)                      → tags hsk2-1 … hsk2-6
+//	-version 3  HSK 3.0, 2025 syllabus (levels 1-6, 7-9)  → tags hsk3-1 … hsk3-7
+//
+// The library stores only zh words, pinyin and tags; translations come from
+// cedict_entries when a user imports a list. A zh word that is already in the
+// library is not added again; it only gets the new tag. Every tag is marked
+// importable with a description such as "HSK 3.0 – Level 1".
 //
 // Usage:
 //
-//	go run ./cmd/import-hsk [-db data/vocab.db] [-levels 1,2,3,4,5,6] [-lang en] [-dry-run]
+//	go run ./cmd/import-hsk [-db data/vocab.db] [-version 3] [-file complete.json] [-dry-run]
 package main
 
 import (
-	"bytes"
-	"database/sql"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	vocabdb "vocabulary_trainer/db"
 
-	_ "modernc.org/sqlite"
+	vocabdb "vocabulary_trainer/db"
+	"vocabulary_trainer/models"
 )
 
-const urlPattern = "https://mandarinbean.com/hsk-%d-vocabulary-list/"
+const defaultURL = "https://raw.githubusercontent.com/drkameleon/complete-hsk-vocabulary/main/complete.json"
+
+const libraryUserID int64 = 1
+
+// levelPrefix maps an HSK version to its level label prefix in complete.json.
+// "newest" is the 2025 HSK 3.0 syllabus; "new" (2021) is not used.
+var levelPrefix = map[int]string{2: "old-", 3: "newest-"}
 
 type entry struct {
-	hanzi       string
-	pinyin      string
-	translation string
+	hanzi  string
+	pinyin string
+	level  int
+}
+
+type result struct {
+	created int
+	tagged  int
 }
 
 func main() {
 	dbPath := flag.String("db", "data/vocab.db", "path to SQLite database")
-	levelsStr := flag.String("levels", "1,2,3,4,5,6", "comma-separated HSK levels to import (1-6)")
-	lang := flag.String("lang", "en", "DeepL target language code (e.g. de, fr, es); requires DEEPL_API_KEY env var")
-	dryRun := flag.Bool("dry-run", false, "fetch and check duplicates but do not insert")
+	version := flag.Int("version", 3, "HSK version to import: 2 (HSK 2.0) or 3 (HSK 3.0, 2025 syllabus)")
+	file := flag.String("file", "", "read complete.json from this file instead of downloading it")
+	url := flag.String("url", defaultURL, "download URL of complete.json")
+	dryRun := flag.Bool("dry-run", false, "show what would change but do not write")
 	flag.Parse()
 
-	var levels []int
-	for _, s := range strings.Split(*levelsStr, ",") {
-		s = strings.TrimSpace(s)
-		n, err := strconv.Atoi(s)
-		if err != nil || n < 1 || n > 6 {
-			log.Fatalf("invalid level %q: must be an integer 1-6", s)
-		}
-		levels = append(levels, n)
+	if _, ok := levelPrefix[*version]; !ok {
+		log.Fatalf("invalid -version %d: must be 2 or 3", *version)
 	}
 
-	targetLang := strings.ToUpper(strings.TrimSpace(*lang))
-	apiKey := os.Getenv("DEEPL_API_KEY")
-	translate := targetLang != "EN" && apiKey != ""
-
-	// effectiveLang is the actual language stored in the DB. If translation is
-	// requested but no API key is available, the text stays English.
-	effectiveLang := strings.ToLower(targetLang)
-	if targetLang != "EN" && apiKey == "" {
-		fmt.Println("[WARN]  DEEPL_API_KEY not set — importing with original English translations")
-		effectiveLang = "en"
+	var data []byte
+	var err error
+	if *file != "" {
+		data, err = os.ReadFile(*file)
+	} else {
+		fmt.Printf("Downloading %s\n", *url)
+		data, err = download(*url)
+	}
+	if err != nil {
+		log.Fatalf("read word list: %v", err)
 	}
 
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", *dbPath)
-	db, err := sql.Open("sqlite", dsn)
+	entries, err := parseComplete(data, *version)
+	if err != nil {
+		log.Fatalf("parse word list: %v", err)
+	}
+	fmt.Printf("Parsed %d HSK %d words\n", len(entries), *version)
+
+	store, err := vocabdb.Open(*dbPath)
 	if err != nil {
 		log.Fatalf("open db: %v", err)
 	}
-	defer db.Close()
-	db.SetMaxOpenConns(1)
+	defer store.Close()
 
-	if err := vocabdb.Migrate(db); err != nil {
-		log.Fatalf("migrate: %v", err)
+	res, err := importLibrary(context.Background(), store, entries, *version, *dryRun)
+	if err != nil {
+		log.Fatalf("import: %v", err)
 	}
-
-	var totalInserted, totalSkipped, totalFailed int
-
-	for _, level := range levels {
-		tag := fmt.Sprintf("hsk%d", level)
-		url := fmt.Sprintf(urlPattern, level)
-		fmt.Printf("\n=== HSK %d  %s ===\n", level, url)
-
-		body, err := fetchPage(url)
-		if err != nil {
-			fmt.Printf("  [ERROR] fetch: %v\n", err)
-			totalFailed++
-			continue
-		}
-
-		entries := parseTable(body)
-		fmt.Printf("  Parsed %d entries\n", len(entries))
-		if len(entries) == 0 {
-			fmt.Println("  [WARN]  No entries found — check that the page structure hasn't changed.")
-			continue
-		}
-
-		if translate {
-			fmt.Printf("  Translating to %s via DeepL…\n", targetLang)
-			entries, err = translateEntries(entries, targetLang, apiKey)
-			if err != nil {
-				fmt.Printf("  [ERROR] translation failed: %v\n", err)
-				totalFailed++
-				continue
-			}
-		}
-
-		ins, skip, fail := importEntries(db, entries, tag, effectiveLang, *dryRun)
-		totalInserted += ins
-		totalSkipped += skip
-		totalFailed += fail
-	}
-
-	fmt.Printf("\nDone. inserted=%d  skipped=%d  errors=%d\n", totalInserted, totalSkipped, totalFailed)
+	fmt.Printf("\nDone. created=%d  tagged=%d\n", res.created, res.tagged)
 	if *dryRun {
 		fmt.Println("(dry-run: no changes were written)")
 	}
 }
 
-// importEntries inserts all entries for one HSK level and returns counts.
-func importEntries(db *sql.DB, entries []entry, tag string, lang string, dryRun bool) (inserted, skipped, failed int) {
-	for _, e := range entries {
-		zhID, dup, err := isDuplicate(db, e, lang)
-		if err != nil {
-			fmt.Printf("  [ERROR] duplicate check %q: %v\n", e.hanzi, err)
-			failed++
-			continue
-		}
-
-		if dup {
-			fmt.Printf("  [SKIP]  %s — %s\n", e.hanzi, e.translation)
-			skipped++
-			// Still attach the tag to the existing word even though we skip the insert.
-			if !dryRun && zhID != 0 {
-				if err := assignTag(db, zhID, tag); err != nil {
-					fmt.Printf("  [WARN]  tag %q for existing %q: %v\n", tag, e.hanzi, err)
-				}
-			}
-			continue
-		}
-
-		if dryRun {
-			fmt.Printf("  [DRY]   would insert: %s (%s) — %s\n", e.hanzi, e.pinyin, e.translation)
-			inserted++
-			continue
-		}
-
-		zhID, err = insert(db, e, lang)
-		if err != nil {
-			fmt.Printf("  [ERROR] insert %q: %v\n", e.hanzi, err)
-			failed++
-			continue
-		}
-		if err := assignTag(db, zhID, tag); err != nil {
-			fmt.Printf("  [WARN]  tag %q for %q: %v\n", tag, e.hanzi, err)
-		}
-		fmt.Printf("  [OK]    %s (%s) — %s\n", e.hanzi, e.pinyin, e.translation)
-		inserted++
-	}
-	return
-}
-
-// translateEntries replaces the translation field of every entry with the DeepL
-// result for the given target language. All texts for the level are sent in
-// batches of 50 to minimise round-trips. Returns a new slice; the originals are
-// unchanged. Fails fast if any batch returns an error.
-func translateEntries(entries []entry, targetLang, apiKey string) ([]entry, error) {
-	// Collect all source texts in order.
-	texts := make([]string, len(entries))
-	for i, e := range entries {
-		texts[i] = e.translation
-	}
-
-	// Translate in batches of 50 (DeepL's recommended batch size).
-	const batchSize = 50
-	translated := make([]string, 0, len(texts))
-	for i := 0; i < len(texts); i += batchSize {
-		end := i + batchSize
-		if end > len(texts) {
-			end = len(texts)
-		}
-		batch, err := deeplTranslate(texts[i:end], targetLang, apiKey)
-		if err != nil {
-			return nil, fmt.Errorf("batch %d-%d: %w", i, end-1, err)
-		}
-		translated = append(translated, batch...)
-	}
-
-	// Build result with translated texts.
-	result := make([]entry, len(entries))
-	for i, e := range entries {
-		result[i] = e
-		result[i].translation = translated[i]
-	}
-	return result, nil
-}
-
-// deeplTranslate calls the DeepL v2 API and returns one translated string per
-// input text, preserving order. Free-tier keys (ending in ":fx") are routed to
-// api-free.deepl.com; all others go to api.deepl.com.
-func deeplTranslate(texts []string, targetLang, apiKey string) ([]string, error) {
-	base := "https://api.deepl.com/v2/translate"
-	if strings.HasSuffix(apiKey, ":fx") {
-		base = "https://api-free.deepl.com/v2/translate"
-	}
-
-	reqBody, err := json.Marshal(struct {
-		Text       []string `json:"text"`
-		TargetLang string   `json:"target_lang"`
-		SourceLang string   `json:"source_lang"`
-	}{
-		Text:       texts,
-		TargetLang: targetLang,
-		SourceLang: "EN",
-	})
+func download(url string) ([]byte, error) {
+	resp, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, base, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Authorization", "DeepL-Auth-Key "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http: %w", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
-
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("DeepL returned HTTP %d: %s", resp.StatusCode, respBytes)
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
+	return io.ReadAll(resp.Body)
+}
 
-	var result struct {
-		Translations []struct {
-			Text string `json:"text"`
-		} `json:"translations"`
+// parseComplete returns the words of complete.json that belong to the given
+// HSK version, in file order. A word with more than one level label for the
+// version gets the lowest level.
+func parseComplete(data []byte, version int) ([]entry, error) {
+	var raw []struct {
+		Simplified string   `json:"simplified"`
+		Level      []string `json:"level"`
+		Forms      []struct {
+			Transcriptions struct {
+				Pinyin string `json:"pinyin"`
+			} `json:"transcriptions"`
+		} `json:"forms"`
 	}
-	if err := json.Unmarshal(respBytes, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
 	}
-	if len(result.Translations) != len(texts) {
-		return nil, fmt.Errorf("DeepL returned %d translations for %d texts", len(result.Translations), len(texts))
-	}
-
-	out := make([]string, len(result.Translations))
-	for i, t := range result.Translations {
-		out[i] = t.Text
+	prefix := levelPrefix[version]
+	var out []entry
+	for _, r := range raw {
+		level := 0
+		for _, l := range r.Level {
+			if !strings.HasPrefix(l, prefix) {
+				continue
+			}
+			n, err := strconv.Atoi(strings.TrimPrefix(l, prefix))
+			if err != nil {
+				continue
+			}
+			if level == 0 || n < level {
+				level = n
+			}
+		}
+		if level == 0 || strings.TrimSpace(r.Simplified) == "" {
+			continue
+		}
+		e := entry{hanzi: strings.TrimSpace(r.Simplified), level: level}
+		if len(r.Forms) > 0 {
+			e.pinyin = r.Forms[0].Transcriptions.Pinyin
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }
 
-// fetchPage downloads the given URL and returns the response body as a string.
-func fetchPage(url string) (string, error) {
-	resp, err := http.Get(url) //nolint:gosec — URL is built from a compile-time pattern + integer
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d for %s", resp.StatusCode, url)
-	}
-	b, err := io.ReadAll(resp.Body)
-	return string(b), err
+// tagName returns the library tag for an HSK level, e.g. "hsk3-1". Level 7
+// of HSK 3.0 stands for the combined band 7-9.
+func tagName(version, level int) string {
+	return fmt.Sprintf("hsk%d-%d", version, level)
 }
 
-// parseTable finds the <figure><table> in the page body and extracts vocabulary entries.
-func parseTable(body string) []entry {
-	// The page contains exactly one <figure> element with the vocabulary table.
-	figStart := strings.Index(body, "<figure")
-	figEnd := strings.Index(body, "</figure>")
-	if figStart == -1 || figEnd == -1 {
-		return nil
+func tagDescription(version, level int) string {
+	if version == 3 && level == 7 {
+		return "HSK 3.0 – Levels 7–9"
 	}
-	fig := body[figStart : figEnd+len("</figure>")]
+	return fmt.Sprintf("HSK %d.0 – Level %d", version, level)
+}
 
-	tbStart := strings.Index(fig, "<tbody>")
-	tbEnd := strings.Index(fig, "</tbody>")
-	if tbStart == -1 || tbEnd == -1 {
-		return nil
+// importLibrary adds the entries to the library user. Existing zh words only
+// get the level tag; missing ones are created with pinyin and the tag.
+func importLibrary(ctx context.Context, store *vocabdb.Store, entries []entry, version int, dryRun bool) (result, error) {
+	var res result
+	existing, _, err := store.GetWords(ctx, libraryUserID, "", 1, 0, "", "", nil, false, false, "", "", "")
+	if err != nil {
+		return res, fmt.Errorf("load library words: %w", err)
 	}
-	tbody := fig[tbStart+len("<tbody>") : tbEnd]
+	existingIDs := make(map[string]int64, len(existing))
+	for _, w := range existing {
+		existingIDs[w.ZhText] = w.ID
+	}
 
-	var entries []entry
-	for _, row := range splitRows(tbody) {
-		cells := extractCells(row)
-		if len(cells) < 4 {
+	levels := map[int]bool{}
+	for _, e := range entries {
+		tag := tagName(version, e.level)
+		levels[e.level] = true
+		if id, ok := existingIDs[e.hanzi]; ok {
+			res.tagged++
+			if dryRun {
+				continue
+			}
+			if err := store.AddWordTags(ctx, libraryUserID, id, []string{tag}); err != nil {
+				return res, fmt.Errorf("tag %q: %w", e.hanzi, err)
+			}
 			continue
 		}
-
-		// First cell is the entry number; skip category-header rows (empty first cell).
-		noText := strings.TrimSpace(stripHTML(cells[0]))
-		if noText == "" {
+		res.created++
+		if dryRun {
+			fmt.Printf("  [DRY]   would create: %s (%s) %s\n", e.hanzi, e.pinyin, tag)
 			continue
 		}
-		if _, err := strconv.Atoi(noText); err != nil {
-			continue // not a numeric entry
+		id, err := store.CreateWord(ctx, libraryUserID, models.CreateWordRequest{
+			ZhText: e.hanzi,
+			Pinyin: e.pinyin,
+			Tags:   []string{tag},
+		})
+		if err != nil {
+			return res, fmt.Errorf("create %q: %w", e.hanzi, err)
 		}
-
-		hanzi := strings.TrimSpace(stripHTML(cells[1]))
-		pinyin := normalizeSpace(stripHTML(cells[2]))
-		translation := strings.TrimSpace(stripHTML(cells[3]))
-		if hanzi == "" || translation == "" {
-			continue
-		}
-
-		entries = append(entries, entry{hanzi: hanzi, pinyin: pinyin, translation: translation})
+		existingIDs[e.hanzi] = id
 	}
-	return entries
-}
 
-// splitRows splits an HTML tbody into individual <tr>…</tr> substrings.
-func splitRows(tbody string) []string {
-	var rows []string
-	rest := tbody
-	for {
-		start := strings.Index(rest, "<tr")
-		if start == -1 {
-			break
-		}
-		end := strings.Index(rest[start:], "</tr>")
-		if end == -1 {
-			break
-		}
-		rows = append(rows, rest[start:start+end+len("</tr>")])
-		rest = rest[start+end+len("</tr>"):]
+	if dryRun {
+		return res, nil
 	}
-	return rows
-}
-
-// extractCells returns the inner HTML of each <td>…</td> in a table row.
-func extractCells(row string) []string {
-	var cells []string
-	rest := row
-	for {
-		start := strings.Index(rest, "<td")
-		if start == -1 {
-			break
-		}
-		gtIdx := strings.Index(rest[start:], ">")
-		if gtIdx == -1 {
-			break
-		}
-		contentStart := start + gtIdx + 1
-		closeIdx := strings.Index(rest[contentStart:], "</td>")
-		if closeIdx == -1 {
-			break
-		}
-		cells = append(cells, rest[contentStart:contentStart+closeIdx])
-		rest = rest[contentStart+closeIdx+len("</td>"):]
-	}
-	return cells
-}
-
-// stripHTML removes all HTML tags and decodes HTML entities (including numeric
-// references such as &#8217;). Non-breaking spaces are normalised to regular spaces.
-func stripHTML(s string) string {
-	var b strings.Builder
-	inTag := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c == '<':
-			inTag = true
-		case c == '>':
-			inTag = false
-		case !inTag:
-			b.WriteByte(c)
+	for level := range levels {
+		if err := store.UpsertTagMeta(ctx, libraryUserID, tagName(version, level), tagDescription(version, level), true); err != nil {
+			return res, fmt.Errorf("tag meta: %w", err)
 		}
 	}
-	r := html.UnescapeString(b.String())
-	return strings.ReplaceAll(r, "\u00a0", " ") // &nbsp; → regular space
-}
-
-// normalizeSpace collapses runs of whitespace into a single space and trims.
-func normalizeSpace(s string) string {
-	return strings.Join(strings.Fields(s), " ")
-}
-
-// isDuplicate checks whether the zh word exists and whether the specific
-// zh+translation pair (for the given language) is already stored.
-// Returns (zhWordID, isDup, err). zhWordID is non-zero whenever the zh word
-// exists (even if the pair is new).
-func isDuplicate(db *sql.DB, e entry, lang string) (zhID int64, dup bool, err error) {
-	err = db.QueryRow(
-		`SELECT id FROM words WHERE language = 'zh' AND lower(trim(text)) = lower(trim(?))`,
-		e.hanzi,
-	).Scan(&zhID)
-	if err == sql.ErrNoRows {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, err
-	}
-
-	// zh word exists — check if this exact translation (in the same language) is already linked.
-	var count int
-	err = db.QueryRow(`
-		SELECT COUNT(*)
-		FROM translations t
-		JOIN words w ON t.en_word_id = w.id
-		WHERE t.zh_word_id = ?
-		  AND w.language = ?
-		  AND lower(trim(w.text)) = lower(trim(?))`,
-		zhID, lang, e.translation,
-	).Scan(&count)
-	if err != nil {
-		return zhID, false, err
-	}
-	return zhID, count > 0, nil
-}
-
-// insert adds a vocabulary entry in a transaction and returns the zh word ID.
-func insert(db *sql.DB, e entry, lang string) (int64, error) {
-	tx, err := db.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-
-	var pinyin *string
-	if e.pinyin != "" {
-		pinyin = &e.pinyin
-	}
-
-	// Upsert zh word.
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO words (text, language, pinyin) VALUES (?, 'zh', ?)`,
-		e.hanzi, pinyin); err != nil {
-		return 0, fmt.Errorf("insert zh: %w", err)
-	}
-	var zhID int64
-	if err := tx.QueryRow(
-		`SELECT id FROM words WHERE text = ? AND language = 'zh'`, e.hanzi).Scan(&zhID); err != nil {
-		return 0, fmt.Errorf("get zh id: %w", err)
-	}
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO sm2_progress (word_id) VALUES (?)`, zhID); err != nil {
-		return 0, fmt.Errorf("init zh sm2: %w", err)
-	}
-
-	// Upsert translation word using the actual target language.
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO words (text, language) VALUES (?, ?)`, e.translation, lang); err != nil {
-		return 0, fmt.Errorf("insert translation: %w", err)
-	}
-	var transID int64
-	if err := tx.QueryRow(
-		`SELECT id FROM words WHERE text = ? AND language = ?`, e.translation, lang).Scan(&transID); err != nil {
-		return 0, fmt.Errorf("get translation id: %w", err)
-	}
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO sm2_progress (word_id) VALUES (?)`, transID); err != nil {
-		return 0, fmt.Errorf("init translation sm2: %w", err)
-	}
-
-	// Link zh ↔ translation.
-	if _, err := tx.Exec(
-		`INSERT OR IGNORE INTO translations (en_word_id, zh_word_id) VALUES (?, ?)`,
-		transID, zhID); err != nil {
-		return 0, fmt.Errorf("link translation: %w", err)
-	}
-
-	return zhID, tx.Commit()
-}
-
-// assignTag upserts the named tag and links it to the zh word.
-func assignTag(db *sql.DB, zhID int64, tagName string) error {
-	if _, err := db.Exec(
-		`INSERT OR IGNORE INTO tags (name) VALUES (?)`, tagName); err != nil {
-		return fmt.Errorf("upsert tag: %w", err)
-	}
-	var tagID int64
-	if err := db.QueryRow(
-		`SELECT id FROM tags WHERE name = ?`, tagName).Scan(&tagID); err != nil {
-		return fmt.Errorf("get tag id: %w", err)
-	}
-	if _, err := db.Exec(
-		`INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`, zhID, tagID); err != nil {
-		return fmt.Errorf("link tag: %w", err)
-	}
-	return nil
+	return res, nil
 }

@@ -204,3 +204,37 @@ func TestGetImportableSourceTags_WithDescription(t *testing.T) {
 		t.Errorf("expected description 'Basic greeting words', got %+v", tags)
 	}
 }
+
+func TestAddWordTags_KeepsExistingTags(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"hsk2-1"})
+
+	if err := s.AddWordTags(ctx, 2, id, []string{"hsk3-1", "hsk2-1", " "}); err != nil {
+		t.Fatal(err)
+	}
+	tags, err := s.GetAllTags(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 2 || tags[0] != "hsk2-1" || tags[1] != "hsk3-1" {
+		t.Errorf("want [hsk2-1 hsk3-1], got %v", tags)
+	}
+}
+
+func TestAddWordTags_IgnoresOtherUsersWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWordWithTags(t, s, "你好", "", []string{"hello"}, nil)
+
+	if err := s.AddWordTags(ctx, 99, id, []string{"hsk3-1"}); err != nil {
+		t.Fatal(err)
+	}
+	tags, err := s.GetAllTags(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags) != 0 {
+		t.Errorf("want no tags on user 2's word, got %v", tags)
+	}
+}

@@ -237,34 +237,77 @@ func TestImport_Basic(t *testing.T) {
 	}
 }
 
-func TestImport_SkipsDuplicates(t *testing.T) {
+func TestImport_ExistingWordGetsImportTags(t *testing.T) {
 	s := openTestDB(t)
-	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
-	seedWordFull(t, s, 1, "再见", "zài jiàn", nil, nil, []string{"HSK1"})
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"hsk3-1"})
+	seedWordFull(t, s, 1, "再见", "zài jiàn", nil, nil, []string{"hsk3-1"})
 	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedCedictEntry(t, s, "你好", "en", "hi")
 	seedCedictEntry(t, s, "再见", "en", "goodbye")
-	// User 2 already has 你好
-	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, nil)
+	// User 2 already has 你好 from the HSK 2.0 list.
+	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"hsk2-1"})
 
 	r := newRouter(s)
 	rec := do(t, r, "POST", "/api/import", map[string]any{
-		"tag":          "HSK1",
+		"tag":          "hsk3-1",
 		"import_langs": []string{"en"},
-		"apply_tags":   []string{"HSK1"},
+		"apply_tags":   []string{"hsk3-1"},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
 	var resp struct {
 		Imported int `json:"imported"`
+		Tagged   int `json:"tagged"`
 		Skipped  int `json:"skipped"`
 	}
 	decodeJSON(t, rec, &resp)
-	if resp.Imported != 1 {
-		t.Errorf("want imported=1, got %d", resp.Imported)
+	if resp.Imported != 1 || resp.Tagged != 1 || resp.Skipped != 0 {
+		t.Errorf("want imported=1 tagged=1 skipped=0, got %+v", resp)
 	}
-	if resp.Skipped != 1 {
-		t.Errorf("want skipped=1, got %d", resp.Skipped)
+
+	listRec := do(t, r, "GET", "/api/words/?tags=hsk2-1", nil)
+	var listResp struct {
+		Total int `json:"total"`
+		Words []struct {
+			ZhText       string              `json:"zh_text"`
+			Tags         []string            `json:"tags"`
+			Translations map[string][]string `json:"translations"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if listResp.Total != 1 {
+		t.Fatalf("want the existing word only once, got %d", listResp.Total)
+	}
+	w := listResp.Words[0]
+	if len(w.Tags) != 2 || w.Tags[0] != "hsk2-1" || w.Tags[1] != "hsk3-1" {
+		t.Errorf("want tags [hsk2-1 hsk3-1], got %v", w.Tags)
+	}
+	// The user's own translations stay as they are.
+	if en := w.Translations["en"]; len(en) != 1 || en[0] != "hello" {
+		t.Errorf("want translations unchanged [hello], got %v", en)
+	}
+}
+
+func TestImport_ExistingWordWithoutApplyTagsIsSkipped(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"hsk3-1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, nil)
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag":        "hsk3-1",
+		"apply_tags": []string{},
+	})
+	var resp struct {
+		Imported int `json:"imported"`
+		Tagged   int `json:"tagged"`
+		Skipped  int `json:"skipped"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 0 || resp.Tagged != 0 || resp.Skipped != 1 {
+		t.Errorf("want imported=0 tagged=0 skipped=1, got %+v", resp)
 	}
 }
 

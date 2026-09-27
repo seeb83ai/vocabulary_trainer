@@ -35,6 +35,7 @@ type importRequest struct {
 
 type importResponse struct {
 	Imported int `json:"imported"`
+	Tagged   int `json:"tagged"`
 	Skipped  int `json:"skipped"`
 }
 
@@ -172,17 +173,28 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to load existing words")
 		return
 	}
-	existingZhTexts := make(map[string]struct{}, len(existingWords))
+	existingZhTexts := make(map[string]int64, len(existingWords))
 	for _, ew := range existingWords {
-		existingZhTexts[ew.ZhText] = struct{}{}
+		existingZhTexts[ew.ZhText] = ew.ID
 	}
 
 	imported := 0
+	tagged := 0
 	skipped := 0
 
 	for _, sw := range sourceWords {
-		if _, exists := existingZhTexts[sw.ZhText]; exists {
-			skipped++
+		// A word the user already has is never imported twice; it only gets
+		// the import's tags added, so it also shows up under the new list.
+		if existingID, exists := existingZhTexts[sw.ZhText]; exists {
+			if len(cleanTags) == 0 {
+				skipped++
+				continue
+			}
+			if err := h.Store.AddWordTags(r.Context(), currentUserID, existingID, cleanTags); err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to tag existing word")
+				return
+			}
+			tagged++
 			continue
 		}
 		pinyin := ""
@@ -224,5 +236,5 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 		imported++
 	}
 
-	writeJSON(w, http.StatusOK, importResponse{Imported: imported, Skipped: skipped})
+	writeJSON(w, http.StatusOK, importResponse{Imported: imported, Tagged: tagged, Skipped: skipped})
 }

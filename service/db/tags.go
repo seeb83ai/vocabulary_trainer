@@ -211,6 +211,40 @@ func setWordTags(ctx context.Context, tx *sql.Tx, wordID int64, tags []string) e
 	return nil
 }
 
+// AddWordTags links the given tags to the word without removing its existing
+// tags. It does nothing when the word does not belong to userID.
+func (s *Store) AddWordTags(ctx context.Context, userID, wordID int64, tags []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var owned int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM words WHERE id = ? AND user_id = ?`, wordID, userID).Scan(&owned); err != nil {
+		return fmt.Errorf("check word owner: %w", err)
+	}
+	if owned == 0 {
+		return nil
+	}
+	for _, name := range tags {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		tagID, err := getOrCreateTag(ctx, tx, name)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`,
+			wordID, tagID); err != nil {
+			return fmt.Errorf("link tag: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) cleanOrphanTags(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx,
 		`DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM word_tags)`)
