@@ -44,6 +44,8 @@ type UserSettings struct {
 	BaselineLearningValue            int      `json:"baseline_learning_value"`
 	BaselineNewBucketEnabled         bool     `json:"baseline_new_bucket_enabled"`
 	BaselineNewBucketValue           int      `json:"baseline_new_bucket_value"`
+	BaselineAccuracyEnabled          bool     `json:"baseline_accuracy_enabled"`
+	BaselineAccuracyValue            int      `json:"baseline_accuracy_value"`
 	DeeplKeySet                      bool     `json:"deepl_key_set"`
 	DeeplKeyMasked                   string   `json:"deepl_key_masked,omitempty"`
 	LLMProvider                      string   `json:"llm_provider"`

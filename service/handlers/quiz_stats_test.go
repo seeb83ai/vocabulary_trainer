@@ -710,3 +710,46 @@ func TestQuizStats_MaxNewPerDay_ReflectsUserSetting(t *testing.T) {
 		t.Errorf("max_new_per_day: want 3 (user setting), got %d", stats["max_new_per_day"])
 	}
 }
+
+// TestStatsHandler_AccuracyPause covers issue #484: with the accuracy
+// baseline on and the previous days below it, stats report the pause and
+// offer no new words.
+func TestStatsHandler_AccuracyPause(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "六", "", []string{"six"})
+	st, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.BaselineAccuracyEnabled = true
+	st.BaselineAccuracyValue = 70
+	if err := s.UpdateUserSettings(ctx, 2, *st); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ExecForTest(`INSERT INTO daily_stats (user_id, date, attempts, mistakes) VALUES (2, date('now', '-1 day'), 50, 19)`); err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["accuracy_pause_pct"] != 62 || resp["accuracy_pause_min"] != 70 {
+		t.Errorf("want pause 62/70, got %d/%d", resp["accuracy_pause_pct"], resp["accuracy_pause_min"])
+	}
+	if resp["new_available"] != 0 {
+		t.Errorf("new_available: want 0 while paused, got %d", resp["new_available"])
+	}
+
+	st.BaselineAccuracyValue = 60
+	if err := s.UpdateUserSettings(ctx, 2, *st); err != nil {
+		t.Fatal(err)
+	}
+	rec = do(t, r, "GET", "/api/quiz/stats", nil)
+	resp = map[string]int{}
+	decodeJSON(t, rec, &resp)
+	if _, ok := resp["accuracy_pause_pct"]; ok {
+		t.Errorf("want no pause at 62%% >= 60%%, got %v", resp)
+	}
+}

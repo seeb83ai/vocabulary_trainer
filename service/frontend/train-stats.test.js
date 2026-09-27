@@ -173,3 +173,21 @@ describe('dueTomorrowCount', () => {
     expect(dueTomorrowCount(null, '2026-08-16')).toBe(0);
   });
 });
+
+// ── accuracy-baseline pause notice (#484) ───────────────────────────────────
+// Mirrors accuracyPauseParams in train-stats.js.
+
+function accuracyPauseParams(stats) {
+  if (stats.accuracy_pause_pct === undefined || stats.accuracy_pause_min === undefined) return null;
+  return { pct: stats.accuracy_pause_pct, min: stats.accuracy_pause_min };
+}
+
+describe('accuracyPauseParams', () => {
+  it('returns null when new words are not paused', () => {
+    expect(accuracyPauseParams({ new_today: 1 })).toBeNull();
+  });
+
+  it('returns pct and min when paused, also for 0%', () => {
+    expect(accuracyPauseParams({ accuracy_pause_pct: 0, accuracy_pause_min: 70 })).toEqual({ pct: 0, min: 70 });
+  });
+});

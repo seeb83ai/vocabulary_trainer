@@ -112,3 +112,67 @@ func CheckPinyinAnswer(answer string, targetSyllable string, targetTone int) boo
 	target := strings.ReplaceAll(strings.ToLower(targetSyllable), "v", "ü")
 	return syllable == target && tone == targetTone
 }
+
+// toneless maps every tone-marked vowel back to its plain vowel.
+var toneless = func() map[rune]rune {
+	m := map[rune]rune{}
+	for base, marked := range toneMarks {
+		for _, r := range marked {
+			m[r] = base
+		}
+	}
+	return m
+}()
+
+// plainPinyin lowercases s, drops parenthesised parts and tone marks, and
+// keeps only letters, so "Xi'an (Eig)" and "xī ān" both become "xian".
+func plainPinyin(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(stripParens(s)) {
+		if base, ok := toneless[r]; ok {
+			r = base
+		}
+		if r == 'v' {
+			r = 'ü'
+		}
+		if r == 'ü' || (r >= 'a' && r <= 'z') {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// TranslationEqualsPinyin reports whether a translation is only the word's
+// pinyin, ignoring case, tones, spaces and parenthesised parts — e.g. the
+// surname gloss "Nan (Eig, Fam)" for 南 nán (issues #464/#481).
+func TranslationEqualsPinyin(text, pinyin string) bool {
+	p := plainPinyin(pinyin)
+	return p != "" && plainPinyin(text) == p
+}
+
+// MatchGameTranslations returns the translations usable as a match-game
+// answer: a bracket-only gloss such as "(Partikel, …)" is always dropped
+// (issue #482), a gloss that is only the pinyin is dropped unless nothing
+// else is left in that language (#464). Languages left empty are omitted.
+func MatchGameTranslations(translations map[string][]string, pinyin string) map[string][]string {
+	out := map[string][]string{}
+	for lang, texts := range translations {
+		var real, pinyinOnly []string
+		for _, t := range texts {
+			switch {
+			case stripParens(t) == "":
+			case TranslationEqualsPinyin(t, pinyin):
+				pinyinOnly = append(pinyinOnly, t)
+			default:
+				real = append(real, t)
+			}
+		}
+		if len(real) == 0 {
+			real = pinyinOnly
+		}
+		if len(real) > 0 {
+			out[lang] = real
+		}
+	}
+	return out
+}

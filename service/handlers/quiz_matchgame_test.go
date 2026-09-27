@@ -816,3 +816,36 @@ func TestMatchAnswer_SM2UpdateSetting_StampsTimestampsWhenProgressSuppressed(t *
 		})
 	}
 }
+
+// TestMatchGame_Mismatch_SkipsBracketOnlyGloss covers issue #482 for the
+// mismatch mode: a word whose only gloss is a bracket phrase is skipped.
+func TestMatchGame_Mismatch_SkipsBracketOnlyGloss(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
+	id1 := seedWord(t, s, "把", "bǎ", []string{"(particle marking the object)"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	id4 := seedWord(t, s, "对不起", "duì bu qǐ", []string{"sorry"})
+	for _, pair := range [][2]int64{{id1, id2}, {id3, id4}} {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen) VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var resp struct {
+		Words []models.MatchGameWord `json:"words"`
+	}
+	decodeJSON(t, rec, &resp)
+	if len(resp.Words) != 3 {
+		t.Fatalf("want 3 words (把 skipped), got %d: %+v", len(resp.Words), resp.Words)
+	}
+	for _, w := range resp.Words {
+		if w.ZhText == "把" {
+			t.Errorf("把 has only a bracket-only gloss and must be skipped")
+		}
+	}
+}

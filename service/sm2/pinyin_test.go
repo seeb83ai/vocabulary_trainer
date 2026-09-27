@@ -121,3 +121,25 @@ func TestCheckPinyinAnswer(t *testing.T) {
 		}
 	}
 }
+
+func TestTranslationEqualsPinyin(t *testing.T) {
+	tests := []struct {
+		text, pinyin string
+		want         bool
+	}{
+		{"Nan (Eig, Fam)", "nán", true},
+		{"Xiang (Eig, Fam)", "xiàng", true},
+		{"nan", "nan2", true},
+		{"Xi'an", "xī ān", true},
+		{"Lü", "lǚ", true},
+		{"south", "nán", false},
+		{"(Nan)", "nán", false},
+		{"Nan", "", false},
+		{"Nanjing", "nán", false},
+	}
+	for _, tt := range tests {
+		if got := TranslationEqualsPinyin(tt.text, tt.pinyin); got != tt.want {
+			t.Errorf("TranslationEqualsPinyin(%q, %q) = %v, want %v", tt.text, tt.pinyin, got, tt.want)
+		}
+	}
+}

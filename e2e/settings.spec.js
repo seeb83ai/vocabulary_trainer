@@ -141,6 +141,24 @@ test.describe('Settings – Daily Learning', () => {
     await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 
+  test('baseline accuracy can be enabled with a threshold', async ({ page }) => {
+    await page.goto('/settings');
+
+    await page.locator('#baseline-accuracy-enabled').check();
+    await page.locator('#baseline-accuracy-value').fill('80');
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+
+    await page.reload();
+    await expect(page.locator('#baseline-accuracy-enabled')).toBeChecked();
+    await expect(page.locator('#baseline-accuracy-value')).toHaveValue('80');
+    await page.locator('#baseline-accuracy-enabled').scrollIntoViewIfNeeded();
+    await captureForPR(page, 'settings-accuracy-baseline');
+
+    // Disable and reset
+    await page.locator('#baseline-accuracy-enabled').uncheck();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
+
   test('extend-session toggle is visible and defaults to checked', async ({ page }) => {
     await page.goto('/settings');
     const toggle = page.locator('#extend-session-extra-words');

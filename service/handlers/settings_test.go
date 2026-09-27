@@ -1574,3 +1574,40 @@ func TestSettingsPatch_MatchGameSM2Update_EmptyDefaultsToAlways(t *testing.T) {
 		t.Errorf("empty match_game_sm2_update should default to always, got %v", st["match_game_sm2_update"])
 	}
 }
+
+// TestSettingsPatch_BaselineAccuracy covers issue #484: the accuracy baseline
+// is off by default (70%) and round-trips through PATCH/GET.
+func TestSettingsPatch_BaselineAccuracy(t *testing.T) {
+	r := newRouter(openTestDB(t))
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.BaselineAccuracyEnabled || st.BaselineAccuracyValue != 70 {
+		t.Errorf("want default off/70, got %v/%d", st.BaselineAccuracyEnabled, st.BaselineAccuracyValue)
+	}
+
+	body := baseSettingsPatch()
+	body["baseline_accuracy_enabled"] = true
+	body["baseline_accuracy_value"] = 60
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec, &st)
+	if !st.BaselineAccuracyEnabled || st.BaselineAccuracyValue != 60 {
+		t.Errorf("want on/60 after patch, got %v/%d", st.BaselineAccuracyEnabled, st.BaselineAccuracyValue)
+	}
+}
+
+func TestSettingsPatch_BaselineAccuracy_Invalid(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	for _, v := range []int{-1, 101} {
+		body := baseSettingsPatch()
+		body["baseline_accuracy_value"] = v
+		if rec := do(t, r, "PATCH", "/api/settings", body); rec.Code != http.StatusBadRequest {
+			t.Errorf("value %d: want 400, got %d: %s", v, rec.Code, rec.Body.String())
+		}
+	}
+}

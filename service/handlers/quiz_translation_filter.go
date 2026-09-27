@@ -6,6 +6,7 @@ import (
 	"math"
 	"sort"
 	"vocabulary_trainer/models"
+	"vocabulary_trainer/sm2"
 )
 
 // translationCandidateStore is the minimal store surface needed to load
@@ -25,12 +26,16 @@ type translationCandidateStore interface {
 // excludes it from the displayed hint (train-card.js), so that caller passes
 // extraSlots=1 — otherwise "max shown" translations become max-1 visible
 // once the prompt is drawn from them. Every other caller passes 0.
-func loadTranslationsForCard(ctx context.Context, store translationCandidateStore, wordID int64, lang string, settings *models.UserSettings, extraSlots int) (shown []string, extra []string, err error) {
+//
+// A translation that is only the word's pinyin (e.g. "Nan (Eig, Fam)" for
+// 南 nán) is dropped unless it is the only translation in lang (#464/#481).
+func loadTranslationsForCard(ctx context.Context, store translationCandidateStore, wordID int64, pinyin string, lang string, settings *models.UserSettings, extraSlots int) (shown []string, extra []string, err error) {
 	if settings == nil || !settings.TranslationRankingEnabled {
 		words, err := store.GetTranslationsForWord(ctx, wordID, lang)
 		if err != nil {
 			return nil, nil, err
 		}
+		words = withoutPinyinTranslations(words, func(w models.Word) string { return w.Text }, pinyin)
 		texts := make([]string, len(words))
 		for i, w := range words {
 			texts[i] = w.Text
@@ -42,6 +47,7 @@ func loadTranslationsForCard(ctx context.Context, store translationCandidateStor
 	if err != nil {
 		return nil, nil, err
 	}
+	rows = withoutPinyinTranslations(rows, func(c models.TranslationCandidate) string { return c.Text }, pinyin)
 	candidates := make([]translationCandidate, len(rows))
 	for i, row := range rows {
 		c := translationCandidate{Text: row.Text, Source: row.Source}
@@ -58,11 +64,11 @@ func loadTranslationsForCard(ctx context.Context, store translationCandidateStor
 // on the answer result screen, covering every language the word has a
 // translation in (mirrors zhWord.Translations' language coverage, unlike
 // loadTranslationsForCard which is called per-lang for a specific card).
-func loadTranslationsForResult(ctx context.Context, store translationCandidateStore, wordID int64, allTranslations map[string][]string, settings *models.UserSettings) (shown map[string][]string, extra map[string][]string, err error) {
+func loadTranslationsForResult(ctx context.Context, store translationCandidateStore, wordID int64, pinyin string, allTranslations map[string][]string, settings *models.UserSettings) (shown map[string][]string, extra map[string][]string, err error) {
 	shown = map[string][]string{}
 	extra = map[string][]string{}
 	for lang := range allTranslations {
-		texts, extraTexts, err := loadTranslationsForCard(ctx, store, wordID, lang, settings, 0)
+		texts, extraTexts, err := loadTranslationsForCard(ctx, store, wordID, pinyin, lang, settings, 0)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -74,6 +80,28 @@ func loadTranslationsForResult(ctx context.Context, store translationCandidateSt
 		}
 	}
 	return shown, extra, nil
+}
+
+func derefPinyin(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// withoutPinyinTranslations drops every item whose text is only the word's
+// pinyin (sm2.TranslationEqualsPinyin), unless that would drop all of them.
+func withoutPinyinTranslations[T any](items []T, text func(T) string, pinyin string) []T {
+	var kept []T
+	for _, it := range items {
+		if !sm2.TranslationEqualsPinyin(text(it), pinyin) {
+			kept = append(kept, it)
+		}
+	}
+	if len(kept) == 0 {
+		return items
+	}
+	return kept
 }
 
 // translationCandidate is one linked translation word with its stored

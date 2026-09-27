@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"math"
 	"net/http"
 	"strings"
 	"time"
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
@@ -107,6 +109,19 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			newAvailable = n
 		}
 	}
+	// Accuracy baseline (issue #484): mirrors the gate in db.GetNextCard.
+	pausePct := -1
+	if userSettings != nil && userSettings.BaselineAccuracyEnabled {
+		pct, ok, err := h.Store.GetRecentAccuracy(r.Context(), userID, db.AccuracyBaselineDays)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		if ok && pct < float64(userSettings.BaselineAccuracyValue) {
+			pausePct = int(math.Floor(pct))
+			newAvailable = 0
+		}
+	}
 	mnemonics := r.URL.Query().Get("mnemonics") != "false"
 	hmmDueToday := 0
 	hmmTotal := 0
@@ -139,7 +154,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]int{
+	resp := map[string]int{
 		"due_today":            due,
 		"total":                total,
 		"new_today":            newToday,
@@ -155,7 +170,12 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		"components_total":     compTotal,
 		"difficult_remaining":  difficultRemaining,
 		"words_improved_today": wordsImproved,
-	})
+	}
+	if pausePct >= 0 {
+		resp["accuracy_pause_pct"] = pausePct
+		resp["accuracy_pause_min"] = userSettings.BaselineAccuracyValue
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // DueDateDistribution returns word counts grouped by due date, optionally filtered by tags.

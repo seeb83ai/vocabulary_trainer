@@ -23,6 +23,7 @@ const I18N = {
     'statsBar.dueToday': 'Due today:',
     'statsBar.totalWords': 'Total words:',
     'statsBar.newToday': 'New today:',
+    'statsBar.newPaused': 'New words paused: accuracy {pct}% < {min}%',
 
     // Quiz modes
     'mode.progressive': 'Progressive',
@@ -673,6 +674,7 @@ const I18N = {
     'settings.maxInStruggling': 'Max words in Struggling bucket',
     'settings.maxInLearning': 'Max words in Learning bucket',
     'settings.maxInNewBucket': 'Max words in New bucket',
+    'settings.minAccuracy3Days': 'Min. accuracy of the last 3 days (%)',
     'settings.newWordsPerDayMin': 'New words per day must be at least 1.',
     'settings.frequencyRange': 'Frequency must be between 1 and 1440 minutes.',
     'settings.thresholdRange': 'Threshold must be between 0 and 100.',
@@ -797,6 +799,7 @@ const I18N = {
     'statsBar.dueToday': '今日待复习：',
     'statsBar.totalWords': '总词数：',
     'statsBar.newToday': '今日新词：',
+    'statsBar.newPaused': '新词已暂停：正确率 {pct}% < {min}%',
 
     // Quiz modes
     'mode.progressive': '渐进',
@@ -1447,6 +1450,7 @@ const I18N = {
     'settings.maxInStruggling': '"困难"等级中的最大词数',
     'settings.maxInLearning': '"学习中"等级中的最大词数',
     'settings.maxInNewBucket': '"新词"等级中的最大词数',
+    'settings.minAccuracy3Days': '最近 3 天的最低正确率 (%)',
     'settings.newWordsPerDayMin': '每天新词数量至少为1。',
     'settings.frequencyRange': '频率必须在1到1440分钟之间。',
     'settings.thresholdRange': '阈值必须在0到100之间。',
@@ -1571,6 +1575,7 @@ const I18N = {
     'statsBar.dueToday': 'Heute fällig:',
     'statsBar.totalWords': 'Wörter gesamt:',
     'statsBar.newToday': 'Neu heute:',
+    'statsBar.newPaused': 'Neue Wörter pausiert: Trefferquote {pct}% < {min}%',
 
     // Quiz modes
     'mode.progressive': 'Fortschreitend',
@@ -2221,6 +2226,7 @@ const I18N = {
     'settings.maxInStruggling': 'Max. Wörter im Level Schwierig',
     'settings.maxInLearning': 'Max. Wörter im Level Am Lernen',
     'settings.maxInNewBucket': 'Max. Wörter im Level Neu',
+    'settings.minAccuracy3Days': 'Min. Trefferquote der letzten 3 Tage (%)',
     'settings.newWordsPerDayMin': 'Neue Wörter pro Tag muss mindestens 1 sein.',
     'settings.frequencyRange': 'Häufigkeit muss zwischen 1 und 1440 Minuten liegen.',
     'settings.thresholdRange': 'Schwellenwert muss zwischen 0 und 100 liegen.',

@@ -540,3 +540,20 @@ func (s *Store) AdvanceDueDates(ctx context.Context, userID int64, n int) (int, 
 	}
 	return nowDue, nil
 }
+
+// GetRecentAccuracy returns the user's answer accuracy in percent, pooled over
+// the given number of days before today (today is excluded, so the value does
+// not change during a session). ok is false when those days have no attempts.
+func (s *Store) GetRecentAccuracy(ctx context.Context, userID int64, days int) (pct float64, ok bool, err error) {
+	var attempts, mistakes int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(attempts), 0), COALESCE(SUM(mistakes), 0) FROM daily_stats
+		 WHERE user_id = ? AND date >= date('now', ?) AND date < date('now')`,
+		userID, fmt.Sprintf("-%d days", days)).Scan(&attempts, &mistakes); err != nil {
+		return 0, false, fmt.Errorf("recent accuracy: %w", err)
+	}
+	if attempts == 0 {
+		return 0, false, nil
+	}
+	return float64(attempts-mistakes) * 100 / float64(attempts), true, nil
+}

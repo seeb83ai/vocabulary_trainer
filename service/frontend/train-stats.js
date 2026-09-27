@@ -118,6 +118,13 @@ function dueDisplayCount(stats, sessionExtension, newWordIntro = false) {
     + (sessionExtension ? 1 : 0) + (newWordIntro ? 1 : 0);
 }
 
+// Returns the {pct, min} i18n params when the accuracy baseline pauses new
+// words (issue #484), else null.
+function accuracyPauseParams(stats) {
+  if (stats.accuracy_pause_pct === undefined || stats.accuracy_pause_min === undefined) return null;
+  return { pct: stats.accuracy_pause_pct, min: stats.accuracy_pause_min };
+}
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
@@ -132,6 +139,12 @@ async function loadStats() {
     setText('stats-due', dueDisplayCount(stats, false));
     setText('stats-total', stats.total);
     setText('stats-new', `${stats.new_today} / ${stats.max_new_per_day}`);
+    const pause = accuracyPauseParams(stats);
+    const pausedEl = document.getElementById('stats-new-paused');
+    if (pausedEl) {
+      pausedEl.textContent = pause ? t('statsBar.newPaused', pause) : '';
+      pausedEl.classList.toggle('hidden', !pause);
+    }
     renderDifficultDrill();
   } catch (_) {}
 }

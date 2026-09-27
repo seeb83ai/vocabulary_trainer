@@ -2761,3 +2761,38 @@ test.describe('Quiz – example sentence is never the prompt (issue #475)', () =
     await captureForPR(page, 'train-transl-to-zh-no-example-prompt');
   });
 });
+
+// Issue #484: when the accuracy baseline pauses new words, the stats bar says
+// so. Past-day accuracy can't be seeded through the API, so the stats
+// response is patched with the pause fields the server sends in that case.
+test.describe('Quiz – accuracy baseline notice', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('stats bar shows that new words are paused for low accuracy', async ({ page }) => {
+    await page.route('**/api/quiz/stats**', async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...json, accuracy_pause_pct: 62, accuracy_pause_min: 70 }),
+      });
+    });
+    await page.goto('/train');
+
+    const notice = page.locator('#stats-new-paused');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText('62%');
+    await expect(notice).toContainText('70%');
+    await captureForPR(page, 'train-accuracy-paused');
+    await page.setViewportSize({ width: 360, height: 640 });
+    await expect(notice).toBeVisible();
+    await captureForPR(page, 'train-accuracy-paused-mobile');
+  });
+
+  test('stats bar has no pause notice without the pause fields', async ({ page }) => {
+    await page.goto('/train');
+    await expect(page.locator('#stats-new')).not.toHaveText('—');
+    await expect(page.locator('#stats-new-paused')).toBeHidden();
+  });
+});
