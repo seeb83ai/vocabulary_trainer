@@ -47,6 +47,9 @@ type importResponse struct {
 
 const sourceUserID int64 = 1
 
+// importChunkSize is how many words one import transaction writes.
+const importChunkSize = 200
+
 // dictLangs are the languages the tag-based import feature can pull
 // translations for. User_id=1 stores only zh words and tags; translations
 // come live from cedict_entries (CC-CEDICT for en, HanDeDict for de).
@@ -237,6 +240,12 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 	tagged := 0
 	skipped := 0
 
+	importSet := map[string]bool{}
+	for _, l := range req.ImportLangs {
+		importSet[l] = true
+	}
+
+	var toImport []models.WordDetail
 	for _, sw := range sourceWords {
 		// A word the user already has is never imported twice; it only gets
 		// the import's tags added, so it also shows up under the new list.
@@ -252,54 +261,62 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 			tagged++
 			continue
 		}
-		pinyin := ""
-		if sw.Pinyin != nil {
-			pinyin = *sw.Pinyin
-		}
+		toImport = append(toImport, sw)
+	}
 
-		dictTranslations, err := dictionaryTranslations(r.Context(), h.Store, sw.ZhText)
+	for start := 0; start < len(toImport); start += importChunkSize {
+		chunk := toImport[start:min(start+importChunkSize, len(toImport))]
+		texts := make([]string, len(chunk))
+		for i, sw := range chunk {
+			texts[i] = sw.ZhText
+		}
+		dict, err := h.Store.LookupDictionaryBatch(r.Context(), texts, dictLangs)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to load dictionary translations")
 			return
 		}
-		importSet := map[string]bool{}
-		for _, l := range req.ImportLangs {
-			importSet[l] = true
-		}
-		translations := map[string][]string{}
-		for lang, texts := range dictTranslations {
-			if len(req.ImportLangs) == 0 || importSet[lang] {
-				translations[lang] = texts
+
+		reqs := make([]models.CreateWordRequest, 0, len(chunk))
+		for _, sw := range chunk {
+			translations := map[string][]string{}
+			for lang, defs := range dict[sw.ZhText] {
+				if len(req.ImportLangs) == 0 || importSet[lang] {
+					translations[lang] = defs
+				}
 			}
+			if len(translations) == 0 {
+				skipped++
+				continue
+			}
+			pinyin := ""
+			if sw.Pinyin != nil {
+				pinyin = *sw.Pinyin
+			}
+			reqs = append(reqs, models.CreateWordRequest{
+				ZhText:       sw.ZhText,
+				Pinyin:       pinyin,
+				Translations: translations,
+				Tags:         cleanTags,
+			})
 		}
-		if len(translations) == 0 {
-			skipped++
-			continue
-		}
-
-		createReq := models.CreateWordRequest{
-			ZhText:       sw.ZhText,
-			Pinyin:       pinyin,
-			Translations: translations,
-			Tags:         cleanTags,
-		}
-
-		newID, err := h.Store.CreateWord(r.Context(), currentUserID, createReq)
+		ids, err := h.Store.CreateWordsBatch(r.Context(), currentUserID, reqs)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to create word")
 			return
 		}
-		switch req.ImportMode {
-		case "known":
-			err = h.Store.SetWordKnown(r.Context(), currentUserID, newID, true)
-		case "review":
-			err = h.Store.AcknowledgeWord(r.Context(), currentUserID, newID)
+		for _, newID := range ids {
+			switch req.ImportMode {
+			case "known":
+				err = h.Store.SetWordKnown(r.Context(), currentUserID, newID, true)
+			case "review":
+				err = h.Store.AcknowledgeWord(r.Context(), currentUserID, newID)
+			}
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to apply import mode")
+				return
+			}
 		}
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to apply import mode")
-			return
-		}
-		imported++
+		imported += len(reqs)
 	}
 
 	writeJSON(w, http.StatusOK, importResponse{Imported: imported, Tagged: tagged, Skipped: skipped})
