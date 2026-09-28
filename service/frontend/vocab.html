@@ -432,6 +432,7 @@
         <p class="font-medium text-gray-700">CSV format</p>
         <p>Header row required. First two columns must be <code class="bg-gray-200 px-1 rounded">chinese</code> and <code class="bg-gray-200 px-1 rounded">pinyin</code>. Remaining columns are language codes (<code class="bg-gray-200 px-1 rounded">en</code>, <code class="bg-gray-200 px-1 rounded">de</code>, …).</p>
         <p>Multiple translations in one cell: separate with <code class="bg-gray-200 px-1 rounded">;</code></p>
+        <p>Optional column <code class="bg-gray-200 px-1 rounded">source</code>: <code class="bg-gray-200 px-1 rounded">user</code> (your own translation, always shown) or <code class="bg-gray-200 px-1 rounded">cedict</code> (from a dictionary, rare ones can be hidden). It applies to the whole row. Rows with another value are skipped.</p>
         <p class="text-gray-500 font-mono text-xs break-all">chinese,pinyin,en,de<br>我要回家了,wǒ yào huí jiā le,I go home,Ich gehe nach Hause; Ich gehe heim</p>
       </div>
 
@@ -454,6 +455,16 @@
           <div id="csv-upload-tag-autocomplete"
             class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto"></div>
         </div>
+      </div>
+
+      <!-- Default source for rows without a source column value -->
+      <div>
+        <label for="csv-upload-default-source" class="block text-sm font-medium text-gray-700 mb-1">Translations without a source value are</label>
+        <select id="csv-upload-default-source"
+          class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="user">My own translations (always shown)</option>
+          <option value="cedict">From a dictionary (rare ones can be hidden)</option>
+        </select>
       </div>
 
       <!-- Start training slider (hidden until file picked) -->

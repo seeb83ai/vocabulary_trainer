@@ -8,6 +8,7 @@ function openCsvUploadModal() {
   csvUploadFile = null;
   $('csv-upload-file').value = '';
   $('csv-upload-tag-input').value = '';
+  $('csv-upload-default-source').value = 'user';
   $('csv-upload-preview-info').classList.add('hidden');
   $('csv-upload-slider-row').classList.add('hidden');
   $('csv-upload-slider').max = 0;
@@ -118,6 +119,7 @@ async function executeCsvUpload() {
   formData.append('file', csvUploadFile);
   formData.append('tags', csvUploadTags.join(','));
   formData.append('start_training_count', $('csv-upload-slider').value);
+  formData.append('default_source', $('csv-upload-default-source').value);
 
   try {
     const resp = await fetch('/api/words/upload-csv', { method: 'POST', body: formData });
