@@ -57,6 +57,30 @@ async function importLists(selected, applyTags, importEn, importDe, mode) {
   return total;
 }
 
+// buildMatchAllPayload builds the /api/import body that imports only words
+// carrying every selected tag (e.g. HSK 1 + Food). All selected tags are
+// applied to the imported words.
+function buildMatchAllPayload(selected, importEn, importDe, mode) {
+  const payload = {
+    tag: selected[0],
+    and_tags: selected.slice(1),
+    import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
+    apply_tags: [...selected],
+  };
+  if (mode) payload.import_mode = mode;
+  return payload;
+}
+
+// importListsMatchAll runs the single "all tags" import and returns the counts.
+async function importListsMatchAll(selected, importEn, importDe, mode) {
+  const result = await apiFetch('/api/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildMatchAllPayload(selected, importEn, importDe, mode)),
+  });
+  return { imported: result.imported || 0, tagged: result.tagged || 0, skipped: result.skipped || 0 };
+}
+
 function importResultText(result) {
   let text = `${t('vocab.importDone')} ${result.imported} ${t('vocab.importWords2')}`;
   if (result.tagged > 0) text += `, ${t('vocab.importTagged')} ${result.tagged} ${t('vocab.importTaggedOwned')}`;

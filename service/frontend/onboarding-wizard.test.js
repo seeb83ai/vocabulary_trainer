@@ -70,6 +70,71 @@ function wizardSettingsPatch(current, choices) {
   };
 }
 
+// Topic lists in the shared library are tags named "topic-<id>". The labels
+// and Chinese names come from the design; an unknown topic falls back to its
+// capitalised id.
+const WZ_TOPIC_NAMES = {
+  arts: ['Arts', '艺术'], body: ['Body', '身体'], business: ['Business', '商务'],
+  clothing: ['Clothing', '服装'], colors: ['Colors', '颜色'], culture: ['Culture', '文化'],
+  directions: ['Directions', '方向'], family: ['Family', '家庭'], feelings: ['Feelings', '感情'],
+  food: ['Food', '食物'], gardening: ['Gardening', '园艺'], greetings: ['Greetings', '问候'],
+  health: ['Health', '健康'], hobbies: ['Hobbies', '爱好'], home: ['Home', '家'],
+  law: ['Law', '法律'], nature: ['Nature', '自然'], numbers: ['Numbers', '数字'],
+  politics: ['Politics', '政治'], school: ['School', '学校'], science: ['Science', '科学'],
+  shopping: ['Shopping', '购物'], sports: ['Sports', '运动'], technology: ['Technology', '科技'],
+  time: ['Time', '时间'], travel: ['Travel', '旅行'], weather: ['Weather', '天气'], work: ['Work', '工作'],
+};
+
+function wizardCapitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// wizardTopics returns the topic lists in the library tags ({name, word_count}),
+// sorted by label.
+function wizardTopics(tags) {
+  const topics = [];
+  for (const tg of tags) {
+    const m = /^topic-(.+)$/.exec(tg.name);
+    if (!m) continue;
+    const id = m[1];
+    const [label, zh] = WZ_TOPIC_NAMES[id] || [wizardCapitalize(id), ''];
+    topics.push({ id, tag: tg.name, label, zh, words: tg.word_count || 0 });
+  }
+  return topics.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// wizardTopicMatches matches a topic by its English or Chinese name.
+function wizardTopicMatches(topic, query) {
+  const q = query.trim().toLowerCase();
+  return !q || topic.label.toLowerCase().includes(q) || topic.id.includes(q) || topic.zh.includes(q);
+}
+
+// wizardSteps lists the wizard screens; the topics step only exists when the
+// library has topic lists.
+function wizardSteps(hasTopics) {
+  return hasTopics ? ['version', 'level', 'topics', 'pace'] : ['version', 'level', 'pace'];
+}
+
+// wizardImportGroups orders the imports: learn levels first, then the levels
+// below the start (known / review / include), then the picked topics. Words
+// only get the mode of the first list that creates them, so a topic word that
+// sits in a "known" HSK level stays known.
+function wizardImportGroups(plan, below, topicTags) {
+  const groups = [];
+  if (plan.learn.length) groups.push({ tags: plan.learn.map(l => l.tag), mode: 'include' });
+  if (plan.lower.length) groups.push({ tags: plan.lower.map(l => l.tag), mode: below });
+  if (topicTags.length) groups.push({ tags: topicTags, mode: 'include' });
+  return groups;
+}
+
+// wizardTagLabel names a library tag for the done screens.
+function wizardTagLabel(tag) {
+  const m = /^hsk(\d+)-(\d+)$/.exec(tag);
+  if (m) return `HSK ${m[1]}.0 · ${wizardLevelLabel(Number(m[1]), Number(m[2]))}`;
+  const topic = /^topic-(.+)$/.exec(tag);
+  return topic ? wizardTopics([{ name: tag }])[0].label : tag;
+}
+
 
 const lib = [
   ...[500, 772, 973, 1000, 1071, 1140].map((n, i) => ({ name: `hsk3-${i + 1}`, word_count: n })),
@@ -170,5 +235,77 @@ describe('wizardSettingsPatch', () => {
     expect(wizardSettingsPatch(current, { pace: 20, game: false, audio: true })).toEqual({
       max_new_words_per_day: 20, gamification_enabled: false, autoplay_always: true, blur_pinyin: true,
     });
+  });
+});
+
+const topicLib = [
+  ...lib,
+  { name: 'topic-travel', word_count: 40 },
+  { name: 'topic-food', word_count: 60 },
+  { name: 'topic-e2eother', word_count: 5 },
+];
+
+describe('wizardTopics', () => {
+  it('lists only topic-* tags, sorted by label, with Chinese names', () => {
+    const topics = wizardTopics(topicLib);
+    expect(topics.map(tp => tp.id)).toEqual(['e2eother', 'food', 'travel']);
+    expect(topics[1]).toEqual({ id: 'food', tag: 'topic-food', label: 'Food', zh: '食物', words: 60 });
+  });
+
+  it('falls back to the capitalised id for a topic without a Chinese name', () => {
+    const [topic] = wizardTopics([{ name: 'topic-e2eother' }]);
+    expect(topic).toMatchObject({ label: 'E2eother', zh: '', words: 0 });
+  });
+
+  it('is empty when the library has no topics', () => {
+    expect(wizardTopics(lib)).toEqual([]);
+  });
+});
+
+describe('wizardTopicMatches', () => {
+  const food = { id: 'food', label: 'Food', zh: '食物' };
+  it('matches everything for an empty query', () => {
+    expect(wizardTopicMatches(food, '  ')).toBe(true);
+  });
+
+  it('matches the English name case-insensitively and the Chinese name', () => {
+    expect(wizardTopicMatches(food, 'FOO')).toBe(true);
+    expect(wizardTopicMatches(food, '食')).toBe(true);
+    expect(wizardTopicMatches(food, 'travel')).toBe(false);
+  });
+});
+
+describe('wizardSteps', () => {
+  it('has a topics step only when the library has topics', () => {
+    expect(wizardSteps(true)).toEqual(['version', 'level', 'topics', 'pace']);
+    expect(wizardSteps(false)).toEqual(['version', 'level', 'pace']);
+  });
+});
+
+describe('wizardImportGroups', () => {
+  const levels = wizardLevels(lib, 3);
+  const beg = wizardBands(3, levels)[0].levels;
+
+  it('imports learn levels first, then lower levels in their mode, then topics', () => {
+    const plan = wizardPlan(levels, beg, 2, 'known');
+    expect(wizardImportGroups(plan, 'known', ['topic-food'])).toEqual([
+      { tags: ['hsk3-2', 'hsk3-3'], mode: 'include' },
+      { tags: ['hsk3-1'], mode: 'known' },
+      { tags: ['topic-food'], mode: 'include' },
+    ]);
+  });
+
+  it('leaves out groups that have no lists', () => {
+    const plan = wizardPlan(levels, beg, 1, 'known');
+    expect(wizardImportGroups(plan, 'known', [])).toEqual([{ tags: ['hsk3-1', 'hsk3-2', 'hsk3-3'], mode: 'include' }]);
+  });
+});
+
+describe('wizardTagLabel', () => {
+  it('names HSK lists and topics for the done screen', () => {
+    expect(wizardTagLabel('hsk3-1')).toBe('HSK 3.0 · 1');
+    expect(wizardTagLabel('hsk3-7')).toBe('HSK 3.0 · 7–9');
+    expect(wizardTagLabel('hsk2-6')).toBe('HSK 2.0 · 6');
+    expect(wizardTagLabel('topic-food')).toBe('Food');
   });
 });

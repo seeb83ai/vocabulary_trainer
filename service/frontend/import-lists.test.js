@@ -33,6 +33,17 @@ function buildListImportPayload(sourceTag, selected, applyTags, importEn, import
   return payload;
 }
 
+function buildMatchAllPayload(selected, importEn, importDe, mode) {
+  const payload = {
+    tag: selected[0],
+    and_tags: selected.slice(1),
+    import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
+    apply_tags: [...selected],
+  };
+  if (mode) payload.import_mode = mode;
+  return payload;
+}
+
 describe('hskVersions', () => {
   it('lists the HSK versions in the library, newest first', () => {
     expect(hskVersions(['hsk2-1', 'food', 'hsk3-1', 'hsk3-2', 'hsk2-6'])).toEqual([3, 2]);
@@ -97,5 +108,20 @@ describe('buildListImportPayload import mode', () => {
     const payload = buildListImportPayload('hsk3-1', ['hsk3-1'], ['hsk3-1'], true, true, 'known');
     expect(payload.import_mode).toBe('known');
     expect(payload.import_langs).toEqual(['en', 'de']);
+  });
+});
+
+describe('buildMatchAllPayload', () => {
+  it('imports the first tag narrowed by the others and applies all of them', () => {
+    expect(buildMatchAllPayload(['hsk3-1', 'topic-food'], true, false)).toEqual({
+      tag: 'hsk3-1', and_tags: ['topic-food'], import_langs: ['en'], apply_tags: ['hsk3-1', 'topic-food'],
+    });
+  });
+
+  it('passes the languages and the import mode through', () => {
+    const payload = buildMatchAllPayload(['a', 'b', 'c'], true, true, 'include');
+    expect(payload.and_tags).toEqual(['b', 'c']);
+    expect(payload.import_langs).toEqual(['en', 'de']);
+    expect(payload.import_mode).toBe('include');
   });
 });

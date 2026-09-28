@@ -31,6 +31,9 @@ type importRequest struct {
 	Tag         string   `json:"tag"`
 	ImportLangs []string `json:"import_langs"`
 	ApplyTags   []string `json:"apply_tags"`
+	// AndTags narrows the import to words that also carry every one of
+	// these tags (Tag AND AndTags), e.g. HSK 1 + Food.
+	AndTags []string `json:"and_tags"`
 	// ImportMode says how new words start: "include" (default, unseen),
 	// "review" (skip the intro, due once) or "known" (never quizzed).
 	ImportMode string `json:"import_mode"`
@@ -65,6 +68,23 @@ func dictionaryTranslations(ctx context.Context, store importStore, zhText strin
 	return translations, nil
 }
 
+// hasAllTags reports whether tags contains every name in want.
+func hasAllTags(tags, want []string) bool {
+	for _, w := range want {
+		found := false
+		for _, tg := range tags {
+			if tg == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 // SourceTags returns importable tags belonging to the shared library user (user_id=1),
 // including each tag's description.
 func (h *ImportHandler) SourceTags(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +115,15 @@ func (h *ImportHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load preview")
 		return
+	}
+	if r.URL.Query().Get("match") == "all" {
+		matching := words[:0]
+		for _, word := range words {
+			if hasAllTags(word.Tags, tags) {
+				matching = append(matching, word)
+			}
+		}
+		words, total = matching, len(matching)
 	}
 
 	availableLangs := map[string]int{}
@@ -182,6 +211,15 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load source words")
 		return
+	}
+	if len(req.AndTags) > 0 {
+		matching := sourceWords[:0]
+		for _, sw := range sourceWords {
+			if hasAllTags(sw.Tags, req.AndTags) {
+				matching = append(matching, sw)
+			}
+		}
+		sourceWords = matching
 	}
 
 	// Build a set of the current user's existing zh_texts.

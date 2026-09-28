@@ -243,7 +243,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/frontend/train-result.js` | Answer-result rendering, character decomposition |
 | `service/frontend/train-matchgame.js` | Post-answer match-game widget |
 | `service/frontend/train-card.js` | Core load/show/submit quiz loop, page state, init |
-| `service/frontend/onboarding-wizard.js` | First-vocabulary-setup wizard on the Train empty state (HSK version → level → pace/preferences, then import) |
+| `service/frontend/onboarding-wizard.js` | First-vocabulary-setup wizard on the Train empty state (HSK version → level → optional topics → pace/preferences, then import) and the shared-library picker ("Import my own list instead") |
 | `service/frontend/app.css` | Shared shell styles (self-hosted Plus Jakarta Sans / Noto Sans SC subset from `service/frontend/fonts/`) and wizard styles |
 | `service/frontend/vocab-list.js` | Word table/pagination/filters, page init |
 | `service/frontend/vocab-form.js` | Add/edit/delete word form, translate/pinyin lookup |
@@ -280,7 +280,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
-| `e2e/onboarding.spec.js` | Browser tests: setup wizard (3 steps, known/review below-start words, saved settings), multi-select custom import |
+| `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags) |
 | `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
