@@ -2,7 +2,25 @@
 import { test, expect } from '@playwright/test';
 import { captureForPR } from './helpers/screenshot.js';
 
-test.use({ storageState: 'e2e/.auth/user.json' });
+const PASSWORD = 'E2eCsvUploadPass123!';
+
+/**
+ * Register a brand-new user, so the uploaded words do not leak into the
+ * seeded user's vocabulary that the other specs (quiz, stats) rely on.
+ * @param {import('@playwright/test').Page} page
+ */
+async function registerFreshUser(page) {
+  await page.route('https://api.pwnedpasswords.com/**', route => {
+    route.fulfill({ status: 200, body: '' });
+  });
+  const email = `e2e-csv-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
+  await page.goto('/#register');
+  await page.locator('#reg-email').fill(email);
+  await page.locator('#reg-password').fill(PASSWORD);
+  await page.locator('#reg-confirm').fill(PASSWORD);
+  await page.locator('#register-btn').click();
+  await expect(page).toHaveURL('/train', { timeout: 10_000 });
+}
 
 /**
  * Upload a CSV through the "Upload CSV" dialog.
@@ -12,6 +30,7 @@ test.use({ storageState: 'e2e/.auth/user.json' });
  * @param {string} defaultSource - value of the "translations are" select
  */
 async function uploadCsv(page, csv, tag, defaultSource) {
+  await registerFreshUser(page);
   await page.goto('/vocab');
   await page.locator('#csv-upload-btn').click();
   await page.locator('#csv-upload-file').setInputFiles({
