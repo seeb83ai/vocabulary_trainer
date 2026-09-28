@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"vocabulary_trainer/models"
 )
@@ -147,9 +148,12 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 		reqs := make([]models.CreateWordRequest, 0, len(chunk))
 		for _, sw := range chunk {
 			translations := map[string][]string{}
+			sources := map[string][]string{}
 			for lang, defs := range dict[sw.ZhText] {
 				if len(job.ImportLangs) == 0 || importSet[lang] {
 					translations[lang] = defs
+					// The translations come verbatim from the dictionary.
+					sources[lang] = slices.Repeat([]string{"cedict"}, len(defs))
 				}
 			}
 			if len(translations) == 0 {
@@ -161,10 +165,11 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 				pinyin = *sw.Pinyin
 			}
 			reqs = append(reqs, models.CreateWordRequest{
-				ZhText:       sw.ZhText,
-				Pinyin:       pinyin,
-				Translations: translations,
-				Tags:         job.ApplyTags,
+				ZhText:             sw.ZhText,
+				Pinyin:             pinyin,
+				Translations:       translations,
+				TranslationSources: sources,
+				Tags:               job.ApplyTags,
 			})
 		}
 		ids, err := w.store.CreateWordsBatch(ctx, job.UserID, reqs)

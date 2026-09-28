@@ -713,3 +713,43 @@ func TestImportWorker_ImportsWordsInSourceOrder(t *testing.T) {
 		prev = id
 	}
 }
+
+func TestImportJob_MarksDictionaryTranslationsAsCedict(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello; hi")
+	seedCedictEntry(t, s, "你好", "de", "hallo")
+
+	r := newRouter(s)
+	runImport(t, s, r, map[string]any{"tag": "HSK1", "import_langs": []string{"en", "de"}, "apply_tags": []string{"HSK1"}})
+
+	got := csvSources(t, r, "HSK1")
+	if fmt.Sprint(got["你好"]) != "map[de:[cedict] en:[cedict cedict]]" {
+		t.Errorf("sources = %v, want every imported translation marked cedict", got["你好"])
+	}
+}
+
+func TestImportJob_StoresFrequencyRankForDictionaryTranslations(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "zzzrareword")
+	if _, err := s.ExecForTest(`INSERT INTO word_frequency_lang (word, lang, rank) VALUES ('zzzrareword', 'en', 7777)
+		ON CONFLICT(word, lang) DO UPDATE SET rank = excluded.rank`); err != nil {
+		t.Fatal(err)
+	}
+
+	runImport(t, s, newRouter(s), map[string]any{"tag": "HSK1", "import_langs": []string{"en"}})
+
+	// Read the rank through the store's own listing of translation candidates.
+	id, err := s.GetWordIDByZhText(context.Background(), 2, "你好")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cands, err := s.GetTranslationCandidatesForWord(context.Background(), id, "en")
+	if err != nil || len(cands) != 1 {
+		t.Fatalf("candidates = %v, %v", cands, err)
+	}
+	if cands[0].Source != "cedict" || cands[0].Rank == nil || *cands[0].Rank != 7777 {
+		t.Errorf("candidate = %+v, want source cedict and rank 7777", cands[0])
+	}
+}

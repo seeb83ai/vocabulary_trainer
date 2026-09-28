@@ -287,12 +287,16 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
 | `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags), training starts while the import runs |
 | `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has, live import progress |
+<<<<<<< HEAD
 | `e2e/vocab-redesign.spec.js` | Browser tests: Vocabulary header/summary, filter chips, More filters + sort, row list, Add/Edit sheet (known/reset/delete), ⋯ menu, phone layout |
 | `e2e/library-redesign.spec.js` | Browser tests: Mismatches cards + client-side sort + count pill + empty state; Mnemonics tabs with filled counts, actor groups, auto-save (HMM API mocked) |
 | `e2e/pinyin-redesign.spec.js` | Browser tests: Pinyin sticky bar + group chips, 2×2 options, wrong-answer result with all tones, done/empty states, phone layout (pinyin API mocked) |
 | `e2e/stats-redesign.spec.js` | Browser tests: Stats summary tiles (streak vs training time), Levels bar + rows incl. Unseen, folded table, segmented tabs, phone layout |
 | `e2e/train-redesign.spec.js` | Browser tests: Train session bar + session sheet, tier chip, More info box, mix-up layout, new-word card, inline match game, all-done week grid, error card |
 | `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
+=======
+| `e2e/csv-upload.spec.js` | Browser tests: CSV upload dialog — default translation source, per-row `source` column, invalid rows skipped |
+>>>>>>> 7e04b89 (Mark library-list translations as dictionary translations)
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
 
