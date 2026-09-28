@@ -75,42 +75,18 @@
 
   <!-- Main content -->
   <main class="flex-1 flex items-start justify-center px-4 py-4 sm:py-10">
-    <div class="w-full max-w-xs sm:max-w-sm md:max-w-lg">
+    <div id="train-container" class="w-full max-w-xs sm:max-w-sm md:max-w-lg">
 
-      <!-- Empty state (no vocabulary added yet) — inline import onboarding -->
-      <div id="empty-state" class="hidden bg-white rounded-2xl shadow p-8">
+      <!-- Empty state (no vocabulary added yet) — first vocabulary setup wizard,
+           with the manual list picker behind "Import my own list instead". -->
+      <div id="empty-state" class="hidden">
+        <div id="ob-quickstart" class="hidden"><div id="wz-root"></div></div>
+
+      <div id="ob-custom" class="bg-white rounded-2xl shadow p-8">
         <div class="text-center mb-6">
           <div class="text-5xl mb-3">📚</div>
           <h2 class="text-xl font-semibold text-gray-700 mb-1" data-i18n="empty.title">No vocabulary yet</h2>
           <p class="text-gray-500 text-sm" data-i18n="empty.importMsg">Import a word list to get started — it only takes a moment.</p>
-        </div>
-
-        <!-- Quick start: one-button level chooser (shown when HSK library tags exist) -->
-        <div id="ob-quickstart" class="hidden">
-          <p class="text-sm font-medium text-gray-700 mb-3" data-i18n="empty.quickStartQuestion">How much Chinese do you know?</p>
-          <div id="ob-qs-versions" class="hidden flex gap-2 mb-3 text-sm">
-            <button id="ob-qs-version-3" type="button" aria-pressed="true"
-              class="px-3 py-1 rounded-full border font-medium transition bg-blue-600 text-white border-blue-600"
-              data-i18n="empty.qsVersion3">HSK 3.0 (new)</button>
-            <button id="ob-qs-version-2" type="button" aria-pressed="false"
-              class="px-3 py-1 rounded-full border font-medium transition border-gray-300 text-gray-600 hover:border-blue-400"
-              data-i18n="empty.qsVersion2">HSK 2.0 (old)</button>
-          </div>
-          <div class="grid gap-2 mb-3">
-            <button id="ob-qs-beginner" type="button"
-              class="hidden w-full text-left px-4 py-3 rounded-xl border border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition font-medium text-gray-700">
-              🌱 <span data-i18n="empty.qsBeginner">I'm new — start with HSK 1</span>
-            </button>
-            <button id="ob-qs-basics" type="button"
-              class="hidden w-full text-left px-4 py-3 rounded-xl border border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition font-medium text-gray-700">
-              📗 <span data-i18n="empty.qsBasics">I know the basics — HSK 2–3</span>
-            </button>
-            <button id="ob-qs-custom" type="button"
-              class="w-full text-left px-4 py-3 rounded-xl border border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition font-medium text-gray-700">
-              ⚙️ <span data-i18n="empty.qsCustom">Let me choose word lists myself</span>
-            </button>
-          </div>
-          <div id="ob-qs-status" class="hidden text-sm text-gray-500"></div>
         </div>
 
         <!-- Step 1: pick a source tag -->
@@ -204,6 +180,7 @@
           </div>
           <div id="ob-status" class="hidden mt-3 text-sm"></div>
         </div>
+      </div>
       </div>
 
       <!-- Success state (all words reviewed for today) -->

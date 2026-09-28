@@ -83,6 +83,7 @@ type UserSettings struct {
 	SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
 	AutoSubwords                     bool     `json:"auto_subwords"`
 	TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
+	AutoplayAlways                   bool     `json:"autoplay_always"`
 	MaxTranslationsShown             int      `json:"max_translations_shown"`
 	TranslationHideUnranked          bool     `json:"translation_hide_unranked"`
 	TranslationUserOrder             string   `json:"translation_user_order"` // "first" (default) or "last"
@@ -329,6 +330,7 @@ type WordDetail struct {
 	Tags               []string            `json:"tags"`
 	NeedsReview        bool                `json:"needs_review"`
 	LearningNewWord    bool                `json:"learning_new_word"`
+	Known              bool                `json:"known"`
 	SceneText          string              `json:"scene_text,omitempty"`
 	IsAlsoComponent    bool                `json:"is_also_component,omitempty"`
 }
@@ -457,6 +459,7 @@ type TagDetail struct {
 	Description    string   `json:"description"`
 	Importable     bool     `json:"importable"`
 	AvailableLangs []string `json:"available_langs,omitempty"`
+	WordCount      int      `json:"word_count,omitempty"`
 }
 
 type UpsertTagMetaRequest struct {

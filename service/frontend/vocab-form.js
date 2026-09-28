@@ -110,6 +110,13 @@ function openEditForm(word) {
     hide('start-training-row');
     show('form-reset-btn');
   }
+  if (word.id) {
+    show('form-known-btn');
+    setText('form-known-btn', t(word.known ? 'vocab.unmarkKnown' : 'vocab.markKnown'));
+    $('form-known-btn').dataset.known = word.known ? '1' : '';
+  } else {
+    hide('form-known-btn');
+  }
 
   // HMM scene builder
   const hmmContainer = $('hmm-builder-container');
@@ -198,6 +205,7 @@ function resetForm() {
   $('form-pinyin').value = '';
   hide('form-cancel-btn');
   hide('form-reset-btn');
+  hide('form-known-btn');
   hide('hanziway-link');
   const compSection = $('components-edit-section');
   if (compSection) { compSection.innerHTML = ''; compSection.classList.add('hidden'); }
@@ -332,6 +340,18 @@ async function resetWordProgress() {
     loadWords();
   } catch (e) {
     alert('Failed to reset: ' + e.message);
+  }
+}
+
+async function toggleWordKnown() {
+  if (!editingWordId) return;
+  const known = !$('form-known-btn').dataset.known;
+  try {
+    await apiFetch(`/api/words/${editingWordId}/known`, { method: 'POST', body: JSON.stringify({ known }) });
+    openEditForm(await apiFetch(`/api/words/${editingWordId}`));
+    loadWords();
+  } catch (e) {
+    alert('Failed to update: ' + e.message);
   }
 }
 

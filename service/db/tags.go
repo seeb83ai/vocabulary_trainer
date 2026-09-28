@@ -90,10 +90,10 @@ func (s *Store) UpsertTagMeta(ctx context.Context, userID int64, name, descripti
 // Each TagDetail includes AvailableLangs listing every translation language present for that tag.
 func (s *Store) GetImportableSourceTags(ctx context.Context, userID int64) ([]models.TagDetail, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT tg.name, tg.description, tg.importable
+		SELECT tg.name, tg.description, tg.importable, COUNT(DISTINCT w.id)
 		FROM tags tg
 		JOIN word_tags wt ON wt.tag_id = tg.id
-		JOIN words w ON w.id = wt.word_id
+		JOIN words w ON w.id = wt.word_id AND w.language = 'zh'
 		WHERE w.user_id = ? AND tg.importable = 1
 		GROUP BY tg.id
 		ORDER BY tg.name`, userID)
@@ -106,7 +106,7 @@ func (s *Store) GetImportableSourceTags(ctx context.Context, userID int64) ([]mo
 	for rows.Next() {
 		var td models.TagDetail
 		var imp int
-		if err := rows.Scan(&td.Name, &td.Description, &imp); err != nil {
+		if err := rows.Scan(&td.Name, &td.Description, &imp, &td.WordCount); err != nil {
 			return nil, err
 		}
 		td.Importable = imp != 0

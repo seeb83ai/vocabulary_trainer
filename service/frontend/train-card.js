@@ -24,6 +24,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   noAutoVoiceOnBlur = !!st?.no_auto_voice_on_blur;
   celebrateBucketChange = !!st?.celebrate_bucket_change;
   _gamificationEnabled = !!st?.gamification_enabled;
+  autoPlayEnabled = !!st?.autoplay_always;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   _matchGamePinyinReveal = st?.match_game_pinyin_reveal || 'always';
   const btn = document.getElementById('new-word-skip-btn');
@@ -922,7 +923,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Onboarding import (shown when user has zero words)
   let obAllTags = [];
   let obSelectedTags = [];
-  let obQuickVersion = 3;
   let obFilterLangs = new Set();
   let obFilterMode = 'any';
   let obApplyTags = [];
@@ -1037,49 +1037,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Show the one-button level chooser when the library offers HSK lists;
-  // the manual tag picker stays available behind the "choose myself" option.
-  // A version toggle (HSK 3.0 by default) picks which lists the buttons use.
+  // Start the setup wizard when the library offers HSK lists; the manual tag
+  // picker stays available behind "Import my own list instead".
   function obApplyQuickStart() {
-    const names = (obAllTags || []).map(tg => tg.name);
-    const versions = hskVersions(names);
-    if (versions.length === 0) return;
-    if (!versions.includes(obQuickVersion)) obQuickVersion = versions[0];
-    $('ob-qs-versions').classList.toggle('hidden', versions.length < 2);
-    for (const v of [2, 3]) {
-      const btn = $('ob-qs-version-' + v);
-      const active = v === obQuickVersion;
-      btn.classList.toggle('hidden', !versions.includes(v));
-      btn.setAttribute('aria-pressed', String(active));
-      btn.classList.toggle('bg-blue-600', active);
-      btn.classList.toggle('text-white', active);
-      btn.classList.toggle('border-blue-600', active);
-      btn.classList.toggle('text-gray-600', !active);
-      btn.classList.toggle('border-gray-300', !active);
-    }
-    const plan = hskQuickStart(names, obQuickVersion);
-    $('ob-qs-beginner').classList.toggle('hidden', plan.beginner.length === 0);
-    $('ob-qs-basics').classList.toggle('hidden', plan.basics.length === 0);
-    show('ob-quickstart');
-    hide('ob-step1');
-  }
-
-  async function obQuickImport(tags) {
-    const buttons = ['ob-qs-beginner', 'ob-qs-basics', 'ob-qs-custom', 'ob-qs-version-2', 'ob-qs-version-3'];
-    const statusEl = $('ob-qs-status');
-    for (const id of buttons) $(id).disabled = true;
-    statusEl.className = 'text-sm text-gray-500';
-    statusEl.textContent = t('empty.qsImporting');
-    show('ob-qs-status');
-    try {
-      await importLists(tags, tags, true, true);
+    const started = wizardStart($('wz-root'), obAllTags, detail => {
+      selectedLangs = detail.langs;
+      autoPlayEnabled = detail.audio;
+      _gamificationEnabled = detail.game;
+      applyAutoPlayButton();
       hide('empty-state');
       loadNextCard();
-    } catch (e) {
-      statusEl.className = 'text-sm text-red-600';
-      statusEl.textContent = t('empty.qsFailed');
-      for (const id of buttons) $(id).disabled = false;
-    }
+    });
+    if (!started) return;
+    show('ob-quickstart');
+    hide('ob-custom');
   }
 
   async function obExecuteImport() {
@@ -1180,13 +1151,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[name="ob-filter-mode"]').forEach(radio => {
     radio.addEventListener('change', () => { obFilterMode = radio.value; obRenderTagPills(); });
   });
-  const obQuickPlan = () => hskQuickStart((obAllTags || []).map(tg => tg.name), obQuickVersion);
-  $('ob-qs-beginner').addEventListener('click', () => obQuickImport(obQuickPlan().beginner));
-  $('ob-qs-basics').addEventListener('click', () => obQuickImport(obQuickPlan().basics));
-  for (const v of [2, 3]) {
-    $('ob-qs-version-' + v).addEventListener('click', () => { obQuickVersion = v; obApplyQuickStart(); });
-  }
-  $('ob-qs-custom').addEventListener('click', () => { hide('ob-quickstart'); show('ob-step1'); });
+  document.addEventListener('ob:custom', () => { hide('ob-quickstart'); show('ob-custom'); });
   $('ob-next-btn').addEventListener('click', () => obShowStep(2));
   $('ob-back1-btn').addEventListener('click', () => obShowStep(1));
   $('ob-next2-btn').addEventListener('click', () => {
@@ -1199,5 +1164,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('ob:loadtags', obLoadTags, { once: false });
 
-  loadTrainSettings().then(() => loadNextCard());
+  loadTrainSettings().then(() => { applyAutoPlayButton(); loadNextCard(); });
 });

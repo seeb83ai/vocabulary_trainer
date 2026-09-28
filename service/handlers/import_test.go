@@ -441,3 +441,83 @@ func TestImport_MissingTag(t *testing.T) {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
 	}
 }
+
+func TestImport_KnownModeHidesWordsFromQuiz(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag": "HSK1", "import_langs": []string{"en"}, "apply_tags": []string{"HSK1"}, "import_mode": "known",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Imported int `json:"imported"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 1 {
+		t.Fatalf("want imported=1, got %d", resp.Imported)
+	}
+	if rec := do(t, r, "GET", "/api/quiz/next", nil); rec.Code != http.StatusNotFound {
+		t.Errorf("known words must not be quizzed, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestImport_ReviewModeSkipsNewWordIntro(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag": "HSK1", "import_langs": []string{"en"}, "apply_tags": []string{"HSK1"}, "import_mode": "review",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	rec = do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("review word must be due, got %d: %s", rec.Code, rec.Body)
+	}
+	var card struct {
+		Mode string `json:"mode"`
+	}
+	decodeJSON(t, rec, &card)
+	if card.Mode == "new_word" {
+		t.Errorf("review words must skip the new-word introduction")
+	}
+}
+
+func TestImport_IncludeModeLeavesWordsUnseen(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag": "HSK1", "import_langs": []string{"en"}, "import_mode": "include",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	rec = do(t, r, "GET", "/api/quiz/next", nil)
+	var card struct {
+		Mode string `json:"mode"`
+	}
+	decodeJSON(t, rec, &card)
+	if card.Mode != "new_word" {
+		t.Errorf("included words start as new words, got mode %q", card.Mode)
+	}
+}
+
+func TestImport_UnknownModeRejected(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{"tag": "HSK1", "import_mode": "bogus"})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}

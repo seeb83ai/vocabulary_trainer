@@ -20,42 +20,100 @@ async function registerFreshUser(page) {
   await expect(page).toHaveURL('/train', { timeout: 10_000 });
 }
 
-test.describe('One-button onboarding', () => {
-  test('new user sees the quick-start level chooser and reaches the first card in one click', async ({ page }) => {
+test.describe('First vocabulary setup wizard', () => {
+  test('a new user walks through the 3 steps and reaches the first card', async ({ page }) => {
     await registerFreshUser(page);
 
     await expect(page.locator('#empty-state')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('#ob-quickstart')).toBeVisible();
-    // The detailed tag picker stays hidden behind the "choose myself" option.
     await expect(page.locator('#ob-step1')).toBeHidden();
-    // HSK 3.0 is the default version.
-    await expect(page.locator('#ob-qs-version-3')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('#ob-qs-version-2')).toHaveAttribute('aria-pressed', 'false');
-    await captureForPR(page, 'train-onboarding-hsk-version-toggle');
 
-    await page.locator('#ob-qs-beginner').click();
+    // Step 1: HSK 3.0 is preselected and shows the live word count.
+    await expect(page.locator('#wz-step')).toContainText('1');
+    await expect(page.locator('#wz-version-3')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#wz-version-2')).toHaveAttribute('aria-pressed', 'false');
+    await captureForPR(page, 'wizard-step1-version');
+    await page.locator('#wz-next').click();
 
-    // Import runs, then the first card appears — for a fresh user that is
-    // the new-word introduction screen.
+    // Step 2: the beginner band starts at its first level.
+    await expect(page.locator('#wz-band-beg')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#wz-start-1')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#wz-below')).toBeHidden();
+    await captureForPR(page, 'wizard-step2-level');
+    await page.locator('#wz-next').click();
+
+    // Step 3: defaults, then import.
+    await expect(page.locator('#wz-pace-10')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#wz-lang-en')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#wz-lang-de')).toHaveAttribute('aria-pressed', 'false');
+    await captureForPR(page, 'wizard-step3-pace');
+    await expect(page.locator('#wz-next')).toContainText('5');
+    await page.locator('#wz-next').click();
+
+    await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#wz-done')).toContainText('5');
+    await captureForPR(page, 'wizard-done');
+    await page.locator('#wz-start-training').click();
+
     await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('#new-word-zh')).not.toBeEmpty();
     await expect(page.locator('#empty-state')).toBeHidden();
 
     const tags = await page.evaluate(() => fetch('/api/tags').then(r => r.json()));
-    expect(tags).toEqual(['hsk3-1']);
+    expect(tags.sort()).toEqual(['hsk3-1', 'hsk3-2', 'hsk3-3']);
+    const st = await page.evaluate(() => fetch('/api/settings').then(r => r.json()));
+    expect(st.max_new_words_per_day).toBe(10);
+    expect(st.train_langs).toEqual(['en']);
   });
 
-  test('the version toggle switches the quick start to HSK 2.0', async ({ page }) => {
+  test('words below the start level are marked as known and never quizzed', async ({ page }) => {
     await registerFreshUser(page);
-
     await expect(page.locator('#ob-quickstart')).toBeVisible({ timeout: 10_000 });
-    await page.locator('#ob-qs-version-2').click();
-    await expect(page.locator('#ob-qs-version-2')).toHaveAttribute('aria-pressed', 'true');
-    await page.locator('#ob-qs-basics').click();
 
-    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 15_000 });
-    const tags = await page.evaluate(() => fetch('/api/tags').then(r => r.json()));
-    expect(tags).toEqual(['hsk2-2']);
+    await page.locator('#wz-version-2').click();
+    await page.locator('#wz-next').click();
+    await page.locator('#wz-start-2').click();
+    await expect(page.locator('#wz-below')).toBeVisible();
+    await expect(page.locator('#wz-below-known')).toHaveAttribute('aria-pressed', 'true');
+    await captureForPR(page, 'wizard-step2-below-start');
+    await page.locator('#wz-next').click();
+    await page.locator('#wz-next').click();
+    await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+
+    const res = await page.evaluate(() => fetch('/api/words/?per_page=50').then(r => r.json()));
+    const known = Object.fromEntries(res.words.map(w => [w.zh_text, w.known]));
+    expect(known).toEqual({ '一': true, '人': true, '大': true, '时间': false, '已经': false });
+
+    await page.locator('#wz-start-training').click();
+    await expect(page.locator('#new-word-zh')).toHaveText(/时间|已经/, { timeout: 15_000 });
+  });
+
+  test('pace, languages, gamification and audio are saved as settings', async ({ page }) => {
+    await registerFreshUser(page);
+    await expect(page.locator('#ob-quickstart')).toBeVisible({ timeout: 10_000 });
+
+    await page.locator('#wz-next').click();
+    await page.locator('#wz-next').click();
+    await page.locator('#wz-pace-20').click();
+    await page.locator('#wz-lang-de').click();
+    await page.locator('#wz-game-off').click();
+    await page.locator('#wz-audio-on').click();
+    // The last selected meaning language cannot be switched off.
+    await page.locator('#wz-lang-en').click();
+    await page.locator('#wz-lang-de').click();
+    await expect(page.locator('#wz-lang-de')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#wz-lang-en').click();
+    await expect(page.locator('#wz-lang-en')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#wz-next').click();
+    await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+
+    const st = await page.evaluate(() => fetch('/api/settings').then(r => r.json()));
+    expect(st.max_new_words_per_day).toBe(20);
+    expect(st.train_langs.sort()).toEqual(['de', 'en']);
+    expect(st.gamification_enabled).toBe(false);
+    expect(st.autoplay_always).toBe(true);
+
+    await page.locator('#wz-start-training').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('the custom option reveals the existing tag picker', async ({ page }) => {

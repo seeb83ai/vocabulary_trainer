@@ -2611,3 +2611,102 @@ func TestGetNextCard_BaselineAccuracy(t *testing.T) {
 		})
 	}
 }
+
+func TestSetWordKnown_HidesUnseenWordFromNextCard(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	if err := s.SetWordKnown(ctx, int64(2), id, true); err != nil {
+		t.Fatal(err)
+	}
+	w, _, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil {
+		t.Errorf("known word %q must never be returned as a card", w.Text)
+	}
+
+	if err := s.SetWordKnown(ctx, int64(2), id, false); err != nil {
+		t.Fatal(err)
+	}
+	w, _, _, err = s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.ID != id {
+		t.Error("word must return to training once it is no longer known")
+	}
+}
+
+func TestSetWordKnown_HidesSeenDueWordFromNextCard(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if _, err := s.db.Exec(`UPDATE sm2_progress SET first_seen_at = CURRENT_TIMESTAMP WHERE word_id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetWordKnown(ctx, int64(2), id, true); err != nil {
+		t.Fatal(err)
+	}
+	w, _, _, err := s.GetNextCard(ctx, int64(2), nil, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil {
+		t.Errorf("known word %q must never be returned as a card", w.Text)
+	}
+}
+
+func TestSetWordKnown_OtherUsersWordIsUntouched(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.SetWordKnown(context.Background(), int64(99), id, true); err == nil {
+		t.Error("expected error when the word belongs to another user")
+	}
+}
+
+func TestGetWords_ExposesKnownFlagAndFilter(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	knownID := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	seedWord(t, s, "谢谢", "xiè xie", []string{"thanks"})
+	if err := s.SetWordKnown(ctx, int64(2), knownID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	all, _, err := s.GetWords(ctx, int64(2), "", 1, 50, "", "", nil, false, false, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range all {
+		if want := w.ID == knownID; w.Known != want {
+			t.Errorf("word %q: Known=%v, want %v", w.ZhText, w.Known, want)
+		}
+	}
+
+	only, total, err := s.GetWords(ctx, int64(2), "", 1, 50, "", "", nil, false, false, "", "known", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(only) != 1 || only[0].ID != knownID {
+		t.Errorf("known filter: total=%d words=%v, want only the known word", total, only)
+	}
+}
+
+func TestGetWordByID_ExposesKnownFlag(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.SetWordKnown(ctx, int64(2), id, true); err != nil {
+		t.Fatal(err)
+	}
+	w, err := s.GetWordByID(ctx, int64(2), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || !w.Known {
+		t.Errorf("GetWordByID should report Known=true, got %+v", w)
+	}
+}

@@ -31,6 +31,9 @@ type importRequest struct {
 	Tag         string   `json:"tag"`
 	ImportLangs []string `json:"import_langs"`
 	ApplyTags   []string `json:"apply_tags"`
+	// ImportMode says how new words start: "include" (default, unseen),
+	// "review" (skip the intro, due once) or "known" (never quizzed).
+	ImportMode string `json:"import_mode"`
 }
 
 type importResponse struct {
@@ -145,6 +148,13 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	switch req.ImportMode {
+	case "", "include", "review", "known":
+	default:
+		writeError(w, http.StatusBadRequest, "import_mode must be include, review or known")
+		return
+	}
+
 	if len(req.ApplyTags) > 20 {
 		writeError(w, http.StatusBadRequest, "too many apply_tags (max 20)")
 		return
@@ -236,8 +246,19 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 			Tags:         cleanTags,
 		}
 
-		if _, err := h.Store.CreateWord(r.Context(), currentUserID, createReq); err != nil {
+		newID, err := h.Store.CreateWord(r.Context(), currentUserID, createReq)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to create word")
+			return
+		}
+		switch req.ImportMode {
+		case "known":
+			err = h.Store.SetWordKnown(r.Context(), currentUserID, newID, true)
+		case "review":
+			err = h.Store.AcknowledgeWord(r.Context(), currentUserID, newID)
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to apply import mode")
 			return
 		}
 		imported++

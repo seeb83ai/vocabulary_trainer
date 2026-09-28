@@ -23,12 +23,14 @@ function toggleListSelection(selected, name) {
   return selected.includes(name) ? selected.filter(n => n !== name) : [...selected, name];
 }
 
-function buildListImportPayload(sourceTag, selected, applyTags, importEn, importDe) {
-  return {
+function buildListImportPayload(sourceTag, selected, applyTags, importEn, importDe, mode) {
+  const payload = {
     tag: sourceTag,
     import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
     apply_tags: applyTags.filter(tg => tg === sourceTag || !selected.includes(tg)),
   };
+  if (mode) payload.import_mode = mode;
+  return payload;
 }
 
 describe('hskVersions', () => {
@@ -83,5 +85,17 @@ describe('buildListImportPayload', () => {
 
   it('sends the chosen languages as import_langs', () => {
     expect(buildListImportPayload('hsk3-1', selected, [], false, true).import_langs).toEqual(['de']);
+  });
+});
+
+describe('buildListImportPayload import mode', () => {
+  it('leaves import_mode out when no mode is given', () => {
+    expect(buildListImportPayload('hsk3-1', ['hsk3-1'], ['hsk3-1'], true, false)).not.toHaveProperty('import_mode');
+  });
+
+  it('passes the mode through', () => {
+    const payload = buildListImportPayload('hsk3-1', ['hsk3-1'], ['hsk3-1'], true, true, 'known');
+    expect(payload.import_mode).toBe('known');
+    expect(payload.import_langs).toEqual(['en', 'de']);
   });
 });

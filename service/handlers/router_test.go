@@ -166,6 +166,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 			r.Delete("/", wordsH.Delete)
 			r.Post("/translations", wordsH.AddTranslation)
 			r.Post("/review", wordsH.MarkReview)
+			r.Post("/known", wordsH.SetKnown)
 			r.Post("/reset", wordsH.ResetProgress)
 		})
 	})

@@ -309,6 +309,7 @@ func main() {
 				r.Delete("/", wordsH.Delete)
 				r.Post("/translations", wordsH.AddTranslation)
 				r.Post("/review", wordsH.MarkReview)
+				r.Post("/known", wordsH.SetKnown)
 				r.Post("/reset", wordsH.ResetProgress)
 				r.Get("/hmm/context", hmmH.GetSceneContext)
 				r.Put("/hmm", hmmH.SaveScene)
@@ -448,6 +449,7 @@ func main() {
 				"train-answer.js",
 				"train-audio.js",
 				"import-lists.js",
+				"onboarding-wizard.js",
 				"train-settings.js",
 				"train-stats.js",
 				"train-result.js",

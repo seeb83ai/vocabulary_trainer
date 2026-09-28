@@ -29,6 +29,7 @@ type WordStore interface {
 	AddTranslation(ctx context.Context, userID int64, zhID int64, lang, text string) error
 	DeleteWord(ctx context.Context, userID, id int64) error
 	MarkWordForReview(ctx context.Context, userID, id int64) error
+	SetWordKnown(ctx context.Context, userID, id int64, known bool) error
 	GetTranslationLanguages(ctx context.Context) ([]string, error)
 	GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error)
 	GetTranslationCandidatesForWord(ctx context.Context, wordID int64, targetLang string) ([]models.TranslationCandidate, error)

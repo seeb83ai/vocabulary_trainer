@@ -238,3 +238,27 @@ func TestAddWordTags_IgnoresOtherUsersWord(t *testing.T) {
 		t.Errorf("want no tags on user 2's word, got %v", tags)
 	}
 }
+
+func TestGetImportableSourceTags_ReportsWordCount(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWordWithTags(t, s, "你好", "nǐ hǎo", []string{"hello"}, []string{"hsk3-1"})
+	seedWordWithTags(t, s, "谢谢", "xiè xie", []string{"thanks"}, []string{"hsk3-1"})
+	seedWordWithTags(t, s, "再见", "zài jiàn", []string{"bye"}, []string{"hsk3-2"})
+	for _, name := range []string{"hsk3-1", "hsk3-2"} {
+		if err := s.UpsertTagMeta(ctx, int64(2), name, "", true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tags, err := s.GetImportableSourceTags(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, tg := range tags {
+		got[tg.Name] = tg.WordCount
+	}
+	if got["hsk3-1"] != 2 || got["hsk3-2"] != 1 {
+		t.Errorf("word counts = %v, want hsk3-1=2 hsk3-2=1", got)
+	}
+}

@@ -111,6 +111,7 @@ function renderTable(words) {
       <td class="py-3 px-4 text-lg font-medium">
         <span class="mr-1">${escHtml(word.zh_text)}</span>
         <button class="btn-play text-base text-gray-400 hover:text-blue-500 transition leading-none align-middle" data-id="${word.id}" data-zh="${escHtml(word.zh_text)}" title="Read aloud">🔊</button>
+        ${word.known ? `<span class="inline-block bg-green-100 text-green-700 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(t('vocab.known'))}</span>` : ''}
         ${word.needs_review ? `<span class="inline-block bg-orange-100 text-orange-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(t('vocab.review'))}</span>` : ''}
         ${crossRefBadge(word.is_also_component, t('vocab.alsoComponent'))}
         ${(word.tags || []).map(tag => `<span class="inline-block bg-gray-200 text-gray-600 text-xs px-1.5 py-0.5 rounded-full ml-1 align-middle">${escHtml(tag)}</span>`).join('')}
@@ -306,7 +307,7 @@ function updateCompReviewFilterBtn() {
 }
 
 function updateDueFilterBtns() {
-  ['today', 'tomorrow'].forEach(key => {
+  ['today', 'tomorrow', 'known'].forEach(key => {
     const btn = $('due-' + key + '-btn');
     if (dueFilter === key) {
       btn.className = 'px-3 py-1.5 rounded-lg border text-sm font-medium transition border-blue-400 bg-blue-50 text-blue-600';
@@ -378,7 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadComponents();
   });
 
-  ['today', 'tomorrow'].forEach(key => {
+  ['today', 'tomorrow', 'known'].forEach(key => {
     $('due-' + key + '-btn').addEventListener('click', () => {
       dueFilter = dueFilter === key ? '' : key;
       updateDueFilterBtns();
@@ -453,6 +454,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('form-reset-btn').addEventListener('click', () => {
     resetWordProgress();
+  });
+
+  $('form-known-btn').addEventListener('click', () => {
+    toggleWordKnown();
   });
 
   document.querySelectorAll('th[data-sort]').forEach(th => {

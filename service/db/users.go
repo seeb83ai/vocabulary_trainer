@@ -259,6 +259,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(sentence_blank_ratio, 20),
 		       COALESCE(auto_subwords, 1),
 		       COALESCE(translation_ranking_enabled, 0),
+		       COALESCE(autoplay_always, 0),
 		       COALESCE(max_translations_shown, 3),
 		       COALESCE(translation_hide_unranked, 0),
 		       COALESCE(translation_user_order, 'first')
@@ -317,6 +318,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.SentenceBlankRatio,
 		&autoSubwordsInt,
 		&st.TranslationRankingEnabled,
+		&st.AutoplayAlways,
 		&st.MaxTranslationsShown,
 		&st.TranslationHideUnranked,
 		&st.TranslationUserOrder,
@@ -446,6 +448,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 			sentence_blank_ratio            = ?,
 			auto_subwords                   = ?,
 			translation_ranking_enabled     = ?,
+			autoplay_always                 = ?,
 			max_translations_shown          = ?,
 			translation_hide_unranked       = ?,
 			translation_user_order          = ?
@@ -497,6 +500,7 @@ func (s *Store) UpdateUserSettings(ctx context.Context, userID int64, st models.
 		st.SentenceBlankRatio,
 		st.AutoSubwords,
 		st.TranslationRankingEnabled,
+		st.AutoplayAlways,
 		st.MaxTranslationsShown,
 		st.TranslationHideUnranked,
 		st.TranslationUserOrder,
