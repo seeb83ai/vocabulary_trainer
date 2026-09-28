@@ -105,6 +105,8 @@ test.describe('First vocabulary setup wizard', () => {
     await expect(page.locator('#wz-lang-en')).toHaveAttribute('aria-pressed', 'true');
     await page.locator('#wz-next').click();
     await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+    // Let the debounced filter save from page load fire (500 ms) before reading.
+    await page.waitForTimeout(1000);
 
     const st = await page.evaluate(() => fetch('/api/settings').then(r => r.json()));
     expect(st.max_new_words_per_day).toBe(20);

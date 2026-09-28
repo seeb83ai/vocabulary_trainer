@@ -158,6 +158,10 @@ async function wizardImport() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(wizardSettingsPatch(current, s)),
     });
+    // A debounced filter save from page load may still be pending; make it
+    // carry the chosen languages so it cannot overwrite them.
+    selectedLangs = [...s.langs];
+    localStorage.setItem('quizLangs', JSON.stringify(selectedLangs));
     await apiFetch('/api/training-filters', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
