@@ -571,7 +571,7 @@ Like `import-hanzi`, this is a manual, one-time (or re-run-on-update) operationa
 
 ### Topic word lists (classify-topics)
 
-A one-off tool that sorts vocabulary into topic word lists (travel, food, body, health, …, 28 topics in total) with Claude. The lists prepare topic-based learning tracks; nothing in the app reads them yet.
+A one-off tool that sorts vocabulary into topic word lists (travel, food, body, health, …, 28 topics in total) with Claude. The app does not read the CSV files. `import-topics` (see below) loads them into the shared library as importable word lists.
 
 The candidates are every library word tagged with an HSK level (`hsk2-N` or `hsk3-N`) and every word in the top `-freq` of the zh frequency list that has a CC-CEDICT entry, so run `import-hsk` (both versions) and `import-cedict` first. Claude gives each word 0–2 topics. The tool appends each word to `<out>/<topic>.csv` (columns `zh,en`, where `en` is the first CC-CEDICT gloss). Words that fit no topic go to `<out>/_none.csv`. The tool skips every word that is already in a CSV file, so after an error or a Ctrl-C you can run it again and it continues where it stopped. On Ctrl-C, the tool starts no new requests but waits for the running requests and writes their results. A second Ctrl-C quits at once, and the running requests are done again on the next run.
 
@@ -602,6 +602,26 @@ ANTHROPIC_API_KEY=... ./classify-topics -db data/vocab.db -out data/topics
 | `-dry-run` | false | Print the number of words to classify, without calling Claude |
 
 With HSK 2.0 + 3.0 and `-freq 8000`, there are about 12,600 candidate words (about 126 requests).
+
+### Topic word list import (import-topics)
+
+This tool loads the `data/topics/<topic>.csv` lists from `classify-topics` into the shared library (user 1). It tags each word with `topic-<topic>` (for example `topic-travel`) and marks each tag as importable. Users then see the topic lists next to the HSK lists in onboarding ("Let me choose word lists myself") and in Vocabulary → Import. When a user imports a list, translations come from CC-CEDICT/HanDeDict, as with the HSK lists. Words without a dictionary translation are skipped. `_none.csv` is not imported.
+
+If a word is not in the library yet (the non-HSK frequency words), the tool adds it with its CC-CEDICT pinyin. You can run the tool again safely: it only adds missing tags and words. Run `import-cedict` first, so that the new words get pinyin.
+
+```bash
+make import-topics DRY=1   # preview
+make import-topics
+
+# On the server, after `make release` (which also copies data/topics/):
+./import-topics -db data/vocab.db -dir data/topics
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-dir` | `data/topics` | Directory with the `<topic>.csv` files |
+| `-dry-run` | false | Show what would change without writing |
 
 ### Pinyin audio import
 

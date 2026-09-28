@@ -443,3 +443,23 @@ func TestCreateSubwordsForWord_SplitsCommaDefinitions(t *testing.T) {
 		t.Error("comma-joined definition was stored as one word — want it split")
 	}
 }
+
+func TestLookupPinyin(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedCedictEntryForTest(ctx, "护照", "en", "hù zhào", "passport"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SeedCedictEntryForTest(ctx, "德语", "de", "dé yǔ", "Deutsch"); err != nil {
+		t.Fatal(err)
+	}
+	for zh, want := range map[string]string{"护照": "hù zhào", "德语": "dé yǔ", "无词": ""} {
+		got, err := s.LookupPinyin(ctx, zh)
+		if err != nil {
+			t.Fatalf("LookupPinyin(%s): %v", zh, err)
+		}
+		if got != want {
+			t.Errorf("LookupPinyin(%s) = %q, want %q", zh, got, want)
+		}
+	}
+}
