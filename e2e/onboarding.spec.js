@@ -20,6 +20,18 @@ async function registerFreshUser(page) {
   await expect(page).toHaveURL('/train', { timeout: 10_000 });
 }
 
+/**
+ * The wizard reports "done" once the first chunk is imported and the rest
+ * keeps running in the background. Wait for the jobs to end before asserting
+ * on all imported words.
+ */
+async function importsFinished(page) {
+  await expect.poll(
+    async () => (await page.evaluate(() => fetch('/api/import/jobs').then(r => r.json()))).length,
+    { timeout: 15_000 },
+  ).toBe(0);
+}
+
 test.describe('First vocabulary setup wizard', () => {
   test('a new user walks through the 4 steps and reaches the first card', async ({ page }) => {
     await registerFreshUser(page);
@@ -56,6 +68,7 @@ test.describe('First vocabulary setup wizard', () => {
     await page.locator('#wz-next').click();
 
     await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
     await expect(page.locator('#wz-done')).toContainText('5');
     await captureForPR(page, 'wizard-done');
     await page.locator('#wz-start-training').click();
@@ -68,6 +81,29 @@ test.describe('First vocabulary setup wizard', () => {
     const st = await page.evaluate(() => fetch('/api/settings').then(r => r.json()));
     expect(st.max_new_words_per_day).toBe(10);
     expect(st.train_langs).toEqual(['en']);
+  });
+
+  test('training starts after the first words are imported while the rest of the import continues', async ({ page }) => {
+    // The real import finishes in milliseconds on the test database, so the
+    // page is told the job is still running (200 of 500 words done).
+    const running = { id: 1, tag: 'hsk3-1', status: 'running', total: 500, done: 200, imported: 200, tagged: 0, skipped: 0 };
+    await page.route('**/api/import/jobs/*', route => route.fulfill({ json: running }));
+    await page.route('**/api/import/jobs', route => route.fulfill({ json: [running] }));
+    await registerFreshUser(page);
+
+    await expect(page.locator('#ob-quickstart')).toBeVisible({ timeout: 10_000 });
+    await page.locator('#wz-next').click();
+    await page.locator('#wz-next').click();
+    await page.locator('#wz-next').click();
+    await page.locator('#wz-next').click();
+    await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#wz-start-training').click();
+
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#empty-state')).toBeHidden();
+    await expect(page.locator('#import-progress')).toBeVisible();
+    await expect(page.locator('#import-progress')).toContainText('200 of 500');
+    await captureForPR(page, 'train-import-progress-banner');
   });
 
   test('words below the start level are marked as known and never quizzed', async ({ page }) => {
@@ -84,6 +120,7 @@ test.describe('First vocabulary setup wizard', () => {
     await page.locator('#wz-next').click();
     await page.locator('#wz-next').click();
     await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
 
     const res = await page.evaluate(() => fetch('/api/words/?per_page=50').then(r => r.json()));
     const known = Object.fromEntries(res.words.map(w => [w.zh_text, w.known]));
@@ -112,6 +149,7 @@ test.describe('First vocabulary setup wizard', () => {
     await expect(page.locator('#wz-lang-en')).toHaveAttribute('aria-pressed', 'true');
     await page.locator('#wz-next').click();
     await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
     // Let the debounced filter save from page load fire (500 ms) before reading.
     await page.waitForTimeout(1000);
 
@@ -149,6 +187,7 @@ test.describe('First vocabulary setup wizard', () => {
     await page.locator('#wz-next').click();
     await page.locator('#wz-next').click();
     await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
     await expect(page.locator('#wz-done')).toContainText('Topics: Food');
     await captureForPR(page, 'wizard-done-with-topics');
 
@@ -170,6 +209,7 @@ test.describe('First vocabulary setup wizard', () => {
     await page.locator('#wz-next').click();
     await page.locator('#wz-next').click();
     await expect(page.locator('#wz-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
 
     const res = await page.evaluate(() => fetch('/api/words/?per_page=50').then(r => r.json()));
     const known = Object.fromEntries(res.words.map(w => [w.zh_text, w.known]));
@@ -206,6 +246,7 @@ test.describe('First vocabulary setup wizard', () => {
 
     await page.locator('#wz-lib-import').click();
     await expect(page.locator('#wz-lib-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
     await expect(page.locator('#wz-lib-done')).toContainText('HSK 3.0 · 1');
     await expect(page.locator('#wz-lib-done')).toContainText('Food');
     await captureForPR(page, 'library-done');
@@ -237,6 +278,7 @@ test.describe('First vocabulary setup wizard', () => {
     await captureForPR(page, 'library-match-all');
     await page.locator('#wz-lib-import').click();
     await expect(page.locator('#wz-lib-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
     await expect(page.locator('#wz-lib-done')).toContainText('All tags');
 
     const res = await page.evaluate(() => fetch('/api/words/?per_page=50').then(r => r.json()));
@@ -258,6 +300,7 @@ test.describe('First vocabulary setup wizard', () => {
     await page.locator('#wz-sel-hsk3-1').click();
     await page.locator('#wz-lib-import').click();
     await expect(page.locator('#wz-lib-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
     await page.locator('#wz-lib-change').click();
     await expect(page.locator('#wz-sel-hsk3-1')).toHaveAttribute('aria-pressed', 'true');
   });
@@ -305,6 +348,7 @@ test.describe('First vocabulary setup wizard', () => {
     await tile.click();
     await page.locator('#wz-lib-import').click();
     await expect(page.locator('#wz-lib-done')).toBeVisible({ timeout: 15_000 });
+    await importsFinished(page);
     await page.locator('#wz-lib-train').click();
 
     await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 15_000 });

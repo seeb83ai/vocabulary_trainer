@@ -358,7 +358,8 @@ async function executeImport() {
 
   try {
     const result = await importLists(importSelectedTags, importApplyTags,
-      $('import-en').checked, $('import-de').checked);
+      $('import-en').checked, $('import-de').checked, undefined,
+      summary => { statusEl.textContent = importProgressText(summary); });
     statusEl.className = 'mt-3 text-sm text-green-600';
     statusEl.textContent = importResultText(result);
     loadTags();

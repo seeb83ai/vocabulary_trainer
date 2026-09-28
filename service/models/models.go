@@ -853,7 +853,7 @@ type ImportJob struct {
 	ImportLangs []string  `json:"-"`
 	ApplyTags   []string  `json:"-"`
 	AndTags     []string  `json:"-"`
-	ImportMode  string    `json:"-"`
+	ImportMode  string    `json:"import_mode"`
 	Status      string    `json:"status"`
 	Total       int       `json:"total"`
 	Done        int       `json:"done"`

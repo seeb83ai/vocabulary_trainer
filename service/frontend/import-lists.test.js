@@ -44,6 +44,89 @@ function buildMatchAllPayload(selected, importEn, importDe, mode) {
   return payload;
 }
 
+function summarizeImportJobs(jobs) {
+  const sum = { total: 0, done: 0, imported: 0, tagged: 0, skipped: 0, failed: false, error: '' };
+  for (const job of jobs) {
+    sum.total += job.total || 0;
+    sum.done += job.done || 0;
+    sum.imported += job.imported || 0;
+    sum.tagged += job.tagged || 0;
+    sum.skipped += job.skipped || 0;
+    if (job.status === 'failed') {
+      sum.failed = true;
+      sum.error = sum.error || job.error || '';
+    }
+  }
+  sum.finished = jobs.length > 0 && jobs.every(job => job.status === 'done' || job.status === 'failed');
+  sum.canStart = sum.finished || jobs.some(job => job.import_mode !== 'known' && (job.imported || 0) > 0);
+  return sum;
+}
+
+const t = (key, vars = {}) => key === 'import.progress'
+  ? `Importing… ${vars.done} of ${vars.total} words`
+  : 'Importing…';
+
+function importProgressText(summary) {
+  if (!summary.total) return t('vocab.importing');
+  return t('import.progress', { done: summary.done, total: summary.total });
+}
+
+describe('summarizeImportJobs', () => {
+  it('adds up the counters of all jobs', () => {
+    const sum = summarizeImportJobs([
+      { status: 'done', total: 10, done: 10, imported: 8, tagged: 1, skipped: 1 },
+      { status: 'running', total: 20, done: 5, imported: 5, tagged: 0, skipped: 0 },
+    ]);
+    expect(sum).toMatchObject({ total: 30, done: 15, imported: 13, tagged: 1, skipped: 1 });
+  });
+
+  it('is finished only when every job is done or failed', () => {
+    expect(summarizeImportJobs([{ status: 'done' }, { status: 'running' }]).finished).toBe(false);
+    expect(summarizeImportJobs([{ status: 'done' }, { status: 'queued' }]).finished).toBe(false);
+    expect(summarizeImportJobs([{ status: 'done' }, { status: 'done' }]).finished).toBe(true);
+  });
+
+  it('is never finished without jobs', () => {
+    expect(summarizeImportJobs([]).finished).toBe(false);
+  });
+
+  it('lets the learner start once the first words are imported', () => {
+    expect(summarizeImportJobs([{ status: 'queued' }]).canStart).toBe(false);
+    expect(summarizeImportJobs([{ status: 'running', total: 500, done: 0, imported: 0 }]).canStart).toBe(false);
+    expect(summarizeImportJobs([{ status: 'running', total: 500, done: 200, imported: 200 }]).canStart).toBe(true);
+  });
+
+  it('does not count words imported as known as words to train', () => {
+    const known = { status: 'done', total: 50, done: 50, imported: 50, import_mode: 'known' };
+    expect(summarizeImportJobs([known, { status: 'running', import_mode: 'include', imported: 0 }]).canStart).toBe(false);
+    expect(summarizeImportJobs([known, { status: 'running', import_mode: 'include', imported: 200 }]).canStart).toBe(true);
+    expect(summarizeImportJobs([known, { status: 'running', import_mode: 'review', imported: 200 }]).canStart).toBe(true);
+  });
+
+  it('lets the learner start when the import finished without new words', () => {
+    expect(summarizeImportJobs([{ status: 'done', total: 5, done: 5, imported: 0, tagged: 5 }]).canStart).toBe(true);
+  });
+
+  it('reports the first error of a failed job', () => {
+    const sum = summarizeImportJobs([
+      { status: 'failed', error: 'boom' },
+      { status: 'failed', error: 'later' },
+    ]);
+    expect(sum.failed).toBe(true);
+    expect(sum.error).toBe('boom');
+  });
+});
+
+describe('importProgressText', () => {
+  it('shows the counts once the total is known', () => {
+    expect(importProgressText({ done: 200, total: 500 })).toBe('Importing… 200 of 500 words');
+  });
+
+  it('shows a plain message while the job has not started counting', () => {
+    expect(importProgressText({ done: 0, total: 0 })).toBe('Importing…');
+  });
+});
+
 describe('hskVersions', () => {
   it('lists the HSK versions in the library, newest first', () => {
     expect(hskVersions(['hsk2-1', 'food', 'hsk3-1', 'hsk3-2', 'hsk2-6'])).toEqual([3, 2]);

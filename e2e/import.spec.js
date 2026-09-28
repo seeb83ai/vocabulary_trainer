@@ -19,7 +19,12 @@ test.describe('Vocabulary → Import', () => {
 
     // The user already owns 时间 from the HSK 2.0 list.
     const res = await page.request.post('/api/import', { data: { tag: 'hsk2-2', apply_tags: ['hsk2-2'] } });
-    expect(res.ok()).toBe(true);
+    expect(res.status()).toBe(202);
+    const { id: setupJobId } = await res.json();
+    await expect.poll(async () => {
+      const job = await (await page.request.get(`/api/import/jobs/${setupJobId}`)).json();
+      return job.status;
+    }, { timeout: 15_000 }).toBe('done');
 
     await page.goto('/vocab');
     await page.locator('#open-import-btn').click();
@@ -46,5 +51,41 @@ test.describe('Vocabulary → Import', () => {
       '时间': ['hsk2-2', 'hsk3-2'],
       '已经': ['hsk2-2', 'hsk3-3'],
     });
+  });
+
+  test('shows live progress while the import runs and the result when it is done', async ({ page }) => {
+    await page.route('https://api.pwnedpasswords.com/**', route => {
+      route.fulfill({ status: 200, body: '' });
+    });
+    const email = `e2e-import-progress-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
+    await page.goto('/#register');
+    await page.locator('#reg-email').fill(email);
+    await page.locator('#reg-password').fill(PASSWORD);
+    await page.locator('#reg-confirm').fill(PASSWORD);
+    await page.locator('#register-btn').click();
+    await expect(page).toHaveURL('/train', { timeout: 10_000 });
+
+    // The real import finishes in milliseconds on the test database, so the
+    // first status polls report a job that is still running.
+    let polls = 0;
+    await page.route('**/api/import/jobs/*', route => {
+      if (polls++ < 3) {
+        route.fulfill({ json: { id: 1, tag: 'hsk3-2', status: 'running', total: 3, done: 1, imported: 1, tagged: 0, skipped: 0 } });
+      } else {
+        route.continue();
+      }
+    });
+
+    await page.goto('/vocab');
+    await page.locator('#tab-import').click();
+    await page.locator('#import-tag-list button', { hasText: /^hsk3-2$/ }).click();
+    await page.locator('#import-next-btn').click();
+    await page.locator('#import-next2-btn').click();
+    await page.locator('#import-submit-btn').click();
+
+    await expect(page.locator('#import-status')).toContainText('1 of 3');
+    await captureForPR(page, 'vocab-import-progress');
+    await expect(page.locator('#import-status')).toHaveClass(/text-green-600/, { timeout: 15_000 });
+    await expect(page.locator('#import-status')).toContainText('Imported');
   });
 });
