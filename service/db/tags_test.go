@@ -262,3 +262,18 @@ func TestGetImportableSourceTags_ReportsWordCount(t *testing.T) {
 		t.Errorf("word counts = %v, want hsk3-1=2 hsk3-2=1", got)
 	}
 }
+
+func TestSetWordTags_ReusesSingleTagRow(t *testing.T) {
+	s := openTestDB(t)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"hsk3-5"})
+	seedWordWithTags(t, s, "谢谢", "", []string{"thanks"}, []string{"hsk3-5"})
+	seedWordWithTags(t, s, "再见", "", []string{"bye"}, []string{"hsk3-5"})
+
+	var n int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM tags WHERE name = 'hsk3-5'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("want 1 tag row named hsk3-5, got %d", n)
+	}
+}

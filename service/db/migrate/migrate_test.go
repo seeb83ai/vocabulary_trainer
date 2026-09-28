@@ -542,3 +542,83 @@ func TestMigrate_User1TranslationsMoveToCedict(t *testing.T) {
 		t.Errorf("zh word was removed, want it untouched")
 	}
 }
+
+func TestMigrate_DedupesGlobalTags(t *testing.T) {
+	const dedupeVersion = 20260928210000
+	db := openRawDB(t)
+	migrateUpTo(t, db, dedupeVersion-1)
+
+	// Pre-fix state: NULL user_id never collides in UNIQUE(name, user_id),
+	// so each tagging call inserted another row with the same name.
+	for i := 0; i < 3; i++ {
+		if _, err := db.Exec(`INSERT INTO tags (name) VALUES ('hsk3-5')`); err != nil {
+			t.Fatalf("insert dup tag: %v", err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO tags (name) VALUES ('other')`); err != nil {
+		t.Fatal(err)
+	}
+	var keepID, otherID int64
+	db.QueryRow(`SELECT MIN(id) FROM tags WHERE name = 'hsk3-5'`).Scan(&keepID)
+	db.QueryRow(`SELECT id FROM tags WHERE name = 'other'`).Scan(&otherID)
+
+	// word 1 links the kept row, word 2 links a duplicate, word 3 links both
+	// (must not violate the word_tags primary key after re-pointing).
+	rows, err := db.Query(`SELECT id FROM tags WHERE name = 'hsk3-5' ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dupIDs []int64
+	for rows.Next() {
+		var id int64
+		rows.Scan(&id)
+		dupIDs = append(dupIDs, id)
+	}
+	rows.Close()
+	wordIDs := make([]int64, 3)
+	for i := range wordIDs {
+		res, err := db.Exec(`INSERT INTO words (text, pinyin, language, user_id) VALUES (?, '', 'zh', 2)`, fmt.Sprintf("字%d", i))
+		if err != nil {
+			t.Fatalf("insert word: %v", err)
+		}
+		wordIDs[i], _ = res.LastInsertId()
+	}
+	links := [][2]int64{
+		{wordIDs[0], dupIDs[0]},
+		{wordIDs[1], dupIDs[2]},
+		{wordIDs[2], dupIDs[0]},
+		{wordIDs[2], dupIDs[1]},
+		{wordIDs[0], otherID},
+	}
+	for _, l := range links {
+		if _, err := db.Exec(`INSERT INTO word_tags (word_id, tag_id) VALUES (?, ?)`, l[0], l[1]); err != nil {
+			t.Fatalf("link tag: %v", err)
+		}
+	}
+
+	if err := Migrate(db); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	var n int
+	db.QueryRow(`SELECT COUNT(*) FROM tags WHERE name = 'hsk3-5'`).Scan(&n)
+	if n != 1 {
+		t.Errorf("want 1 hsk3-5 tag row, got %d", n)
+	}
+	var gotID int64
+	db.QueryRow(`SELECT id FROM tags WHERE name = 'hsk3-5'`).Scan(&gotID)
+	if gotID != keepID {
+		t.Errorf("want lowest id %d kept, got %d", keepID, gotID)
+	}
+	db.QueryRow(`SELECT COUNT(*) FROM word_tags WHERE tag_id = ?`, keepID).Scan(&n)
+	if n != 3 {
+		t.Errorf("want all 3 words linked to the kept tag, got %d", n)
+	}
+	db.QueryRow(`SELECT COUNT(*) FROM word_tags WHERE tag_id = ?`, otherID).Scan(&n)
+	if n != 1 {
+		t.Errorf("unrelated tag link lost, got %d", n)
+	}
+	if _, err := db.Exec(`INSERT INTO tags (name) VALUES ('hsk3-5')`); err == nil {
+		t.Error("expected unique index to reject a second global 'hsk3-5' tag")
+	}
+}

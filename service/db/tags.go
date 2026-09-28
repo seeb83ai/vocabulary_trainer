@@ -177,16 +177,22 @@ func (s *Store) getTagsForWord(ctx context.Context, wordID int64) ([]string, err
 }
 
 func getOrCreateTag(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO tags (name) VALUES (?)`, name); err != nil {
-		return 0, fmt.Errorf("upsert tag: %w", err)
-	}
 	var id int64
-	if err := tx.QueryRowContext(ctx,
-		`SELECT id FROM tags WHERE name = ?`, name).Scan(&id); err != nil {
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM tags WHERE name = ? ORDER BY id LIMIT 1`, name).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if err != sql.ErrNoRows {
 		return 0, fmt.Errorf("get tag id: %w", err)
 	}
-	return id, nil
+	// user_id is NULL here, and NULLs never collide in UNIQUE(name, user_id),
+	// so INSERT OR IGNORE would add a duplicate row on every call.
+	res, err := tx.ExecContext(ctx, `INSERT INTO tags (name) VALUES (?)`, name)
+	if err != nil {
+		return 0, fmt.Errorf("insert tag: %w", err)
+	}
+	return res.LastInsertId()
 }
 
 func setWordTags(ctx context.Context, tx *sql.Tx, wordID int64, tags []string) error {
