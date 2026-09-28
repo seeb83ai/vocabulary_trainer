@@ -126,6 +126,12 @@ func main() {
 		}
 	}
 
+	if !*dryRun {
+		if err := vocabdb.RebuildGlossRank(db); err != nil {
+			log.Fatalf("rebuild gloss_rank: %v", err)
+		}
+	}
+
 	action := "inserted"
 	if *dryRun {
 		action = "would insert"
