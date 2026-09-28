@@ -211,6 +211,17 @@ type AdminStore interface {
 	GetUserRole(ctx context.Context, userID int64) (string, error)
 }
 
+// ImportJobStore: background library-list import jobs.
+type ImportJobStore interface {
+	CreateImportJob(ctx context.Context, userID int64, spec models.ImportJob) (*models.ImportJob, error)
+	GetImportJob(ctx context.Context, userID, id int64) (*models.ImportJob, error)
+	ListActiveImportJobs(ctx context.Context, userID int64) ([]models.ImportJob, error)
+	ListRunnableImportJobs(ctx context.Context) ([]models.ImportJob, error)
+	StartImportJob(ctx context.Context, id int64) error
+	UpdateImportJobProgress(ctx context.Context, id int64, p models.ImportJob) error
+	FinishImportJob(ctx context.Context, id int64, errMsg string) error
+}
+
 // Compile-time guarantees that the concrete *Store provides every sub-store
 // surface, so db.Open() callers and handler construction need no changes.
 var (
@@ -221,4 +232,5 @@ var (
 	_ ComponentStore = (*Store)(nil)
 	_ UserStore      = (*Store)(nil)
 	_ AdminStore     = (*Store)(nil)
+	_ ImportJobStore = (*Store)(nil)
 )

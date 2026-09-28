@@ -179,7 +179,8 @@ func main() {
 		MaxBytes: int64(csvMaxMB) << 20,
 		MaxRows:  csvMaxRows,
 	}
-	importH := &handlers.ImportHandler{Store: store}
+	importWorker := handlers.NewImportWorker(store)
+	importH := &handlers.ImportHandler{Store: store, Worker: importWorker}
 	tagsH := &handlers.TagsHandler{Store: store}
 	demoH := &handlers.DemoHandler{Store: store}
 	quizH := &handlers.QuizHandler{Store: store, MaxNewPerDay: maxNewWords}
@@ -321,6 +322,8 @@ func main() {
 		r.Get("/import/source-tags", importH.SourceTags)
 		r.Get("/import/preview", importH.Preview)
 		r.Post("/import", importH.Import)
+		r.Get("/import/jobs", importH.ActiveJobs)
+		r.Get("/import/jobs/{id}", importH.Job)
 		r.Get("/tags/details", tagsH.Details)
 		r.Put("/tags/{name}", tagsH.Update)
 		r.Get("/audio/{id}", audioH.ServeAudio)
@@ -499,6 +502,13 @@ func main() {
 	}
 	addr := ":" + port
 	srv := newServer(addr, r)
+
+	// Background import jobs: resumes jobs a restart interrupted, then waits
+	// for new ones. Stopped on shutdown; a job it leaves running is resumed on
+	// the next start.
+	importCtx, stopImports := context.WithCancel(context.Background())
+	defer stopImports()
+	go importWorker.Run(importCtx)
 
 	// Start the server in the background so the main goroutine can wait for a
 	// shutdown signal and drain in-flight requests gracefully.

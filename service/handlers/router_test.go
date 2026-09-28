@@ -117,7 +117,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	wordsH := &handlers.WordsHandler{Store: s}
 	quizH := &handlers.QuizHandler{Store: s, MaxNewPerDay: 100}
 	mismatchH := &handlers.MismatchesHandler{Store: s}
-	importH := &handlers.ImportHandler{Store: s}
+	importH := &handlers.ImportHandler{Store: s, Worker: handlers.NewImportWorker(s)}
 	tagsH := &handlers.TagsHandler{Store: s}
 	authH, _ := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
 	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
@@ -175,6 +175,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/import/source-tags", importH.SourceTags)
 	r.Get("/api/import/preview", importH.Preview)
 	r.Post("/api/import", importH.Import)
+	r.Get("/api/import/jobs", importH.ActiveJobs)
+	r.Get("/api/import/jobs/{id}", importH.Job)
 	r.Get("/api/tags/details", tagsH.Details)
 	r.Put("/api/tags/{name}", tagsH.Update)
 	r.Get("/api/config", translateH.Config(true, true))
