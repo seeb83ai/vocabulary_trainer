@@ -296,7 +296,6 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `dictionary.txt` | 2.5 MB hanzi dataset; only needed by `service/cmd/import-hanzi` |
 | `cedict_ts.u8` / HanDeDict data file | Large CEDICT-format dictionaries; only needed by `service/cmd/import-cedict` |
 | `package-lock.json` | npm lockfile; never needed for code tasks |
-| `chinese_a1.txt` | Sample vocabulary import data; not needed for code tasks |
 
 ## Agent skills
 

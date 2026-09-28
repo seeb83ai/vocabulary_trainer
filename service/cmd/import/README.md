@@ -2,7 +2,7 @@ helper tool to import copy&paste wordlist from buzuu vocabulary trainer
 ingnores / skips duplicates
 
 # usage
-go run ./cmd/import -db data/vocab.db -file chinese_a1.txt
+go run ./cmd/import -db data/vocab.db -file vox.txt
 
 # format
 chinese / pinyin
