@@ -335,15 +335,19 @@ export default async function globalSetup() {
 
   const libraryWords = [
     { zh: '一', pinyin: 'yī', en: ['one'], tags: ['hsk2-1', 'hsk3-1'] },
-    { zh: '人', pinyin: 'rén', en: ['person', 'people'], tags: ['hsk2-1', 'hsk3-1'] },
+    { zh: '人', pinyin: 'rén', en: ['person', 'people'], tags: ['hsk2-1', 'hsk3-1', 'topic-family'] },
     { zh: '大', pinyin: 'dà', en: ['big', 'large'], tags: ['hsk2-1', 'hsk3-2'] },
-    { zh: '时间', pinyin: 'shí jiān', en: ['time'], tags: ['hsk2-2', 'hsk3-2'] },
+    { zh: '时间', pinyin: 'shí jiān', en: ['time'], tags: ['hsk2-2', 'hsk3-2', 'topic-time'] },
     { zh: '已经', pinyin: 'yǐ jīng', en: ['already'], tags: ['hsk2-2', 'hsk3-3'] },
+    // Topic-only words (no HSK list), like cmd/import-topics creates.
+    { zh: '苹果', pinyin: 'píng guǒ', en: ['apple'], tags: ['topic-food'] },
+    { zh: '面包', pinyin: 'miàn bāo', en: ['bread'], tags: ['topic-food'] },
+    { zh: '飞机', pinyin: 'fēi jī', en: ['airplane'], tags: ['topic-travel'] },
   ];
   for (const word of libraryWords) {
     await seedWord(BASE_URL, adminCookieHeader, word, false);
   }
-  for (const tag of ['hsk2-1', 'hsk2-2', 'hsk3-1', 'hsk3-2', 'hsk3-3']) {
+  for (const tag of ['hsk2-1', 'hsk2-2', 'hsk3-1', 'hsk3-2', 'hsk3-3', 'topic-family', 'topic-time', 'topic-food', 'topic-travel']) {
     const tagRes = await fetch(`${BASE_URL}/api/tags/${tag}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Cookie: adminCookieHeader },
@@ -353,7 +357,7 @@ export default async function globalSetup() {
       throw new Error(`Marking ${tag} importable failed (${tagRes.status}): ${await tagRes.text()}`);
     }
   }
-  console.log('[E2E] Seeded importable library words (hsk2-1..2, hsk3-1..3) for user 1');
+  console.log('[E2E] Seeded importable library words (hsk2-1..2, hsk3-1..3, topic-family/time/food/travel) for user 1');
 
   console.log('[E2E] Global setup complete ✓');
 }

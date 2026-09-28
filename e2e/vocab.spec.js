@@ -201,6 +201,30 @@ test.describe('Vocabulary Management', () => {
     await expect(page.locator('#start-training-row')).toBeVisible();
   });
 
+  test('a word can be marked as known, listed by the Known filter, and returned to training', async ({ page }) => {
+    const created = await page.request.post('/api/words', {
+      data: { zh_text: '认识', pinyin: 'rèn shi', translations: { en: ['to know'] }, tags: [], start_training: true },
+    });
+    expect(created.ok()).toBe(true);
+
+    await page.goto('/vocab');
+    const row = page.locator('#words-tbody tr', { hasText: '认识' }).first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.locator('.btn-edit').click();
+
+    await page.locator('#form-known-btn').click();
+    await expect(page.locator('#form-known-btn')).toContainText(/Back to training/, { timeout: 8_000 });
+    await expect(page.locator('#words-tbody tr', { hasText: '认识' }).first()).toContainText('Known');
+
+    await page.locator('#due-known-btn').click();
+    await expect(page.locator('#words-tbody')).toContainText('认识', { timeout: 8_000 });
+    await expect(page.locator('#words-tbody')).not.toContainText('你好');
+
+    await page.locator('#words-tbody tr', { hasText: '认识' }).first().locator('.btn-edit').click();
+    await page.locator('#form-known-btn').click();
+    await expect(page.locator('#words-tbody')).not.toContainText('认识', { timeout: 8_000 });
+  });
+
   test('pinyin auto-fill does not overwrite an existing value until blur (issue #310)', async ({ page }) => {
     await page.goto('/vocab');
     await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });

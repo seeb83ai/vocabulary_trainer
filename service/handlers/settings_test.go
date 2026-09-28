@@ -1611,3 +1611,27 @@ func TestSettingsPatch_BaselineAccuracy_Invalid(t *testing.T) {
 		}
 	}
 }
+
+func TestSettingsPatch_AutoplayAlways(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["autoplay_always"] != false {
+		t.Errorf("autoplay_always: want false by default, got %v", st["autoplay_always"])
+	}
+
+	body := baseSettingsPatch()
+	body["autoplay_always"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec, &st)
+	if st["autoplay_always"] != true {
+		t.Errorf("autoplay_always: want true after update, got %v", st["autoplay_always"])
+	}
+}

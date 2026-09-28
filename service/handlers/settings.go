@@ -91,6 +91,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
 		AutoSubwords                     bool     `json:"auto_subwords"`
 		TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
+		AutoplayAlways                   bool     `json:"autoplay_always"`
 		MaxTranslationsShown             int      `json:"max_translations_shown"`
 		TranslationHideUnranked          bool     `json:"translation_hide_unranked"`
 		TranslationUserOrder             string   `json:"translation_user_order"`
@@ -358,6 +359,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		SentenceBlankRatio:               req.SentenceBlankRatio,
 		AutoSubwords:                     req.AutoSubwords,
 		TranslationRankingEnabled:        req.TranslationRankingEnabled,
+		AutoplayAlways:                   req.AutoplayAlways,
 		MaxTranslationsShown:             resolvedMaxTranslationsShown,
 		TranslationHideUnranked:          req.TranslationHideUnranked,
 		TranslationUserOrder:             req.TranslationUserOrder,

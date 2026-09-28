@@ -31,6 +31,12 @@ type importRequest struct {
 	Tag         string   `json:"tag"`
 	ImportLangs []string `json:"import_langs"`
 	ApplyTags   []string `json:"apply_tags"`
+	// AndTags narrows the import to words that also carry every one of
+	// these tags (Tag AND AndTags), e.g. HSK 1 + Food.
+	AndTags []string `json:"and_tags"`
+	// ImportMode says how new words start: "include" (default, unseen),
+	// "review" (skip the intro, due once) or "known" (never quizzed).
+	ImportMode string `json:"import_mode"`
 }
 
 type importResponse struct {
@@ -60,6 +66,23 @@ func dictionaryTranslations(ctx context.Context, store importStore, zhText strin
 		}
 	}
 	return translations, nil
+}
+
+// hasAllTags reports whether tags contains every name in want.
+func hasAllTags(tags, want []string) bool {
+	for _, w := range want {
+		found := false
+		for _, tg := range tags {
+			if tg == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // SourceTags returns importable tags belonging to the shared library user (user_id=1),
@@ -92,6 +115,15 @@ func (h *ImportHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load preview")
 		return
+	}
+	if r.URL.Query().Get("match") == "all" {
+		matching := words[:0]
+		for _, word := range words {
+			if hasAllTags(word.Tags, tags) {
+				matching = append(matching, word)
+			}
+		}
+		words, total = matching, len(matching)
 	}
 
 	availableLangs := map[string]int{}
@@ -145,6 +177,13 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	switch req.ImportMode {
+	case "", "include", "review", "known":
+	default:
+		writeError(w, http.StatusBadRequest, "import_mode must be include, review or known")
+		return
+	}
+
 	if len(req.ApplyTags) > 20 {
 		writeError(w, http.StatusBadRequest, "too many apply_tags (max 20)")
 		return
@@ -172,6 +211,15 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load source words")
 		return
+	}
+	if len(req.AndTags) > 0 {
+		matching := sourceWords[:0]
+		for _, sw := range sourceWords {
+			if hasAllTags(sw.Tags, req.AndTags) {
+				matching = append(matching, sw)
+			}
+		}
+		sourceWords = matching
 	}
 
 	// Build a set of the current user's existing zh_texts.
@@ -236,8 +284,19 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 			Tags:         cleanTags,
 		}
 
-		if _, err := h.Store.CreateWord(r.Context(), currentUserID, createReq); err != nil {
+		newID, err := h.Store.CreateWord(r.Context(), currentUserID, createReq)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to create word")
+			return
+		}
+		switch req.ImportMode {
+		case "known":
+			err = h.Store.SetWordKnown(r.Context(), currentUserID, newID, true)
+		case "review":
+			err = h.Store.AcknowledgeWord(r.Context(), currentUserID, newID)
+		}
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to apply import mode")
 			return
 		}
 		imported++

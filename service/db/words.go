@@ -76,6 +76,8 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		dueFilterSQL = " AND p.due_date < date('now', '+1 day')"
 	case "tomorrow":
 		dueFilterSQL = " AND p.due_date >= date('now', '+1 day') AND p.due_date < date('now', '+2 day')"
+	case "known":
+		dueFilterSQL = " AND p.is_known = 1"
 	}
 
 	bucketFilter := tierFilter(bucket)
@@ -128,6 +130,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		       COALESCE(p.due_date, CURRENT_TIMESTAMP),
 		       COALESCE(w.needs_review, 0),
 		       COALESCE(p.learning_new_word, 1),
+		       COALESCE(p.is_known, 0),
 		       cp.character IS NOT NULL AS is_also_component,
 		       CASE WHEN ? != '' AND (
 		           w.text = ? COLLATE NOCASE
@@ -169,18 +172,19 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 	for rows.Next() {
 		var wd models.WordDetail
 		var createdAt, dueDate string
-		var needsReview, learning, matchRank int
+		var needsReview, learning, known, matchRank int
 		if err := rows.Scan(
 			&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
 			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
-			&dueDate, &needsReview, &learning, &wd.IsAlsoComponent,
+			&dueDate, &needsReview, &learning, &known, &wd.IsAlsoComponent,
 			&matchRank, &total,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan word: %w", err)
 		}
 		wd.NeedsReview = needsReview == 1
 		wd.LearningNewWord = learning == 1
+		wd.Known = known == 1
 		wd.CreatedAt = parseDateTime(createdAt)
 		wd.DueDate = parseDateTime(dueDate)
 		words = append(words, wd)
@@ -445,7 +449,7 @@ func (s *Store) GetZhTextByID(ctx context.Context, userID, wordID int64) (string
 func (s *Store) GetWordByID(ctx context.Context, userID, id int64) (*models.WordDetail, error) {
 	var wd models.WordDetail
 	var createdAt, dueDate string
-	var needsReview int
+	var needsReview, known int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT w.id, w.text, w.pinyin, w.created_at,
 		        COALESCE(p.repetitions, 0), COALESCE(p.easiness, 2.5),
@@ -453,17 +457,18 @@ func (s *Store) GetWordByID(ctx context.Context, userID, id int64) (*models.Word
 		        COALESCE(p.total_correct, 0), COALESCE(p.total_attempts, 0),
 		        COALESCE(p.streak_bonus, 0),
 		        COALESCE(p.due_date, CURRENT_TIMESTAMP),
-		        COALESCE(w.needs_review, 0)
+		        COALESCE(w.needs_review, 0), COALESCE(p.is_known, 0)
 		 FROM words w
 		 LEFT JOIN sm2_progress p ON p.word_id = w.id
 		 WHERE w.id = ? AND w.language = 'zh' AND w.user_id = ?`, id, userID).
 		Scan(&wd.ID, &wd.ZhText, &wd.Pinyin, &createdAt,
 			&wd.Repetitions, &wd.Easiness, &wd.IntervalDays,
 			&wd.TotalCorrect, &wd.TotalAttempts, &wd.StreakBonus,
-			&dueDate, &needsReview)
+			&dueDate, &needsReview, &known)
 	wd.CreatedAt = parseDateTime(createdAt)
 	wd.DueDate = parseDateTime(dueDate)
 	wd.NeedsReview = needsReview == 1
+	wd.Known = known == 1
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -718,6 +723,28 @@ func (s *Store) MarkWordForReview(ctx context.Context, userID, id int64) error {
 	return nil
 }
 
+// SetWordKnown flags a zh word as known (or clears the flag). Known words are
+// never returned as quiz prompts; they stay in the vocabulary and can still
+// appear as distractors and in mismatch detection.
+func (s *Store) SetWordKnown(ctx context.Context, userID, id int64, known bool) error {
+	v := 0
+	if known {
+		v = 1
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET is_known = ?
+		 WHERE word_id IN (SELECT id FROM words WHERE id = ? AND language = 'zh' AND user_id = ?)`,
+		v, id, userID)
+	if err != nil {
+		return fmt.Errorf("set word known: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // GetTranslationLanguages returns the distinct non-zh languages that have at
 // least one translation row in the database.
 func (s *Store) GetTranslationLanguages(ctx context.Context) ([]string, error) {
@@ -830,7 +857,7 @@ func (s *Store) nextUnseenCard(ctx context.Context, userID int64, tagFilter stri
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
 		LEFT JOIN word_frequency wf ON wf.word = w.text
-		WHERE w.language = 'zh' AND w.user_id = ?` + tagFilter + `
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.is_known = 0` + tagFilter + `
 		  AND p.first_seen_at IS NULL
 		ORDER BY p.due_date ASC`
 	args := append([]any{userID}, tagArgs...)
@@ -1211,7 +1238,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word, p.known_correct_count
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
-		WHERE w.language = 'zh' AND w.user_id = ?` + tagFilter + newWordFilter + bucketSQL + ` %s
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.is_known = 0` + tagFilter + newWordFilter + bucketSQL + ` %s
 		ORDER BY p.due_date ASC
 		LIMIT 1`
 

@@ -32,7 +32,7 @@ func (s *Store) FlagDifficultWords(ctx context.Context, userID int64, count int)
 	const candidate = `
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh' AND w.user_id = ?
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.is_known = 0
 		  AND p.first_seen_at IS NOT NULL
 		  AND p.learning_new_word = 0
 		  AND p.total_attempts >= 3`
@@ -149,7 +149,7 @@ func (s *Store) GetNextDrillCard(ctx context.Context, userID int64) (*models.Wor
 		       p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word, p.known_correct_count
 		FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id
-		WHERE w.language = 'zh' AND w.user_id = ? AND p.drill_flag = 1
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.is_known = 0 AND p.drill_flag = 1
 		ORDER BY p.due_date ASC
 		LIMIT 1`, userID)
 	var w models.Word

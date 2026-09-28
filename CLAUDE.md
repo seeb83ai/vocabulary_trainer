@@ -162,6 +162,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 
 - SM-2 progress is always tracked on the **zh word** (canonical unit). `word_id` in quiz responses is always the zh word ID.
 - `GetNextCard` must filter `WHERE w.language = 'zh'` — EN words must never be returned as quiz prompts.
+- `sm2_progress.is_known = 1` ("known" words) must never reach a quiz prompt: `nextUnseenCard`, `GetNextCard` and the drill queries filter `p.is_known = 0`. Known words still count in confusion/mismatch detection and as distractors.
 - Answer normalisation lives in `service/sm2/sm2.go` (`normalize`, `expandVariants`, `CheckAnswer`).
   Rules applied in order: lowercase + trim whitespace → strip trailing sentence punctuation (`。.！!？?`) →
   strip optional parenthesised segments → split on `/` or `,` for alternatives.
@@ -242,6 +243,8 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/frontend/train-result.js` | Answer-result rendering, character decomposition |
 | `service/frontend/train-matchgame.js` | Post-answer match-game widget |
 | `service/frontend/train-card.js` | Core load/show/submit quiz loop, page state, init |
+| `service/frontend/onboarding-wizard.js` | First-vocabulary-setup wizard on the Train empty state (HSK version → level → optional topics → pace/preferences, then import) and the shared-library picker ("Import my own list instead") |
+| `service/frontend/app.css` | Shared shell styles (self-hosted Plus Jakarta Sans / Noto Sans SC subset from `service/frontend/fonts/`) and wizard styles |
 | `service/frontend/vocab-list.js` | Word table/pagination/filters, page init |
 | `service/frontend/vocab-form.js` | Add/edit/delete word form, translate/pinyin lookup |
 | `service/frontend/vocab-tags.js` | Tag autocomplete for the edit form |
@@ -277,7 +280,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
-| `e2e/onboarding.spec.js` | Browser tests: quick-start HSK version toggle, multi-select custom import |
+| `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags) |
 | `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |

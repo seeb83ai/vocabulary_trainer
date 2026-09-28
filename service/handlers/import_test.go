@@ -441,3 +441,144 @@ func TestImport_MissingTag(t *testing.T) {
 		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
 	}
 }
+
+func TestImport_KnownModeHidesWordsFromQuiz(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag": "HSK1", "import_langs": []string{"en"}, "apply_tags": []string{"HSK1"}, "import_mode": "known",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Imported int `json:"imported"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 1 {
+		t.Fatalf("want imported=1, got %d", resp.Imported)
+	}
+	if rec := do(t, r, "GET", "/api/quiz/next", nil); rec.Code != http.StatusNotFound {
+		t.Errorf("known words must not be quizzed, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestImport_ReviewModeSkipsNewWordIntro(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag": "HSK1", "import_langs": []string{"en"}, "apply_tags": []string{"HSK1"}, "import_mode": "review",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	rec = do(t, r, "GET", "/api/quiz/next", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("review word must be due, got %d: %s", rec.Code, rec.Body)
+	}
+	var card struct {
+		Mode string `json:"mode"`
+	}
+	decodeJSON(t, rec, &card)
+	if card.Mode == "new_word" {
+		t.Errorf("review words must skip the new-word introduction")
+	}
+}
+
+func TestImport_IncludeModeLeavesWordsUnseen(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag": "HSK1", "import_langs": []string{"en"}, "import_mode": "include",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	rec = do(t, r, "GET", "/api/quiz/next", nil)
+	var card struct {
+		Mode string `json:"mode"`
+	}
+	decodeJSON(t, rec, &card)
+	if card.Mode != "new_word" {
+		t.Errorf("included words start as new words, got mode %q", card.Mode)
+	}
+}
+
+func TestImport_UnknownModeRejected(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{"tag": "HSK1", "import_mode": "bogus"})
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestImportPreview_MatchAllCountsWordsWithEveryTag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "苹果", "píng guǒ", nil, nil, []string{"hsk3-1", "topic-food"})
+	seedWordFull(t, s, 1, "人", "rén", nil, nil, []string{"hsk3-1"})
+	seedWordFull(t, s, 1, "面包", "miàn bāo", nil, nil, []string{"topic-food"})
+	seedCedictEntry(t, s, "苹果", "en", "apple")
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/import/preview?tag=hsk3-1&tag=topic-food&match=all", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Total    int `json:"total"`
+		Examples []struct {
+			ZhText string `json:"zh_text"`
+		} `json:"examples"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 1 || len(resp.Examples) != 1 || resp.Examples[0].ZhText != "苹果" {
+		t.Errorf("match=all: want only 苹果, got total=%d examples=%v", resp.Total, resp.Examples)
+	}
+}
+
+func TestImport_AndTagsImportsOnlyWordsWithEveryTag(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "苹果", "píng guǒ", nil, nil, []string{"hsk3-1", "topic-food"})
+	seedWordFull(t, s, 1, "人", "rén", nil, nil, []string{"hsk3-1"})
+	seedWordFull(t, s, 1, "面包", "miàn bāo", nil, nil, []string{"topic-food"})
+	seedCedictEntry(t, s, "苹果", "en", "apple")
+	seedCedictEntry(t, s, "人", "en", "person")
+	seedCedictEntry(t, s, "面包", "en", "bread")
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{
+		"tag": "hsk3-1", "and_tags": []string{"topic-food"},
+		"import_langs": []string{"en"}, "apply_tags": []string{"hsk3-1", "topic-food"},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Imported int `json:"imported"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.Imported != 1 {
+		t.Errorf("want imported=1, got %d", resp.Imported)
+	}
+	listRec := do(t, r, "GET", "/api/words/?per_page=50", nil)
+	var list struct {
+		Words []struct {
+			ZhText string   `json:"zh_text"`
+			Tags   []string `json:"tags"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &list)
+	if len(list.Words) != 1 || list.Words[0].ZhText != "苹果" || len(list.Words[0].Tags) != 2 {
+		t.Errorf("want only 苹果 tagged with both lists, got %+v", list.Words)
+	}
+}

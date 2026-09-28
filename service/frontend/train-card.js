@@ -24,6 +24,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   noAutoVoiceOnBlur = !!st?.no_auto_voice_on_blur;
   celebrateBucketChange = !!st?.celebrate_bucket_change;
   _gamificationEnabled = !!st?.gamification_enabled;
+  autoPlayEnabled = !!st?.autoplay_always;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   _matchGamePinyinReveal = st?.match_game_pinyin_reveal || 'always';
   const btn = document.getElementById('new-word-skip-btn');
@@ -919,285 +920,28 @@ document.addEventListener('DOMContentLoaded', () => {
     updateAdvanceButtonsForDifficult();
   });
 
-  // Onboarding import (shown when user has zero words)
-  let obAllTags = [];
-  let obSelectedTags = [];
-  let obQuickVersion = 3;
-  let obFilterLangs = new Set();
-  let obFilterMode = 'any';
-  let obApplyTags = [];
-
-  function obTagMatchesFilter(tag) {
-    if (obFilterLangs.size === 0) return true;
-    const langs = tag.available_langs || [];
-    if (obFilterMode === 'all') {
-      for (const lang of obFilterLangs) {
-        if (!langs.includes(lang)) return false;
-      }
-      return true;
-    }
-    for (const lang of obFilterLangs) {
-      if (langs.includes(lang)) return true;
-    }
-    return false;
-  }
-
-  function obRenderTagPills() {
-    const list = $('ob-tag-list');
-    list.innerHTML = '';
-    const visible = obAllTags.filter(obTagMatchesFilter);
-    // Selected lists that a filter now hides are dropped from the selection.
-    const visibleNames = visible.map(tg => tg.name);
-    const kept = obSelectedTags.filter(n => visibleNames.includes(n));
-    const selectionChanged = kept.length !== obSelectedTags.length;
-    obSelectedTags = kept;
-    if (visible.length === 0) {
-      list.innerHTML = `<span class="text-sm text-gray-400">${escHtml(obAllTags.length === 0 ? t('vocab.importNoTags') : t('vocab.importNoTagsMatch'))}</span>`;
-    }
-    for (const tag of visible) {
-      const pill = document.createElement('button');
-      pill.type = 'button';
-      const isSelected = obSelectedTags.includes(tag.name);
-      pill.setAttribute('aria-pressed', String(isSelected));
-      pill.className = 'px-3 py-1 rounded-full text-sm font-medium border transition ' +
-        (isSelected ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600');
-      pill.textContent = tag.name;
-      if (tag.description) pill.title = tag.description;
-      pill.addEventListener('click', () => obToggleTag(tag));
-      list.appendChild(pill);
-    }
-    if (selectionChanged) obLoadPreview();
-  }
-
-  async function obToggleTag(tag) {
-    obSelectedTags = toggleListSelection(obSelectedTags, tag.name);
-    obRenderTagPills();
-    await obLoadPreview();
-  }
-
-  async function obLoadPreview() {
-    $('ob-next-btn').disabled = true;
-    if (obSelectedTags.length === 0) { hide('ob-preview'); return; }
-    const requested = [...obSelectedTags];
-    const descEl = $('ob-preview-desc');
-    const statsEl = $('ob-preview-stats');
-    const tableWrap = $('ob-preview-table-wrap');
-    const tbody = $('ob-preview-tbody');
-    statsEl.textContent = t('vocab.importLoading');
-    descEl.classList.add('hidden');
-    tableWrap.classList.add('hidden');
-    tbody.innerHTML = '';
-    show('ob-preview');
-    try {
-      const data = await apiFetch(importPreviewURL(requested));
-      // A newer selection has started its own preview; drop this result.
-      if (requested.join(',') !== obSelectedTags.join(',')) return;
-      const descriptions = obAllTags
-        .filter(tg => requested.includes(tg.name) && tg.description)
-        .map(tg => tg.description);
-      if (descriptions.length > 0) { descEl.textContent = descriptions.join(' · '); descEl.classList.remove('hidden'); }
-      if (data.total === 0) { statsEl.textContent = t('vocab.importPreviewEmpty'); return; }
-      const parts = [`${data.total} ${t('vocab.importPreviewWords')}`];
-      for (const [lang, count] of Object.entries(data.available_langs || {}).sort()) {
-        if (count > 0) parts.push(`${count} ${lang.toUpperCase()}`);
-      }
-      statsEl.textContent = parts.join(' · ');
-      const hasDe = (data.examples || []).some(e => (e.translations || {})['de']?.length > 0);
-      for (const ex of (data.examples || [])) {
-        const tr = document.createElement('tr');
-        tr.className = 'border-b border-gray-100 last:border-0';
-        const exTransl = ex.translations || {};
-        const en = (exTransl['en'] || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
-        const de = (exTransl['de'] || []).map(escHtml).join(', ') || '<span class="text-gray-300">—</span>';
-        tr.innerHTML = `<td class="py-1 px-2 font-medium">${escHtml(ex.zh_text)}</td><td class="py-1 px-2 text-gray-500">${escHtml(ex.pinyin)}</td><td class="py-1 px-2 text-gray-700">${en}</td><td class="py-1 px-2 text-gray-500">${hasDe ? de : ''}</td>`;
-        tbody.appendChild(tr);
-      }
-      tableWrap.classList.remove('hidden');
-      $('ob-next-btn').disabled = false;
-    } catch (e) {
-      statsEl.textContent = e.message;
-    }
-  }
-
-  function obShowStep(n) {
-    [1, 2, 3].forEach(i => {
-      const el = $('ob-step' + i);
-      if (el) el.classList.toggle('hidden', i !== n);
-    });
-  }
-
+  // Onboarding (shown when user has zero words): the setup wizard, fed with
+  // the shared library's lists.
   async function obLoadTags() {
-    const list = $('ob-tag-list');
+    const root = $('wz-root');
     try {
-      obAllTags = await apiFetch('/api/import/source-tags');
-      obRenderTagPills();
-      obApplyQuickStart();
-    } catch (e) {
-      list.innerHTML = `<span class="text-sm text-red-500">${escHtml(e.message)}</span>`;
-    }
-  }
-
-  // Show the one-button level chooser when the library offers HSK lists;
-  // the manual tag picker stays available behind the "choose myself" option.
-  // A version toggle (HSK 3.0 by default) picks which lists the buttons use.
-  function obApplyQuickStart() {
-    const names = (obAllTags || []).map(tg => tg.name);
-    const versions = hskVersions(names);
-    if (versions.length === 0) return;
-    if (!versions.includes(obQuickVersion)) obQuickVersion = versions[0];
-    $('ob-qs-versions').classList.toggle('hidden', versions.length < 2);
-    for (const v of [2, 3]) {
-      const btn = $('ob-qs-version-' + v);
-      const active = v === obQuickVersion;
-      btn.classList.toggle('hidden', !versions.includes(v));
-      btn.setAttribute('aria-pressed', String(active));
-      btn.classList.toggle('bg-blue-600', active);
-      btn.classList.toggle('text-white', active);
-      btn.classList.toggle('border-blue-600', active);
-      btn.classList.toggle('text-gray-600', !active);
-      btn.classList.toggle('border-gray-300', !active);
-    }
-    const plan = hskQuickStart(names, obQuickVersion);
-    $('ob-qs-beginner').classList.toggle('hidden', plan.beginner.length === 0);
-    $('ob-qs-basics').classList.toggle('hidden', plan.basics.length === 0);
-    show('ob-quickstart');
-    hide('ob-step1');
-  }
-
-  async function obQuickImport(tags) {
-    const buttons = ['ob-qs-beginner', 'ob-qs-basics', 'ob-qs-custom', 'ob-qs-version-2', 'ob-qs-version-3'];
-    const statusEl = $('ob-qs-status');
-    for (const id of buttons) $(id).disabled = true;
-    statusEl.className = 'text-sm text-gray-500';
-    statusEl.textContent = t('empty.qsImporting');
-    show('ob-qs-status');
-    try {
-      await importLists(tags, tags, true, true);
-      hide('empty-state');
-      loadNextCard();
-    } catch (e) {
-      statusEl.className = 'text-sm text-red-600';
-      statusEl.textContent = t('empty.qsFailed');
-      for (const id of buttons) $(id).disabled = false;
-    }
-  }
-
-  async function obExecuteImport() {
-    const btn = $('ob-submit-btn');
-    const statusEl = $('ob-status');
-    btn.disabled = true;
-    btn.textContent = t('vocab.importing');
-    statusEl.className = 'mt-3 text-sm text-gray-500';
-    statusEl.textContent = '';
-    show('ob-status');
-    try {
-      const result = await importLists(obSelectedTags, obApplyTags,
-        $('ob-import-en').checked, $('ob-import-de').checked);
-      // Imported words are left unseen (not force-acknowledged) so they are
-      // introduced one at a time through the normal new-word pacing cap,
-      // exactly like a manually-added word or the quick-start import — see
-      // issue #344 (bulk import used to flood the first session by marking
-      // every imported word as immediately due/already-seen).
-      statusEl.className = 'mt-3 text-sm text-green-600';
-      statusEl.textContent = importResultText(result);
-      setTimeout(() => {
+      const tags = await apiFetch('/api/import/source-tags');
+      wizardStart(root, tags, detail => {
+        selectedLangs = detail.langs;
+        if (detail.audio !== undefined) autoPlayEnabled = detail.audio;
+        if (detail.game !== undefined) _gamificationEnabled = detail.game;
+        applyAutoPlayButton();
         hide('empty-state');
         loadNextCard();
-      }, 1200);
-    } catch (e) {
-      statusEl.className = 'mt-3 text-sm text-red-500';
-      statusEl.textContent = e.message;
-      btn.disabled = false;
-      btn.textContent = t('vocab.import');
-    }
-  }
-
-  function obRenderApplyTags() {
-    const container = $('ob-apply-tags');
-    container.innerHTML = '';
-    for (const tag of obApplyTags) {
-      const pill = document.createElement('span');
-      pill.className = 'inline-flex items-center bg-gray-200 text-gray-700 text-sm px-2 py-0.5 rounded-full';
-      pill.innerHTML = `${escHtml(tag)} <button type="button" class="ml-1 text-gray-400 hover:text-red-500 leading-none">&times;</button>`;
-      pill.querySelector('button').addEventListener('click', () => {
-        obApplyTags = obApplyTags.filter(t => t !== tag);
-        obRenderApplyTags();
       });
-      container.appendChild(pill);
+      show('ob-quickstart');
+    } catch (e) {
+      root.innerHTML = `<div class="wz-card wz-pad wz-body"><p class="wz-error">${escHtml(e.message)}</p></div>`;
+      show('ob-quickstart');
     }
   }
-
-  function obAddTag(tag) {
-    tag = tag.trim();
-    if (!tag || obApplyTags.includes(tag)) return;
-    obApplyTags.push(tag);
-    obRenderApplyTags();
-    $('ob-tag-input').value = '';
-    $('ob-tag-autocomplete').classList.add('hidden');
-  }
-
-  function obShowTagAutocomplete(query) {
-    const dropdown = $('ob-tag-autocomplete');
-    const q = query.toLowerCase();
-    const tagNames = obAllTags.map(t => t.name);
-    const matches = tagNames.filter(n => n.toLowerCase().includes(q) && !obApplyTags.includes(n));
-    if (query && !tagNames.includes(query) && !obApplyTags.includes(query)) matches.push(query);
-    if (!matches.length) { dropdown.classList.add('hidden'); return; }
-    dropdown.innerHTML = '';
-    dropdown.classList.remove('hidden');
-    for (const m of matches) {
-      const item = document.createElement('div');
-      item.className = 'px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer';
-      item.textContent = m === query && !tagNames.includes(query) ? t('vocab.createTag', { tag: m }) : m;
-      item.addEventListener('mousedown', e => { e.preventDefault(); obAddTag(m); });
-      dropdown.appendChild(item);
-    }
-  }
-
-  $('ob-tag-input').addEventListener('input', e => obShowTagAutocomplete(e.target.value));
-  $('ob-tag-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); obAddTag(e.target.value); }
-    if (e.key === 'Escape') $('ob-tag-autocomplete').classList.add('hidden');
-  });
-  $('ob-tag-input').addEventListener('blur', () => setTimeout(() => $('ob-tag-autocomplete').classList.add('hidden'), 150));
-
-  // Wire up onboarding filter buttons
-  ['en', 'de'].forEach(lang => {
-    $('ob-filter-' + lang).addEventListener('click', () => {
-      const btn = $('ob-filter-' + lang);
-      if (obFilterLangs.has(lang)) {
-        obFilterLangs.delete(lang);
-        btn.classList.remove('bg-blue-600', 'text-white', 'border-blue-600');
-        btn.classList.add('border-gray-300', 'text-gray-500');
-      } else {
-        obFilterLangs.add(lang);
-        btn.classList.add('bg-blue-600', 'text-white', 'border-blue-600');
-        btn.classList.remove('border-gray-300', 'text-gray-500');
-      }
-      obRenderTagPills();
-    });
-  });
-  document.querySelectorAll('input[name="ob-filter-mode"]').forEach(radio => {
-    radio.addEventListener('change', () => { obFilterMode = radio.value; obRenderTagPills(); });
-  });
-  const obQuickPlan = () => hskQuickStart((obAllTags || []).map(tg => tg.name), obQuickVersion);
-  $('ob-qs-beginner').addEventListener('click', () => obQuickImport(obQuickPlan().beginner));
-  $('ob-qs-basics').addEventListener('click', () => obQuickImport(obQuickPlan().basics));
-  for (const v of [2, 3]) {
-    $('ob-qs-version-' + v).addEventListener('click', () => { obQuickVersion = v; obApplyQuickStart(); });
-  }
-  $('ob-qs-custom').addEventListener('click', () => { hide('ob-quickstart'); show('ob-step1'); });
-  $('ob-next-btn').addEventListener('click', () => obShowStep(2));
-  $('ob-back1-btn').addEventListener('click', () => obShowStep(1));
-  $('ob-next2-btn').addEventListener('click', () => {
-    obApplyTags = [...obSelectedTags];
-    obRenderApplyTags();
-    obShowStep(3);
-  });
-  $('ob-back2-btn').addEventListener('click', () => obShowStep(2));
-  $('ob-submit-btn').addEventListener('click', obExecuteImport);
 
   document.addEventListener('ob:loadtags', obLoadTags, { once: false });
 
-  loadTrainSettings().then(() => loadNextCard());
+  loadTrainSettings().then(() => { applyAutoPlayButton(); loadNextCard(); });
 });

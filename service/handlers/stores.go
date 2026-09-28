@@ -72,6 +72,7 @@ type componentStore interface {
 
 type importStore interface {
 	db.WordStore
+	AcknowledgeWord(ctx context.Context, userID, wordID int64) error
 	LookupDictionary(ctx context.Context, simplified, lang string) ([]string, error)
 }
 

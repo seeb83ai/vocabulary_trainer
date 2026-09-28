@@ -29,30 +29,56 @@ function toggleListSelection(selected, name) {
 // buildListImportPayload builds the /api/import body for one selected list.
 // A selected list's own tag is applied only to that list's words; other tags
 // in applyTags (typed by the user) go on every word.
-function buildListImportPayload(sourceTag, selected, applyTags, importEn, importDe) {
-  return {
+function buildListImportPayload(sourceTag, selected, applyTags, importEn, importDe, mode) {
+  const payload = {
     tag: sourceTag,
     import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
     apply_tags: applyTags.filter(tg => tg === sourceTag || !selected.includes(tg)),
   };
+  if (mode) payload.import_mode = mode;
+  return payload;
 }
 
 // importLists imports every selected list, one request per list, and returns
 // the summed counts. A word in two lists is created by the first request and
 // gets the second list's tag from the next one.
-async function importLists(selected, applyTags, importEn, importDe) {
+async function importLists(selected, applyTags, importEn, importDe, mode) {
   const total = { imported: 0, tagged: 0, skipped: 0 };
   for (const tag of selected) {
     const result = await apiFetch('/api/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildListImportPayload(tag, selected, applyTags, importEn, importDe)),
+      body: JSON.stringify(buildListImportPayload(tag, selected, applyTags, importEn, importDe, mode)),
     });
     total.imported += result.imported || 0;
     total.tagged += result.tagged || 0;
     total.skipped += result.skipped || 0;
   }
   return total;
+}
+
+// buildMatchAllPayload builds the /api/import body that imports only words
+// carrying every selected tag (e.g. HSK 1 + Food). All selected tags are
+// applied to the imported words.
+function buildMatchAllPayload(selected, importEn, importDe, mode) {
+  const payload = {
+    tag: selected[0],
+    and_tags: selected.slice(1),
+    import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
+    apply_tags: [...selected],
+  };
+  if (mode) payload.import_mode = mode;
+  return payload;
+}
+
+// importListsMatchAll runs the single "all tags" import and returns the counts.
+async function importListsMatchAll(selected, importEn, importDe, mode) {
+  const result = await apiFetch('/api/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildMatchAllPayload(selected, importEn, importDe, mode)),
+  });
+  return { imported: result.imported || 0, tagged: result.tagged || 0, skipped: result.skipped || 0 };
 }
 
 function importResultText(result) {

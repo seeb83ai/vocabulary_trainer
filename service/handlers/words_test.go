@@ -676,3 +676,34 @@ func TestWordsList_MissingLangEmpty_ReturnsAll(t *testing.T) {
 		t.Errorf("no missing_lang filter: want 2 results, got %d", resp.Total)
 	}
 }
+
+func TestSetKnown_TogglesFlag(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id := seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, nil)
+
+	rec := do(t, r, "POST", fmt.Sprintf("/api/words/%d/known", id), map[string]any{"known": true})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+	if rec := do(t, r, "GET", "/api/quiz/next", nil); rec.Code != http.StatusNotFound {
+		t.Errorf("known word must not be quizzed, got %d", rec.Code)
+	}
+
+	rec = do(t, r, "POST", fmt.Sprintf("/api/words/%d/known", id), map[string]any{"known": false})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+	if rec := do(t, r, "GET", "/api/quiz/next", nil); rec.Code != http.StatusOK {
+		t.Errorf("word must return to training, got %d", rec.Code)
+	}
+}
+
+func TestSetKnown_UnknownWordIs404(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/words/9999/known", map[string]any{"known": true})
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
