@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/rand"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"vocabulary_trainer/models"
@@ -196,11 +197,17 @@ func ProcessAnswer(p models.SM2Progress, correct bool) models.SM2Progress {
 //  2. Slash- or comma-separated alternatives are each valid on their own:
 //     "Essen / Gericht" also accepts "Essen" or "Gericht", and
 //     "topic, item" also accepts "topic" or "item".
+//  3. A slash-separated answer may list all parts in any order:
+//     "Schlafzimmer / Wohnzimmer" also accepts "Wohnzimmer / Schlafzimmer".
 //
-// All combinations of the two rules are tried.
+// All combinations of rules 1 and 2 are tried.
 func CheckAnswer(userAnswer string, accepted []string) bool {
 	ua := normalize(userAnswer)
+	uaParts := slashParts(userAnswer)
 	for _, a := range accepted {
+		if len(uaParts) > 1 && slices.Equal(uaParts, slashParts(a)) {
+			return true
+		}
 		for _, variant := range expandVariants(a) {
 			if variant == ua {
 				return true
@@ -208,6 +215,20 @@ func CheckAnswer(userAnswer string, accepted []string) bool {
 		}
 	}
 	return false
+}
+
+// slashParts splits s at '/', normalises each part with optional parenthesised
+// segments removed, and returns the non-empty parts sorted, so two answers
+// listing the same parts in a different order compare equal.
+func slashParts(s string) []string {
+	var parts []string
+	for _, part := range strings.Split(s, "/") {
+		if p := normalize(stripParens(part)); p != "" {
+			parts = append(parts, p)
+		}
+	}
+	slices.Sort(parts)
+	return parts
 }
 
 // NormalizeAnswer lowercases, collapses internal whitespace, converts common
