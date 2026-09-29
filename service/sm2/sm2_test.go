@@ -1252,3 +1252,39 @@ func TestSelectCycleMode_UncontrolledStepAlwaysEligible(t *testing.T) {
 		t.Errorf("uncontrolled step: want mask_pinyin to survive bucket filtering, got %s", m)
 	}
 }
+
+func TestCheckAnswer_SlashPartsAnyOrder(t *testing.T) {
+	if !CheckAnswer("Wohnzimmer / Schlafzimmer", []string{"Schlafzimmer / Wohnzimmer"}) {
+		t.Error("slash-separated parts in swapped order should be accepted")
+	}
+}
+
+func TestCheckAnswer_SlashPartsAnyOrder_NoSpaces(t *testing.T) {
+	if !CheckAnswer("wohnzimmer/schlafzimmer", []string{"Schlafzimmer / Wohnzimmer"}) {
+		t.Error("swapped order without spaces around the slash should be accepted")
+	}
+}
+
+func TestCheckAnswer_SlashPartsAnyOrder_ThreeParts(t *testing.T) {
+	if !CheckAnswer("c / a / b", []string{"a / b / c"}) {
+		t.Error("any permutation of three parts should be accepted")
+	}
+}
+
+func TestCheckAnswer_SlashPartsAnyOrder_OptionalParens(t *testing.T) {
+	if !CheckAnswer("wohnzimmer / schlafzimmer", []string{"Schlafzimmer / (das) Wohnzimmer"}) {
+		t.Error("swapped order should ignore optional parenthesised segments")
+	}
+}
+
+func TestCheckAnswer_SlashPartsAnyOrder_UnknownPartRejected(t *testing.T) {
+	if CheckAnswer("Wohnzimmer / Küche", []string{"Schlafzimmer / Wohnzimmer"}) {
+		t.Error("a part that is not in the accepted answer must be rejected")
+	}
+}
+
+func TestCheckAnswer_SlashPartsAnyOrder_DuplicatePartRejected(t *testing.T) {
+	if CheckAnswer("Wohnzimmer / Wohnzimmer", []string{"Schlafzimmer / Wohnzimmer"}) {
+		t.Error("repeating one part must not count as giving all parts")
+	}
+}
