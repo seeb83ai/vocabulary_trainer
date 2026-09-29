@@ -55,7 +55,34 @@ test.describe('Stats page', () => {
       await page.request.delete(`/api/words/${created.id}`);
     }
   });
-  
+
+  test('accuracy distribution shows an unseen bucket (issue #488)', async ({ page }) => {
+    // No start_training → the word has never been seen, so it must land in the
+    // "Unseen" bucket when the breakdown is filtered to its unique tag.
+    const createRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '未见', pinyin: 'wèi jiàn', translations: { en: ['unseen word'] },
+        tags: ['unseen488'],
+      },
+    });
+    const created = await createRes.json();
+
+    try {
+      await page.goto('/stats');
+      await expect(page.locator('#word-stats-section')).toBeVisible({ timeout: 10_000 });
+
+      await page.locator('#bucket-tag-chips').getByText('unseen488', { exact: true }).click();
+
+      const legend = page.locator('#tier-legend');
+      await expect(legend).toContainText('Unseen');
+      await expect(legend).toContainText('1 (100%)');
+      await page.waitForTimeout(1200); // let the doughnut animation finish
+      await captureForPR(page, 'stats-unseen-bucket');
+    } finally {
+      await page.request.delete(`/api/words/${created.id}`);
+    }
+  });
+
   test('training history chart renders after answering quiz questions', async ({ page }) => {
     const wordsRes = await page.request.get('/api/words');
     const { words } = await wordsRes.json();

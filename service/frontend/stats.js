@@ -326,13 +326,16 @@ async function loadWordStats() {
   }
   let ws;
   try { ws = await apiFetch(url); } catch (_) { return; }
-  if (ws && ws.total_seen > 0) {
+  if (ws && (ws.total_seen > 0 || (ws.accuracy_buckets.unseen || 0) > 0)) {
     renderWordStats(ws);
     show('word-stats-section');
   } else {
     hide('word-stats-section');
   }
 }
+
+// Words never seen yet — only shown on the accuracy distribution, not a quiz tier.
+const UNSEEN_BUCKET = { key: 'unseen', i18nKey: 'tier.unseen', desc: '', color: '#9ca3af' };
 
 function renderWordStats(ws) {
   // Accuracy distribution doughnut
@@ -341,14 +344,15 @@ function renderWordStats(ws) {
     _accuracyChart = null;
   }
   const aCtx = $('accuracy-chart').getContext('2d');
-  const aData = TIERS.map(t => ws.accuracy_buckets[t.key] || 0);
+  const buckets = [UNSEEN_BUCKET, ...TIERS];
+  const aData = buckets.map(b => ws.accuracy_buckets[b.key] || 0);
   _accuracyChart = new Chart(aCtx, {
     type: 'doughnut',
     data: {
-      labels: TIERS.map(tier => t('tier.' + tier.label.toLowerCase())),
+      labels: buckets.map(b => t(b.i18nKey)),
       datasets: [{
         data: aData,
-        backgroundColor: TIERS.map(t => t.color + 'b3'),
+        backgroundColor: buckets.map(b => b.color + 'b3'),
       }],
     },
     options: {
@@ -372,13 +376,13 @@ function renderWordStats(ws) {
   // Safety: t.color values come from the hardcoded TIERS array in app.js, never from user input.
   const legend = $('tier-legend');
   const total = aData.reduce((a, b) => a + b, 0);
-  legend.innerHTML = TIERS.map((tier, i) => {
+  legend.innerHTML = buckets.map((tier, i) => {
     const count = aData[i];
     const pct = total > 0 ? Math.round(count / total * 100) : 0;
     return `<div class="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
       <div class="flex items-center gap-2">
         <span class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${tier.color}"></span>
-        <span class="font-medium text-gray-700">${escHtml(t('tier.' + tier.label.toLowerCase()))}</span>
+        <span class="font-medium text-gray-700">${escHtml(t(tier.i18nKey))}</span>
         <span class="text-gray-400 text-xs">${escHtml(tier.desc)}</span>
       </div>
       <span class="text-gray-600 tabular-nums">${count} <span class="text-gray-400">(${pct}%)</span></span>

@@ -263,7 +263,7 @@ func (s *Store) wordAccBucketsForTags(ctx context.Context, userID int64, tags []
 	}
 	defer rows.Close()
 
-	buckets := map[string]int{"new": 0, "0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0}
+	buckets := map[string]int{"unseen": 0, "new": 0, "0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0}
 	for rows.Next() {
 		var correct, attempts, streakBonus, learningInt int
 		if err := rows.Scan(&correct, &attempts, &streakBonus, &learningInt); err != nil {
@@ -281,6 +281,34 @@ func (s *Store) wordAccBucketsForTags(ctx context.Context, userID int64, tags []
 		return nil, err
 	}
 	return buckets, nil
+}
+
+// countUnseenWords counts zh words that have never been seen and are not
+// marked known, optionally restricted to words carrying at least one of tags.
+func (s *Store) countUnseenWords(ctx context.Context, userID int64, tags []string) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM sm2_progress p
+		JOIN words w ON w.id = p.word_id
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NULL AND p.is_known = 0`
+	args := []any{userID}
+	if len(tags) > 0 {
+		placeholders := make([]string, len(tags))
+		for i, t := range tags {
+			placeholders[i] = "?"
+			args = append(args, t)
+		}
+		query += `
+		  AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count unseen words: %w", err)
+	}
+	return n, nil
 }
 
 // GetWordStats returns aggregate statistics for all words seen at least once.
@@ -333,13 +361,9 @@ func (s *Store) GetWordStats(ctx context.Context, userID int64, tags []string) (
 
 	resp := &models.WordStatsResponse{
 		TotalSeen:  len(all),
-		AccBuckets: map[string]int{"new": 0, "0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0},
+		AccBuckets: map[string]int{"unseen": 0, "new": 0, "0-49": 0, "50-69": 0, "70-84": 0, "85-100": 0},
 		Hardest:    []models.WordStatDetail{},
 		MostPract:  []models.WordStatDetail{},
-	}
-
-	if len(all) == 0 {
-		return resp, nil
 	}
 
 	if len(tags) > 0 {
@@ -354,6 +378,16 @@ func (s *Store) GetWordStats(ctx context.Context, userID int64, tags []string) (
 				resp.AccBuckets[key]++
 			}
 		}
+	}
+
+	unseen, err := s.countUnseenWords(ctx, userID, tags)
+	if err != nil {
+		return nil, err
+	}
+	resp.AccBuckets["unseen"] = unseen
+
+	if len(all) == 0 {
+		return resp, nil
 	}
 
 	// Hardest words: lowest accuracy, min 3 attempts, up to 20

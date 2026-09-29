@@ -54,6 +54,7 @@ const I18N = {
     // Tier/Level labels
     'tier.all': 'All',
     'tier.new': 'New',
+    'tier.unseen': 'Unseen',
     'tier.struggling': 'Struggling',
     'tier.learning': 'Learning',
     'tier.practicing': 'Practicing',
@@ -915,6 +916,7 @@ const I18N = {
     // Tier/Level labels
     'tier.all': '全部',
     'tier.new': '新词',
+    'tier.unseen': '未见',
     'tier.struggling': '困难',
     'tier.learning': '学习中',
     'tier.practicing': '练习中',
@@ -1776,6 +1778,7 @@ const I18N = {
     // Tier/Level labels
     'tier.all': 'Alle',
     'tier.new': 'Neu',
+    'tier.unseen': 'Ungesehen',
     'tier.struggling': 'Schwierig',
     'tier.learning': 'Am Lernen',
     'tier.practicing': 'In Übung',

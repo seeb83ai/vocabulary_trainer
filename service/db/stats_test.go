@@ -555,3 +555,58 @@ func TestGetRecentAccuracy_NoDataIsNotOK(t *testing.T) {
 		t.Errorf("want ok=false without attempts on previous days, got ok=%v err=%v", ok, err)
 	}
 }
+
+func TestGetWordStats_UnseenBucket(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	seen := seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"vip"})
+	seedWordWithTags(t, s, "再见", "", []string{"bye"}, []string{"vip"})
+	seedWordWithTags(t, s, "谢谢", "", []string{"thanks"}, []string{"other"})
+	known := seedWordWithTags(t, s, "好", "", []string{"good"}, []string{"vip"})
+
+	if err := s.AcknowledgeWord(ctx, int64(2), seen); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sm2_progress SET is_known = 1 WHERE word_id = ?`, known); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := s.GetWordStats(ctx, int64(2), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.AccBuckets["unseen"] != 2 {
+		t.Errorf("unfiltered unseen bucket: want 2 (known words excluded), got %d", all.AccBuckets["unseen"])
+	}
+	if all.AccBuckets["new"] != 1 {
+		t.Errorf("unfiltered new bucket: want 1, got %d", all.AccBuckets["new"])
+	}
+	if all.TotalSeen != 1 {
+		t.Errorf("total_seen must not count unseen words: want 1, got %d", all.TotalSeen)
+	}
+
+	filtered, err := s.GetWordStats(ctx, int64(2), []string{"vip"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.AccBuckets["unseen"] != 1 {
+		t.Errorf("tag-filtered unseen bucket: want 1, got %d", filtered.AccBuckets["unseen"])
+	}
+}
+
+func TestGetWordStats_OnlyUnseenWordsStillReturnsBuckets(t *testing.T) {
+	s := openTestDB(t)
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, nil)
+
+	resp, err := s.GetWordStats(context.Background(), int64(2), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.TotalSeen != 0 {
+		t.Errorf("total_seen: want 0, got %d", resp.TotalSeen)
+	}
+	if resp.AccBuckets["unseen"] != 1 {
+		t.Errorf("unseen bucket: want 1, got %d", resp.AccBuckets["unseen"])
+	}
+}
