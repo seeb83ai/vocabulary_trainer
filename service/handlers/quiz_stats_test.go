@@ -218,6 +218,10 @@ func TestWordStats_WithData(t *testing.T) {
 		t.Error("accuracy_buckets missing '85-100' key")
 	}
 
+	if _, ok := resp.AccBuckets["unseen"]; !ok {
+		t.Error("accuracy_buckets missing 'unseen' key")
+	}
+
 	// Most practiced should be non-empty
 	if len(resp.MostPract) == 0 {
 		t.Error("most_practiced should not be empty")
