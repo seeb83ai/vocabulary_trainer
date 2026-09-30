@@ -693,6 +693,10 @@ test.describe('Gamification — match game', () => {
     await page.goto(`${BASE_URL}/settings`);
     const checkbox = page.locator('#gamification-enabled');
     await expect(checkbox).toBeVisible();
+    // Read the checkbox only after settings.js has loaded the saved settings.
+    // Otherwise the load can tick it between isChecked() and check(); check()
+    // is then a no-op and no autosave toast appears.
+    await expect(page.locator('body')).toHaveAttribute('data-settings-loaded', 'true');
 
     // This suite leaves gamification enabled between tests (see the file-level
     // comment above), so the checkbox may already be checked here — check()
