@@ -179,8 +179,8 @@ test.describe('Gamification — match game', () => {
     }, words);
     await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-    const huiBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('会', { exact: true }) });
-    const quBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('去', { exact: true }) });
+    const huiBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('会', { exact: true }) });
+    const quBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('去', { exact: true }) });
     // The at/above-threshold tile (会) starts hidden; the below-threshold
     // tile (去) shows its pinyin immediately, unaffected by this feature.
     await expect(huiBox.getByText('huì')).toHaveCount(0);
@@ -191,7 +191,7 @@ test.describe('Gamification — match game', () => {
     // Matching 会 correctly still reveals its pinyin — hide_pinyin only
     // withholds it up front, per the default "always" reveal setting.
     await huiBox.click();
-    await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('can', { exact: true }) }).click();
+    await page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('can', { exact: true }) }).click();
     await expect(huiBox.getByText('huì')).toBeVisible();
   });
 
@@ -234,15 +234,15 @@ test.describe('Gamification — match game', () => {
       }, words);
       await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-      const maoBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('猫', { exact: true }) });
+      const maoBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('猫', { exact: true }) });
       await expect(maoBox.getByText('māo')).toHaveCount(0);
 
       // Correctly match 猫 → cat; pinyin must still not appear afterwards.
       await maoBox.click();
-      await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('cat', { exact: true }) }).click();
+      await page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('cat', { exact: true }) }).click();
       await expect(maoBox.getByText('māo')).toHaveCount(0);
 
-      await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+      await page.locator('#match-game-overlay button', { hasText: 'Skip round' }).click();
     } finally {
       await api(request, 'PATCH', '/api/settings', originalSettings);
     }
@@ -266,19 +266,19 @@ test.describe('Gamification — match game', () => {
       }, words);
       await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-      const maoBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('猫', { exact: true }) });
+      const maoBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('猫', { exact: true }) });
       await expect(maoBox.getByText('māo')).toHaveCount(0);
 
       await captureForPR(page, 'match-game-pinyin-reveal-after-correct-hidden');
 
       // Correctly match 猫 → cat; pinyin should now appear.
       await maoBox.click();
-      await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('cat', { exact: true }) }).click();
+      await page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('cat', { exact: true }) }).click();
       await expect(maoBox.getByText('māo')).toBeVisible();
 
       await captureForPR(page, 'match-game-pinyin-reveal-after-correct-shown');
 
-      await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+      await page.locator('#match-game-overlay button', { hasText: 'Skip round' }).click();
     } finally {
       await api(request, 'PATCH', '/api/settings', originalSettings);
     }
@@ -302,12 +302,12 @@ test.describe('Gamification — match game', () => {
       }, words);
       await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-      const maoBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('猫', { exact: true }) });
+      const maoBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('猫', { exact: true }) });
       await maoBox.click();
-      await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('dog', { exact: true }) }).click();
+      await page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('dog', { exact: true }) }).click();
       await expect(maoBox.getByText('māo')).toHaveCount(0);
 
-      await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+      await page.locator('#match-game-overlay button', { hasText: 'Skip round' }).click();
     } finally {
       await api(request, 'PATCH', '/api/settings', originalSettings);
     }
@@ -332,16 +332,16 @@ test.describe('Gamification — match game', () => {
       }, words);
       await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-      const maoBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('猫', { exact: true }) });
+      const maoBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('猫', { exact: true }) });
       // Not shown up front — only after the pair is attempted.
       await expect(maoBox.getByText('māo')).toHaveCount(0);
 
       // A wrong match still reveals the pinyin under "always".
       await maoBox.click();
-      await page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('dog', { exact: true }) }).click();
+      await page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('dog', { exact: true }) }).click();
       await expect(maoBox.getByText('māo')).toBeVisible();
 
-      await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+      await page.locator('#match-game-overlay button', { hasText: 'Skip round' }).click();
     } finally {
       await api(request, 'PATCH', '/api/settings', originalSettings);
     }
@@ -366,10 +366,10 @@ test.describe('Gamification — match game', () => {
       }, words);
       await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-      const box = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('亻', { exact: true }) });
+      const box = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('亻', { exact: true }) });
       await expect(box.getByText('rén')).toBeVisible();
 
-      await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+      await page.locator('#match-game-overlay button', { hasText: 'Skip round' }).click();
     } finally {
       await api(request, 'PATCH', '/api/settings', originalSettings);
     }
@@ -437,15 +437,15 @@ test.describe('Gamification — match game', () => {
       }, words);
       await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-      const nengBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('能', { exact: true }) });
-      const konnenBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('können', { exact: true }) });
-      const keNengBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('可能', { exact: true }) });
-      const lageBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('in der Lage sein', { exact: true }) });
+      const nengBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('能', { exact: true }) });
+      const konnenBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('können', { exact: true }) });
+      const keNengBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('可能', { exact: true }) });
+      const lageBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('in der Lage sein', { exact: true }) });
 
       await nengBox.click();
       await konnenBox.click();
-      await expect(nengBox).toHaveClass(/border-yellow-500/);
-      await expect(nengBox).not.toHaveClass(/border-green-500/);
+      await expect(nengBox).toHaveClass(/is-blocked/);
+      await expect(nengBox).not.toHaveClass(/is-matched/);
       await page.waitForTimeout(900); // let the blocked-state reset timeout fire
 
       // 能 solves against its own box, then 可能 can still claim "können".
@@ -454,6 +454,8 @@ test.describe('Gamification — match game', () => {
       await keNengBox.click();
       await konnenBox.click();
 
+      // Finishing the round shows the "Round complete" view first.
+      await page.locator('#match-continue-btn').click();
       await expect(page.locator('#match-game-overlay')).toBeHidden({ timeout: 3000 });
       expect(await page.evaluate(() => /** @ts-ignore */ window.__mgDone)).toBe(true);
     } finally {
@@ -488,15 +490,15 @@ test.describe('Gamification — match game', () => {
       }, words);
       await expect(page.locator('#match-game-overlay')).toBeVisible();
 
-      const bangmangBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('帮忙', { exact: true }) });
-      const bangzhuBox = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('帮助', { exact: true }) });
-      const hilfeBoxes = page.locator('#match-game-overlay .rounded-xl').filter({ has: page.getByText('Hilfe', { exact: true }) });
+      const bangmangBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('帮忙', { exact: true }) });
+      const bangzhuBox = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('帮助', { exact: true }) });
+      const hilfeBoxes = page.locator('#match-game-overlay .mg-tile').filter({ has: page.getByText('Hilfe', { exact: true }) });
       await expect(hilfeBoxes).toHaveCount(2);
 
       await bangmangBox.click();
       await hilfeBoxes.nth(firstBox).click();
-      await expect(bangmangBox).toHaveClass(/border-green-500/);
-      await expect(hilfeBoxes.nth(firstBox)).toHaveClass(/border-green-500/);
+      await expect(bangmangBox).toHaveClass(/is-matched/);
+      await expect(hilfeBoxes.nth(firstBox)).toHaveClass(/is-matched/);
       if (firstBox === 1) {
         await page.waitForTimeout(300); // let the colour transition finish for the screenshot
         await captureForPR(page, 'match-game-identical-translations');
@@ -504,8 +506,10 @@ test.describe('Gamification — match game', () => {
 
       await bangzhuBox.click();
       await hilfeBoxes.nth(1 - firstBox).click();
-      await expect(bangzhuBox).toHaveClass(/border-green-500/);
+      await expect(bangzhuBox).toHaveClass(/is-matched/);
 
+      // Finishing the round shows the "Round complete" view first.
+      await page.locator('#match-continue-btn').click();
       await expect(page.locator('#match-game-overlay')).toBeHidden({ timeout: 3000 });
       expect(await page.evaluate(() => /** @ts-ignore */ window.__mgDone)).toBe(true);
     });
@@ -539,7 +543,7 @@ test.describe('Gamification — match game', () => {
     await expect(rightCol.getByText('Bsp.:', { exact: false })).toHaveCount(0);
     await expect(rightCol.getByText('Nachbarschaft', { exact: false })).toHaveCount(0);
 
-    await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+    await page.locator('#match-game-overlay button', { hasText: 'Skip round' }).click();
   });
 
   // Issue #429: training already hides CL:/Bsp.:/ZEW: example-sentence and
@@ -567,7 +571,7 @@ test.describe('Gamification — match game', () => {
     await expect(rightCol.getByText('nah (Adj)', { exact: true })).toBeVisible();
     await expect(rightCol.getByText('Bsp.:', { exact: false })).toHaveCount(0);
 
-    await page.locator('#match-game-overlay button', { hasText: 'Skip game' }).click();
+    await page.locator('#match-game-overlay button', { hasText: 'Skip round' }).click();
   });
 
   test('settings page saves gamification toggle', async ({ page }) => {

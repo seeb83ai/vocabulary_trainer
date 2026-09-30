@@ -21,76 +21,38 @@ async function saveTrainFilters() {
   } catch (_) {}
 }
 
+// updateSessionChip writes "Mode · Level" (plus the tag count) on the
+// session bar chip that opens the session sheet.
+function updateSessionChip() {
+  const el = document.getElementById('session-chip-label');
+  if (!el) return;
+  const tier = TIERS.find(x => x.key === selectedBucket);
+  const level = tier ? t(tier.i18nKey) : t('tier.allLevels');
+  let label = `${t('mode.' + selectedMode)} · ${level}`;
+  if (selectedTags.length) label += ` · ${t('session.tagCount', { n: selectedTags.length })}`;
+  el.textContent = label;
+}
+
+function setPressed(el, on) {
+  if (el) el.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+
 function applyModeButtons() {
-  document.querySelectorAll('.mode-btn').forEach(btn => {
-    const active = btn.dataset.mode === selectedMode;
-    btn.className = active
-      ? 'mode-btn px-3 py-1 rounded-full text-sm font-medium transition bg-blue-600 text-white'
-      : 'mode-btn px-3 py-1 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
-  });
-  // Mobile: update the single visible label
-  const mobileLabel = document.getElementById('mode-mobile-label');
-  if (mobileLabel) mobileLabel.textContent = t('mode.' + selectedMode);
-  // Overlay: apply same active/inactive styling
-  document.querySelectorAll('.overlay-mode-btn').forEach(btn => {
-    const active = btn.dataset.mode === selectedMode;
-    btn.className = active
-      ? 'overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition bg-blue-600 text-white'
-      : 'overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
-  });
+  document.querySelectorAll('.overlay-mode-btn').forEach(btn => setPressed(btn, btn.dataset.mode === selectedMode));
+  updateSessionChip();
 }
 
 function applyTierPills() {
-  document.querySelectorAll('.tier-pill, .overlay-tier-btn').forEach(btn => {
-    const active = btn.dataset.bucket === selectedBucket;
-    const isMini = btn.classList.contains('tier-pill');
-    btn.className = (isMini
-      ? `tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition `
-      : `overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition `) +
-      (active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200');
-  });
-  // Mobile: update the single level chip next to the mode chip
-  const levelLabel = document.getElementById('level-mobile-label');
-  if (levelLabel) {
-    const tier = TIERS.find(t => t.key === selectedBucket);
-    if (tier) {
-      levelLabel.textContent = t('tier.' + tier.label.toLowerCase());
-      levelLabel.className = 'px-3 py-1 rounded-full text-sm font-medium bg-blue-600 text-white';
-    } else {
-      levelLabel.textContent = t('tier.all');
-      levelLabel.className = 'px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600';
-    }
-  }
+  document.querySelectorAll('.overlay-tier-btn').forEach(btn => setPressed(btn, btn.dataset.bucket === selectedBucket));
+  updateSessionChip();
 }
 
 function applyMnemonicPill() {
-  const active = includeMnemonics;
-  const cls = active
-    ? 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-blue-600 text-white'
-    : 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
-  const overlayCls = active
-    ? 'px-4 py-2 rounded-full text-sm font-medium transition bg-blue-600 text-white'
-    : 'px-4 py-2 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
-  const label = t('filter.mnemonicsOn');
-  const pill = $('mnemonics-pill');
-  if (pill) { pill.className = cls; pill.textContent = label; }
-  const overlayPill = $('overlay-mnemonics-pill');
-  if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
+  setPressed($('overlay-mnemonics-pill'), includeMnemonics);
 }
 
 function applyComponentPill() {
-  const active = includeComponents;
-  const cls = active
-    ? 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-blue-600 text-white'
-    : 'px-2.5 py-0.5 rounded-full text-xs font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
-  const overlayCls = active
-    ? 'px-4 py-2 rounded-full text-sm font-medium transition bg-blue-600 text-white'
-    : 'px-4 py-2 rounded-full text-sm font-medium transition bg-gray-100 text-gray-600 hover:bg-gray-200';
-  const label = t('filter.componentsOn');
-  const pill = $('components-pill');
-  if (pill) { pill.className = cls; pill.textContent = label; }
-  const overlayPill = $('overlay-components-pill');
-  if (overlayPill) { overlayPill.className = overlayCls; overlayPill.textContent = label; }
+  setPressed($('overlay-components-pill'), includeComponents);
 }
 
 async function loadTrainSettings() {
@@ -109,30 +71,19 @@ async function loadTrainSettings() {
 }
 
 function applyLangChips(allLangs) {
-  const desktopContainer = $('lang-chips-desktop');
-  desktopContainer.querySelectorAll('.lang-pill').forEach(p => p.remove());
   const overlayContainer = $('overlay-lang-chips');
   overlayContainer.innerHTML = '';
-
   $('overlay-langs-section').classList.toggle('hidden', allLangs.length < 2);
-
+  const names = { en: 'English', de: 'Deutsch' };
   for (const lang of allLangs) {
-    const active = selectedLangs.includes(lang);
-
-    // Desktop chip — insert before the separator (third child: label, sep, mnemonics-pill)
-    const sep = desktopContainer.querySelector('span.text-gray-300');
-    const pill = document.createElement('button');
-    pill.className = `lang-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-    pill.textContent = lang.toUpperCase();
-    pill.addEventListener('click', () => toggleLang(lang, allLangs));
-    desktopContainer.insertBefore(pill, sep);
-
-    // Overlay chip
-    const overlayPill = document.createElement('button');
-    overlayPill.className = `overlay-lang-btn px-3 py-1.5 rounded-full text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-    overlayPill.textContent = lang.toUpperCase();
-    overlayPill.addEventListener('click', () => toggleLang(lang, allLangs));
-    overlayContainer.appendChild(overlayPill);
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'overlay-lang-btn ui-chip';
+    chip.dataset.lang = lang;
+    setPressed(chip, selectedLangs.includes(lang));
+    chip.textContent = names[lang] || lang.toUpperCase();
+    chip.addEventListener('click', () => toggleLang(lang, allLangs));
+    overlayContainer.appendChild(chip);
   }
 }
 
@@ -178,47 +129,22 @@ async function loadTrainTags() {
   // Remove stale tags from selection
   selectedTags = selectedTags.filter(t => allTags.includes(t));
   localStorage.setItem('quizTags', JSON.stringify(selectedTags));
+  updateSessionChip();
 
-  // Desktop: render tag pills into the tag bar
-  const tagBar = $('tag-filter-bar');
-  const desktopContainer = $('tag-chips-desktop');
-  desktopContainer.querySelectorAll('.tag-pill').forEach(p => p.remove());
+  const overlayTagChips = $('overlay-tag-chips');
+  overlayTagChips.innerHTML = '';
   if (allTags.length === 0) {
-    tagBar.classList.remove('sm:block');
     $('overlay-tags-section').classList.add('hidden');
     return;
   }
-  // Keep the base "hidden" class so the bar stays hidden on mobile; only
-  // toggle "sm:block" to show/hide it on desktop.
-  tagBar.classList.add('sm:block');
+  // Tag changes apply when the session sheet closes (Done / backdrop).
   for (const tag of allTags) {
-    const pill = document.createElement('button');
-    const active = selectedTags.includes(tag);
-    pill.className = `tag-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-    pill.textContent = tag;
-    pill.addEventListener('click', () => {
-      if (selectedTags.includes(tag)) {
-        selectedTags = selectedTags.filter(t => t !== tag);
-      } else {
-        selectedTags.push(tag);
-      }
-      localStorage.setItem('quizTags', JSON.stringify(selectedTags));
-      scheduleFilterSave();
-      loadTrainTags();
-      loadNextCard();
-    });
-    desktopContainer.appendChild(pill);
-  }
-
-  // Overlay: render all tag chips with toggle behaviour
-  const overlayTagChips = $('overlay-tag-chips');
-  overlayTagChips.innerHTML = '';
-  for (const tag of allTags) {
-    const pill = document.createElement('button');
-    const active = selectedTags.includes(tag);
-    pill.className = `overlay-tag-btn px-3 py-1.5 rounded-full text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
-    pill.textContent = tag;
-    pill.addEventListener('click', () => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'overlay-tag-btn ui-chip';
+    setPressed(chip, selectedTags.includes(tag));
+    chip.textContent = tag;
+    chip.addEventListener('click', () => {
       if (selectedTags.includes(tag)) {
         selectedTags = selectedTags.filter(t => t !== tag);
       } else {
@@ -228,7 +154,7 @@ async function loadTrainTags() {
       scheduleFilterSave();
       loadTrainTags();
     });
-    overlayTagChips.appendChild(pill);
+    overlayTagChips.appendChild(chip);
   }
   $('overlay-tags-section').classList.remove('hidden');
 }

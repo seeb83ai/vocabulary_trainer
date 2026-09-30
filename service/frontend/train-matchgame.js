@@ -71,14 +71,23 @@ function pickMatchGameTranslationText(translations, fallbackText) {
 
 // showMatchGame accepts the flat words array returned by GET /api/quiz/match-game.
 // Each word: { zh_word_id, zh_text, pinyin, translations }
-// Left column shows Chinese words; right column shows one translation each, shuffled.
+// It renders inline in the Train card column (not as a modal): left column
+// Chinese tiles, right column one translation each, shuffled. Either column
+// can be tapped first. Resolves when the round is finished or skipped.
 function showMatchGame(words) {
   return new Promise(resolve => {
+    const host = document.getElementById('train-container') || document.body;
+    const hiddenSiblings = [];
+    for (const el of Array.from(host.children)) {
+      if (!el.classList.contains('hidden')) {
+        el.classList.add('hidden');
+        hiddenSiblings.push(el);
+      }
+    }
     const overlay = document.createElement('div');
     overlay.id = 'match-game-overlay';
-    overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    overlay.className = 'mg-card';
 
-    // Build left items (Chinese) and right items (first EN translation), indexed by position.
     // kind/character distinguish a component tile from a word tile (issue #280)
     // so the match-answer POST updates the right progress table.
     const leftItems = words.map((w, i) => ({
@@ -99,22 +108,33 @@ function showMatchGame(words) {
     }));
     const shuffledRight = [...rightItems].sort(() => Math.random() - 0.5);
 
-    let selectedLeft = null;
+    let selected = null; // { side: 'l' | 'r', i }
+    let busy = false;
+    let mistakes = 0;
     const matched = new Set();
 
-    function renderBox(text, sub) {
+    function finish() {
+      overlay.remove();
+      hiddenSiblings.forEach(el => el.classList.remove('hidden'));
+      resolve();
+    }
+
+    function renderBox(text, sub, zh) {
       const div = document.createElement('div');
-      div.className = 'border-2 border-gray-300 rounded-xl p-3 cursor-pointer select-none transition text-center min-h-[72px] flex flex-col items-center justify-center';
-      const t = document.createElement('div');
-      t.className = 'font-semibold text-gray-800';
-      t.textContent = text;
-      div.appendChild(t);
+      div.className = 'mg-tile' + (zh ? ' mg-zh' : '');
+      div.setAttribute('role', 'button');
+      div.tabIndex = 0;
+      const main = document.createElement('div');
+      main.className = 'mg-main' + (zh ? ' font-hanzi' : '');
+      main.textContent = text;
+      div.appendChild(main);
       if (sub) {
         const s = document.createElement('div');
-        s.className = 'match-pinyin-sub text-xs text-gray-500 mt-1';
+        s.className = 'match-pinyin-sub';
         s.textContent = sub;
         div.appendChild(s);
       }
+      div.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); div.click(); } });
       return div;
     }
 
@@ -125,7 +145,7 @@ function showMatchGame(words) {
     function revealPinyin(box, pinyin) {
       if (!pinyin || box.querySelector('.match-pinyin-sub')) return;
       const s = document.createElement('div');
-      s.className = 'match-pinyin-sub text-xs text-gray-500 mt-1';
+      s.className = 'match-pinyin-sub';
       s.textContent = pinyin;
       box.appendChild(s);
     }
@@ -136,12 +156,14 @@ function showMatchGame(words) {
       revealPinyin(box, item.pinyin);
     }
 
-    const modal = document.createElement('div');
-    modal.className = 'bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg mx-4';
-    modal.innerHTML = '<h2 class="text-lg font-semibold text-gray-800 mb-4 text-center">Match the pairs</h2>';
+    overlay.innerHTML = `
+      <div class="mg-head"><span class="mg-eyebrow">${escHtml(t('match.eyebrow'))}</span><span class="mg-progress tr-muted-sm"></span></div>
+      <h2 class="mg-title">${escHtml(t('match.title'))}</h2>
+      <p class="tr-sub" style="margin:0 0 16px">${escHtml(t('match.sub'))}</p>
+      <div class="mg-segs" style="grid-template-columns:repeat(${words.length},1fr)">${words.map(() => '<span class="mg-seg"></span>').join('')}</div>`;
 
     const grid = document.createElement('div');
-    grid.className = 'grid grid-cols-2 gap-3 mb-4';
+    grid.className = 'mg-grid grid';
 
     // A tile shows its pinyin up front unless the server flagged it
     // hide_pinyin (issue #349: word tier at/above the configured threshold).
@@ -149,110 +171,148 @@ function showMatchGame(words) {
     // start. A flagged word tile stays hidden until its pair is attempted,
     // then reveals per match_game_pinyin_reveal (issue #375).
     const leftBoxes = leftItems.map(item =>
-      renderBox(item.text, item.hidePinyin ? null : item.pinyin));
-    const rightBoxes = shuffledRight.map(item => renderBox(item.text));
+      renderBox(item.text, item.hidePinyin ? null : item.pinyin, true));
+    const rightBoxes = shuffledRight.map(item => renderBox(item.text, null, false));
 
-    leftBoxes.forEach((box, lIdx) => {
-      box.addEventListener('click', () => {
-        if (matched.has(lIdx)) return;
-        leftBoxes.forEach(b => b.classList.remove('border-blue-500', 'bg-blue-50'));
-        selectedLeft = lIdx;
-        box.classList.add('border-blue-500', 'bg-blue-50');
-      });
-    });
+    const foot = document.createElement('div');
+    foot.className = 'mg-foot';
+    foot.innerHTML = `<span class="mg-mistakes"></span>`;
+    const skipBtn = document.createElement('button');
+    skipBtn.type = 'button';
+    skipBtn.className = 'tr-text-btn';
+    skipBtn.textContent = t('match.skip');
+    skipBtn.addEventListener('click', finish);
+    foot.appendChild(skipBtn);
 
-    rightBoxes.forEach((box, rIdx) => {
-      box.addEventListener('click', async () => {
-        if (selectedLeft === null) return;
-        const lIdx = selectedLeft;
-        if (matched.has(lIdx)) return;
-        let rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
-        const rightText = shuffledRight[rIdx].text;
-        // Filtered/shortened the same way as the displayed rightText (skip
-        // noise entries, issue #429; collapse to the first short meaning(s),
-        // issue #428) so shared-translation detection (matchGameOutcome's
-        // "blocked" case) keeps comparing like with like.
-        const leftTransls = Object.values(words[lIdx].translations || {}).flat()
-          .filter(t => !isNoise(t))
-          .map(shortenMatchGameTranslation);
-        let outcome = matchGameOutcome(rightIdx, lIdx, rightText, rightItems[lIdx].text, leftTransls, matched);
-        if (outcome === 'swap') {
-          const ownBox = shuffledRight.find(item => item.idx === lIdx);
-          ownBox.idx = rightIdx;
-          shuffledRight[rIdx].idx = lIdx;
-          rightIdx = lIdx;
-          outcome = 'correct';
-        }
-        maybeRevealPinyin(leftBoxes[lIdx], leftItems[lIdx], outcome);
+    function updateProgress() {
+      overlay.querySelector('.mg-progress').textContent = t('match.progress', { n: matched.size, total: words.length });
+      overlay.querySelectorAll('.mg-seg').forEach((seg, i) => seg.classList.toggle('is-on', i < matched.size));
+      const m = foot.querySelector('.mg-mistakes');
+      m.textContent = mistakes ? t('match.mistakes', { n: mistakes }) : t('match.noMistakes');
+      m.classList.toggle('has-mistakes', mistakes > 0);
+    }
 
-        if (outcome === 'correct') {
-          // Correct match
-          leftBoxes[lIdx].classList.remove('border-blue-500', 'bg-blue-50');
-          leftBoxes[lIdx].classList.add('border-green-500', 'bg-green-50', 'cursor-default');
-          box.classList.add('border-green-500', 'bg-green-50', 'cursor-default');
-          matched.add(lIdx);
-          selectedLeft = null;
-          try {
-            await apiFetch('/api/quiz/match-answer', {
-              method: 'POST',
-              body: JSON.stringify(matchAnswerBody(leftItems[lIdx], true)),
-            });
-          } catch { /* best effort */ }
-          if (matched.size === words.length) {
-            setTimeout(() => { overlay.remove(); resolve(); }, 600);
-          }
-        } else if (outcome === 'blocked') {
-          // Right box is still needed as its true owner's only match — flash
-          // yellow (not a mistake) and reset without recording an SM2 answer.
-          leftBoxes[lIdx].classList.add('border-yellow-500', 'bg-yellow-50');
-          box.classList.add('border-yellow-500', 'bg-yellow-50');
-          setTimeout(() => {
-            leftBoxes[lIdx].classList.remove('border-yellow-500', 'bg-yellow-50', 'border-blue-500', 'bg-blue-50');
-            box.classList.remove('border-yellow-500', 'bg-yellow-50');
-            selectedLeft = null;
-          }, 800);
-        } else {
-          // Wrong match — flash red both boxes, then reset
-          leftBoxes[lIdx].classList.add('border-red-500', 'bg-red-50');
-          box.classList.add('border-red-500', 'bg-red-50');
-          setTimeout(() => {
-            leftBoxes[lIdx].classList.remove('border-red-500', 'bg-red-50', 'border-blue-500', 'bg-blue-50');
-            box.classList.remove('border-red-500', 'bg-red-50');
-            selectedLeft = null;
-          }, 800);
-          try {
-            await apiFetch('/api/quiz/match-answer', {
-              method: 'POST',
-              body: JSON.stringify(matchAnswerBody(leftItems[lIdx], false)),
-            });
-            await apiFetch('/api/quiz/match-answer', {
-              method: 'POST',
-              body: JSON.stringify(matchAnswerBody(leftItems[rightIdx], false)),
-            });
-          } catch { /* best effort */ }
-        }
-      });
-    });
+    function clearSelection() {
+      [...leftBoxes, ...rightBoxes].forEach(b => b.classList.remove('is-selected'));
+      selected = null;
+    }
+
+    function showDone() {
+      overlay.innerHTML = `
+        <div class="tr-center">
+          <div class="tr-tile tr-tile-violet font-hanzi" aria-hidden="true">对</div>
+          <h2 class="tr-h1">${escHtml(t('match.doneTitle'))}</h2>
+          <p class="tr-sub">${escHtml(t('match.doneStats', { pairs: words.length, mistakes }))}</p>
+          ${_matchGameSm2Update !== 'never' ? `<p class="tr-muted-sm" style="margin:10px auto 0;max-width:36ch">${escHtml(t('match.doneNote'))}</p>` : ''}
+          <button id="match-continue-btn" type="button" class="ui-btn ui-btn-primary tr-mt-24">${escHtml(t('match.continue'))}</button>
+        </div>`;
+      const btn = overlay.querySelector('#match-continue-btn');
+      btn.addEventListener('click', finish);
+      btn.focus();
+    }
+
+    async function attempt(lIdx, rIdx) {
+      const box = rightBoxes[rIdx];
+      if (matched.has(lIdx)) return;
+      let rightIdx = shuffledRight[rIdx].idx; // which word this translation belongs to
+      const rightText = shuffledRight[rIdx].text;
+      // Filtered/shortened the same way as the displayed rightText (skip
+      // noise entries, issue #429; collapse to the first short meaning(s),
+      // issue #428) so shared-translation detection (matchGameOutcome's
+      // "blocked" case) keeps comparing like with like.
+      const leftTransls = Object.values(words[lIdx].translations || {}).flat()
+        .filter(t => !isNoise(t))
+        .map(shortenMatchGameTranslation);
+      let outcome = matchGameOutcome(rightIdx, lIdx, rightText, rightItems[lIdx].text, leftTransls, matched);
+      if (outcome === 'swap') {
+        const ownBox = shuffledRight.find(item => item.idx === lIdx);
+        ownBox.idx = rightIdx;
+        shuffledRight[rIdx].idx = lIdx;
+        rightIdx = lIdx;
+        outcome = 'correct';
+      }
+      maybeRevealPinyin(leftBoxes[lIdx], leftItems[lIdx], outcome);
+      clearSelection();
+
+      if (outcome === 'correct') {
+        leftBoxes[lIdx].classList.add('is-matched');
+        box.classList.add('is-matched');
+        matched.add(lIdx);
+        updateProgress();
+        try {
+          await apiFetch('/api/quiz/match-answer', {
+            method: 'POST',
+            body: JSON.stringify(matchAnswerBody(leftItems[lIdx], true)),
+          });
+        } catch { /* best effort */ }
+        if (matched.size === words.length) setTimeout(showDone, 500);
+      } else if (outcome === 'blocked') {
+        // Right box is still needed as its true owner's only match — flash
+        // amber (not a mistake) and reset without recording an SM2 answer.
+        busy = true;
+        leftBoxes[lIdx].classList.add('is-blocked');
+        box.classList.add('is-blocked');
+        setTimeout(() => {
+          leftBoxes[lIdx].classList.remove('is-blocked');
+          box.classList.remove('is-blocked');
+          busy = false;
+        }, 750);
+      } else {
+        // Wrong match — flash both tiles red, then reset
+        busy = true;
+        mistakes++;
+        updateProgress();
+        leftBoxes[lIdx].classList.add('is-wrong');
+        box.classList.add('is-wrong');
+        setTimeout(() => {
+          leftBoxes[lIdx].classList.remove('is-wrong');
+          box.classList.remove('is-wrong');
+          busy = false;
+        }, 750);
+        try {
+          await apiFetch('/api/quiz/match-answer', {
+            method: 'POST',
+            body: JSON.stringify(matchAnswerBody(leftItems[lIdx], false)),
+          });
+          await apiFetch('/api/quiz/match-answer', {
+            method: 'POST',
+            body: JSON.stringify(matchAnswerBody(leftItems[rightIdx], false)),
+          });
+        } catch { /* best effort */ }
+      }
+    }
+
+    function pick(side, i) {
+      if (busy) return;
+      if (side === 'l' && matched.has(i)) return;
+      if (side === 'r' && rightBoxes[i].classList.contains('is-matched')) return;
+      if (selected && selected.side !== side) {
+        const lIdx = side === 'l' ? i : selected.i;
+        const rIdx = side === 'r' ? i : selected.i;
+        attempt(lIdx, rIdx);
+        return;
+      }
+      clearSelection();
+      selected = { side, i };
+      (side === 'l' ? leftBoxes : rightBoxes)[i].classList.add('is-selected');
+    }
+
+    leftBoxes.forEach((box, i) => box.addEventListener('click', () => pick('l', i)));
+    rightBoxes.forEach((box, i) => box.addEventListener('click', () => pick('r', i)));
 
     const leftCol = document.createElement('div');
-    leftCol.className = 'space-y-3';
+    leftCol.className = 'mg-col';
     leftBoxes.forEach(b => leftCol.appendChild(b));
-
     const rightCol = document.createElement('div');
-    rightCol.className = 'space-y-3';
+    rightCol.className = 'mg-col';
     rightBoxes.forEach(b => rightCol.appendChild(b));
-
     grid.appendChild(leftCol);
     grid.appendChild(rightCol);
-    modal.appendChild(grid);
+    overlay.appendChild(grid);
+    overlay.appendChild(foot);
+    updateProgress();
 
-    const skipBtn = document.createElement('button');
-    skipBtn.textContent = 'Skip game';
-    skipBtn.className = 'w-full text-sm text-gray-400 hover:text-gray-600 mt-2';
-    skipBtn.addEventListener('click', () => { overlay.remove(); resolve(); });
-    modal.appendChild(skipBtn);
-
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
+    host.prepend(overlay);
+    overlay.scrollIntoView({ behavior: 'auto', block: 'start' });
   });
 }

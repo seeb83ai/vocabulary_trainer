@@ -75,14 +75,14 @@ test.describe('Component mismatch detection (issue #280)', () => {
 
     await page.locator('#answer-input').fill('To go');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('That’s a different word', { timeout: 8_000 });
 
-    // Same yellow "belongs to" box used for word-vs-word confusions, adapted
-    // for a component result — must show the confused-with word.
-    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
-    await expect(yellowBox).toBeVisible();
-    await expect(yellowBox).toContainText('去');
-    await expect(yellowBox).toContainText('to go');
+    // Same mix-up layout used for word-vs-word confusions, adapted for a
+    // component result — the amber box must show the confused-with word.
+    const otherBox = page.locator('#word-breakdown .mixup-other');
+    await expect(otherBox).toBeVisible();
+    await expect(otherBox).toContainText('去');
+    await expect(otherBox).toContainText('to go');
   });
 
   test('mismatches page lists a component-vs-word confusion row', async ({ page }) => {

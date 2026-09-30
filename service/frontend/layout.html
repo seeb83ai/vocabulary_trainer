@@ -103,23 +103,6 @@
     </div>
   </div>
 
-  {{if eq .ActiveNav "train"}}
-  <!-- Floating auto-play toggle. Train-page only. Off by default and never
-       persisted — resets on reload (train.js). -->
-  <button id="autoplay-toggle-btn" type="button" aria-pressed="false"
-    class="app-fab right-20 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition"
-    aria-label="Auto-play sound" title="Auto-play sound" data-i18n-title="train.autoPlay.offTitle">
-    <span aria-hidden="true">🔇</span>
-  </button>
-
-  <!-- Floating fullscreen toggle (Train page). Hidden until app.js confirms
-       the Fullscreen API is available; other pages use the More sheet. -->
-  <button id="fullscreen-toggle-btn" type="button" aria-pressed="false"
-    class="hidden app-fab right-5 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition"
-    aria-label="Toggle fullscreen" title="Enter fullscreen" data-i18n-title="fullscreen.enterTitle">
-    <span aria-hidden="true">⛶</span>
-  </button>
-  {{end}}
 
   <!-- Report an issue: centred card >= 880px, bottom sheet below. Hidden
        until app.js confirms the feature is enabled (GET /api/github/config). -->

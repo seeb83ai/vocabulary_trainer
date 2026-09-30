@@ -2,11 +2,11 @@
 
 // Accuracy/attempt tier definitions — mirrors the progressive mode ladder.
 const TIERS = [
-  { key: 'new',    label: 'New',        i18nKey: 'tier.new',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700', icon: '🌰' },
-  { key: '0-49',   label: 'Struggling', i18nKey: 'tier.struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700',    icon: '🌱' },
-  { key: '50-69',  label: 'Learning',   i18nKey: 'tier.learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700', icon: '🌿' },
-  { key: '70-84',  label: 'Practicing', i18nKey: 'tier.practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700',   icon: '🌳' },
-  { key: '85-100', label: 'Mastered',   i18nKey: 'tier.mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700', icon: '🌸' },
+  { key: 'new',    label: 'New',        i18nKey: 'tier.new',        desc: 'Learning phase',   color: '#8b5cf6', pill: 'bg-violet-100 text-violet-700', icon: '🌰', tile: '#f5f3ff', soft: '#ede9fe', fg: '#6d28d9' },
+  { key: '0-49',   label: 'Struggling', i18nKey: 'tier.struggling', desc: 'EN → ZH',          color: '#ef4444', pill: 'bg-red-100 text-red-700',    icon: '🌱', tile: '#fef2f2', soft: '#fee2e2', fg: '#b91c1c' },
+  { key: '50-69',  label: 'Learning',   i18nKey: 'tier.learning',   desc: 'ZH + Pinyin → EN', color: '#f59e0b', pill: 'bg-amber-100 text-amber-700', icon: '🌿', tile: '#fffbeb', soft: '#fef3c7', fg: '#b45309' },
+  { key: '70-84',  label: 'Practicing', i18nKey: 'tier.practicing', desc: 'ZH → EN',          color: '#3b82f6', pill: 'bg-blue-100 text-blue-700',   icon: '🌳', tile: '#eff6ff', soft: '#dbeafe', fg: '#1d4ed8' },
+  { key: '85-100', label: 'Mastered',   i18nKey: 'tier.mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700', icon: '🌸', tile: '#f0fdf4', soft: '#dcfce7', fg: '#15803d' },
 ];
 
 // Builds a single icon for the word's current tier — the compact inline

@@ -238,3 +238,106 @@ function splitComponentDefs(correctAnswersObj) {
     .map(s => s.toLowerCase().trim())
     .filter(s => s.length > 0);
 }
+
+// numberedPinyinToMarks turns CEDICT-style numbered pinyin ("ge4",
+// "zhi1 dao5", "lu:4") into tone-mark pinyin for display. Syllables without
+// a tone digit pass through unchanged.
+const PINYIN_TONE_MARKS = {
+  a: 'āáǎà', e: 'ēéěè', i: 'īíǐì', o: 'ōóǒò', u: 'ūúǔù', ü: 'ǖǘǚǜ',
+};
+function numberedPinyinToMarks(s) {
+  return String(s || '').replace(/([a-zü:]+)([1-5])/gi, (_, syl, tone) => {
+    let base = syl.replace(/u:|v/gi, 'ü');
+    const n = parseInt(tone, 10);
+    if (n === 5) return base;
+    const lower = base.toLowerCase();
+    // Tone-mark rule: a/e take the mark; in "ou" the o does; otherwise the
+    // last vowel does.
+    let idx = lower.search(/[ae]/);
+    if (idx < 0) idx = lower.indexOf('ou');
+    if (idx < 0) {
+      for (let i = lower.length - 1; i >= 0; i--) {
+        if ('iouü'.includes(lower[i])) { idx = i; break; }
+      }
+    }
+    if (idx < 0) return base;
+    const v = lower[idx];
+    const marked = PINYIN_TONE_MARKS[v][n - 1];
+    return base.slice(0, idx) + marked + base.slice(idx + 1);
+  });
+}
+
+// parseMeasureWord reads one "個|个[ge4]" / "位[wei4]" / "個 个 [ge4]" entry.
+function parseMeasureWord(part) {
+  const m = String(part).trim().match(/^(.*?)\s*(?:\[([^\]]*)\])?$/);
+  if (!m || !m[1]) return null;
+  const forms = m[1].split(/[|\s]+/).filter(Boolean);
+  if (!forms.length) return null;
+  return { zh: forms[forms.length - 1], py: numberedPinyinToMarks(m[2] || '') };
+}
+
+// splitMoreInfo sorts the collapsed "More info" texts of a word (see
+// groupTranslationsByLang) into labelled blocks: extra meanings, measure
+// words (CEDICT "CL:", HanDeDict "ZEW:") and example sentences ("Bsp.:").
+function splitMoreInfo(texts) {
+  const meanings = [];
+  const measureWords = [];
+  const examples = [];
+  for (const raw of texts || []) {
+    const text = String(raw).trim();
+    if (/^CL:/.test(text)) {
+      for (const part of text.replace(/^CL:\s*/, '').split(',')) {
+        const mw = parseMeasureWord(part);
+        if (mw) measureWords.push(mw);
+      }
+    } else if (/^ZEW:/.test(text)) {
+      for (const part of text.replace(/^ZEW:\s*/, '').split(/[,;]/)) {
+        const mw = parseMeasureWord(part);
+        if (mw) measureWords.push(mw);
+      }
+    } else if (/^Bsp\.:/.test(text)) {
+      const [zhPart, ...rest] = text.replace(/^Bsp\.:\s*/, '').split(/\s+--\s+/);
+      const tokens = zhPart.trim().split(/\s+/);
+      // HanDeDict repeats the sentence as "traditional simplified".
+      const zh = tokens.length === 2 ? tokens[1] : zhPart.trim();
+      examples.push({ zh, tr: rest.join(' -- ').trim() });
+    } else if (text) {
+      meanings.push(text);
+    }
+  }
+  return { meanings, measureWords, examples };
+}
+
+// markTypedMeaning flags which of a word's meanings the user typed — the
+// mix-up screen highlights it in the other word's meaning list.
+function markTypedMeaning(meanings, typed) {
+  const want = new Set(expandVariants(typed || ''));
+  return (meanings || []).map(text => ({
+    text,
+    typed: want.size > 0 && expandVariants(text).some(v => want.has(v)),
+  }));
+}
+
+// numberedMeaningRows builds the new-word card's numbered meaning list: row i
+// pairs the i-th meaning of each language ("year · Jahr"). Rows beyond `cap`,
+// noise annotations and capped-out extras go to `rest` for the folded line.
+function numberedMeaningRows(translations, extra, langs, cap) {
+  const clean = {};
+  const rest = [];
+  for (const lang of langs) {
+    const texts = (translations || {})[lang] || [];
+    clean[lang] = dedupeTranslations(texts.filter(x => !isNoise(x)).map(stripPosTag));
+  }
+  const maxLen = Math.max(0, ...langs.map(l => clean[l].length));
+  const rows = [];
+  for (let i = 0; i < maxLen; i++) {
+    const parts = langs.map(l => clean[l][i]).filter(Boolean);
+    if (i < cap) rows.push(parts.join(' · '));
+    else rest.push(...parts);
+  }
+  for (const lang of langs) {
+    rest.push(...((translations || {})[lang] || []).filter(isNoise));
+    rest.push(...((extra || {})[lang] || []));
+  }
+  return { rows, rest };
+}

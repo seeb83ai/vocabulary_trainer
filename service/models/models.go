@@ -245,6 +245,10 @@ type QuizCard struct {
 	// IsAlsoComponent is set on word cards whose zh text is also tracked as a
 	// hanzi component — the reciprocal of IsAlsoWord.
 	IsAlsoComponent bool `json:"is_also_component,omitempty"`
+	// Tier is the word's current proficiency tier label ("New", "Struggling",
+	// …) for the tier chip on the question card; empty for never-attempted
+	// words and non-word cards.
+	Tier string `json:"tier,omitempty"`
 }
 
 type AnswerRequest struct {

@@ -191,3 +191,60 @@ describe('accuracyPauseParams', () => {
     expect(accuracyPauseParams({ accuracy_pause_pct: 0, accuracy_pause_min: 70 })).toEqual({ pct: 0, min: 70 });
   });
 });
+
+// ── Redesign session bar / all-done helpers ──────────────────────────────────
+// Inlined from train-stats.js.
+// sessionProgress returns the session bar's "X of Y today" numbers: answers
+// given today against answers plus the cards still due.
+function sessionProgress(doneToday, dueLeft) {
+  const done = Math.max(0, doneToday || 0);
+  const total = done + Math.max(0, dueLeft || 0);
+  return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+}
+
+// weekGrid returns the 7 days ending at `today` (YYYY-MM-DD) for the all-done
+// streak card. weekday is 0 = Monday … 6 = Sunday.
+function weekGrid(days, today) {
+  const trained = new Set((days || []).filter(d => d.attempts > 0).map(d => d.date));
+  const out = [];
+  const cur = new Date(today + 'T00:00:00Z');
+  cur.setUTCDate(cur.getUTCDate() - 6);
+  for (let i = 0; i < 7; i++) {
+    const date = cur.toISOString().slice(0, 10);
+    out.push({ date, weekday: (cur.getUTCDay() + 6) % 7, trained: trained.has(date), today: date === today });
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+describe('sessionProgress', () => {
+  it('counts answers today against answers plus what is still due', () => {
+    expect(sessionProgress(3, 7)).toEqual({ done: 3, total: 10, pct: 30 });
+  });
+
+  it('is complete when nothing is due', () => {
+    expect(sessionProgress(12, 0)).toEqual({ done: 12, total: 12, pct: 100 });
+  });
+
+  it('is empty before the first answer', () => {
+    expect(sessionProgress(0, 0)).toEqual({ done: 0, total: 0, pct: 0 });
+    expect(sessionProgress(undefined, 5)).toEqual({ done: 0, total: 5, pct: 0 });
+  });
+});
+
+describe('weekGrid', () => {
+  it('returns the 7 days ending today with their weekday and trained flag', () => {
+    const days = [
+      { date: '2026-09-30', attempts: 4 },
+      { date: '2026-09-28', attempts: 2 },
+      { date: '2026-09-27', attempts: 0 },
+    ];
+    const grid = weekGrid(days, '2026-09-30');
+    expect(grid).toHaveLength(7);
+    expect(grid[0].date).toBe('2026-09-24');
+    expect(grid[6]).toEqual({ date: '2026-09-30', weekday: 2, trained: true, today: true });
+    expect(grid[4]).toEqual({ date: '2026-09-28', weekday: 0, trained: true, today: false });
+    expect(grid[3].trained).toBe(false);
+    expect(grid[5].trained).toBe(false);
+  });
+});

@@ -23,6 +23,28 @@ import { syncNewWordMode } from './helpers/mode.js';
 // known seed mapping below.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Splits a rendered box into its directly-visible text and the text folded
+ * behind its single "▸ …" disclosure button ([data-more-toggle] or
+ * [data-disclosure]); expands the disclosure on the way.
+ * @param {import('@playwright/test').Locator} container
+ */
+async function foldedParts(container) {
+  const toggle = container.locator('[data-more-toggle], [data-disclosure]');
+  await expect(toggle).toHaveCount(1);
+  const bodyId = await toggle.evaluate(b => b.dataset.moreToggle || b.dataset.disclosure);
+  const body = container.page().locator(`#${bodyId}`);
+  await expect(body).not.toBeVisible();
+  const visibleText = await container.evaluate((el, id) => {
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll(`[data-more-toggle], [data-disclosure], #${id}`).forEach(n => n.remove());
+    return clone.textContent || '';
+  }, bodyId);
+  await toggle.click();
+  await expect(body).toBeVisible();
+  return { visibleText, hiddenText: (await body.textContent()) || '' };
+}
+
 /** Translations keyed by zh word — derived from the seed in global-setup.js. */
 const SEED_TRANSLATIONS = {
   '你好': ['hello', 'hi'],
@@ -96,7 +118,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 
     // Result must show ✓ Correct!
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+    await expect(page.locator('#result-icon')).toHaveText('Correct');
   });
 
   test('wrong answer shows ✗ Wrong and reveals the correct answer in the breakdown', async ({ page }) => {
@@ -122,7 +144,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
 
     // Result must show ✗ Wrong
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    await expect(page.locator('#result-icon')).toHaveText('Not quite');
 
     // The breakdown must contain the correct zh word (card.prompt) so the
     // user can see what they should have answered.
@@ -172,7 +194,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
       await page.locator('#answer-input').fill('notananswer');
       await page.locator('#answer-form button[type="submit"]').click();
       await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
-      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+      await expect(page.locator('#result-icon')).toHaveText('Not quite');
 
       // The "add as correct" button must be visible
       await expect(page.locator('#add-translation-btn')).toBeVisible();
@@ -205,34 +227,30 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     await expect(page.locator('#word-breakdown .result-inline-play')).toBeVisible();
   });
 
-  test('translation text font size matches across your-answer, confused-with, and correct boxes (issue #199)', async ({ page }) => {
+  test('mix-up screen: asked and typed-word meanings share one font size (issue #199)', async ({ page }) => {
     await useZhToTranslMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
     const prompt = await page.locator('#prompt-word').textContent();
     // Answer with a translation belonging to a DIFFERENT seeded word so the
-    // server detects a confusion pair and renders the yellow "belongs to" box.
+    // server detects a confusion pair and renders the mix-up layout.
     const otherZh = Object.keys(SEED_TRANSLATIONS).find(zh => zh !== prompt);
     const confusingAnswer = SEED_TRANSLATIONS[otherZh][0];
 
     await page.locator('#answer-input').fill(confusingAnswer);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('That’s a different word', { timeout: 8_000 });
 
-    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
-    await expect(yellowBox).toBeVisible();
+    const otherBox = page.locator('#word-breakdown .mixup-other');
+    await expect(otherBox).toBeVisible();
+    await expect(otherBox.locator('.mixup-typed')).toHaveText(confusingAnswer);
     await captureForPR(page, 'train-mismatch');
 
-    const redSize = await page.locator('#word-breakdown .bg-red-50 .text-red-700')
+    const otherSize = await otherBox.locator('.tr-meanings').evaluate(el => getComputedStyle(el).fontSize);
+    const askedSize = await page.locator('#word-breakdown .mixup-asked .tr-meanings')
       .evaluate(el => getComputedStyle(el).fontSize);
-    const yellowSize = await yellowBox.locator('.text-sm').first()
-      .evaluate(el => getComputedStyle(el).fontSize);
-    const greenSize = await page.locator('#word-breakdown .bg-green-50 .text-sm').first()
-      .evaluate(el => getComputedStyle(el).fontSize);
-
-    expect(redSize).toBe(yellowSize);
-    expect(greenSize).toBe(yellowSize);
+    expect(askedSize).toBe(otherSize);
   });
 
   test('issue-report dialog z-index is above gamification overlay (issue #152)', async ({ page }) => {
@@ -315,7 +333,7 @@ test.describe('Quiz – acknowledged words (main user)', () => {
       const wrongAnswer = 'definitely-not-a-translation';
       await page.locator('#answer-input').fill(wrongAnswer);
       await page.locator('#answer-form button[type="submit"]').click();
-      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+      await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
       // Two languages are active → the picker must appear, defaulting to
       // the user's primary language (en).
@@ -431,7 +449,7 @@ test.describe('Quiz – Chinese character size and play button (issue #158)', ()
 
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
     // The mnemonic toggle must NOT appear on a wrong answer
     await expect(page.locator('#hmm-toggle-btn')).not.toBeVisible();
@@ -618,7 +636,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await page.locator('#answer-input').fill(wrongAnswer);
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('#result-icon')).toHaveText('~ Ambiguous');
+    await expect(page.locator('#result-icon')).toHaveText('Right meaning, other word');
     await expect(page.locator('#disambig-input')).toBeVisible();
 
     return { quizZh, wrongAnswer };
@@ -639,7 +657,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     // Resolve the disambiguation correctly.
     await page.locator('#disambig-input').fill(quizZh);
     await page.locator('#disambig-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
 
     // The inline play button must exist in the green box.
     const playBtn = page.locator('#word-breakdown .result-inline-play');
@@ -657,12 +675,12 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     // Type the wrong word again — should show "Not quite" feedback and let the user retry.
     await page.locator('#disambig-input').fill(wrongAnswer);
     await page.locator('#disambig-form button[type="submit"]').click();
-    await expect(page.locator('#disambig-feedback')).toContainText('Not quite');
+    await expect(page.locator('#disambig-feedback')).toContainText('Not that one either');
 
     // Type the correct zh word — result must flip to Correct.
     await page.locator('#disambig-input').fill(quizZh);
     await page.locator('#disambig-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
     // Disambiguation input disappears after a successful answer.
     await expect(page.locator('#disambig-input')).not.toBeVisible();
   });
@@ -691,7 +709,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     // Type the correct zh word to resolve the disambiguation.
     await page.locator('#disambig-input').fill(quizZh);
     await page.locator('#disambig-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 5_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
 
     // The gray question-recap box must NOT remain visible on the success screen.
     await expect(page.locator('#result-question')).not.toBeVisible();
@@ -707,13 +725,14 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await page.locator('#disambig-form button[type="submit"]').click();
 
     // Still on the disambiguation form — no Wrong screen yet.
-    await expect(page.locator('#disambig-feedback')).toContainText('Not quite');
+    await expect(page.locator('#disambig-feedback')).toContainText('Not that one either');
     await expect(page.locator('#disambig-input')).toBeVisible();
-    await expect(page.locator('#result-icon')).toHaveText('~ Ambiguous');
+    await expect(page.locator('#result-icon')).toHaveText('Right meaning, other word');
 
-    // Clicking Next without resolving reveals the normal Wrong screen first.
+    // Clicking Next without resolving reveals the normal wrong-answer screen
+    // first — here the mix-up layout, since the typed word is another word.
     await page.locator('#next-btn').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 5_000 });
+    await expect(page.locator('#result-icon')).toHaveText('That’s a different word', { timeout: 5_000 });
     await expect(page.locator('#disambig-input')).not.toBeVisible();
 
     // A second Next click then actually advances.
@@ -729,11 +748,12 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     // Click Next WITHOUT resolving the disambiguation.
     await page.locator('#next-btn').click();
 
-    // Still on the result screen — now showing the normal wrong-answer state.
+    // Still on the result screen — now showing the normal wrong-answer state
+    // (the mix-up layout: the typed word is another word).
     await expect(page.locator('#result-area')).toBeVisible();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    await expect(page.locator('#result-icon')).toHaveText('That’s a different word');
     await expect(page.locator('#disambig-input')).not.toBeVisible();
-    await expect(page.locator('#word-breakdown .bg-green-50')).toBeVisible();
+    await expect(page.locator('#word-breakdown .mixup-asked')).toBeVisible();
     // The gray question-recap box is ambiguous-only; the fallback Wrong
     // screen must not show it (issue #231 follow-up).
     await expect(page.locator('#result-question')).not.toBeVisible();
@@ -743,9 +763,8 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
-  // Issue #231: the "TO CHINESE / <prompt>" gray recap box must sit between
-  // the yellow "belongs to" box and the orange disambiguation box, not above
-  // both of them.
+  // Issue #231: the "TO CHINESE / <prompt>" recap box must sit between the
+  // amber "you typed" box and the orange disambiguation form, not above both.
   test('question recap box sits between the confused-with and disambiguation boxes (issue #231)', async ({ page }) => {
     await setupAmbiguousResult(page);
 
@@ -753,9 +772,9 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     const boxes = await disambigArea.locator(':scope > div').all();
     const classes = await Promise.all(boxes.map((box) => box.getAttribute('class')));
 
-    const yellowIndex = classes.findIndex((c) => c && c.includes('bg-yellow-50'));
-    const grayIndex = classes.findIndex((c) => c && c.includes('bg-gray-50'));
-    const orangeIndex = classes.findIndex((c) => c && c.includes('bg-orange-50'));
+    const yellowIndex = classes.findIndex((c) => c && c.includes('tr-box-amber'));
+    const grayIndex = classes.findIndex((c) => c && c.includes('tr-question-recap'));
+    const orangeIndex = classes.findIndex((c) => c && c.includes('tr-disambig'));
 
     expect(yellowIndex).toBeGreaterThanOrEqual(0);
     expect(grayIndex).toBeGreaterThanOrEqual(0);
@@ -847,7 +866,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await mockDecomposeResponse(page);
     await setupAmbiguousResult(page);
     await page.locator('#next-btn').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    await expect(page.locator('#result-icon')).toHaveText('That’s a different word');
     await expect(page.locator('#result-decompose')).toBeVisible();
   });
 
@@ -891,13 +910,14 @@ test.describe('Quiz – pinyin in answer boxes (issue #205)', () => {
 
     await page.locator('#answer-input').fill(wrongZh);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    // The typed zh word is another word → mix-up layout.
+    await expect(page.locator('#result-icon')).toHaveText('That’s a different word', { timeout: 8_000 });
 
-    // The red "your answer" box must show the typed zh word AND its pinyin.
-    const redBox = page.locator('#word-breakdown .bg-red-50');
-    await expect(redBox).toBeVisible();
-    await expect(redBox).toContainText(wrongZh);
-    await expect(redBox).toContainText(expectedPinyin);
+    // The amber box for the typed word shows the zh word AND its pinyin.
+    const typedBox = page.locator('#word-breakdown .mixup-other');
+    await expect(typedBox).toBeVisible();
+    await expect(typedBox).toContainText(wrongZh);
+    await expect(typedBox).toContainText(expectedPinyin);
   });
 });
 
@@ -937,12 +957,14 @@ test.describe('Quiz – green result box title (issue #246)', () => {
 
     await page.locator('#answer-input').fill(correctAnswer);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
 
-    const greenLabel = page.locator('#word-breakdown .bg-green-50 .text-green-500').first();
-    await expect(greenLabel).toBeVisible();
-    await expect(greenLabel).toContainText('Word', { ignoreCase: true });
-    await expect(greenLabel).not.toContainText('Correct', { ignoreCase: true });
+    // The redesigned result shows the word block itself (Hanzi, pinyin,
+    // meanings) under the status title, without a repeated label.
+    const wordBlock = page.locator('#word-breakdown .result-word');
+    await expect(wordBlock).toBeVisible();
+    await expect(wordBlock).toContainText(card.prompt);
+    await expect(wordBlock).not.toContainText('Correct', { ignoreCase: true });
   });
 
   test('wrong vocabulary answer shows "Word" label in green correct-answer box, not "Correct"', async ({ page }) => {
@@ -952,12 +974,12 @@ test.describe('Quiz – green result box title (issue #246)', () => {
 
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
-    const greenLabel = page.locator('#word-breakdown .bg-green-50 .text-green-500').first();
-    await expect(greenLabel).toBeVisible();
-    await expect(greenLabel).toContainText('Word', { ignoreCase: true });
-    await expect(greenLabel).not.toContainText('Correct', { ignoreCase: true });
+    const wordBlock = page.locator('#word-breakdown .result-word');
+    await expect(wordBlock).toBeVisible();
+    await expect(wordBlock).not.toContainText('Correct', { ignoreCase: true });
+    await expect(page.locator('#word-breakdown .result-your-answer')).toContainText('xxxxxxxxxxx');
   });
 
   test('component answer shows "Component" label in green box, not "Character"', async ({ page }) => {
@@ -998,7 +1020,7 @@ test.describe('Quiz – green result box title (issue #246)', () => {
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
 
-    const greenLabel = page.locator('#word-breakdown .bg-green-50 .text-green-500').first();
+    const greenLabel = page.locator('#word-breakdown .result-word .tr-eyebrow-sm').first();
     await expect(greenLabel).toBeVisible();
     await expect(greenLabel).toContainText('Component', { ignoreCase: true });
     await expect(greenLabel).not.toContainText('Character', { ignoreCase: true });
@@ -1041,7 +1063,7 @@ test.describe('Quiz – green result box title (issue #246)', () => {
     await page.locator('#answer-form button[type="submit"]').click();
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
 
-    const greenLabel = page.locator('#word-breakdown .bg-green-50 .text-green-500').first();
+    const greenLabel = page.locator('#word-breakdown .result-word .tr-eyebrow-sm').first();
     await expect(greenLabel).toBeVisible();
     await expect(greenLabel).toContainText('Component', { ignoreCase: true });
     await expect(greenLabel).not.toContainText('Character', { ignoreCase: true });
@@ -1425,16 +1447,19 @@ test.describe('Quiz – Chinese (no sound) mode', () => {
     expect(audioRequests.length).toBeGreaterThan(0);
   });
 
-  test('flat mode button on the training page selects the mode and persists it', async ({ page }) => {
+  test('the session sheet mode chip selects the mode and persists it', async ({ page }) => {
     await page.goto('/train');
-    await page.locator('.mode-btn[data-mode="zh_to_transl_no_sound"]').click();
+    await page.locator('#open-filter-overlay').click();
+    await page.locator('.overlay-mode-btn[data-mode="zh_to_transl_no_sound"]').click();
+    await page.locator('#filter-overlay-close').click();
 
     await expect.poll(() =>
       page.evaluate(() => localStorage.getItem('quizMode'))
     ).toBe('zh_to_transl_no_sound');
 
     await page.reload();
-    await expect(page.locator('.mode-btn[data-mode="zh_to_transl_no_sound"]')).toHaveClass(/bg-blue-600/);
+    await expect(page.locator('.overlay-mode-btn[data-mode="zh_to_transl_no_sound"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#session-chip-label')).toContainText('Chinese (no sound)');
   });
 
   test('answering correctly grades the same as zh_to_transl', async ({ page }) => {
@@ -1450,7 +1475,7 @@ test.describe('Quiz – Chinese (no sound) mode', () => {
 
     await page.locator('#answer-input').fill(correctAnswer);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
   });
 });
 
@@ -1531,7 +1556,7 @@ test.describe('Quiz – celebrate bucket change setting', () => {
       await page.locator('#celebration-continue-btn').click();
       await expect(page.locator('#celebration-screen')).not.toBeVisible();
       await expect(page.locator('#result-area')).toBeVisible();
-      await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+      await expect(page.locator('#result-icon')).toHaveText('Correct');
       await expect(page.locator('#bucket-info .tier-icon')).toHaveCount(1);
       await expect(page.locator('#bucket-info .tier-icon')).toHaveAttribute('title', 'Practicing');
 
@@ -1548,7 +1573,7 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     await mockTierChangeAnswer(page);
     await submitCorrectAnswer(page);
 
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
     await expect(page.locator('#celebration-screen')).not.toBeVisible();
   });
 
@@ -1563,7 +1588,7 @@ test.describe('Quiz – celebrate bucket change setting', () => {
 
       // Result appears directly — no celebration screen in between, even
       // though the mocked response carries a (downward) tier change.
-      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+      await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
       await expect(page.locator('#celebration-screen')).not.toBeVisible();
 
       // The icon still appears on a wrong-answer result screen.
@@ -1612,7 +1637,7 @@ test.describe('Quiz – retype on wrong answer', () => {
 
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
     await expect(page.locator('#wrong-retype-area')).not.toBeVisible();
     await expect(page.locator('#next-btn')).toBeEnabled();
@@ -1638,7 +1663,7 @@ test.describe('Quiz – retype on wrong answer', () => {
 
       await page.locator('#answer-input').fill('xxxxxxxxxxx');
       await page.locator('#answer-form button[type="submit"]').click();
-      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+      await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
       // The retype gate must appear, showing BOTH fields, and block Next until resolved.
       await expect(page.locator('#wrong-retype-area')).toBeVisible();
@@ -1724,7 +1749,7 @@ test.describe('Quiz – retype on wrong answer', () => {
     const typoAnswer = 'orang'; // one character short — levenshtein distance 1 from 'orange'
     await page.locator('#answer-input').fill(typoAnswer);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
     // Retype gate is showing (proves the suppression path is exercised)...
     await expect(page.locator('#wrong-retype-area')).toBeVisible();
@@ -1788,7 +1813,7 @@ test.describe('Quiz – retype on wrong answer', () => {
     // Clearly wrong answer (not a typo) so only "Add as translation" is offered.
     await page.locator('#answer-input').fill('notananswer');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
     // Retype gate is showing (proves the suppression path is exercised)...
     await expect(page.locator('#wrong-retype-area')).toBeVisible();
@@ -1845,7 +1870,7 @@ test.describe('Quiz – retype on wrong answer', () => {
 
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
     await expect(page.locator('#wrong-retype-area')).toBeVisible();
     await expect(page.locator('#next-btn')).toBeDisabled();
@@ -1898,7 +1923,7 @@ test.describe('Quiz – retype on wrong answer', () => {
 
       await page.locator('#answer-input').fill('xxxxxxxxxxx');
       await page.locator('#answer-form button[type="submit"]').click();
-      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+      await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
       // Only the translation field is shown/required — this card only tested the translation.
       await expect(page.locator('#wrong-retype-area')).toBeVisible();
@@ -1937,7 +1962,7 @@ test.describe('Quiz – retype on wrong answer', () => {
 
       await page.locator('#answer-input').fill('xxxxxxxxxxx');
       await page.locator('#answer-form button[type="submit"]').click();
-      await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+      await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
       // Only the Chinese-word field is shown/required — this card only tested the Chinese word.
       await expect(page.locator('#wrong-retype-area')).toBeVisible();
@@ -1982,7 +2007,7 @@ test.describe('Quiz – scroll to top on new card', () => {
 
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
     // Append a tall spacer so the page has real scroll room below the next
     // card regardless of exact content height on this viewport, then scroll
@@ -2054,7 +2079,7 @@ test.describe('Quiz – equivalent ellipsis forms accepted (issue #343)', () => 
     await page.locator('#answer-form button[type="submit"]').click();
 
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+    await expect(page.locator('#result-icon')).toHaveText('Correct');
   });
 
   test('typing "。。。" (fullwidth periods) for a word stored with "……" is accepted as correct', async ({ page }) => {
@@ -2067,7 +2092,7 @@ test.describe('Quiz – equivalent ellipsis forms accepted (issue #343)', () => 
     await page.locator('#answer-form button[type="submit"]').click();
 
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+    await expect(page.locator('#result-icon')).toHaveText('Correct');
   });
 
   // The "new word confirmation" typing gate (require typing the Chinese word
@@ -2148,31 +2173,17 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
   }
 
   // Splits a rendered translations box into the directly-visible entries and
-  // the entries collapsed inside its "More info" <details>, and asserts the
-  // counts match the configured cap (accounting for one entry consumed as the
-  // transl_to_zh prompt, when present).
+  // the entries folded behind its "▸ More info" / "▸ N more" disclosure,
+  // and asserts the counts match the configured cap (accounting for one
+  // entry consumed as the transl_to_zh prompt, when present).
   // expectedHiddenCount differs by screen: the transl_to_zh question screen
   // reserves one extra backend slot for its own prompt (see loadTranslationsForCard's
   // extraSlots), so only 1 of the 6 seeded translations ends up collapsed there,
   // versus 2 on the answer-result screen (no such reservation).
   async function assertCappedAndCollapsible(container, expectedHiddenCount) {
-    const details = container.locator('details');
-    await expect(details).toHaveCount(1);
-    await expect(details.locator('summary')).toHaveText('More info');
-    const hiddenDiv = details.locator('div');
-    await expect(hiddenDiv).not.toBeVisible();
-
-    const visibleText = await container.evaluate(el => {
-      const clone = el.cloneNode(true);
-      clone.querySelector('details')?.remove();
-      return clone.textContent || '';
-    });
+    const { visibleText, hiddenText } = await foldedParts(container);
     const visibleCount = visibleText.split('·').map(s => s.trim()).filter(Boolean).length;
     expect(visibleCount).toBe(MAX_SHOWN);
-
-    await details.locator('summary').click();
-    await expect(hiddenDiv).toBeVisible();
-    const hiddenText = (await hiddenDiv.textContent() || '').trim();
     expect(hiddenText.length).toBeGreaterThan(0);
     const hiddenCount = hiddenText.split('·').map(s => s.trim()).filter(Boolean).length;
     expect(hiddenCount).toBe(expectedHiddenCount);
@@ -2214,13 +2225,13 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     // green "correct answer" box — that's the box this fix caps.
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
-    const greenBox = page.locator('#word-breakdown .bg-green-50');
-    await expect(greenBox).toBeVisible();
+    const wordBox = page.locator('#word-breakdown');
+    await expect(wordBox.locator('.result-word')).toBeVisible();
     await captureForPR(page, 'train-translations-capped-result');
 
-    await assertCappedAndCollapsible(greenBox, ALL_TRANSLATIONS.length - MAX_SHOWN);
+    await assertCappedAndCollapsible(wordBox, ALL_TRANSLATIONS.length - MAX_SHOWN);
     await captureForPR(page, 'train-translations-capped-result-expanded');
   });
 
@@ -2264,7 +2275,7 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
 
     await page.locator('#answer-input').fill(extraAnswer);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
   });
 
   // Regression test: the yellow "belongs to" mismatch box (shown when a
@@ -2314,9 +2325,9 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
 
     await page.locator('#answer-input').fill(ALL_TRANSLATIONS[0]);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('That’s a different word', { timeout: 8_000 });
 
-    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
+    const yellowBox = page.locator('#word-breakdown .mixup-other');
     await expect(yellowBox).toBeVisible();
     await captureForPR(page, 'train-mismatch-translations-capped');
 
@@ -2359,36 +2370,27 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
 
     // "to hit" is a valid translation of the OTHER seeded word (打), so
-    // this triggers DetectConfusion and populates the yellow box too.
+    // this triggers DetectConfusion and renders the mix-up layout.
     await page.locator('#answer-input').fill('to hit');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('That’s a different word', { timeout: 8_000 });
 
-    const visibleTextExcludingDetails = async (locator) => (await locator.evaluate(el => {
-      const clone = el.cloneNode(true);
-      clone.querySelector('details')?.remove();
-      return clone.textContent || '';
-    }));
+    // The noise annotation (CL:) is parsed into a "Measure word" block
+    // inside the folded "More info", never shown inline or dropped.
+    const askedBox = page.locator('#word-breakdown .mixup-asked');
+    await expect(askedBox).toBeVisible();
+    const asked = await foldedParts(askedBox);
+    expect(asked.visibleText).toContain('shoe');
+    expect(asked.visibleText).not.toContain('CL:');
+    expect(asked.hiddenText).toContain('Measure word');
+    expect(asked.hiddenText).toContain('雙');
 
-    const greenBox = page.locator('#word-breakdown .bg-green-50');
-    await expect(greenBox).toBeVisible();
-    const greenVisible = await visibleTextExcludingDetails(greenBox);
-    expect(greenVisible).toContain('shoe');
-    expect(greenVisible).not.toContain('CL:');
-    const greenDetails = greenBox.locator('details');
-    await expect(greenDetails).toHaveCount(1);
-    await greenDetails.locator('summary').click();
-    await expect(greenDetails).toContainText('CL:');
-
-    const yellowBox = page.locator('#word-breakdown .bg-yellow-50');
-    await expect(yellowBox).toBeVisible();
-    const yellowVisible = await visibleTextExcludingDetails(yellowBox);
-    expect(yellowVisible).toContain('to hit');
-    expect(yellowVisible).not.toContain('CL:');
-    const yellowDetails = yellowBox.locator('details');
-    await expect(yellowDetails).toHaveCount(1);
-    await yellowDetails.locator('summary').click();
-    await expect(yellowDetails).toContainText('CL:');
+    const otherBox = page.locator('#word-breakdown .mixup-other');
+    await expect(otherBox).toBeVisible();
+    const other = await foldedParts(otherBox);
+    expect(other.visibleText).toContain('to hit');
+    expect(other.visibleText).not.toContain('CL:');
+    expect(other.hiddenText).toContain('下');
   });
 
   // Regression test: the transl_to_zh question screen's yellow hint box
@@ -2432,18 +2434,9 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     await captureForPR(page, 'train-question-screen-no-example-sentence');
 
     const hintBox = page.locator('#translations-hint');
-    const visibleText = await hintBox.evaluate(el => {
-      const clone = el.cloneNode(true);
-      clone.querySelector('details')?.remove();
-      return clone.textContent || '';
-    });
+    const { visibleText, hiddenText } = await foldedParts(hintBox);
     expect(visibleText).not.toContain('Bsp.:');
-
-    const details = hintBox.locator('details');
-    await expect(details).toHaveCount(1);
-    await details.locator('summary').click();
     await captureForPR(page, 'train-question-screen-no-example-sentence-expanded');
-    const hiddenText = (await details.locator('div').textContent()) || '';
     expect(hiddenText).not.toContain('Bsp.:');
     expect(hiddenText).toContain('dozen');
   });
@@ -2496,19 +2489,13 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
 
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
-    const greenBox = page.locator('#word-breakdown .bg-green-50');
-    await expect(greenBox).toBeVisible();
-
-    const visibleTextExcludingDetails = async (locator) => (await locator.evaluate(el => {
-      const clone = el.cloneNode(true);
-      clone.querySelector('details')?.remove();
-      return clone.textContent || '';
-    }));
+    const greenBox = page.locator('#word-breakdown');
+    await expect(greenBox.locator('.result-word')).toBeVisible();
 
     // Visible line: de's 2 shown translations, then en's 2 shown translations.
-    const visible = await visibleTextExcludingDetails(greenBox);
+    const { visibleText: visible, hiddenText } = await foldedParts(greenBox);
     expect(visible.indexOf('d1')).toBeGreaterThanOrEqual(0);
     expect(visible.indexOf('d1')).toBeLessThan(visible.indexOf('d2'));
     expect(visible.indexOf('d2')).toBeLessThan(visible.indexOf('e1'));
@@ -2517,9 +2504,6 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
     expect(visible).not.toContain('e3');
 
     // Collapsed list: de's capped-out translations, then en's.
-    const details = greenBox.locator('details');
-    await details.locator('summary').click();
-    const hiddenText = await details.locator('div').textContent();
     expect(hiddenText.indexOf('d3')).toBeGreaterThanOrEqual(0);
     expect(hiddenText.indexOf('d3')).toBeLessThan(hiddenText.indexOf('d4'));
     expect(hiddenText.indexOf('d4')).toBeLessThan(hiddenText.indexOf('e3'));
@@ -2571,15 +2555,11 @@ test.describe('Quiz – capped translations are collapsed (issue #431/#432/#433)
 
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
 
-    const greenBox = page.locator('#word-breakdown .bg-green-50');
-    await expect(greenBox).toBeVisible();
-    const visible = await greenBox.evaluate(el => {
-      const clone = el.cloneNode(true);
-      clone.querySelector('details')?.remove();
-      return clone.textContent || '';
-    });
+    const wordBlock = page.locator('#word-breakdown .result-word');
+    await expect(wordBlock).toBeVisible();
+    const visible = (await wordBlock.textContent()) || '';
     expect(visible.indexOf('d1')).toBeGreaterThanOrEqual(0);
     expect(visible.indexOf('d1')).toBeLessThan(visible.indexOf('e1'));
   });
@@ -2680,10 +2660,10 @@ test.describe('Quiz – user translation order setting', () => {
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
     await page.locator('#answer-input').fill('xxxxxxxxxxx');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong', { timeout: 8_000 });
-    const greenBox = page.locator('#word-breakdown .bg-green-50');
-    await expect(greenBox).toBeVisible();
-    return (await greenBox.textContent()) || '';
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
+    const wordBlock = page.locator('#word-breakdown .result-word');
+    await expect(wordBlock).toBeVisible();
+    return (await wordBlock.textContent()) || '';
   }
 
   test('user translations appear first by default', async ({ page }) => {

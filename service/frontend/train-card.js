@@ -15,6 +15,7 @@ let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
 let _matchGamePinyinReveal = 'always';
+let _matchGameSm2Update = 'always';
 const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
@@ -27,6 +28,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   autoPlayEnabled = !!st?.autoplay_always;
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   _matchGamePinyinReveal = st?.match_game_pinyin_reveal || 'always';
+  _matchGameSm2Update = st?.match_game_sm2_update || 'always';
   const btn = document.getElementById('new-word-skip-btn');
   if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
   // Restore server-persisted training filter settings (overrides localStorage).
@@ -203,14 +205,15 @@ async function loadNextCard(trackCurrent = false) {
   hide('result-decompose-content');
   hide('bucket-info');
   hide('streak-info');
+  hide('streak-dots');
+  hide('result-subtitle');
   hide('wrong-retype-area');
   wrongRetypeTarget = null;
   $('next-btn').disabled = false;
   $('answer-input').value = '';
   const reviewBtn = $('needs-review-btn');
-  reviewBtn.textContent = t('result.flagReview');
+  renderFlagButton(reviewBtn, false);
   reviewBtn.disabled = false;
-  reviewBtn.className = 'w-1/2 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition';
   reviewBtn.onclick = null;
 
   // Fetch fresh stats first. The backend's GetNextCard may return non-due
@@ -309,30 +312,25 @@ async function loadNextCard(trackCurrent = false) {
     scrollCardIntoView('new-word-area');
     setText('new-word-zh', currentCard.prompt);
     setText('new-word-pinyin', currentCard.pinyin || '');
-    // One line per language, primary language first then secondary; noise
-    // annotations and cap overflow collapse into the same "More info"
-    // details below (issue #431/#432/#433).
-    const transLines = [];
-    const newWordNoise = [];
-    for (const lang of orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang)) {
-      const texts = (currentCard.translations || {})[lang] || [];
-      const extra = (currentCard.translations_extra || {})[lang] || [];
-      const clean = dedupeTranslations(texts.filter(x => !isNoise(x)).map(stripPosTag));
-      const noise = texts.filter(isNoise);
-      if (clean.length) transLines.push(clean.map(escHtml).join(' · '));
-      newWordNoise.push(...noise, ...extra);
-    }
-    const newWordNoiseHtml = newWordNoise.length > 0
-      ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${newWordNoise.map(escHtml).join(' · ')}</div></details>`
-      : '';
-    $('new-word-en').innerHTML = (transLines.join('<br>') || '—') + newWordNoiseHtml;
+    // Numbered meaning rows (row i pairs the i-th meaning of each language,
+    // primary first); rows beyond 3, noise annotations and cap overflow fold
+    // into "▸ N more meanings · 1 example" (issue #431/#432/#433).
+    const { rows, rest } = numberedMeaningRows(currentCard.translations, currentCard.translations_extra,
+      orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), 3);
+    const tailInfo = splitMoreInfo(rest);
+    const tailLabel = moreInfoCountLabel(tailInfo);
+    $('new-word-en').innerHTML = (rows.length
+      ? rows.map((r, i) => `<div class="tr-meaning-row"><span class="tr-meaning-num">${i + 1}</span><span>${escHtml(r)}</span></div>`).join('')
+      : '<div class="tr-meaning-row"><span>—</span></div>')
+      + (tailLabel ? `<div style="padding-left:30px"><button type="button" class="tr-disclosure-link" data-disclosure="new-word-tail"><span>▸ ${escHtml(tailLabel)}</span></button><div id="new-word-tail" class="hidden tr-more-body" style="padding:6px 0 0">${moreInfoBlocksHTML(tailInfo)}</div></div>` : '');
+    wireDisclosures($('new-word-en'));
     $('new-word-play-btn').onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
     autoPlayCard(currentCard);
-    if (!currentCard.pinyin) hide('new-word-pinyin');
+    currentCard.pinyin ? show('new-word-pinyin') : hide('new-word-pinyin');
     $('new-word-zh-input').value = '';
     $('new-word-trans-input').value = '';
-    $('new-word-zh-check').textContent = '';
-    $('new-word-trans-check').textContent = '';
+    setCheckMark('new-word-zh-check', '', false);
+    setCheckMark('new-word-trans-check', '', false);
     requireNewWordZh    ? show('new-word-zh-row')    : hide('new-word-zh-row');
     requireNewWordTrans ? show('new-word-trans-row') : hide('new-word-trans-row');
     const needsInput = requireNewWordZh || requireNewWordTrans;
@@ -374,10 +372,7 @@ async function loadNextCard(trackCurrent = false) {
     compPinyin ? show('new-component-pinyin-row') : hide('new-component-pinyin-row');
     const defs = currentCard.definitions || {};
     $('new-component-defs').innerHTML = Object.entries(defs).map(([lang, def]) =>
-      `<div class="flex items-baseline gap-2 p-3 bg-purple-50 border border-purple-100 rounded-xl">
-         <span class="text-xs font-semibold text-purple-500 uppercase w-6 shrink-0">${escHtml(lang)}</span>
-         <span class="text-xl font-bold text-gray-800">${escHtml(def)}</span>
-       </div>`
+      `<div class="tr-def"><span class="tr-def-lang">${escHtml(lang)}</span><span class="tr-def-text">${escHtml(def)}</span></div>`
     ).join('');
     await loadStats();
     return;
@@ -389,13 +384,29 @@ async function loadNextCard(trackCurrent = false) {
   await loadStats();
 }
 
-function placeholderKeyForCard(cardType) {
-  return cardType === 'sentence' ? 'card.placeholderSentence' : 'card.placeholder';
+function placeholderKeyForCard(cardType, mode) {
+  if (cardType === 'sentence') return 'card.placeholderSentence';
+  if (!cardType && mode === 'transl_to_zh') return 'card.placeholderZh';
+  return 'card.placeholder';
 }
 
 function showCard() {
   show('card-area');
-  $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type));
+  $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type, currentCard.mode));
+  // Tier chip (word cards only) and prompt size: Hanzi prompts are larger,
+  // sentence prompts smaller.
+  const tierEl = $('card-tier');
+  if (currentCard.tier) {
+    renderTierChip(tierEl, currentCard.tier);
+    show('card-tier');
+  } else {
+    hide('card-tier');
+  }
+  const promptEl = $('prompt-word');
+  const zhPrompt = currentCard.card_type === 'component' ||
+    (!currentCard.card_type && currentCard.mode !== 'transl_to_zh');
+  promptEl.className = 'tr-prompt font-hanzi' + (zhPrompt ? ' is-hanzi' : '') +
+    (currentCard.card_type === 'sentence' ? ' is-sentence' : '');
 
   if (currentCard.card_type === 'component') {
     const compLabel = currentCard.is_also_word ? t('component.modeLabelAlsoWord') : t('component.modeLabel');
@@ -491,11 +502,14 @@ function showCard() {
       // an example sentence could spoil the zh answer on this question screen.
       const { shown: others, collapsed: moreInfoTexts } =
         groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang), currentCard.prompt, true);
+      // "Also: …" line, with meanings beyond the display cap folded
+      // under "▸ N more".
       const extraHtml = moreInfoTexts.length > 0
-        ? `<details class="mt-1"><summary class="text-xs text-gray-400 cursor-pointer select-none">More info</summary><div class="text-gray-400 text-xs mt-0.5">${moreInfoTexts.map(escHtml).join(' · ')}</div></details>`
+        ? `<button type="button" class="tr-disclosure-link" data-disclosure="translations-hint-more"><span>▸ ${escHtml(t('card.nMore', { n: moreInfoTexts.length }))}</span></button><div id="translations-hint-more" class="hidden" style="font-size:13px;color:#9ca3af">${moreInfoTexts.map(escHtml).join(' · ')}</div>`
         : '';
       if (others.length > 0 || moreInfoTexts.length > 0) {
-        $('translations-hint').innerHTML = others.map(escHtml).join(' · ') + extraHtml;
+        $('translations-hint').innerHTML = (others.length ? `<div>${escHtml(t('card.also', { list: others.join(' · ') }))}</div>` : '') + extraHtml;
+        wireDisclosures($('translations-hint'));
         show('translations-hint');
       } else {
         hide('translations-hint');
@@ -566,7 +580,14 @@ async function submitAnswer(e) {
 function maybeCelebrateThenShow(result, showFn) {
   const tierAdvanced = result.correct && result.tier && result.prev_tier && result.prev_tier !== result.tier;
   if (celebrateBucketChange && tierAdvanced) {
-    showCelebrationScreen({ prevTier: result.prev_tier, tier: result.tier }, () => showFn(result));
+    const meanings = result.translations
+      ? groupTranslationsByLang(result.translations, null, orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang)).shown
+      : [];
+    showCelebrationScreen({
+      prevTier: result.prev_tier, tier: result.tier,
+      zhText: result.zh_text || (currentCard && currentCard.card_type === 'component' ? currentCard.prompt : ''),
+      pinyin: result.pinyin || '', meanings,
+    }, () => showFn(result));
   } else {
     showFn(result);
   }
@@ -587,8 +608,6 @@ document.addEventListener('DOMContentLoaded', () => {
     applyMnemonicPill();
     loadNextCard();
   }
-  const mnemonicsPill = $('mnemonics-pill');
-  if (mnemonicsPill) mnemonicsPill.addEventListener('click', toggleMnemonics);
   const overlayMnemonicsPill = $('overlay-mnemonics-pill');
   if (overlayMnemonicsPill) overlayMnemonicsPill.addEventListener('click', toggleMnemonics);
 
@@ -599,8 +618,6 @@ document.addEventListener('DOMContentLoaded', () => {
     applyComponentPill();
     loadNextCard();
   }
-  const componentsPill = $('components-pill');
-  if (componentsPill) componentsPill.addEventListener('click', toggleComponents);
   const overlayComponentsPill = $('overlay-components-pill');
   if (overlayComponentsPill) overlayComponentsPill.addEventListener('click', toggleComponents);
 
@@ -608,11 +625,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = $('autoplay-toggle-btn');
     if (!btn) return;
     btn.setAttribute('aria-pressed', autoPlayEnabled ? 'true' : 'false');
-    btn.classList.toggle('bg-blue-600', autoPlayEnabled);
-    btn.classList.toggle('bg-gray-800', !autoPlayEnabled);
-    btn.innerHTML = autoPlayEnabled
-      ? '<span aria-hidden="true">🔊</span>'
-      : '<span aria-hidden="true">🔇</span>';
+    const d = autoPlayEnabled
+      ? 'M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13'
+      : 'M11 5 6 9H3v6h3l5 4zM22 9l-6 6M16 9l6 6';
+    btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
     const label = t(autoPlayEnabled ? 'train.autoPlay.onTitle' : 'train.autoPlay.offTitle');
     btn.title = label;
     btn.setAttribute('aria-label', label);
@@ -625,30 +641,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.querySelectorAll('.tier-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectedBucket = btn.dataset.bucket;
-      localStorage.setItem('quizBucket', selectedBucket);
-      scheduleFilterSave();
-      applyTierPills();
-      loadNextCard();
-    });
-  });
   document.querySelectorAll('.overlay-tier-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       selectedBucket = btn.dataset.bucket;
       localStorage.setItem('quizBucket', selectedBucket);
       scheduleFilterSave();
       applyTierPills();
-    });
-  });
-  document.querySelectorAll('.mode-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectedMode = btn.dataset.mode;
-      localStorage.setItem('quizMode', selectedMode);
-      scheduleFilterSave();
-      applyModeButtons();
-      loadNextCard();
     });
   });
   $('answer-form').addEventListener('submit', submitAnswer);
@@ -690,7 +688,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Mobile filter overlay
+  // Session sheet (all screen sizes)
   function openFilterOverlay() {
     $('filter-overlay').classList.remove('hidden');
     document.body.style.overflow = 'hidden';
@@ -781,14 +779,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const transCorrect = isTransCorrect(transVal, mergeTranslationMaps(currentCard.translations, currentCard.translations_extra));
     const zhOk    = !requireNewWordZh    || zhCorrect;
     const transOk = !requireNewWordTrans || transCorrect;
-    if (requireNewWordZh) {
-      $('new-word-zh-check').textContent = zhVal.trim() ? (zhCorrect ? '✓' : '✗') : '';
-      $('new-word-zh-check').className   = 'text-xl w-6 text-center ' + (zhCorrect ? 'text-green-500' : 'text-red-400');
-    }
-    if (requireNewWordTrans) {
-      $('new-word-trans-check').textContent = transVal.trim() ? (transCorrect ? '✓' : '✗') : '';
-      $('new-word-trans-check').className   = 'text-xl w-6 text-center ' + (transCorrect ? 'text-green-500' : 'text-red-400');
-    }
+    if (requireNewWordZh) setCheckMark('new-word-zh-check', zhVal, zhCorrect);
+    if (requireNewWordTrans) setCheckMark('new-word-trans-check', transVal, transCorrect);
     $('new-word-got-it-btn').disabled = !(zhOk && transOk);
   }
   $('new-word-zh-input').addEventListener('input', updateGotItState);
@@ -821,10 +813,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const transVal = $('wrong-retype-trans-input').value;
     const zhCorrect    = isZhCorrect(zhVal, wrongRetypeTarget.zhText);
     const transCorrect = isTransCorrect(transVal, wrongRetypeTarget.translations);
-    $('wrong-retype-zh-check').textContent = zhVal.trim() ? (zhCorrect ? '✓' : '✗') : '';
-    $('wrong-retype-zh-check').className   = 'text-xl w-6 text-center ' + (zhCorrect ? 'text-green-500' : 'text-red-400');
-    $('wrong-retype-trans-check').textContent = transVal.trim() ? (transCorrect ? '✓' : '✗') : '';
-    $('wrong-retype-trans-check').className   = 'text-xl w-6 text-center ' + (transCorrect ? 'text-green-500' : 'text-red-400');
+    setCheckMark('wrong-retype-zh-check', zhVal, zhCorrect);
+    setCheckMark('wrong-retype-trans-check', transVal, transCorrect);
     $('next-btn').disabled = !wrongRetypeSatisfied(zhVal, transVal, wrongRetypeTarget.zhText, wrongRetypeTarget.translations, requireZh, requireTrans);
   }
   $('wrong-retype-zh-input').addEventListener('input', updateWrongRetypeState);
@@ -942,6 +932,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   document.addEventListener('ob:loadtags', obLoadTags, { once: false });
+
+  $('error-retry-btn').addEventListener('click', () => loadNextCard());
+  const errReport = $('error-report-btn');
+  const navReport = $('nav-report');
+  if (errReport && navReport) {
+    // Offered only when issue reporting is enabled (the shell shows #nav-report).
+    new MutationObserver(() => errReport.classList.toggle('hidden', navReport.classList.contains('hidden')))
+      .observe(navReport, { attributes: true, attributeFilter: ['class'] });
+    errReport.classList.toggle('hidden', navReport.classList.contains('hidden'));
+    errReport.addEventListener('click', () => navReport.click());
+  }
 
   loadTrainSettings().then(() => { applyAutoPlayButton(); loadNextCard(); });
 });

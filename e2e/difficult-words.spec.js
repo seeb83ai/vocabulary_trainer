@@ -102,7 +102,7 @@ test.describe('Difficult-words drill', () => {
     const correct = DIFFICULT.find(d => d.zh === (prompt || '').trim())?.en[0] || '';
     await page.locator('#answer-input').fill(correct);
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
 
     // Move on — the second difficult word is served (drill still active).
     await page.locator('#next-btn').click();
