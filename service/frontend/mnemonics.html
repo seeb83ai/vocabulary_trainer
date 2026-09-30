@@ -1,47 +1,42 @@
 {{template "layout" .}}
 {{define "content"}}
 
-  <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-6">
+  <main class="page-main mn-main">
 
-    <div class="bg-white rounded-2xl shadow p-6">
-      <h1 class="text-xl font-bold text-gray-800 mb-2" data-i18n="mnemonics.title">Hanzi Movie Method</h1>
-      <p class="text-sm text-gray-500 mb-6" data-i18n="mnemonics.desc">Configure your personal mnemonic library. Each Chinese character maps to a movie scene: an <strong>actor</strong> (pinyin initial) in a <strong>location</strong> (pinyin final), in a specific <strong>room</strong> (tone), interacting with <strong>props</strong> (radicals).</p>
+    <h1 class="page-title" data-i18n="nav.mnemonics">Mnemonics</h1>
+    <p class="page-sub mn-sub" data-i18n="mnemonics.desc">Your Hanzi Movie Method library. Each character becomes a movie scene: an actor (pinyin initial) in a location (pinyin final), in a room of that location (tone), with props (components).</p>
 
-      <!-- Actors -->
-      <details open class="mb-6">
-        <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.actors">Actors</span> <span class="text-sm font-normal text-gray-400" data-i18n="mnemonics.actorsDesc">(pinyin initials)</span></summary>
-        <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.actorsHint">Pick a person for each initial. The method suggests choosing people whose names start with the initial sound.</p>
-        <div id="actors-container" class="space-y-4"></div>
-      </details>
-
-      <!-- Locations -->
-      <details class="mb-6">
-        <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.locations">Locations</span> <span class="text-sm font-normal text-gray-400" data-i18n="mnemonics.locationsDesc">(pinyin finals)</span></summary>
-        <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.locationsHint">Pick a familiar place for each final sound. Choose buildings you know intimately.</p>
-        <div id="locations-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
-      </details>
-
-      <!-- Tone Rooms -->
-      <details class="mb-6">
-        <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.toneRooms">Tone Rooms</span> <span class="text-sm font-normal text-gray-400" data-i18n="mnemonics.toneRoomsDesc">(tones 1-5)</span></summary>
-        <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.toneRoomsHint">Each tone maps to a room or area within your location. Defaults follow the Mandarin Blueprint method.</p>
-        <div id="tonerooms-container" class="space-y-2"></div>
-      </details>
-
-      <!-- Props -->
-      <details class="mb-6">
-        <summary class="text-lg font-semibold text-gray-700 cursor-pointer select-none mb-3"><span data-i18n="mnemonics.propsSection">Props</span> <span class="text-sm font-normal text-gray-400">(radicals &amp; components)</span></summary>
-        <p class="text-xs text-gray-400 mb-3" data-i18n="mnemonics.propsDesc">Each radical maps to a 3D object (prop). Defaults are provided; override or add new ones below.</p>
-        <div class="flex flex-col sm:flex-row gap-2 mb-3">
-          <div class="flex gap-2">
-            <input id="new-prop-radical" type="text" placeholder="Radical" data-i18n-placeholder="mnemonics.propRadicalPlaceholder" class="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <input id="new-prop-name" type="text" placeholder="Prop name" data-i18n-placeholder="mnemonics.propNamePlaceholder" class="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          </div>
-          <button id="add-prop-btn" class="w-full sm:w-auto px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition" data-i18n="mnemonics.addProp">Add</button>
-        </div>
-        <div id="props-container" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
-      </details>
+    <div class="ui-seg mn-tabs" role="group">
+      <button id="mn-tab-actors" type="button" aria-pressed="true" data-tab="actors"><span data-i18n="mnemonics.actors">Actors</span><span class="mn-tab-count"></span></button>
+      <button id="mn-tab-locations" type="button" aria-pressed="false" data-tab="locations"><span data-i18n="mnemonics.locations">Locations</span><span class="mn-tab-count"></span></button>
+      <button id="mn-tab-rooms" type="button" aria-pressed="false" data-tab="rooms"><span data-i18n="mnemonics.toneRooms">Tone rooms</span><span class="mn-tab-count"></span></button>
+      <button id="mn-tab-props" type="button" aria-pressed="false" data-tab="props"><span data-i18n="mnemonics.propsSection">Props</span><span class="mn-tab-count"></span></button>
     </div>
+
+    <section id="mn-panel-actors" class="mn-panel">
+      <p class="mn-hint" data-i18n="mnemonics.actorsHint">Pick a person for each pinyin initial. People whose names start with that sound are easiest to recall.</p>
+      <div id="actors-container" class="mn-groups"></div>
+    </section>
+
+    <section id="mn-panel-locations" class="hidden mn-panel">
+      <p class="mn-hint" data-i18n="mnemonics.locationsHint">Pick a place you know well for each final.</p>
+      <div id="locations-container" class="mn-grid"></div>
+    </section>
+
+    <section id="mn-panel-rooms" class="hidden mn-panel">
+      <p class="mn-hint" data-i18n="mnemonics.toneRoomsHint">Each tone is a room or area within the location. The defaults follow the Mandarin Blueprint method.</p>
+      <div id="tonerooms-container" class="mn-grid"></div>
+    </section>
+
+    <section id="mn-panel-props" class="hidden mn-panel">
+      <p class="mn-hint" data-i18n="mnemonics.propsHint">Each component maps to an object. Defaults are provided; override them or add your own.</p>
+      <div class="mn-add">
+        <input id="new-prop-radical" type="text" placeholder="Radical" data-i18n-placeholder="mnemonics.propRadicalPlaceholder" class="mn-add-radical hanzi">
+        <input id="new-prop-name" type="text" placeholder="Prop name" data-i18n-placeholder="mnemonics.propNamePlaceholder" class="mn-add-name">
+        <button id="add-prop-btn" type="button" class="ui-btn ui-btn-primary" data-i18n="mnemonics.addProp">Add</button>
+      </div>
+      <div id="props-container" class="mn-grid"></div>
+    </section>
 
   </main>
 

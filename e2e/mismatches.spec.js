@@ -117,8 +117,8 @@ test.describe('Component mismatch detection (issue #280)', () => {
     });
 
     await page.goto('/mismatches');
-    await expect(page.locator('#table-wrap')).toBeVisible({ timeout: 8_000 });
-    const row = page.locator('#mismatches-tbody tr').first();
+    await expect(page.locator('#mismatches-list')).toBeVisible({ timeout: 8_000 });
+    const row = page.locator('#mismatches-list .mm-row').first();
     await expect(row).toContainText('扑');
     await expect(row).toContainText('去');
     await expect(row).toContainText('to go');
@@ -126,7 +126,7 @@ test.describe('Component mismatch detection (issue #280)', () => {
     // The "word tested" cell (扑) is a component — its play button must hit the
     // component audio endpoint, not the word one (which would 404 for a
     // character that isn't a standalone word).
-    const cells = row.locator('td');
+    const cells = row.locator('.mm-side');
     await cells.nth(0).locator('button').click();
     await expect.poll(() => audioRequests.at(-1)).toContain('/api/audio/component/');
 

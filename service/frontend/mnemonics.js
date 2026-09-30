@@ -1,10 +1,18 @@
 // Mnemonics settings page — HMM library management
 
 const CATEGORY_STYLES = {
-  male:       { i18nKey: 'mnemonics.cat.male',       border: 'border-l-blue-500',   bg: 'bg-blue-50',   text: 'text-blue-700'   },
-  female:     { i18nKey: 'mnemonics.cat.female',     border: 'border-l-pink-500',   bg: 'bg-pink-50',   text: 'text-pink-700'   },
-  fictional:  { i18nKey: 'mnemonics.cat.fictional',  border: 'border-l-green-500',  bg: 'bg-green-50',  text: 'text-green-700'  },
-  wildcard:   { i18nKey: 'mnemonics.cat.wildcard',   border: 'border-l-purple-500', bg: 'bg-purple-50', text: 'text-purple-700' },
+  male:       { i18nKey: 'mnemonics.cat.male',      cls: 'is-male' },
+  female:     { i18nKey: 'mnemonics.cat.female',    cls: 'is-female' },
+  fictional:  { i18nKey: 'mnemonics.cat.fictional', cls: 'is-fictional' },
+  wildcard:   { i18nKey: 'mnemonics.cat.wildcard',  cls: 'is-wildcard' },
+};
+
+// Tab → container holding that section's items.
+const MN_SECTIONS = {
+  actors: 'actors-container',
+  locations: 'locations-container',
+  rooms: 'tonerooms-container',
+  props: 'props-container',
 };
 
 const TONE_LABEL_KEYS = {
@@ -34,6 +42,39 @@ function autoSaveInput(input, saveFn) {
   });
 }
 
+// filledCount counts the non-blank values — the "filled" number on each tab.
+function filledCount(values) {
+  return (values || []).filter(v => (v || '').trim() !== '').length;
+}
+
+function updateTabCount(tab) {
+  const inputs = [...$(MN_SECTIONS[tab]).querySelectorAll('.mn-item input')];
+  const el = $('mn-tab-' + tab).querySelector('.mn-tab-count');
+  el.textContent = inputs.length ? `${filledCount(inputs.map(i => i.value))}/${inputs.length}` : '';
+}
+
+// buildItem renders one library entry: a key tile (e.g. the initial "b" or a
+// radical) with a small sub label, the auto-saving input and, for props, a
+// delete button. The item is highlighted once it has a value.
+function buildItem({ key, sub, value, placeholder, data, tab, hanzi, onSave, onDelete }) {
+  const row = document.createElement('label');
+  row.className = 'mn-item';
+  row.innerHTML = `
+    <span class="mn-key${hanzi ? ' hanzi' : ''}">${escHtml(key)}${sub ? `<span class="mn-key-sub">${escHtml(sub)}</span>` : ''}</span>
+    <input type="text" value="${escHtml(value || '')}" placeholder="${escHtml(placeholder || '')}">
+    <span class="save-indicator hidden"></span>
+    ${onDelete ? `<button type="button" class="mn-delete" title="${escHtml(t('mnemonics.deleteLabel'))}" aria-label="${escHtml(t('mnemonics.deleteLabel'))}">&times;</button>` : ''}
+  `;
+  const input = row.querySelector('input');
+  Object.assign(input.dataset, data);
+  const syncFilled = () => row.classList.toggle('is-filled', input.value.trim() !== '');
+  syncFilled();
+  input.addEventListener('input', () => { syncFilled(); updateTabCount(tab); });
+  autoSaveInput(input, onSave);
+  if (onDelete) row.querySelector('.mn-delete').addEventListener('click', (e) => { e.preventDefault(); onDelete(row); });
+  return row;
+}
+
 // ── Actors ──────────────────────────────────────────────────────────────
 
 async function loadActors() {
@@ -53,37 +94,34 @@ async function loadActors() {
     const style = CATEGORY_STYLES[cat];
 
     const section = document.createElement('div');
-    section.className = `border-l-4 ${style.border} pl-4 mb-4`;
-    section.innerHTML = `<div class="text-sm font-semibold ${style.text} mb-2">${t(style.i18nKey)} <span class="font-normal text-gray-400">(${items.length})</span></div>`;
+    section.className = `mn-group ${style.cls}`;
+    section.innerHTML = `<div class="mn-group-title">${escHtml(t(style.i18nKey))} <span class="mn-group-count">${items.length}</span></div>`;
 
     const grid = document.createElement('div');
-    grid.className = 'grid grid-cols-1 sm:grid-cols-2 gap-2';
+    grid.className = 'mn-grid';
 
     for (const actor of items) {
-      const row = document.createElement('div');
-      row.className = 'flex items-center gap-2';
-      row.innerHTML = `
-        <span class="w-10 text-sm font-mono font-bold text-gray-600 text-right shrink-0">${escHtml(actor.initial === 'null' ? 'Ø' : actor.initial)}</span>
-        <input type="text" value="${escHtml(actor.actor_name)}" placeholder="${escHtml(actor.hint)}"
-          class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          data-initial="${escHtml(actor.initial)}">
-        <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
-      `;
-      const input = row.querySelector('input');
-      autoSaveInput(input, async (el) => {
-        try {
-          await apiFetch(`/api/hmm/actors/${encodeURIComponent(el.dataset.initial)}`, {
-            method: 'PUT',
-            body: JSON.stringify({ actor_name: el.value }),
-          });
-          flashSaved(el);
-        } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
-      });
-      grid.appendChild(row);
+      grid.appendChild(buildItem({
+        key: actor.initial === 'null' ? 'Ø' : actor.initial,
+        value: actor.actor_name,
+        placeholder: actor.hint,
+        data: { initial: actor.initial },
+        tab: 'actors',
+        onSave: async (el) => {
+          try {
+            await apiFetch(`/api/hmm/actors/${encodeURIComponent(el.dataset.initial)}`, {
+              method: 'PUT',
+              body: JSON.stringify({ actor_name: el.value }),
+            });
+            flashSaved(el);
+          } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+        },
+      }));
     }
     section.appendChild(grid);
     container.appendChild(section);
   }
+  updateTabCount('actors');
 }
 
 // ── Locations ───────────────────────────────────────────────────────────
@@ -94,29 +132,25 @@ async function loadLocations() {
   container.innerHTML = '';
 
   for (const loc of locs) {
-    const row = document.createElement('div');
-    row.className = 'flex items-center gap-2';
-    const label = loc.final_key === 'null' ? 'Ø (null)' : loc.final_key;
     const placeholder = loc.final_key === 'null' ? 'Your childhood home' : 'A familiar place...';
-    row.innerHTML = `
-      <span class="w-14 text-sm font-mono font-bold text-gray-600 text-right shrink-0">${escHtml(label)}</span>
-      <input type="text" value="${escHtml(loc.location_name)}" placeholder="${escHtml(placeholder)}"
-        class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        data-final="${escHtml(loc.final_key)}">
-      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
-    `;
-    const input = row.querySelector('input');
-    autoSaveInput(input, async (el) => {
-      try {
-        await apiFetch(`/api/hmm/locations/${encodeURIComponent(el.dataset.final)}`, {
-          method: 'PUT',
-          body: JSON.stringify({ location_name: el.value }),
-        });
-        flashSaved(el);
-      } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
-    });
-    container.appendChild(row);
+    container.appendChild(buildItem({
+      key: loc.final_key === 'null' ? 'Ø' : loc.final_key,
+      value: loc.location_name,
+      placeholder,
+      data: { final: loc.final_key },
+      tab: 'locations',
+      onSave: async (el) => {
+        try {
+          await apiFetch(`/api/hmm/locations/${encodeURIComponent(el.dataset.final)}`, {
+            method: 'PUT',
+            body: JSON.stringify({ location_name: el.value }),
+          });
+          flashSaved(el);
+        } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+      },
+    }));
   }
+  updateTabCount('locations');
 }
 
 // ── Tone Rooms ──────────────────────────────────────────────────────────
@@ -127,29 +161,27 @@ async function loadToneRooms() {
   container.innerHTML = '';
 
   for (const room of rooms) {
-    const row = document.createElement('div');
-    row.className = 'flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2';
-    row.innerHTML = `
-      <span class="text-xs text-gray-500 sm:w-48 sm:shrink-0">${escHtml(TONE_LABEL_KEYS[room.tone] ? t(TONE_LABEL_KEYS[room.tone]) : t('hmm.tone', {n: room.tone}))}</span>
-      <div class="flex items-center gap-2 w-full">
-        <input type="text" value="${escHtml(room.room_name)}" placeholder="Room or area..."
-          class="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          data-tone="${room.tone}">
-        <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
-      </div>
-    `;
-    const input = row.querySelector('input');
-    autoSaveInput(input, async (el) => {
-      try {
-        await apiFetch(`/api/hmm/tone-rooms/${el.dataset.tone}`, {
-          method: 'PUT',
-          body: JSON.stringify({ room_name: el.value }),
-        });
-        flashSaved(el);
-      } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+    const item = buildItem({
+      key: String(room.tone),
+      sub: t('mnemonics.toneShort'),
+      value: room.room_name,
+      placeholder: 'Room or area...',
+      data: { tone: String(room.tone) },
+      tab: 'rooms',
+      onSave: async (el) => {
+        try {
+          await apiFetch(`/api/hmm/tone-rooms/${el.dataset.tone}`, {
+            method: 'PUT',
+            body: JSON.stringify({ room_name: el.value }),
+          });
+          flashSaved(el);
+        } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+      },
     });
-    container.appendChild(row);
+    item.title = TONE_LABEL_KEYS[room.tone] ? t(TONE_LABEL_KEYS[room.tone]) : t('hmm.tone', { n: room.tone });
+    container.appendChild(item);
   }
+  updateTabCount('rooms');
 }
 
 // ── Props ───────────────────────────────────────────────────────────────
@@ -164,36 +196,34 @@ function renderProps(props) {
   container.innerHTML = '';
 
   for (const prop of props) {
-    const row = document.createElement('div');
-    row.className = 'flex items-center gap-2';
-    row.innerHTML = `
-      <span class="w-10 text-lg text-center shrink-0">${escHtml(prop.radical)}</span>
-      <input type="text" value="${escHtml(prop.prop_name)}" placeholder="3D object..."
-        class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        data-radical="${escHtml(prop.radical)}">
-      <span class="save-indicator hidden text-xs text-green-500 w-10 shrink-0"></span>
-      <button class="text-gray-300 hover:text-red-500 text-sm transition shrink-0" data-radical="${escHtml(prop.radical)}" title="Delete">&times;</button>
-    `;
-    const input = row.querySelector('input');
-    autoSaveInput(input, async (el) => {
-      try {
-        await apiFetch('/api/hmm/props', {
-          method: 'PUT',
-          body: JSON.stringify({ radical: el.dataset.radical, prop_name: el.value }),
-        });
-        flashSaved(el);
-      } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
-    });
-    row.querySelector('button').addEventListener('click', async (e) => {
-      const radical = e.target.dataset.radical;
-      if (!confirm(t('mnemonics.deleteProp', { radical }))) return;
-      try {
-        await apiFetch(`/api/hmm/props/${encodeURIComponent(radical)}`, { method: 'DELETE' });
-        row.remove();
-      } catch (err) { alert(t('mnemonics.deleteFailed') + ': ' + err.message); }
-    });
-    container.appendChild(row);
+    container.appendChild(buildItem({
+      key: prop.radical,
+      value: prop.prop_name,
+      placeholder: '3D object...',
+      data: { radical: prop.radical },
+      tab: 'props',
+      hanzi: true,
+      onSave: async (el) => {
+        try {
+          await apiFetch('/api/hmm/props', {
+            method: 'PUT',
+            body: JSON.stringify({ radical: el.dataset.radical, prop_name: el.value }),
+          });
+          flashSaved(el);
+        } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+      },
+      onDelete: async (row) => {
+        const radical = prop.radical;
+        if (!confirm(t('mnemonics.deleteProp', { radical }))) return;
+        try {
+          await apiFetch(`/api/hmm/props/${encodeURIComponent(radical)}`, { method: 'DELETE' });
+          row.remove();
+          updateTabCount('props');
+        } catch (err) { alert(t('mnemonics.deleteFailed') + ': ' + err.message); }
+      },
+    }));
   }
+  updateTabCount('props');
 }
 
 function setupAddProp() {
@@ -213,6 +243,20 @@ function setupAddProp() {
   });
 }
 
+// ── Tabs ────────────────────────────────────────────────────────────────
+
+function setupTabs() {
+  document.querySelectorAll('.mn-tabs [data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      for (const tab of Object.keys(MN_SECTIONS)) {
+        const active = tab === btn.dataset.tab;
+        $('mn-tab-' + tab).setAttribute('aria-pressed', String(active));
+        $('mn-panel-' + tab).classList.toggle('hidden', !active);
+      }
+    });
+  });
+}
+
 // ── Init ────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -224,6 +268,7 @@ async function init() {
   }
 }
 
+setupTabs();
 init();
 
 // Re-render when UI language changes

@@ -10,14 +10,17 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-function wordCell(text, pinyin, translations, wordId) {
-  const pinyinHtml = pinyin ? `<span class="text-gray-400 text-xs ml-1">${escHtml(pinyin)}</span>` : '';
+function wordCell(text, pinyin, translations, kind, wordId, character, other) {
+  const pinyinHtml = pinyin ? `<span class="mm-py">${escHtml(pinyin)}</span>` : '';
   const allTexts = Object.values(translations || {}).flat();
-  const transHtml = allTexts.length ? `<div class="text-gray-500 text-xs mt-0.5">${allTexts.map(escHtml).join(', ')}</div>` : '';
-  const audioBtn = wordId
-    ? `<button class="btn-word-play ml-1 text-gray-400 hover:text-blue-500 transition" data-word-id="${wordId}" data-zh-text="${escHtml(text)}" title="Read aloud">🔊</button>`
-    : '';
-  return `<div class="flex items-center gap-1 text-base font-medium text-gray-800">${escHtml(text)}${pinyinHtml}${audioBtn}</div>${transHtml}`;
+  const transHtml = allTexts.length ? `<span class="mm-en">${allTexts.map(escHtml).join(', ')}</span>` : '';
+  let audioBtn = '';
+  if (kind === 'component' && character) {
+    audioBtn = `<button type="button" class="btn-word-play mm-play" data-kind="component" data-character="${escHtml(character)}" title="Read aloud" aria-label="Read aloud">🔊</button>`;
+  } else if (wordId) {
+    audioBtn = `<button type="button" class="btn-word-play mm-play" data-kind="word" data-word-id="${wordId}" data-zh-text="${escHtml(text)}" title="Read aloud" aria-label="Read aloud">🔊</button>`;
+  }
+  return `<div class="mm-side${other ? ' is-other' : ''}"><span class="mm-word"><span class="hanzi mm-zh">${escHtml(text)}</span>${pinyinHtml}${audioBtn}</span>${transHtml}</div>`;
 }
 
 describe('wordCell', () => {
@@ -30,18 +33,18 @@ describe('wordCell', () => {
   });
 
   it('renders audio button with correct data-word-id when wordId provided', () => {
-    const html = wordCell('手', 'shǒu', {}, 42);
+    const html = wordCell('手', 'shǒu', {}, 'word', 42);
     expect(html).toContain('btn-word-play');
     expect(html).toContain('data-word-id="42"');
   });
 
   it('renders audio button with correct data-zh-text when wordId provided', () => {
-    const html = wordCell('手', 'shǒu', {}, 42);
+    const html = wordCell('手', 'shǒu', {}, 'word', 42);
     expect(html).toContain('data-zh-text="手"');
   });
 
   it('escapes special chars in data-zh-text attribute', () => {
-    const html = wordCell('<test>', null, {}, 1);
+    const html = wordCell('<test>', null, {}, 'word', 1);
     expect(html).toContain('data-zh-text="&lt;test&gt;"');
   });
 });
@@ -105,5 +108,39 @@ describe('formatDate', () => {
     const result = formatDate(old);
     expect(result).not.toMatch(/\d+d ago/);
     expect(result.length).toBeGreaterThan(3);
+  });
+});
+
+// ── sortMismatches (redesign: client-side sort) ──────────────────────────────
+// Inlined from mismatches.js.
+function sortMismatches(items, by) {
+  const list = [...(items || [])];
+  const time = x => new Date(x.last_seen).getTime() || 0;
+  if (by === 'recent') {
+    list.sort((a, b) => time(b) - time(a) || b.count - a.count);
+  } else {
+    list.sort((a, b) => b.count - a.count || time(b) - time(a));
+  }
+  return list;
+}
+
+describe('sortMismatches', () => {
+  const a = { id: 'a', count: 2, last_seen: '2026-09-30T10:00:00Z' };
+  const b = { id: 'b', count: 6, last_seen: '2026-09-27T10:00:00Z' };
+  const c = { id: 'c', count: 2, last_seen: '2026-09-29T10:00:00Z' };
+
+  it('sorts by count, most often first, ties by recency', () => {
+    expect(sortMismatches([a, b, c], 'often').map(x => x.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('sorts by last seen, most recent first', () => {
+    expect(sortMismatches([b, c, a], 'recent').map(x => x.id)).toEqual(['a', 'c', 'b']);
+  });
+
+  it('does not change the input and handles empty input', () => {
+    const input = [a, b];
+    sortMismatches(input, 'often');
+    expect(input.map(x => x.id)).toEqual(['a', 'b']);
+    expect(sortMismatches(null, 'often')).toEqual([]);
   });
 });
