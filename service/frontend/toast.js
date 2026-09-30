@@ -43,7 +43,7 @@ function ensureToastEl() {
   el.setAttribute('data-testid', 'toast');
   el.setAttribute('role', 'status');
   el.setAttribute('aria-live', 'polite');
-  el.className = 'hidden fixed bottom-5 right-5 z-[70] max-w-xs px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium text-white transition-opacity duration-150';
+  el.className = 'app-toast hidden';
   document.body.appendChild(el);
   toastEl = el;
   return el;
@@ -62,9 +62,14 @@ function showToast(message, type) {
   const state = computeToastText(wasVisible ? toastState : null, message);
   toastState = state;
 
-  el.textContent = state.text;
-  el.classList.remove('hidden', 'bg-green-600', 'bg-red-600');
-  el.classList.add(type === 'error' ? 'bg-red-600' : 'bg-green-600');
+  el.textContent = '';
+  const mark = document.createElement('span');
+  mark.className = 'app-toast-mark';
+  mark.setAttribute('aria-hidden', 'true');
+  mark.textContent = type === 'error' ? '!' : '✓';
+  el.append(mark, state.text);
+  el.classList.remove('hidden', 'app-toast-error');
+  if (type === 'error') el.classList.add('app-toast-error');
 
   // Restart the pulse animation on every call (not just repeats) so each
   // individual save is felt, even when the toast never left the screen.

@@ -127,7 +127,7 @@ test.describe('Gamification — match game', () => {
 
   test('settings page shows gamification section', async ({ page }) => {
     await page.goto(`${BASE_URL}/settings`);
-    await expect(page.getByText('Gamification')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Gamification' })).toBeVisible();
     await expect(page.locator('#gamification-enabled')).toBeVisible();
     await expect(page.locator('#gamification-frequency')).toBeVisible();
   });

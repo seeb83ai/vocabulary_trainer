@@ -235,9 +235,9 @@ test.describe('Quiz – acknowledged words (main user)', () => {
     expect(greenSize).toBe(yellowSize);
   });
 
-  test('issue-report button z-index is above gamification overlay (issue #152)', async ({ page }) => {
+  test('issue-report dialog z-index is above gamification overlay (issue #152)', async ({ page }) => {
     await page.goto('/train');
-    const cls = await page.locator('#issue-report-btn').getAttribute('style');
+    const cls = await page.locator('#issue-modal').getAttribute('style');
     expect(cls).toContain('z-index:60');
   });
 

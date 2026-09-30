@@ -441,6 +441,27 @@ func (h *SettingsHandler) PatchTrainingFilters(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// PutUILang handles PUT /api/settings/ui-lang — stores the app language
+// chosen in Settings → Languages (en, de or zh).
+func (h *SettingsHandler) PutUILang(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UILang string `json:"ui_lang"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.UILang != "en" && req.UILang != "de" && req.UILang != "zh" {
+		writeError(w, http.StatusBadRequest, "invalid ui_lang: must be en, de or zh")
+		return
+	}
+	if err := h.store.SetUILang(r.Context(), UserIDFromContext(r.Context()), req.UILang); err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // PutAPIKeys handles PUT /api/settings/api-keys — encrypts and stores API keys.
 func (h *SettingsHandler) PutAPIKeys(w http.ResponseWriter, r *http.Request) {
 	var req struct {

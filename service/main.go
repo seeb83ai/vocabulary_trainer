@@ -368,6 +368,7 @@ func main() {
 		r.Get("/settings", settingsH.Get)
 		r.Patch("/settings", settingsH.Patch)
 		r.Put("/settings/api-keys", settingsH.PutAPIKeys)
+		r.Put("/settings/ui-lang", settingsH.PutUILang)
 		r.Patch("/training-filters", settingsH.PatchTrainingFilters)
 		r.Post("/settings/backfill-subwords", settingsH.BackfillSubwords)
 		r.Get("/config", translateH.Config(translateH.APIKey != "", llmClient != nil))

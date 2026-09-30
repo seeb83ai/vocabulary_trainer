@@ -262,7 +262,8 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		       COALESCE(autoplay_always, 0),
 		       COALESCE(max_translations_shown, 3),
 		       COALESCE(translation_hide_unranked, 0),
-		       COALESCE(translation_user_order, 'first')
+		       COALESCE(translation_user_order, 'first'),
+		       COALESCE(ui_lang, '')
 		FROM user_settings WHERE user_id = ?`, userID).Scan(
 		&st.PrimaryLang, &st.SecondaryLang,
 		&st.ProgNew, &st.ProgTierStruggling, &st.ProgTierLearning,
@@ -322,6 +323,7 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 		&st.MaxTranslationsShown,
 		&st.TranslationHideUnranked,
 		&st.TranslationUserOrder,
+		&st.UILang,
 	)
 	st.GamificationEnabled = gamificationEnabledInt == 1
 	st.CycleAdvanceOnSuccessOnly = cycleAdvanceOnSuccessOnlyInt == 1
@@ -342,6 +344,19 @@ func (s *Store) GetUserSettingsRaw(ctx context.Context, userID int64) (
 }
 
 // UpdateTrainingFilters saves the training page filter settings for a user.
+// SetUILang stores the user's app (UI) language. It is kept out of
+// UpdateUserSettings so the full-payload settings PATCH cannot wipe it.
+func (s *Store) SetUILang(ctx context.Context, userID int64, lang string) error {
+	if err := s.ensureUserSettings(ctx, userID); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE user_settings SET ui_lang = ? WHERE user_id = ?`, lang, userID); err != nil {
+		return fmt.Errorf("set ui lang: %w", err)
+	}
+	s.invalidateSettingsCache(userID)
+	return nil
+}
+
 func (s *Store) UpdateTrainingFilters(ctx context.Context, userID int64, mode, bucket string, langs []string, mnemonics, components bool, tags []string) error {
 	if err := s.ensureUserSettings(ctx, userID); err != nil {
 		return err

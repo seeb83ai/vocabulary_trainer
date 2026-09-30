@@ -302,6 +302,8 @@ async function loadSettings() {
     }
     const localURLEl = document.getElementById('llm-local-url');
     if (localURLEl && st.llm_local_url) localURLEl.value = st.llm_local_url;
+    syncSettingsReveals();
+    syncRadioDescriptions();
     document.body.dataset.settingsLoaded = 'true';
   } catch { /* ignore */ }
 }
@@ -800,3 +802,107 @@ document.querySelectorAll('[data-settings-autosave] input, [data-settings-autosa
   const evt = (el.tagName === 'SELECT' || el.type === 'checkbox' || el.type === 'radio') ? 'change' : 'input';
   el.addEventListener(evt, () => scheduleAutoSave(group));
 });
+
+// ── Redesign controls: steppers, reveals, radio descriptions, app language ───
+
+// stepNumberValue returns the next value of a − value + stepper, clamped to
+// [min, max] and rounded to the step's precision. Pure for unit testing.
+function stepNumberValue(value, dir, min, max, step) {
+  const s = step > 0 ? step : 1;
+  const n = parseFloat(value);
+  let next = isNaN(n) ? min + (dir > 0 ? s : 0) : n + dir * s;
+  if (isNaN(n) && dir < 0) next = min;
+  next = Math.min(max, Math.max(min, next));
+  // Round to the step's precision so 0.1 + 0.2 style float noise never shows.
+  const decimals = (String(s).split('.')[1] || '').length;
+  return String(Number(next.toFixed(decimals)));
+}
+
+document.querySelectorAll('.st-step').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const input = document.getElementById(btn.dataset.stepFor);
+    if (!input || input.disabled) return;
+    const min = input.min === '' ? -Infinity : parseFloat(input.min);
+    const max = input.max === '' ? Infinity : parseFloat(input.max);
+    const step = input.step === '' ? 1 : parseFloat(input.step);
+    input.value = stepNumberValue(input.value, parseInt(btn.dataset.step, 10), min, max, step);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});
+
+// Rows that only matter while their parent toggle is on are revealed by it.
+const SETTINGS_REVEALS = [
+  ['sentence-blank-enabled', 'sentence-blank-ratio-row'],
+  ['translation-ranking-enabled', 'translation-hide-unranked-row'],
+];
+function syncSettingsReveals() {
+  for (const [toggleId, rowId] of SETTINGS_REVEALS) {
+    const toggle = document.getElementById(toggleId);
+    const row = document.getElementById(rowId);
+    if (toggle && row) row.classList.toggle('hidden', !toggle.checked);
+  }
+}
+for (const [toggleId] of SETTINGS_REVEALS) {
+  document.getElementById(toggleId)?.addEventListener('change', syncSettingsReveals);
+}
+
+// Segmented radio groups show the description of the selected option below.
+function syncRadioDescriptions() {
+  document.querySelectorAll('[data-radio-desc]').forEach(el => {
+    const checked = document.querySelector(`input[name="${el.dataset.radioDesc}"]:checked`);
+    const key = checked && checked.dataset.descKey;
+    el.textContent = key ? t(key).replace(/^\s*[—-]\s*/, '') : '';
+  });
+}
+document.querySelectorAll('input[type="radio"][data-desc-key]').forEach(el => {
+  el.addEventListener('change', syncRadioDescriptions);
+});
+
+// Change password is folded behind a button.
+document.getElementById('pw-toggle')?.addEventListener('click', e => {
+  const form = document.getElementById('pw-form');
+  const open = form.classList.contains('hidden');
+  form.classList.toggle('hidden', !open);
+  e.currentTarget.setAttribute('aria-expanded', String(open));
+  if (open) document.getElementById('pw-current')?.focus();
+});
+
+// App language (Settings → Languages): stored on the server via changeUILang.
+function syncUILangButtons() {
+  document.querySelectorAll('[data-ui-lang]').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.uiLang === getUILang()));
+  });
+}
+document.querySelectorAll('[data-ui-lang]').forEach(b => {
+  b.addEventListener('click', async () => {
+    if (b.dataset.uiLang === getUILang()) return;
+    try {
+      await changeUILang(b.dataset.uiLang);
+      showSaved(t('settings.saved'));
+    } catch {
+      showToastError(t('settings.saveFailed'));
+    }
+    syncUILangButtons();
+  });
+});
+
+// The section index highlights the section currently in view.
+(function initSettingsIndex() {
+  const links = document.querySelectorAll('.st-index-link');
+  if (!links.length || !('IntersectionObserver' in window)) return;
+  const byId = {};
+  links.forEach(a => { byId[a.getAttribute('href').slice(1)] = a; });
+  const obs = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      links.forEach(a => a.classList.remove('is-active'));
+      const a = byId[e.target.id];
+      if (a) a.classList.add('is-active');
+    }
+  }, { rootMargin: '-10% 0px -80% 0px' });
+  Object.keys(byId).forEach(id => { const el = document.getElementById(id); if (el) obs.observe(el); });
+})();
+
+document.addEventListener('langchange', () => { syncUILangButtons(); syncRadioDescriptions(); });
+syncUILangButtons();

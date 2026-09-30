@@ -205,6 +205,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/settings", settingsH.Get)
 	r.Patch("/api/settings", settingsH.Patch)
 	r.Put("/api/settings/api-keys", settingsH.PutAPIKeys)
+	r.Put("/api/settings/ui-lang", settingsH.PutUILang)
 	r.Patch("/api/training-filters", settingsH.PatchTrainingFilters)
 	adminH := &handlers.AdminHandler{Store: s}
 	r.With(handlers.RequireAdmin(s)).Get("/api/admin/overview", adminH.Overview)

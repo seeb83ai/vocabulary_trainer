@@ -233,7 +233,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 ### Frontend (`service/frontend/`)
 | Path | Purpose |
 |---|---|
-| `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`) |
+| `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`), app shell (More sheet, fullscreen), UI-language sync (`changeUILang`, `syncUILang`), report-issue dialog |
 | `service/frontend/i18n.js` | Internationalisation helpers |
 | `service/frontend/demo.js` | Landing-page demo quiz widget |
 | `service/frontend/train-answer.js` | Answer-checking/normalization helpers |
@@ -282,6 +282,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
 | `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags) |
 | `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has |
+| `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
 
