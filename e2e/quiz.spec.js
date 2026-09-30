@@ -2768,6 +2768,9 @@ test.describe('Quiz – accuracy baseline notice', () => {
     await page.setViewportSize({ width: 360, height: 640 });
     await expect(notice).toBeVisible();
     await captureForPR(page, 'train-accuracy-paused-mobile');
+    // A stats request can still be in the handler when the test ends; its
+    // route.fetch() response is then disposed and response.json() throws.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
   test('stats bar has no pause notice without the pause fields', async ({ page }) => {
