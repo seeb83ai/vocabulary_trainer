@@ -285,6 +285,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags) |
 | `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has |
 | `e2e/vocab-redesign.spec.js` | Browser tests: Vocabulary header/summary, filter chips, More filters + sort, row list, Add/Edit sheet (known/reset/delete), ⋯ menu, phone layout |
+| `e2e/stats-redesign.spec.js` | Browser tests: Stats summary tiles (streak vs training time), Levels bar + rows incl. Unseen, folded table, segmented tabs, phone layout |
 | `e2e/train-redesign.spec.js` | Browser tests: Train session bar + session sheet, tier chip, More info box, mix-up layout, new-word card, inline match game, all-done week grid, error card |
 | `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |

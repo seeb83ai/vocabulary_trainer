@@ -1,239 +1,203 @@
 {{template "layout" .}}
 {{define "content"}}
 
-  <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-8">
+  <main class="page-main sx-main">
 
-    <!-- Tabs -->
-    <div class="flex gap-1 bg-white rounded-xl shadow p-1 w-fit flex-wrap">
-      <button id="tab-words"      class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white" data-i18n="stats.words">Words</button>
-      <button id="tab-pinyin"     class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800" data-i18n="nav.pinyin">Pinyin</button>
-      <button id="tab-components" class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800" data-i18n="vocab.viewComponents">Components</button>
-      <button id="tab-mnemonics"  class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-800" data-i18n="nav.mnemonics">Mnemonics</button>
+    <div class="sx-head">
+      <div>
+        <h1 class="page-title" data-i18n="nav.stats">Stats</h1>
+        <p class="page-sub" data-i18n="stats.subtitle">Your last 14 days of training.</p>
+      </div>
+      <div class="ui-seg sx-tabs" role="tablist">
+        <button id="tab-words" type="button" class="tab-btn" aria-pressed="true" data-i18n="stats.words">Words</button>
+        <button id="tab-pinyin" type="button" class="tab-btn" aria-pressed="false" data-i18n="nav.pinyin">Pinyin</button>
+        <button id="tab-components" type="button" class="tab-btn" aria-pressed="false" data-i18n="vocab.viewComponents">Components</button>
+        <button id="tab-mnemonics" type="button" class="tab-btn" aria-pressed="false" data-i18n="nav.mnemonics">Mnemonics</button>
+      </div>
     </div>
 
     <!-- ===== WORDS TAB ===== -->
-    <div id="panel-words" class="space-y-8">
+    <div id="panel-words" class="sx-panel">
 
-      <!-- Chart -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.trainingHistory">Training History</h2>
-        <div id="chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noTrainingData">No training data yet. Start a quiz to see your progress!</div>
-        <div style="min-height:250px"><canvas id="stats-chart" height="200"></canvas></div>
+      <div class="sx-tiles">
+        <div class="sx-tile"><div class="sx-tile-label" data-i18n="stats.answersToday">Answers today</div><div id="tile-answers-value" class="sx-tile-value">—</div><div id="tile-answers-sub" class="sx-tile-sub"></div></div>
+        <div class="sx-tile"><div class="sx-tile-label" data-i18n="stats.accuracy">Accuracy</div><div id="tile-accuracy-value" class="sx-tile-value">—</div><div id="tile-accuracy-sub" class="sx-tile-sub"></div></div>
+        <div class="sx-tile"><div class="sx-tile-label" data-i18n="stats.inTraining">In training</div><div id="tile-training-value" class="sx-tile-value">—</div><div id="tile-training-sub" class="sx-tile-sub"></div></div>
+        <div class="sx-tile"><div id="tile-streak-label" class="sx-tile-label" data-i18n="stats.dayStreak">Day streak</div><div id="tile-streak-value" class="sx-tile-value">—</div><div id="tile-streak-sub" class="sx-tile-sub"></div></div>
       </div>
 
-      <!-- Bucket Breakdown Chart -->
-      <div id="bucket-chart-section" class="hidden bg-white rounded-2xl shadow p-6">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold text-gray-800" data-i18n="stats.bucketBreakdown">Bucket Breakdown</h2>
-          <button id="bucket-stack-toggle" class="text-sm px-3 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition" data-i18n="stats.unstacked">Unstacked</button>
+      <!-- Training history -->
+      <section class="sx-box">
+        <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.trainingHistory">Training history</h2></div>
+        <div id="chart-empty" class="hidden sx-empty" data-i18n="stats.noTrainingData">No training data yet. Start a quiz to see your progress!</div>
+        <div class="sx-chart"><canvas id="stats-chart" height="200"></canvas></div>
+      </section>
+
+      <div id="word-stats-section" class="hidden sx-grid-2">
+        <!-- Levels -->
+        <section class="sx-box">
+          <div class="sx-box-head">
+            <h2 class="sx-title" data-i18n="stats.levels">Levels</h2>
+            <span id="levels-total" class="tr-muted-sm"></span>
+          </div>
+          <div id="bucket-tag-chips" class="sx-chips"></div>
+          <div id="levels-bar" class="sx-stackbar" aria-hidden="true"></div>
+          <div id="tier-legend" class="sx-levels"></div>
+        </section>
+
+        <!-- Due dates -->
+        <section class="sx-box sx-due-box">
+          <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.wordsByDueDate">Due in the next days</h2></div>
+          <div id="due-tag-chips" class="sx-chips"></div>
+          <div id="due-chart-empty" class="hidden sx-empty" data-i18n="stats.noSeenWords">No seen words yet.</div>
+          <div class="sx-chart sx-chart-bottom"><canvas id="due-date-chart" height="220"></canvas></div>
+        </section>
+
+        <!-- Hardest + Most practiced -->
+        <section class="sx-box">
+          <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.hardestWords">Hardest words</h2></div>
+          <div id="hardest-body" class="sx-rank"><div class="sx-empty" data-i18n="stats.loading">Loading...</div></div>
+        </section>
+        <section class="sx-box">
+          <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.mostPracticed">Most practiced</h2></div>
+          <div id="most-practiced-body" class="sx-rank"><div class="sx-empty" data-i18n="stats.loading">Loading...</div></div>
+        </section>
+      </div>
+
+      <!-- Level history (tier counts over time) -->
+      <section id="bucket-chart-section" class="hidden sx-box">
+        <div class="sx-box-head">
+          <h2 class="sx-title" data-i18n="stats.levelHistory">Level history</h2>
+          <button id="bucket-stack-toggle" type="button" class="ui-btn ui-btn-secondary vb-btn" data-i18n="stats.unstacked">Unstacked</button>
         </div>
-        <div style="min-height:250px"><canvas id="bucket-chart" height="200"></canvas></div>
-      </div>
+        <div class="sx-chart"><canvas id="bucket-chart" height="200"></canvas></div>
+      </section>
 
-      <!-- Word Count by Due Date -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-          <h2 class="text-lg font-semibold text-gray-800" data-i18n="stats.wordsByDueDate">Words by Due Date</h2>
-          <div id="due-tag-chips" class="flex flex-wrap gap-1.5"></div>
-        </div>
-        <div id="due-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noSeenWords">No seen words yet.</div>
-        <div style="min-height:250px"><canvas id="due-date-chart" height="200"></canvas></div>
-      </div>
-
-      <!-- Table -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.last14Days">Last 14 Days</h2>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm text-left">
-            <thead class="text-gray-500 border-b">
+      <!-- Last 14 days (folded table) -->
+      <section class="sx-box">
+        <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.last14Days">Last 14 days</h2></div>
+        <button id="stats-table-toggle" type="button" class="tr-disclosure" aria-expanded="false" aria-controls="stats-table-wrap">▸ <span data-i18n="stats.showTable">Show table</span></button>
+        <div id="stats-table-wrap" class="hidden sx-table-wrap">
+          <table class="sx-table sx-table-wide">
+            <thead>
               <tr>
-                <th class="py-2 pr-4" data-i18n="stats.date">Date</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.mistakes">Mistakes</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.wordsSeen">Words Seen</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.bestStreak">Best Streak</th>
-                <th class="py-2 pr-4 text-right text-violet-600" data-i18n="tier.new">New</th>
-                <th class="py-2 pr-4 text-right text-red-600" data-i18n="tier.struggling">Struggling</th>
-                <th class="py-2 pr-4 text-right text-amber-600" data-i18n="tier.learning">Learning</th>
-                <th class="py-2 pr-4 text-right text-blue-600" data-i18n="tier.practicing">Practicing</th>
-                <th class="py-2 pr-4 text-right text-green-600" data-i18n="tier.mastered">Mastered</th>
-                <th class="py-2 text-right text-gray-500" data-i18n="stats.trainingTime">Time</th>
+                <th data-i18n="stats.date">Date</th>
+                <th class="num" data-i18n="stats.attempts">Attempts</th>
+                <th class="num" data-i18n="stats.mistakes">Mistakes</th>
+                <th class="num" data-i18n="stats.accuracy">Accuracy</th>
+                <th class="num" data-i18n="stats.wordsSeen">Words Seen</th>
+                <th class="num" data-i18n="stats.bestStreak">Best Streak</th>
+                <th class="num sx-th-tier" style="color:#6d28d9">🌰 <span data-i18n="tier.new">New</span></th>
+                <th class="num sx-th-tier" style="color:#b91c1c">🌱 <span data-i18n="tier.struggling">Struggling</span></th>
+                <th class="num sx-th-tier" style="color:#b45309">🌿 <span data-i18n="tier.learning">Learning</span></th>
+                <th class="num sx-th-tier" style="color:#1d4ed8">🌳 <span data-i18n="tier.practicing">Practicing</span></th>
+                <th class="num sx-th-tier" style="color:#15803d">🌸 <span data-i18n="tier.mastered">Mastered</span></th>
+                <th class="num" data-i18n="stats.trainingTime">Time</th>
               </tr>
             </thead>
             <tbody id="stats-table-body">
-              <tr><td colspan="12" class="py-8 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
+              <tr><td colspan="12" class="sx-empty" data-i18n="stats.loading">Loading...</td></tr>
             </tbody>
           </table>
         </div>
-      </div>
-
-      <!-- Word Statistics -->
-      <div id="word-stats-section" class="hidden space-y-8">
-
-        <!-- Accuracy Distribution -->
-        <div class="bg-white rounded-2xl shadow p-6">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-            <h2 class="text-lg font-semibold text-gray-800" data-i18n="stats.accuracyDistribution">Accuracy Distribution</h2>
-            <div id="bucket-tag-chips" class="flex flex-wrap gap-1.5"></div>
-          </div>
-          <div class="flex flex-col sm:flex-row items-center gap-6">
-            <div class="w-48 h-48 flex-shrink-0"><canvas id="accuracy-chart"></canvas></div>
-            <div id="tier-legend" class="flex-1 text-sm w-full"></div>
-          </div>
-        </div>
-
-        <!-- Hardest + Most practiced -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div class="bg-white rounded-2xl shadow p-6">
-            <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.hardestWords">Hardest Words</h2>
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm text-left">
-                <thead class="text-gray-500 border-b">
-                  <tr>
-                    <th class="py-2 pr-4" data-i18n="stats.word">Word</th>
-                    <th class="py-2 pr-4" data-i18n="stats.translation">Translation</th>
-                    <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
-                    <th class="py-2 text-right" data-i18n="stats.attempts">Attempts</th>
-                  </tr>
-                </thead>
-                <tbody id="hardest-body">
-                  <tr><td colspan="4" class="py-4 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div class="bg-white rounded-2xl shadow p-6">
-            <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.mostPracticed">Most Practiced</h2>
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm text-left">
-                <thead class="text-gray-500 border-b">
-                  <tr>
-                    <th class="py-2 pr-4" data-i18n="stats.word">Word</th>
-                    <th class="py-2 pr-4" data-i18n="stats.translation">Translation</th>
-                    <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
-                    <th class="py-2 text-right" data-i18n="stats.accuracy">Accuracy</th>
-                  </tr>
-                </thead>
-                <tbody id="most-practiced-body">
-                  <tr><td colspan="4" class="py-4 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
+      </section>
 
     </div><!-- end panel-words -->
 
     <!-- ===== PINYIN TAB ===== -->
-    <div id="panel-pinyin" class="hidden space-y-8">
-
-      <!-- Training History Chart -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.pinyinTrainingHistory">Pinyin Training History</h2>
-        <div id="pinyin-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noPinyinTrainingData">No pinyin training data yet. Start a session to see your progress!</div>
-        <div style="min-height:250px"><canvas id="pinyin-stats-chart" height="200"></canvas></div>
-      </div>
-
-      <!-- Tone Accuracy Chart -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <div class="flex items-baseline gap-3 mb-4">
-          <h2 class="text-lg font-semibold text-gray-800" data-i18n="stats.accuracyPerTone">Accuracy per Tone — Last 14 Days</h2>
-          <span id="pinyin-tone-chart-range" class="text-sm text-gray-400"></span>
+    <div id="panel-pinyin" class="hidden sx-panel">
+      <section class="sx-box">
+        <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.pinyinTrainingHistory">Pinyin training history</h2></div>
+        <div id="pinyin-chart-empty" class="hidden sx-empty" data-i18n="stats.noPinyinTrainingData">No pinyin training data yet. Start a session to see your progress!</div>
+        <div class="sx-chart"><canvas id="pinyin-stats-chart" height="200"></canvas></div>
+      </section>
+      <section class="sx-box">
+        <div class="sx-box-head">
+          <h2 class="sx-title" data-i18n="stats.accuracyPerTone">Accuracy per tone — last 14 days</h2>
+          <span id="pinyin-tone-chart-range" class="tr-muted-sm"></span>
         </div>
-        <div id="pinyin-tone-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noToneData">No tone data yet.</div>
-        <div style="min-height:250px"><canvas id="pinyin-tone-chart" height="200"></canvas></div>
-      </div>
-
-      <!-- Last 14 Days Table -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.last14Days">Last 14 Days</h2>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm text-left">
-            <thead class="text-gray-500 border-b">
+        <div id="pinyin-tone-chart-empty" class="hidden sx-empty" data-i18n="stats.noToneData">No tone data yet.</div>
+        <div class="sx-chart"><canvas id="pinyin-tone-chart" height="200"></canvas></div>
+      </section>
+      <section class="sx-box">
+        <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.last14Days">Last 14 days</h2></div>
+        <button id="pinyin-table-toggle" type="button" class="tr-disclosure" aria-expanded="false" aria-controls="pinyin-table-wrap">▸ <span data-i18n="stats.showTable">Show table</span></button>
+        <div id="pinyin-table-wrap" class="hidden sx-table-wrap">
+          <table class="sx-table">
+            <thead>
               <tr>
-                <th class="py-2 pr-4" data-i18n="stats.date">Date</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.mistakes">Mistakes</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
-                <th class="py-2 text-right" data-i18n="stats.soundsSeen">Sounds Seen</th>
+                <th data-i18n="stats.date">Date</th>
+                <th class="num" data-i18n="stats.attempts">Attempts</th>
+                <th class="num" data-i18n="stats.mistakes">Mistakes</th>
+                <th class="num" data-i18n="stats.accuracy">Accuracy</th>
+                <th class="num" data-i18n="stats.soundsSeen">Sounds Seen</th>
               </tr>
             </thead>
             <tbody id="pinyin-table-body">
-              <tr><td colspan="5" class="py-8 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
+              <tr><td colspan="5" class="sx-empty" data-i18n="stats.loading">Loading...</td></tr>
             </tbody>
           </table>
         </div>
-      </div>
-
+      </section>
     </div><!-- end panel-pinyin -->
 
     <!-- ===== COMPONENTS TAB ===== -->
-    <div id="panel-components" class="hidden space-y-8">
-
-      <!-- Training History Chart -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.compTrainingHistory">Component Training History</h2>
-        <div id="comp-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noCompTrainingData">No component training data yet. Start a session to see your progress!</div>
-        <div style="min-height:250px"><canvas id="comp-stats-chart" height="200"></canvas></div>
-      </div>
-
-      <!-- Component Count by Due Date -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.componentsByDueDate">Components by Due Date</h2>
-        <div id="comp-due-chart-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noSeenComponents">No seen components yet.</div>
-        <div style="min-height:250px"><canvas id="comp-due-date-chart" height="200"></canvas></div>
-      </div>
-
-      <!-- Last 14 Days Table -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.last14Days">Last 14 Days</h2>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm text-left">
-            <thead class="text-gray-500 border-b">
+    <div id="panel-components" class="hidden sx-panel">
+      <section class="sx-box">
+        <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.compTrainingHistory">Component training history</h2></div>
+        <div id="comp-chart-empty" class="hidden sx-empty" data-i18n="stats.noCompTrainingData">No component training data yet. Start a session to see your progress!</div>
+        <div class="sx-chart"><canvas id="comp-stats-chart" height="200"></canvas></div>
+      </section>
+      <section class="sx-box">
+        <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.componentsByDueDate">Components by Due Date</h2></div>
+        <div id="comp-due-chart-empty" class="hidden sx-empty" data-i18n="stats.noSeenComponents">No seen components yet.</div>
+        <div class="sx-chart"><canvas id="comp-due-date-chart" height="200"></canvas></div>
+      </section>
+      <section class="sx-box">
+        <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.last14Days">Last 14 days</h2></div>
+        <button id="comp-table-toggle" type="button" class="tr-disclosure" aria-expanded="false" aria-controls="comp-table-wrap">▸ <span data-i18n="stats.showTable">Show table</span></button>
+        <div id="comp-table-wrap" class="hidden sx-table-wrap">
+          <table class="sx-table">
+            <thead>
               <tr>
-                <th class="py-2 pr-4" data-i18n="stats.date">Date</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.mistakes">Mistakes</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.accuracy">Accuracy</th>
-                <th class="py-2 text-right text-violet-600" data-i18n="vocab.viewComponents">Components</th>
+                <th data-i18n="stats.date">Date</th>
+                <th class="num" data-i18n="stats.attempts">Attempts</th>
+                <th class="num" data-i18n="stats.mistakes">Mistakes</th>
+                <th class="num" data-i18n="stats.accuracy">Accuracy</th>
+                <th class="num" style="color:#6d28d9" data-i18n="vocab.viewComponents">Components</th>
               </tr>
             </thead>
             <tbody id="comp-table-body">
-              <tr><td colspan="5" class="py-8 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
+              <tr><td colspan="5" class="sx-empty" data-i18n="stats.loading">Loading...</td></tr>
             </tbody>
           </table>
         </div>
-      </div>
-
+      </section>
     </div><!-- end panel-components -->
 
     <!-- ===== MNEMONICS TAB ===== -->
-    <div id="panel-mnemonics" class="hidden space-y-8">
-
-      <!-- Breakdown by entity type -->
-      <div class="bg-white rounded-2xl shadow p-6">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4" data-i18n="stats.mnemonicLibraryStats">Mnemonic Library Stats</h2>
-        <div id="hmm-breakdown-empty" class="hidden text-center text-gray-400 py-12" data-i18n="stats.noMnemonicsTrained">No mnemonics trained yet. Set up your HMM library and start training!</div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm text-left">
-            <thead class="text-gray-500 border-b">
+    <div id="panel-mnemonics" class="hidden sx-panel">
+      <div id="hmm-tiles" class="sx-tiles"></div>
+      <section class="sx-box">
+        <div class="sx-box-head"><h2 class="sx-title" data-i18n="stats.mnemonicLibraryStats">Mnemonic library</h2></div>
+        <div id="hmm-breakdown-empty" class="hidden sx-empty" data-i18n="stats.noMnemonicsTrained">No mnemonics trained yet. Set up your HMM library and start training!</div>
+        <div class="sx-table-wrap">
+          <table class="sx-table">
+            <thead>
               <tr>
-                <th class="py-2 pr-4" data-i18n="stats.typeCol">Type</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.totalCol">Total</th>
-                <th class="py-2 pr-4 text-right" data-i18n="vocab.dueToday">Due Today</th>
-                <th class="py-2 pr-4 text-right" data-i18n="stats.attempts">Attempts</th>
-                <th class="py-2 text-right" data-i18n="stats.accuracy">Accuracy</th>
+                <th data-i18n="stats.typeCol">Type</th>
+                <th class="num" data-i18n="stats.totalCol">Total</th>
+                <th class="num" data-i18n="vocab.dueToday">Due today</th>
+                <th class="num" data-i18n="stats.attempts">Attempts</th>
+                <th class="num" data-i18n="stats.accuracy">Accuracy</th>
               </tr>
             </thead>
             <tbody id="hmm-breakdown-body">
-              <tr><td colspan="5" class="py-8 text-center text-gray-400" data-i18n="stats.loading">Loading...</td></tr>
+              <tr><td colspan="5" class="sx-empty" data-i18n="stats.loading">Loading...</td></tr>
             </tbody>
           </table>
         </div>
-      </div>
-
+      </section>
     </div><!-- end panel-mnemonics -->
 
   </main>

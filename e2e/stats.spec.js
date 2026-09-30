@@ -44,11 +44,12 @@ test.describe('Stats page', () => {
       await expect(chip).toBeVisible();
 
       await chip.click();
-      await expect(chip).toHaveClass(/bg-blue-600/);
+      await expect(chip).toHaveAttribute('aria-pressed', 'true');
 
       // Only the tagged word matches the filter, so the bucket breakdown's
       // total across all tiers must be exactly one word (100%).
-      await expect(page.locator('#tier-legend')).toContainText('(100%)');
+      await expect(page.locator('#levels-total')).toHaveText('1 word');
+      await expect(page.locator('#tier-legend .sx-level-pct', { hasText: '100%' })).toHaveCount(1);
     } finally {
       // Shared single-worker DB — clean up so this word/tag doesn't leak
       // into other specs' word counts or tag lists.
@@ -75,8 +76,9 @@ test.describe('Stats page', () => {
 
       const legend = page.locator('#tier-legend');
       await expect(legend).toContainText('Unseen');
-      await expect(legend).toContainText('1 (100%)');
-      await page.waitForTimeout(1200); // let the doughnut animation finish
+      const unseenRow = legend.locator('.sx-level-row', { hasText: 'Unseen' });
+      await expect(unseenRow.locator('.sx-level-n')).toHaveText('1');
+      await expect(unseenRow.locator('.sx-level-pct')).toHaveText('100%');
       await captureForPR(page, 'stats-unseen-bucket');
     } finally {
       await page.request.delete(`/api/words/${created.id}`);
