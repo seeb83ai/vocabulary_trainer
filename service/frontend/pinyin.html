@@ -1,118 +1,110 @@
 {{template "layout" .}}
 {{define "content"}}
 
-  <!-- Stats bar -->
-  <div class="bg-purple-50 border-b border-purple-100">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-6 text-sm text-purple-700">
-      <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="pinyin.dueToday">Due today:</span> <strong id="stats-due">—</strong></span>
-      <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="pinyin.totalSounds">Total sounds:</span> <strong id="stats-total">—</strong></span>
-    </div>
-  </div>
-
-  <!-- Tag filter -->
-  <div id="tag-filter-bar" class="bg-white border-b border-gray-200">
-    <div id="tag-chips" class="max-w-2xl mx-auto px-4 py-2 flex gap-2 flex-wrap items-center">
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="pinyin.group">Group:</span>
-    </div>
-  </div>
-
-  <!-- Main content -->
-  <main class="flex-1 flex items-start justify-center px-4 py-10">
-    <div class="w-full max-w-lg">
-
-      <!-- Empty state -->
-      <div id="empty-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-5xl mb-4">🔊</div>
-        <h2 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="pinyin.noSounds">No pinyin sounds imported</h2>
-        <p class="text-gray-500 mb-6" data-i18n="pinyin.noSoundsHelp">Run <code class="bg-gray-100 px-2 py-1 rounded text-sm">make import-pinyin</code> to import audio files.</p>
-      </div>
-
-      <!-- Success state -->
-      <div id="success-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-5xl mb-4">🎉</div>
-        <h2 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="pinyin.allDone">All done for now!</h2>
-        <p class="text-gray-500 mb-6" data-i18n="pinyin.allDoneMsg">No more pinyin sounds due. Come back later for review.</p>
-      </div>
-
-      <!-- Error state -->
-      <div id="error-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-4xl mb-4">⚠️</div>
-        <p id="error-msg" class="text-red-600"></p>
-      </div>
-
-      <!-- Card area -->
-      <div id="card-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-8 text-center">
-          <div id="mode-label" class="text-sm font-medium text-purple-600 uppercase tracking-wider mb-6"></div>
-
-          <!-- Play button -->
-          <button id="play-btn" type="button" class="text-6xl text-gray-400 hover:text-purple-500 transition mb-6 mx-auto block" data-i18n-title="pinyin.playAudio" title="Play audio">
-            🔊
-          </button>
-          <p class="text-sm text-gray-400 mb-6" data-i18n="pinyin.listenHint">Listen and identify the pinyin sound</p>
-
-          <!-- Multiple choice options -->
-          <div id="mc-options" class="hidden grid grid-cols-2 gap-3 mb-4">
-          </div>
-
-          <!-- Type answer input -->
-          <form id="answer-form" class="hidden mt-4">
-            <input
-              id="answer-input"
-              type="text"
-              autocomplete="off"
-              autocorrect="off"
-              spellcheck="false"
-              placeholder="Type pinyin, e.g. ba1"
-              data-i18n-placeholder="pinyin.placeholder"
-              class="w-full border border-gray-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4 text-center"
-            >
-            <button
-              type="submit"
-              class="w-full bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white font-semibold py-3 rounded-xl text-lg transition"
-              data-i18n="pinyin.submit"
-            >
-              Submit
-            </button>
-          </form>
+  <!-- Sticky bar: session progress, due/total and group chips -->
+  <div id="pinyin-bar" class="tr-bar">
+    <div class="tr-bar-inner py-bar-inner">
+      <div class="tr-progress">
+        <div class="tr-progress-row">
+          <span id="pinyin-progress-label" class="tr-progress-label">—</span>
+          <span id="pinyin-total-label" class="tr-progress-meta">—</span>
         </div>
+        <div class="tr-progress-track"><div id="pinyin-progress-bar" class="tr-progress-fill py-progress-fill" style="width:0%"></div></div>
       </div>
+      <div id="tag-chips" class="py-chips" role="group" data-i18n-aria-label="pinyin.group" aria-label="Group"></div>
+    </div>
+  </div>
 
-      <!-- Result area -->
-      <div id="result-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-8 text-center">
-          <div id="result-icon" class="text-3xl font-bold mb-4"></div>
+  <main class="py-main">
 
-          <div id="result-correct-answer" class="text-2xl font-bold text-gray-800 mb-2"></div>
-          <button id="result-play-btn" type="button" class="text-2xl text-gray-400 hover:text-purple-500 transition mb-2" data-i18n-title="pinyin.replay" title="Replay">🔊</button>
+    <!-- Empty state -->
+    <div id="empty-state" class="hidden tr-card py-state">
+      <div class="py-state-tile is-soft hanzi">音</div>
+      <h1 class="py-state-title" data-i18n="pinyin.noSounds">No pinyin sounds imported</h1>
+      <p class="py-state-body"><span data-i18n="pinyin.noSoundsLead">Import the audio files to start ear training:</span> <code>make import-pinyin</code></p>
+    </div>
 
-          <!-- Tone variants -->
-          <div id="tone-variants" class="hidden flex justify-center gap-2 flex-wrap mb-4"></div>
+    <!-- Success state -->
+    <div id="success-state" class="hidden tr-card py-state">
+      <div class="py-state-tile hanzi">音</div>
+      <h1 class="py-state-title" data-i18n="pinyin.allDone">All sounds done for now</h1>
+      <p class="py-state-body" data-i18n="pinyin.allDoneMsg">No more pinyin sounds are due. Come back later for review.</p>
+      <div class="py-state-actions">
+        <a href="/train" class="ui-btn ui-btn-secondary" data-i18n="pinyin.trainWords">Train words</a>
+      </div>
+    </div>
 
-          <div id="result-your-answer" class="hidden text-gray-500 mb-4"></div>
-          <div id="result-confusion" class="hidden text-sm text-orange-600 mb-4"></div>
+    <!-- Error state -->
+    <div id="error-state" class="hidden tr-card py-state">
+      <div class="py-state-tile is-error">!</div>
+      <p id="error-msg" class="py-state-body py-error"></p>
+    </div>
 
-          <div class="flex justify-center gap-6 text-sm text-gray-500 mb-8 mt-3">
-            <div class="text-center">
-              <span id="next-due-info"></span>
-              <div id="bucket-info" class="hidden text-xs text-gray-400 mt-0.5"></div>
-            </div>
-            <div class="text-center">
-              <span id="attempt-stats"></span>
-            </div>
-          </div>
+    <!-- Card area -->
+    <div id="card-area" class="hidden">
+      <div class="tr-card py-card">
+        <div id="mode-label" class="tr-eyebrow py-eyebrow"></div>
 
-          <button
-            id="next-btn"
-            class="w-full bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white font-semibold py-3 rounded-xl text-lg transition"
-            data-i18n="pinyin.next"
+        <button id="play-btn" type="button" class="py-play" data-i18n-title="pinyin.playAudio" title="Play audio" data-i18n-aria-label="pinyin.playAudio" aria-label="Play audio">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        </button>
+        <p class="py-hint" data-i18n="pinyin.listenHint">Listen and identify the sound.</p>
+
+        <!-- Multiple choice options -->
+        <div id="mc-options" class="hidden py-options"></div>
+
+        <!-- Type answer input -->
+        <form id="answer-form" class="hidden py-form">
+          <input
+            id="answer-input"
+            type="text"
+            autocomplete="off"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="e.g. ba4 or bà"
+            data-i18n-placeholder="pinyin.placeholder"
+            class="py-input"
           >
-            Next →
+          <button type="submit" class="py-primary" data-i18n="pinyin.submit">Check</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Result area -->
+    <div id="result-area" class="hidden">
+      <div class="tr-card py-card-result">
+        <div class="tr-result-head">
+          <span id="result-status-icon" class="tr-status-icon" aria-hidden="true"></span>
+          <span id="result-icon" class="tr-result-title"></span>
+        </div>
+
+        <div class="py-answer-row">
+          <span id="result-correct-answer" class="py-answer"></span>
+          <button id="result-play-btn" type="button" class="py-replay" data-i18n-title="pinyin.replay" title="Replay" data-i18n-aria-label="pinyin.replay" aria-label="Replay">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>
           </button>
         </div>
-      </div>
 
+        <div id="result-your-answer" class="hidden py-your-answer"></div>
+        <div id="result-confusion" class="hidden py-confusion"></div>
+
+        <div id="tone-variants-wrap" class="hidden">
+          <div class="py-variants-title" data-i18n="pinyin.allTones">All tones</div>
+          <div id="tone-variants" class="py-variants"></div>
+        </div>
+
+        <div class="tr-status-row">
+          <div class="tr-status-left">
+            <span id="bucket-info" class="hidden"></span>
+            <span id="attempt-stats" class="tr-muted-sm"></span>
+          </div>
+          <span id="next-due-info" class="py-next-due"></span>
+        </div>
+
+        <button id="next-btn" type="button" class="py-primary py-next" data-i18n="pinyin.next">Next</button>
+      </div>
     </div>
+
   </main>
 
 {{end}}

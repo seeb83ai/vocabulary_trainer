@@ -4,6 +4,12 @@ let currentCard = null;
 let isSubmitted = false;
 let selectedTags = JSON.parse(localStorage.getItem('pinyinTags') || '[]');
 let currentAudio = null;
+let answeredThisSession = 0;
+
+const STATUS_ICON = {
+  correct: 'M5 12.5l4.5 4.5L19 7.5',
+  wrong: 'M6 6l12 12M18 6 6 18',
+};
 
 function playPinyinAudio(filename) {
   if (currentAudio) {
@@ -19,12 +25,20 @@ async function loadStats() {
     const params = new URLSearchParams();
     if (selectedTags.length) params.set('tags', selectedTags.join(','));
     const stats = await apiFetch(`/api/pinyin-quiz/stats?${params}`);
-    setText('stats-due', stats.due_today);
-    setText('stats-total', stats.total);
+    renderPinyinBar(stats);
     return stats;
   } catch (e) {
     return null;
   }
+}
+
+// renderPinyinBar fills the sticky bar: answers this session against the
+// sounds still due, and the due / total counts.
+function renderPinyinBar(stats) {
+  const p = sessionProgress(answeredThisSession, stats.due_today);
+  setText('pinyin-progress-label', t('session.progress', { done: p.done, total: p.total }));
+  setText('pinyin-total-label', t('pinyin.dueTotal', { due: stats.due_today, total: stats.total }));
+  $('pinyin-progress-bar').style.width = p.pct + '%';
 }
 
 async function loadTags() {
@@ -33,19 +47,20 @@ async function loadTags() {
     const container = $('tag-chips');
     if (!container || !tags.length) return;
 
-    // Remove old tag buttons (keep the label)
     container.querySelectorAll('.tag-btn').forEach(b => b.remove());
 
     // "All" button
     const allBtn = document.createElement('button');
-    allBtn.className = 'tag-btn px-2.5 py-0.5 rounded-full text-xs font-medium transition';
+    allBtn.type = 'button';
+    allBtn.className = 'tag-btn ui-chip py-chip';
     allBtn.textContent = t('pinyin.all');
     allBtn.dataset.tag = '';
     container.appendChild(allBtn);
 
     for (const tag of tags) {
       const btn = document.createElement('button');
-      btn.className = 'tag-btn px-2.5 py-0.5 rounded-full text-xs font-medium transition';
+      btn.type = 'button';
+      btn.className = 'tag-btn ui-chip py-chip';
       btn.textContent = tag;
       btn.dataset.tag = tag;
       container.appendChild(btn);
@@ -58,8 +73,7 @@ function applyTagPills() {
   document.querySelectorAll('.tag-btn').forEach(btn => {
     const tag = btn.dataset.tag;
     const active = tag === '' ? selectedTags.length === 0 : selectedTags.includes(tag);
-    btn.className = 'tag-btn px-2.5 py-0.5 rounded-full text-xs font-medium transition ' +
-      (active ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200');
+    btn.setAttribute('aria-pressed', String(active));
   });
 }
 
@@ -99,6 +113,10 @@ function showCard() {
   if (!currentCard) return;
 
   setText('mode-label', t(currentCard.mode === 'multiple_choice' ? 'pinyin.listenChoose' : 'pinyin.listenType'));
+  const play = $('play-btn');
+  play.classList.remove('is-playing');
+  void play.offsetWidth;
+  play.classList.add('is-playing');
 
   // Setup play button
   $('play-btn').onclick = () => playPinyinAudio(currentCard.audio_file);
@@ -126,7 +144,8 @@ function renderMCOptions(options) {
   container.innerHTML = '';
   for (const opt of options) {
     const btn = document.createElement('button');
-    btn.className = 'mc-btn px-4 py-4 rounded-xl text-lg font-medium border-2 border-gray-200 hover:border-purple-400 hover:bg-purple-50 transition text-gray-800';
+    btn.type = 'button';
+    btn.className = 'mc-btn py-option';
     btn.textContent = opt.label;
     btn.dataset.soundId = opt.sound_id;
     btn.addEventListener('click', () => {
@@ -157,44 +176,55 @@ async function submitAnswer(answer) {
   }
 }
 
+function setPinyinResultHead(correct) {
+  const kind = correct ? 'correct' : 'wrong';
+  const title = $('result-icon');
+  title.textContent = t(correct ? 'pinyin.correct' : 'pinyin.wrong');
+  title.className = 'tr-result-title' + (correct ? '' : ' is-wrong');
+  const circle = $('result-status-icon');
+  circle.className = 'tr-status-icon' + (correct ? '' : ' is-wrong');
+  circle.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="${STATUS_ICON[kind]}"/></svg>`;
+}
+
+// In multiple-choice mode the answer is a sound id; show its label instead.
+function answerLabel(answer) {
+  if (currentCard.mode !== 'multiple_choice') return answer;
+  const opt = (currentCard.options || []).find(o => String(o.sound_id) === String(answer));
+  return opt ? opt.label : answer;
+}
+
 function showResult(resp) {
   hide('card-area');
+  answeredThisSession++;
 
-  // Icon
-  if (resp.correct) {
-    setText('result-icon', t('pinyin.correct'));
-    $('result-icon').className = 'text-3xl font-bold mb-4 text-green-600';
-  } else {
-    setText('result-icon', t('pinyin.wrong'));
-    $('result-icon').className = 'text-3xl font-bold mb-4 text-red-500';
-  }
+  setPinyinResultHead(resp.correct);
 
-  // Correct answer
   setText('result-correct-answer', resp.correct_answer);
   $('result-play-btn').onclick = () => playPinyinAudio(currentCard.audio_file);
 
-  // Tone variants — let user listen to all tones
+  // Tone variants — let the user listen to every tone of the syllable.
   const tvContainer = $('tone-variants');
   tvContainer.innerHTML = '';
   if (resp.tone_variants && resp.tone_variants.length > 1) {
     for (const v of resp.tone_variants) {
       const btn = document.createElement('button');
-      btn.className = 'px-3 py-1.5 rounded-lg text-sm font-medium transition ' +
-        (v.current
-          ? 'bg-purple-100 text-purple-700 border-2 border-purple-400'
-          : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200');
-      btn.textContent = v.label;
+      btn.type = 'button';
+      btn.className = 'py-variant' + (v.current ? ' is-current' : '');
+      if (v.current) btn.setAttribute('aria-current', 'true');
+      btn.innerHTML = `<span class="py-variant-label">${escHtml(v.label)}</span>` +
+        (v.tone >= 1 && v.tone <= 5 ? `<span class="py-variant-tone">${escHtml(t('pinyin.tone' + v.tone))}</span>` : '');
       btn.addEventListener('click', () => playPinyinAudio(v.filename));
       tvContainer.appendChild(btn);
     }
-    show('tone-variants');
+    tvContainer.style.gridTemplateColumns = `repeat(${Math.min(resp.tone_variants.length, 5)}, minmax(0, 1fr))`;
+    show('tone-variants-wrap');
   } else {
-    hide('tone-variants');
+    hide('tone-variants-wrap');
   }
 
-  // Your answer (type mode only)
-  if (resp.your_answer) {
-    $('result-your-answer').innerHTML = `${t('pinyin.yourAnswer')}: <strong>${escHtml(resp.your_answer)}</strong>`;
+  // Your answer (wrong answers only)
+  if (resp.your_answer && !resp.correct) {
+    $('result-your-answer').innerHTML = `<span class="py-your-label">${escHtml(t('pinyin.yourAnswerLabel'))}</span><span class="py-your-value">${escHtml(answerLabel(resp.your_answer))}</span>`;
     show('result-your-answer');
   } else {
     hide('result-your-answer');
@@ -214,21 +244,21 @@ function showResult(resp) {
   if (resp.learning) {
     setText('next-due-info', t('pinyin.learning', { n: resp.graduate_reps }));
   } else if (resp.interval_days > 0) {
-    const days = resp.interval_days;
-    setText('next-due-info', t('pinyin.nextReview', { n: days }));
+    setText('next-due-info', t('pinyin.nextReview', { n: resp.interval_days }));
   } else {
     setText('next-due-info', t('pinyin.dueSoon'));
   }
 
-  // Tier transition
-  if (resp.prev_tier && resp.tier) {
-    setText('bucket-info', `${resp.prev_tier} → ${resp.tier}`);
-    show('bucket-info');
-  } else if (resp.tier) {
-    setText('bucket-info', resp.tier);
-    show('bucket-info');
+  // Tier chip; a changed tier gets a ring.
+  const tier = TIERS.find(e => e.label === resp.tier);
+  const bucket = $('bucket-info');
+  if (tier) {
+    const changed = !!resp.prev_tier && resp.prev_tier !== resp.tier;
+    bucket.className = `tier-chip tier-chip-${tier.label.toLowerCase()}` + (changed ? ' is-changed' : '');
+    bucket.innerHTML = `<span class="tier-icon">${tier.icon}</span>${escHtml(t(tier.i18nKey))}`;
   } else {
-    hide('bucket-info');
+    bucket.className = 'hidden';
+    bucket.innerHTML = '';
   }
 
   // Attempts
@@ -237,20 +267,9 @@ function showResult(resp) {
     : 0;
   setText('attempt-stats', `${resp.total_correct}/${resp.total_attempts} (${acc}%)`);
 
-  // Highlight MC buttons if still visible
-  if (currentCard.mode === 'multiple_choice') {
-    document.querySelectorAll('.mc-btn').forEach(btn => {
-      const sid = parseInt(btn.dataset.soundId);
-      if (sid === currentCard.sound_id) {
-        btn.className = 'mc-btn px-4 py-4 rounded-xl text-lg font-medium border-2 border-green-500 bg-green-50 text-green-700';
-      } else if (!resp.correct && String(sid) === resp.your_answer) {
-        btn.className = 'mc-btn px-4 py-4 rounded-xl text-lg font-medium border-2 border-red-400 bg-red-50 text-red-600';
-      }
-    });
-  }
-
   show('result-area');
   $('next-btn').focus();
+  loadStats();
 }
 
 function formatDuration(ms) {
