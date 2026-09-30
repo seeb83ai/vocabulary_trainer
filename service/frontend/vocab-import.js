@@ -148,10 +148,8 @@ function switchTab(name) {
   tabs.forEach(tab => {
     const active = tab === name;
     $('panel-' + tab).classList.toggle('hidden', !active);
-    $('tab-' + tab).classList.toggle('border-blue-600', active);
-    $('tab-' + tab).classList.toggle('text-blue-600', active);
-    $('tab-' + tab).classList.toggle('border-transparent', !active);
-    $('tab-' + tab).classList.toggle('text-gray-500', !active);
+    $('tab-' + tab).classList.toggle('is-active', active);
+    $('tab-' + tab).setAttribute('aria-selected', String(active));
   });
 
   if (name === 'import' && !importSourceTagsLoaded) {

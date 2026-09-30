@@ -148,54 +148,37 @@ describe('pagination logic', () => {
   });
 });
 
-// ── renderDue ─────────────────────────────────────────────────────────────────
-// Inlined from vocab.js (without i18n/HTML, using plain strings for logic).
+// ── dueLabel ──────────────────────────────────────────────────────────────────
+// Inlined from vocab-list.js: the row's due label as an i18n key + params.
 
-function renderDue(word) {
-  if (word.total_attempts === 0) return 'unseen';
-  if (!word.due_date) return '—';
+function dueLabel(word, now) {
+  if (!word.total_attempts || !word.due_date) return null;
   const due = new Date(word.due_date);
-  if (isNaN(due.getTime())) return '—';
-  const diffDays = Math.round((due - new Date()) / 86400000);
-  if (diffDays <= 0) return 'due';
-  return `in ${diffDays}d`;
+  if (isNaN(due.getTime())) return null;
+  const diffDays = Math.round((due - now) / 86400000);
+  if (diffDays <= 0) return { key: 'vocab.dueTodayLabel', today: true };
+  if (diffDays === 1) return { key: 'vocab.dueTomorrowLabel', today: false };
+  return { key: 'vocab.inDays', n: diffDays, today: false };
 }
 
-describe('renderDue', () => {
-  it('returns "unseen" when no attempts', () => {
-    expect(renderDue({ total_attempts: 0, due_date: null })).toBe('unseen');
+describe('dueLabel', () => {
+  const now = new Date('2026-09-30T12:00:00Z');
+  const at = days => new Date(now.getTime() + 86400000 * days).toISOString();
+
+  it('is null for unseen words and missing or invalid dates', () => {
+    expect(dueLabel({ total_attempts: 0, due_date: at(1) }, now)).toBeNull();
+    expect(dueLabel({ total_attempts: 1, due_date: null }, now)).toBeNull();
+    expect(dueLabel({ total_attempts: 1, due_date: 'not-a-date' }, now)).toBeNull();
   });
 
-  it('returns em-dash for null due_date', () => {
-    expect(renderDue({ total_attempts: 1, due_date: null })).toBe('—');
+  it('is "due today" when the due date is now or past', () => {
+    expect(dueLabel({ total_attempts: 5, due_date: at(-2) }, now)).toEqual({ key: 'vocab.dueTodayLabel', today: true });
+    expect(dueLabel({ total_attempts: 3, due_date: at(0) }, now)).toEqual({ key: 'vocab.dueTodayLabel', today: true });
   });
 
-  it('returns em-dash for invalid date string', () => {
-    expect(renderDue({ total_attempts: 1, due_date: 'not-a-date' })).toBe('—');
-  });
-
-  it('returns "due" when due_date is in the past', () => {
-    const word = {
-      total_attempts: 5,
-      due_date: new Date(Date.now() - 86400000 * 2).toISOString(),
-    };
-    expect(renderDue(word)).toBe('due');
-  });
-
-  it('returns "due" when due_date is now (diff rounds to 0)', () => {
-    const word = {
-      total_attempts: 3,
-      due_date: new Date().toISOString(),
-    };
-    expect(renderDue(word)).toBe('due');
-  });
-
-  it('returns future days when not yet due', () => {
-    const word = {
-      total_attempts: 5,
-      due_date: new Date(Date.now() + 86400000 * 7).toISOString(),
-    };
-    expect(renderDue(word)).toBe('in 7d');
+  it('is "tomorrow" one day out and "in N days" after that', () => {
+    expect(dueLabel({ total_attempts: 5, due_date: at(1) }, now)).toEqual({ key: 'vocab.dueTomorrowLabel', today: false });
+    expect(dueLabel({ total_attempts: 5, due_date: at(7) }, now)).toEqual({ key: 'vocab.inDays', n: 7, today: false });
   });
 });
 

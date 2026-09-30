@@ -55,6 +55,7 @@ test.describe('Vocabulary — Auto-translate EN/DE fields', () => {
     await expect(page.locator('#primary-lang-label')).toHaveText('German Translation(s)', { timeout: 8_000 });
     await expect(page.locator('#secondary-lang-label')).toHaveText('English Translation(s)', { timeout: 8_000 });
 
+    await page.locator('#open-add-btn').click();
     await page.locator('#form-zh').fill('工具');
     await expect(page.locator('#translate-btn')).toBeVisible({ timeout: 8_000 });
 

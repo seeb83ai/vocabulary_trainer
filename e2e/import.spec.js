@@ -22,7 +22,7 @@ test.describe('Vocabulary → Import', () => {
     expect(res.ok()).toBe(true);
 
     await page.goto('/vocab');
-    await page.locator('#tab-import').click();
+    await page.locator('#open-import-btn').click();
     await page.locator('#import-tag-list button', { hasText: /^hsk3-2$/ }).click();
     await page.locator('#import-tag-list button', { hasText: /^hsk3-3$/ }).click();
     await expect(page.locator('#import-tag-list button[aria-pressed="true"]')).toHaveCount(2);

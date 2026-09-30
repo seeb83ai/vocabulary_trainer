@@ -65,7 +65,7 @@ function openEditForm(word) {
   const hanziwayLink = $('hanziway-link');
   hanziwayLink.href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(word.zh_text);
   show('hanziway-link');
-  show('form-cancel-btn');
+  show('form-delete-btn');
 
   let notice = $('review-notice');
   if (word.needs_review) {
@@ -118,20 +118,33 @@ function openEditForm(word) {
     hide('form-known-btn');
   }
 
-  // HMM scene builder
+  // HMM scene builder and component definitions, folded under the form.
   const hmmContainer = $('hmm-builder-container');
+  setEditExtraOpen('hmm-builder-toggle', false);
+  setEditExtraOpen('components-edit-toggle', false);
+  hide('components-edit-toggle');
   if (word.id) {
-    hmmContainer.classList.remove('hidden');
+    show('edit-extras');
     loadHMMBuilder('hmm-builder-container', word.id, { zh: word.zh_text, en: (word.translations || {})['en'] || [] });
   } else {
-    hmmContainer.classList.add('hidden');
+    hide('edit-extras');
     hmmContainer.innerHTML = '';
   }
 
   loadComponentsForEdit(word.zh_text);
 
-  $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
+  openVocabSheet('add');
   $('form-zh').focus();
+}
+
+// setEditExtraOpen folds or unfolds one of the edit sheet's extra sections
+// ("▸ Mnemonic", "▸ Components").
+function setEditExtraOpen(toggleId, open) {
+  const btn = $(toggleId);
+  if (!btn) return;
+  $(btn.getAttribute('aria-controls')).classList.toggle('hidden', !open);
+  btn.setAttribute('aria-expanded', String(open));
+  btn.textContent = `${open ? '▾' : '▸'} ${t(btn.dataset.labelKey)}`;
 }
 
 async function loadComponentsForEdit(zhText) {
@@ -180,6 +193,7 @@ async function loadComponentsForEdit(zhText) {
   html += `</div></div>`;
   section.innerHTML = html;
   section.classList.remove('hidden');
+  show('components-edit-toggle');
 
   section.querySelectorAll('.comp-def-input').forEach(input => {
     input.addEventListener('blur', async () => {
@@ -203,12 +217,13 @@ function resetForm() {
   setText('form-title', t('vocab.addWord'));
   $('form-zh').value = '';
   $('form-pinyin').value = '';
-  hide('form-cancel-btn');
+  hide('form-delete-btn');
   hide('form-reset-btn');
   hide('form-known-btn');
   hide('hanziway-link');
   const compSection = $('components-edit-section');
   if (compSection) { compSection.innerHTML = ''; compSection.classList.add('hidden'); }
+  hide('components-edit-toggle');
   $('en-inputs-container').innerHTML = '';
   addEnInput('');
   $('de-inputs-container').innerHTML = '';
@@ -221,8 +236,8 @@ function resetForm() {
   if (notice) notice.remove();
   show('start-training-row');
   $('form-start-training').checked = false;
-  $('hmm-builder-container').classList.add('hidden');
   $('hmm-builder-container').innerHTML = '';
+  hide('edit-extras');
 }
 
 // A translation input's `data-source` tracks whether its current value came
@@ -313,21 +328,28 @@ async function handleFormSubmit(e) {
       });
     }
     resetForm();
+    closeVocabSheet();
     loadTags();
     loadWords();
+    loadVocabSummary();
   } catch (e) {
     alert('Error: ' + e.message);
   }
 }
 
+// deleteWord asks for confirmation and deletes a word. Returns true when
+// the word was deleted.
 async function deleteWord(id) {
-  if (!confirm(t('vocab.confirmDelete'))) return;
+  if (!confirm(t('vocab.confirmDelete'))) return false;
   try {
     await apiFetch(`/api/words/${id}`, { method: 'DELETE' });
     loadTags();
     loadWords();
+    loadVocabSummary();
+    return true;
   } catch (e) {
     alert('Failed to delete: ' + e.message);
+    return false;
   }
 }
 

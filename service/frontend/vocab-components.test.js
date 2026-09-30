@@ -4,12 +4,23 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function t(k) { return k; }
+function crossRefBadge() { return ''; }
+function renderComponentLevel() { return ''; }
+function renderComponentDue() { return ''; }
+
 function renderComponentRow(comp) {
+  const line = (lang, text) => `<span><span class="vb-lang">${lang}</span>${text ? escHtml(text) : '<span class="vb-row-py">—</span>'}</span>`;
   return `
-    <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}</td>
-    <td class="py-3 px-4 text-gray-500 text-sm">${comp.pinyin ? escHtml(comp.pinyin) : '<span class="text-gray-400">—</span>'}</td>
-    <td class="py-3 px-4 text-gray-600">${comp.definition_en ? escHtml(comp.definition_en) : '<span class="text-gray-400">—</span>'}</td>
-    <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>`;
+    <div class="vb-row-main">
+      <div class="vb-row-head">
+        <span class="vb-row-zh font-hanzi">${escHtml(comp.character)}</span>
+        <span class="vb-row-py">${comp.pinyin ? escHtml(comp.pinyin) : '—'}</span>
+        ${crossRefBadge(comp.is_also_word, t('vocab.alsoWord'))}
+      </div>
+      <div class="vb-row-lines">${line('EN', comp.definition_en)}${line('DE', comp.definition_de)}</div>
+    </div>
+    <div class="vb-row-side">${renderComponentLevel(comp)}${renderComponentDue(comp)}</div>`;
 }
 
 describe('renderComponentRow pinyin column', () => {

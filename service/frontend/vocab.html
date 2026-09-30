@@ -3,45 +3,157 @@
 
   <main class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 space-y-6">
 
-    <!-- Add / Edit form + Import tab -->
-    <div id="word-form-panel" class="bg-white rounded-2xl shadow p-6">
+  <main class="page-main vb-main">
 
+    <!-- Header -->
+    <div class="vb-header">
+      <div class="vb-header-text">
+        <h1 class="page-title" data-i18n="vocab.listTitle">Vocabulary</h1>
+        <p id="vocab-summary" class="page-sub">—</p>
+      </div>
+      <div class="vb-header-actions">
+        <button id="open-import-btn" type="button" class="ui-btn ui-btn-secondary vb-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="vocab.importWords">Import</span>
+        </button>
+        <button id="open-add-btn" type="button" class="ui-btn ui-btn-primary vb-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="vocab.addWord">Add word</span>
+        </button>
+        <div class="vb-menu-wrap">
+          <button id="vocab-menu-btn" type="button" class="ui-btn ui-btn-secondary vb-btn vb-icon-only" aria-haspopup="menu" aria-expanded="false" aria-controls="vocab-menu" aria-label="More actions" data-i18n-aria-label="vocab.moreActions">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
+          </button>
+          <div id="vocab-menu" class="vb-menu hidden" role="menu">
+            <button id="download-btn" type="button" role="menuitem" class="vb-menu-item" data-i18n="download.title">Download vocabulary</button>
+            <button id="csv-upload-btn" type="button" role="menuitem" class="vb-menu-item" data-i18n="vocab.uploadCsv">Upload CSV</button>
+            <button id="open-tags-btn" type="button" role="menuitem" class="vb-menu-item" data-i18n="vocab.manageTags">Manage tags</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="vb-box vb-toolbar">
+      <div class="vb-toolbar-row">
+        <div class="ui-seg vb-view-seg" role="group">
+          <button id="view-words-btn" type="button" aria-pressed="true" data-i18n="vocab.viewWords">Words</button>
+          <button id="view-components-btn" type="button" aria-pressed="false" data-i18n="vocab.viewComponents">Components</button>
+        </div>
+        <label class="vb-search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search-input" type="search" placeholder="Search Chinese, pinyin or meaning" data-i18n-placeholder="vocab.searchLong">
+        </label>
+      </div>
+      <div id="word-filters-row" class="vb-chips">
+        <button id="filter-all-btn" type="button" class="ui-chip vb-chip" aria-pressed="false" data-i18n="vocab.filterAll">All</button>
+        <button id="due-today-btn" type="button" class="ui-chip vb-chip" aria-pressed="false" data-i18n="vocab.dueToday">Due today</button>
+        <button id="due-tomorrow-btn" type="button" class="ui-chip vb-chip" aria-pressed="false" data-i18n="vocab.dueTomorrow">Due tomorrow</button>
+        <button id="review-filter-btn" type="button" class="ui-chip vb-chip" aria-pressed="false" data-i18n="vocab.needsReview">Needs review</button>
+        <button id="due-known-btn" type="button" class="ui-chip vb-chip" aria-pressed="false" data-i18n="vocab.filterKnown">Known</button>
+        <button id="hide-unseen-btn" type="button" class="ui-chip vb-chip" aria-pressed="true" data-i18n="vocab.hideUnseen">Hide unseen</button>
+        <button id="missing-de-chip" type="button" class="ui-chip vb-chip" aria-pressed="false">Missing DE</button>
+      </div>
+      <div id="component-filters-row" class="vb-chips hidden">
+        <button id="comp-review-filter-btn" type="button" class="ui-chip vb-chip" aria-pressed="false" data-i18n="vocab.needsReview">Needs review</button>
+      </div>
+      <button id="vocab-more-filters-toggle" type="button" class="tr-disclosure" aria-expanded="false" aria-controls="vocab-more-filters">▸ <span data-i18n="vocab.moreFilters">More filters</span></button>
+      <div id="vocab-more-filters" class="vb-more-filters hidden">
+        <div id="filter-tier-bar" class="vb-filter-row">
+          <span class="vb-filter-label" data-i18n="filter.level">Level</span>
+        </div>
+        <div id="filter-tags-bar" class="vb-filter-row hidden">
+          <span class="vb-filter-label" data-i18n="filter.tagsShort">Tags</span>
+        </div>
+        <div class="vb-filter-row">
+          <span class="vb-filter-label" data-i18n="vocab.missingLangLabel">Missing</span>
+          <select id="missing-lang-select" class="st-select">
+            <option value="" data-i18n="vocab.missingLangAll">Missing: —</option>
+            <option value="en" data-i18n="vocab.missingLangEn">Missing EN</option>
+            <option id="missing-lang-de-option" value="de" data-i18n="vocab.missingLangDe">Missing DE</option>
+          </select>
+        </div>
+        <div id="sort-row" class="vb-filter-row">
+          <span class="vb-filter-label" data-i18n="vocab.sortBy">Sort by</span>
+          <select id="sort-select" class="st-select">
+            <option value="" data-i18n="vocab.sortDefault">Newest first</option>
+            <option value="zh" data-i18n="vocab.chinese">Chinese</option>
+            <option value="pinyin" data-i18n="vocab.pinyin">Pinyin</option>
+            <option value="en" data-i18n="vocab.english">English</option>
+            <option id="sort-secondary-option" value="de" data-i18n="vocab.german">German</option>
+            <option value="accuracy" data-i18n="vocab.level">Level</option>
+            <option value="due_date" data-i18n="vocab.due">Due</option>
+          </select>
+          <button id="sort-dir-btn" type="button" class="ui-btn ui-btn-secondary vb-btn vb-icon-only" aria-label="Sort direction" data-i18n-aria-label="vocab.sortDirection" title="Ascending" data-dir="asc">↑</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- List -->
+    <div class="vb-box vb-list-box">
+      <div id="words-table-wrap">
+        <div id="words-tbody" class="vb-list" role="list"></div>
+      </div>
+      <div id="components-table-wrap" class="hidden">
+        <div id="components-tbody" class="vb-list" role="list"></div>
+      </div>
+
+      <!-- Pagination -->
+      <div id="pagination" class="vb-pagination">
+        <div class="vb-pages">
+          <button id="prev-btn" type="button" class="vb-page-btn" aria-label="Previous page">←</button>
+          <span id="page-numbers" class="vb-page-numbers"></span>
+          <button id="next-page-btn" type="button" class="vb-page-btn" aria-label="Next page">→</button>
+        </div>
+        <div class="vb-pages-meta">
+          <span id="page-total" class="tr-muted-sm"></span>
+          <select id="per-page-select" class="st-select">
+            <option value="20" data-i18n-after="vocab.perPage">20 / page</option>
+            <option value="50" data-i18n-after="vocab.perPage">50 / page</option>
+            <option value="100" data-i18n-after="vocab.perPage">100 / page</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Add / Edit / Import / Tags / Component sheet -->
+  <div id="vocab-sheet" class="vb-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="form-title">
+    <div id="vocab-sheet-backdrop" class="app-sheet-backdrop"></div>
+    <div id="word-form-panel" class="vb-sheet-panel">
+      <div class="app-sheet-handle"></div>
+      <button id="vocab-sheet-close" type="button" class="rp-close vb-sheet-close" aria-label="Close" data-i18n-aria-label="issue.close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
       <!-- Tab bar -->
-      <div class="flex border-b border-gray-200 mb-4 -mx-6 px-6">
-        <button id="tab-add"
-          class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 -mb-px transition"
-          data-i18n="vocab.addWord">Add Word</button>
-        <button id="tab-import"
-          class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition"
+      <div class="vb-tabs ui-seg" role="tablist">
+        <button id="tab-add" type="button" role="tab" class="vb-tab"
+          data-i18n="vocab.wordTab">Word</button>
+        <button id="tab-import" type="button" role="tab" class="vb-tab"
           data-i18n="vocab.importWords">Import</button>
-        <button id="tab-tags"
-          class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 -mb-px transition"
+        <button id="tab-tags" type="button" role="tab" class="vb-tab"
           data-i18n="vocab.tagsTab">Tags</button>
-        <button id="tab-comp"
-          class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-400 -mb-px transition opacity-40 cursor-not-allowed pointer-events-none"
+        <button id="tab-comp" type="button" role="tab" class="vb-tab is-disabled"
           data-i18n="vocab.editComponentTab">Edit Component</button>
       </div>
 
       <!-- Add / Edit panel -->
       <div id="panel-add">
-        <h2 id="form-title" class="text-lg font-semibold text-gray-800 mb-4" data-i18n="vocab.addWord">Add Word</h2>
-        <form id="word-form" class="space-y-4">
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <h2 id="form-title" class="vb-sheet-title" data-i18n="vocab.addWord">Add word</h2>
+        <form id="word-form" class="vb-form">
+          <div class="vb-grid-2">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.chinese">Chinese</label>
+              <label class="vb-field-label" data-i18n="vocab.chinese">Chinese</label>
               <input id="form-zh" type="text" placeholder="e.g. 你好" data-i18n-placeholder="vocab.zhPlaceholder"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                class="st-input font-hanzi">
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.pinyin">Pinyin</label>
+              <label class="vb-field-label" data-i18n="vocab.pinyin">Pinyin</label>
               <input id="form-pinyin" type="text" placeholder="e.g. nǐ hǎo" data-i18n-placeholder="vocab.pinyinPlaceholder"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                class="st-input">
             </div>
           </div>
 
-          <div class="flex items-center gap-3">
+          <div class="vb-row-inline">
             <button type="button" id="translate-btn"
-              class="hidden text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1 rounded-lg border border-blue-200 hover:border-blue-400 transition">
+              class="hidden vb-translate-btn">
               <span data-i18n="vocab.autoTranslate">Auto-translate</span>
             </button>
             <a id="hanziway-link" href="#" target="_blank" rel="noopener noreferrer"
@@ -49,7 +161,7 @@
           </div>
 
           <div>
-            <label id="primary-lang-label" class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.englishTranslations">English Translation(s)</label>
+            <label id="primary-lang-label" class="vb-field-label" data-i18n="vocab.englishTranslations">English Translation(s)</label>
             <div id="en-inputs-container" class="space-y-2"></div>
             <button type="button" id="add-en-btn"
               class="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
@@ -58,7 +170,7 @@
           </div>
 
           <div id="de-form-section">
-            <label id="secondary-lang-label" class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.germanTranslations">German Translation(s)</label>
+            <label id="secondary-lang-label" class="vb-field-label" data-i18n="vocab.germanTranslations">German Translation(s)</label>
             <div id="de-inputs-container" class="space-y-2"></div>
             <button type="button" id="add-de-btn"
               class="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium">
@@ -67,47 +179,49 @@
           </div>
 
           <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1" data-i18n="vocab.tags">Tags</label>
+            <label class="vb-field-label" data-i18n="vocab.tags">Tags</label>
             <div id="form-tags" class="flex flex-wrap gap-1 mb-2"></div>
             <div class="relative">
               <input id="form-tag-input" type="text" placeholder="Add tag…" data-i18n-placeholder="vocab.addTag"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                class="st-input"
                 autocomplete="off">
               <div id="tag-autocomplete" class="hidden absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto"></div>
             </div>
           </div>
 
-          <div id="start-training-row" class="flex items-center gap-2">
-            <input type="checkbox" id="form-start-training"
-              class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-            <label for="form-start-training" class="text-sm text-gray-700" data-i18n="vocab.startTraining">Start training immediately</label>
-          </div>
+          <label id="start-training-row" class="vb-toggle-row" for="form-start-training">
+            <span data-i18n="vocab.startTraining">Start training immediately</span>
+            <span class="ui-toggle"><input type="checkbox" id="form-start-training"><span></span></span>
+          </label>
 
-          <div class="flex gap-3 pt-2">
-            <button type="submit"
-              class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 rounded-lg transition"
-              data-i18n="vocab.save">
-              Save
-            </button>
-            <button type="button" id="form-cancel-btn"
-              class="hidden text-gray-600 hover:text-gray-800 font-medium px-4 py-2 rounded-lg border border-gray-300 hover:border-gray-400 transition"
-              data-i18n="vocab.cancel">
-              Cancel
-            </button>
+          <div id="form-edit-actions" class="vb-edit-actions">
             <button type="button" id="form-known-btn"
-              class="hidden text-green-700 hover:text-green-900 font-medium px-4 py-2 rounded-lg border border-green-300 hover:border-green-400 transition"
+              class="hidden ui-btn vb-btn vb-btn-known"
               data-i18n="vocab.markKnown">
               Mark as known
             </button>
+            <button type="button" id="form-delete-btn"
+              class="hidden ui-btn ui-btn-danger vb-btn"
+              data-i18n="vocab.delete">
+              Delete
+            </button>
             <button type="button" id="form-reset-btn"
-              class="hidden text-orange-600 hover:text-orange-800 font-medium px-4 py-2 rounded-lg border border-orange-300 hover:border-orange-400 transition"
+              class="hidden ui-btn ui-btn-danger vb-btn"
               data-i18n="vocab.resetWord">
-              Reset
+              Reset progress
             </button>
           </div>
+          <div class="vb-form-actions">
+            <button type="button" id="form-cancel-btn" class="ui-btn ui-btn-secondary" data-i18n="vocab.cancel">Cancel</button>
+            <button type="submit" class="ui-btn ui-btn-primary" data-i18n="vocab.save">Save</button>
+          </div>
         </form>
-        <div id="hmm-builder-container" class="hidden mt-4"></div>
-        <div id="components-edit-section" class="hidden mt-4"></div>
+        <div id="edit-extras" class="vb-extras hidden">
+          <button id="hmm-builder-toggle" type="button" class="tr-disclosure vb-extra-toggle" aria-expanded="false" aria-controls="hmm-builder-container" data-label-key="vocab.mnemonicSection">▸ Mnemonic</button>
+          <div id="hmm-builder-container" class="hidden vb-extra-body"></div>
+          <button id="components-edit-toggle" type="button" class="tr-disclosure vb-extra-toggle hidden" aria-expanded="false" aria-controls="components-edit-body" data-label-key="vocab.componentsSection">▸ Components</button>
+          <div id="components-edit-body" class="hidden vb-extra-body"><div id="components-edit-section" class="hidden"></div></div>
+        </div>
       </div>
 
       <!-- Import panel -->
@@ -240,144 +354,8 @@
         </div>
       </div>
 
-    </div>
-
-    <!-- Search & list -->
-    <div class="bg-white rounded-2xl shadow overflow-hidden">
-      <div class="px-4 sm:px-6 py-4 border-b border-gray-200 space-y-3">
-        <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <h2 class="text-lg font-semibold text-gray-800 min-w-0 sm:flex-1" data-i18n="vocab.listTitle">Vocabulary List</h2>
-          <div class="flex flex-wrap items-center gap-2">
-            <div class="flex rounded-lg border border-gray-300 overflow-hidden text-sm font-medium flex-none">
-              <button id="view-words-btn" class="px-3 py-1.5 bg-blue-600 text-white transition" data-i18n="vocab.viewWords">Words</button>
-              <button id="view-components-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-100 transition" data-i18n="vocab.viewComponents">Components</button>
-            </div>
-            <input id="search-input" type="search" placeholder="Search…" data-i18n-placeholder="vocab.search"
-              class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-52 order-last sm:order-none">
-            <button id="download-btn" title="Download vocabulary"
-              class="p-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition flex-none">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-            </button>
-            <button id="csv-upload-btn" title="Upload CSV vocabulary"
-              class="p-1.5 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition flex-none">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="17 8 12 3 7 8"/>
-                <line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-            </button>
-          </div>
         </div>
-        <div id="word-filters-row" class="flex flex-wrap gap-2">
-          <button id="hide-unseen-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-blue-400 bg-blue-50 text-blue-600"
-            data-i18n="vocab.hideUnseen">
-            Hide Unseen
-          </button>
-          <button id="review-filter-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
-            data-i18n="vocab.needsReview">
-            Needs Review
-          </button>
-          <button id="due-today-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
-            data-i18n="vocab.dueToday">
-            Due Today
-          </button>
-          <button id="due-known-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
-            data-i18n="vocab.filterKnown">
-            Known words
-          </button>
-          <button id="due-tomorrow-btn"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
-            data-i18n="vocab.dueTomorrow">
-            Due Tomorrow
-          </button>
-          <select id="missing-lang-select"
-            class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="" data-i18n="vocab.missingLangAll">Missing: —</option>
-            <option value="en" data-i18n="vocab.missingLangEn">Missing EN</option>
-            <option id="missing-lang-de-option" value="de" data-i18n="vocab.missingLangDe">Missing DE</option>
-          </select>
-        </div>
-      </div>
-      <div id="filter-tier-bar" class="px-4 sm:px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
-        <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.level">Level:</span>
-      </div>
-      <div id="filter-tags-bar" class="hidden px-4 sm:px-6 py-2 border-b border-gray-200 flex items-center gap-2 flex-wrap">
-        <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.tags">Tags:</span>
-      </div>
-      <div id="component-filters-row" class="hidden px-4 sm:px-6 py-2 border-b border-gray-200 flex flex-wrap gap-2">
-        <button id="comp-review-filter-btn"
-          class="px-3 py-1.5 rounded-lg border text-sm font-medium transition border-gray-300 text-gray-600 hover:bg-gray-100"
-          data-i18n="vocab.needsReview">
-          Needs Review
-        </button>
-      </div>
-
-      <div id="words-table-wrap" class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
-            <tr>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="zh"><span data-i18n="vocab.chinese">Chinese</span> <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="pinyin"><span data-i18n="vocab.pinyin">Pinyin</span> <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="en"><span data-i18n="vocab.english">English</span> <span class="sort-indicator"></span></th>
-              <th id="col-secondary-lang" class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="de"><span data-i18n="vocab.german">German</span> <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="accuracy"><span data-i18n="vocab.level">Level</span> <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left cursor-pointer select-none hover:bg-gray-100" data-sort="due_date"><span data-i18n="vocab.due">Due</span> <span class="sort-indicator"></span></th>
-              <th class="py-3 px-4 text-left" data-i18n="vocab.actions">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="words-tbody"></tbody>
-        </table>
-      </div>
-      <div id="components-table-wrap" class="hidden overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
-            <tr>
-              <th class="py-3 px-4 text-left" data-i18n="vocab.chinese">Character</th>
-              <th class="py-3 px-4 text-left" data-i18n="vocab.pinyin">Pinyin</th>
-              <th class="py-3 px-4 text-left" data-i18n="vocab.english">English</th>
-              <th class="py-3 px-4 text-left" data-i18n="vocab.german">German</th>
-              <th class="py-3 px-4 text-left" data-i18n="vocab.level">Level</th>
-              <th class="py-3 px-4 text-left" data-i18n="vocab.due">Due</th>
-              <th class="py-3 px-4 text-left"></th>
-            </tr>
-          </thead>
-          <tbody id="components-tbody"></tbody>
-        </table>
-      </div>
-
-      <!-- Pagination -->
-      <div id="pagination" class="px-4 sm:px-6 py-3 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-gray-600">
-        <div class="flex items-center gap-1 min-w-0">
-          <button id="prev-btn"
-            class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex-none">
-            ←
-          </button>
-          <span id="page-numbers" class="flex items-center gap-0.5 flex-wrap min-w-0"></span>
-          <button id="next-page-btn"
-            class="px-3 py-1.5 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition flex-none">
-            →
-          </button>
-        </div>
-        <div class="flex items-center gap-3 flex-none">
-          <span id="page-total" class="text-gray-500"></span>
-          <select id="per-page-select" class="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="20" data-i18n-after="vocab.perPage">20 / page</option>
-            <option value="50" data-i18n-after="vocab.perPage">50 / page</option>
-            <option value="100" data-i18n-after="vocab.perPage">100 / page</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-  </main>
+  </div>
 
   <!-- Download modal -->
   <div id="download-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -459,7 +437,7 @@
 
       <!-- File picker -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">CSV File</label>
+        <label class="vb-field-label">CSV File</label>
         <input id="csv-upload-file" type="file" accept=".csv,text/csv"
           class="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-gray-300 file:text-sm file:bg-gray-50 hover:file:bg-gray-100 cursor-pointer">
         <p id="csv-upload-preview-info" class="hidden mt-1 text-xs text-gray-500"></p>
@@ -467,7 +445,7 @@
 
       <!-- Tag input -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Tags <span class="text-red-500">*</span></label>
+        <label class="vb-field-label">Tags <span class="text-red-500">*</span></label>
         <div id="csv-upload-tags" class="flex flex-wrap gap-1 mb-2"></div>
         <div class="relative">
           <input id="csv-upload-tag-input" type="text" placeholder="Add tag…"
