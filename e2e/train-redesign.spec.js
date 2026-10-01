@@ -283,4 +283,32 @@ test.describe('Train redesign – phone', () => {
     await page.locator('#filter-overlay-close').click();
     await expect(page.locator('#session-chip-label')).toContainText('Progressive');
   });
+
+  test('session chip, sound and fullscreen buttons live in the top bar and the chip shows only the mode', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'cycle');
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+
+    const topbar = page.locator('#app-topbar');
+    await expect(topbar.locator('#open-filter-overlay')).toBeVisible();
+    await expect(topbar.locator('#autoplay-toggle-btn')).toBeVisible();
+    await expect(topbar.locator('#fullscreen-toggle-btn')).toHaveCount(1);
+    await expect(page.locator('#session-bar #open-filter-overlay')).toHaveCount(0);
+    await expect(page.locator('#session-chip-label')).toContainText('Cycle');
+    await expect(page.locator('#session-chip-label .tr-chip-extra')).toBeHidden();
+    await captureForPR(page, 'train-topbar-phone');
+
+    // The chip still opens the session sheet from the top bar.
+    await topbar.locator('#open-filter-overlay').click();
+    await expect(page.locator('#filter-overlay')).toBeVisible();
+    await page.locator('#filter-overlay-close').click();
+
+    // Back on a wide screen the buttons return to the session bar.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(page.locator('#session-bar #open-filter-overlay')).toBeVisible();
+    await expect(topbar.locator('#open-filter-overlay')).toHaveCount(0);
+    await expect(page.locator('#session-chip-label .tr-chip-extra')).toBeVisible();
+  });
 });

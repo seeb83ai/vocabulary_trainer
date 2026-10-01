@@ -129,6 +129,18 @@ document.addEventListener('DOMContentLoaded', () => {
   if (_isTrainActive()) _trainStartMs = Date.now();
 });
 // ── End training-time tracking ───────────────────────────────────────────────
+
+// Phone: the chip + sound + fullscreen buttons sit in the shell's top bar.
+document.addEventListener('DOMContentLoaded', () => {
+  const actions = document.querySelector('#session-bar .tr-bar-actions');
+  const topbar = document.getElementById('app-topbar');
+  if (!actions || !topbar) return;
+  const home = actions.parentElement;
+  const mq = window.matchMedia('(max-width: 879px)');
+  const place = () => (mq.matches ? topbar : home).appendChild(actions);
+  mq.addEventListener('change', place);
+  place();
+});
 let selectedTags = JSON.parse(localStorage.getItem('quizTags') || '[]');
 let selectedBucket = localStorage.getItem('quizBucket') || '';
 let selectedLangs = JSON.parse(localStorage.getItem('quizLangs') || '["en"]');

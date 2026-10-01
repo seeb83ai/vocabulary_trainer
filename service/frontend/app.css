@@ -390,6 +390,12 @@ label.st-text { cursor: pointer; }
 .tr-bar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tr-chip { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 8px 12px; border-radius: 12px; border: 1px solid #d1d5db; background: #fff; color: #111827; font-size: 13.5px; font-weight: 600; white-space: nowrap; cursor: pointer; font-family: inherit; max-width: 100%; }
 .tr-chip span { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 879px) {
+  .tr-chip-extra { display: none; }
+  .app-topbar .tr-bar-actions { margin-left: auto; flex-wrap: nowrap; min-width: 0; }
+  .app-topbar .tr-chip { min-width: 0; }
+  .app-topbar .tr-icon-btn { flex-shrink: 0; }
+}
 .tr-icon-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid #d1d5db; background: #fff; color: #374151; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none; }
 .tr-icon-btn[aria-pressed="true"] { border-color: #2563eb; background: #eff6ff; color: #2563eb; }
 .tr-icon-btn.hidden { display: none; }

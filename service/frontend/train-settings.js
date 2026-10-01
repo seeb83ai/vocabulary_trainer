@@ -28,9 +28,13 @@ function updateSessionChip() {
   if (!el) return;
   const tier = TIERS.find(x => x.key === selectedBucket);
   const level = tier ? t(tier.i18nKey) : t('tier.allLevels');
-  let label = `${t('mode.' + selectedMode)} · ${level}`;
-  if (selectedTags.length) label += ` · ${t('session.tagCount', { n: selectedTags.length })}`;
-  el.textContent = label;
+  let extra = ` · ${level}`;
+  if (selectedTags.length) extra += ` · ${t('session.tagCount', { n: selectedTags.length })}`;
+  el.textContent = t('mode.' + selectedMode);
+  const extraEl = document.createElement('span');
+  extraEl.className = 'tr-chip-extra';
+  extraEl.textContent = extra;
+  el.appendChild(extraEl);
 }
 
 function setPressed(el, on) {
