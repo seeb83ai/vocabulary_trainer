@@ -102,7 +102,7 @@ test.describe('Sentence-blank training mode', () => {
     await page.locator('#answer-form button[type="submit"]').click();
 
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!');
+    await expect(page.locator('#result-icon')).toHaveText('Correct');
   });
 
   test('a wrong answer to a sentence-blank card shows Wrong and the correct word', async ({ page }) => {
@@ -116,7 +116,7 @@ test.describe('Sentence-blank training mode', () => {
     await page.locator('#answer-form button[type="submit"]').click();
 
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('#result-icon')).toHaveText('✗ Wrong');
+    await expect(page.locator('#result-icon')).toHaveText('Not quite');
   });
 
   test('a multi-clause sentence joined by a comma is still eligible (issue #351)', async ({ page }) => {

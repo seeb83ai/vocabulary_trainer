@@ -811,3 +811,198 @@ describe('dedupeTranslations', () => {
     expect(dedupeTranslations(stripped)).toEqual(['Manager', 'führen, verwalten']);
   });
 });
+
+// ── Redesign "More info" helpers ─────────────────────────────────────────────
+// Inlined from train-answer.js (numberedPinyinToMarks, splitMoreInfo,
+// markTypedMeaning).
+// numberedPinyinToMarks turns CEDICT-style numbered pinyin ("ge4",
+// "zhi1 dao5", "lu:4") into tone-mark pinyin for display. Syllables without
+// a tone digit pass through unchanged.
+const PINYIN_TONE_MARKS = {
+  a: 'āáǎà', e: 'ēéěè', i: 'īíǐì', o: 'ōóǒò', u: 'ūúǔù', ü: 'ǖǘǚǜ',
+};
+function numberedPinyinToMarks(s) {
+  return String(s || '').replace(/([a-zü:]+)([1-5])/gi, (_, syl, tone) => {
+    let base = syl.replace(/u:|v/gi, 'ü');
+    const n = parseInt(tone, 10);
+    if (n === 5) return base;
+    const lower = base.toLowerCase();
+    // Tone-mark rule: a/e take the mark; in "ou" the o does; otherwise the
+    // last vowel does.
+    let idx = lower.search(/[ae]/);
+    if (idx < 0) idx = lower.indexOf('ou');
+    if (idx < 0) {
+      for (let i = lower.length - 1; i >= 0; i--) {
+        if ('iouü'.includes(lower[i])) { idx = i; break; }
+      }
+    }
+    if (idx < 0) return base;
+    const v = lower[idx];
+    const marked = PINYIN_TONE_MARKS[v][n - 1];
+    return base.slice(0, idx) + marked + base.slice(idx + 1);
+  });
+}
+
+// parseMeasureWord reads one "個|个[ge4]" / "位[wei4]" / "個 个 [ge4]" entry.
+function parseMeasureWord(part) {
+  const m = String(part).trim().match(/^(.*?)\s*(?:\[([^\]]*)\])?$/);
+  if (!m || !m[1]) return null;
+  const forms = m[1].split(/[|\s]+/).filter(Boolean);
+  if (!forms.length) return null;
+  return { zh: forms[forms.length - 1], py: numberedPinyinToMarks(m[2] || '') };
+}
+
+// splitMoreInfo sorts the collapsed "More info" texts of a word (see
+// groupTranslationsByLang) into labelled blocks: extra meanings, measure
+// words (CEDICT "CL:", HanDeDict "ZEW:") and example sentences ("Bsp.:").
+function splitMoreInfo(texts) {
+  const meanings = [];
+  const measureWords = [];
+  const examples = [];
+  for (const raw of texts || []) {
+    const text = String(raw).trim();
+    if (/^CL:/.test(text)) {
+      for (const part of text.replace(/^CL:\s*/, '').split(',')) {
+        const mw = parseMeasureWord(part);
+        if (mw) measureWords.push(mw);
+      }
+    } else if (/^ZEW:/.test(text)) {
+      for (const part of text.replace(/^ZEW:\s*/, '').split(/[,;]/)) {
+        const mw = parseMeasureWord(part);
+        if (mw) measureWords.push(mw);
+      }
+    } else if (/^Bsp\.:/.test(text)) {
+      const [zhPart, ...rest] = text.replace(/^Bsp\.:\s*/, '').split(/\s+--\s+/);
+      const tokens = zhPart.trim().split(/\s+/);
+      // HanDeDict repeats the sentence as "traditional simplified".
+      const zh = tokens.length === 2 ? tokens[1] : zhPart.trim();
+      examples.push({ zh, tr: rest.join(' -- ').trim() });
+    } else if (text) {
+      meanings.push(text);
+    }
+  }
+  return { meanings, measureWords, examples };
+}
+
+// markTypedMeaning flags which of a word's meanings the user typed — the
+// mix-up screen highlights it in the other word's meaning list.
+function markTypedMeaning(meanings, typed) {
+  const want = new Set(expandVariants(typed || ''));
+  return (meanings || []).map(text => ({
+    text,
+    typed: want.size > 0 && expandVariants(text).some(v => want.has(v)),
+  }));
+}
+
+
+describe('numberedPinyinToMarks', () => {
+  it('converts tone numbers to marks on the right vowel', () => {
+    expect(numberedPinyinToMarks('ge4')).toBe('gè');
+    expect(numberedPinyinToMarks('wei4')).toBe('wèi');
+    expect(numberedPinyinToMarks('hao3')).toBe('hǎo');
+    expect(numberedPinyinToMarks('liu2')).toBe('liú');
+    expect(numberedPinyinToMarks('lu:4')).toBe('lǜ');
+    expect(numberedPinyinToMarks('zhi1 dao5')).toBe('zhī dao');
+  });
+
+  it('leaves text without tone numbers unchanged', () => {
+    expect(numberedPinyinToMarks('nǐ hǎo')).toBe('nǐ hǎo');
+    expect(numberedPinyinToMarks('')).toBe('');
+  });
+});
+
+describe('splitMoreInfo', () => {
+  it('sorts collapsed texts into meanings, measure words and examples', () => {
+    const r = splitMoreInfo([
+      'companion',
+      'CL:個|个[ge4],位[wei4]',
+      'Bsp.: 新来的客人 -- newly arrived guest',
+    ]);
+    expect(r.meanings).toEqual(['companion']);
+    expect(r.measureWords).toEqual([{ zh: '个', py: 'gè' }, { zh: '位', py: 'wèi' }]);
+    expect(r.examples).toEqual([{ zh: '新来的客人', tr: 'newly arrived guest' }]);
+  });
+
+  it('keeps the simplified form of a traditional/simplified example pair', () => {
+    const r = splitMoreInfo(['Bsp.: 附近 附近 -- in der Nähe']);
+    expect(r.examples).toEqual([{ zh: '附近', tr: 'in der Nähe' }]);
+  });
+
+  it('parses German ZEW: measure words', () => {
+    const r = splitMoreInfo(['ZEW: 個 个 [ge4]']);
+    expect(r.measureWords).toEqual([{ zh: '个', py: 'gè' }]);
+  });
+
+  it('keeps an example without translation', () => {
+    const r = splitMoreInfo(['Bsp.: 我认识他。']);
+    expect(r.examples).toEqual([{ zh: '我认识他。', tr: '' }]);
+  });
+
+  it('returns empty lists for no input', () => {
+    expect(splitMoreInfo(undefined)).toEqual({ meanings: [], measureWords: [], examples: [] });
+  });
+});
+
+describe('markTypedMeaning', () => {
+  it('flags the meaning that matches the typed answer', () => {
+    expect(markTypedMeaning(['hello', 'hi'], ' Hello ')).toEqual([
+      { text: 'hello', typed: true },
+      { text: 'hi', typed: false },
+    ]);
+  });
+
+  it('matches parenthesised and slash variants', () => {
+    expect(markTypedMeaning(['to know (sb)', 'to recognize'], 'to know').map(m => m.typed)).toEqual([true, false]);
+  });
+
+  it('flags nothing when no meaning matches', () => {
+    expect(markTypedMeaning(['bye'], 'hello').some(m => m.typed)).toBe(false);
+  });
+});
+
+// ── numberedMeaningRows (new-word card) ──────────────────────────────────────
+// numberedMeaningRows builds the new-word card's numbered meaning list: row i
+// pairs the i-th meaning of each language ("year · Jahr"). Rows beyond `cap`,
+// noise annotations and capped-out extras go to `rest` for the folded line.
+function numberedMeaningRows(translations, extra, langs, cap) {
+  const clean = {};
+  const rest = [];
+  for (const lang of langs) {
+    const texts = (translations || {})[lang] || [];
+    clean[lang] = dedupeTranslations(texts.filter(x => !isNoise(x)).map(stripPosTag));
+  }
+  const maxLen = Math.max(0, ...langs.map(l => clean[l].length));
+  const rows = [];
+  for (let i = 0; i < maxLen; i++) {
+    const parts = langs.map(l => clean[l][i]).filter(Boolean);
+    if (i < cap) rows.push(parts.join(' · '));
+    else rest.push(...parts);
+  }
+  for (const lang of langs) {
+    rest.push(...((translations || {})[lang] || []).filter(isNoise));
+    rest.push(...((extra || {})[lang] || []));
+  }
+  return { rows, rest };
+}
+
+describe('numberedMeaningRows', () => {
+  it('pairs the meanings of each language by index', () => {
+    const r = numberedMeaningRows({ en: ['year', 'age'], de: ['Jahr'] }, {}, ['en', 'de'], 3);
+    expect(r.rows).toEqual(['year · Jahr', 'age']);
+    expect(r.rest).toEqual([]);
+  });
+
+  it('folds rows beyond the cap and all noise / extra entries into rest', () => {
+    const r = numberedMeaningRows(
+      { en: ['a', 'b', 'c', 'd', 'CL:个[ge4]'] },
+      { en: ['e'] },
+      ['en'], 3);
+    expect(r.rows).toEqual(['a', 'b', 'c']);
+    expect(r.rest).toEqual(['d', 'CL:个[ge4]', 'e']);
+  });
+
+  it('strips short POS tags and duplicates', () => {
+    const r = numberedMeaningRows({ de: ['Jahr (S)', 'jahr'] }, {}, ['de'], 3);
+    expect(r.rows).toEqual(['Jahr']);
+  });
+});

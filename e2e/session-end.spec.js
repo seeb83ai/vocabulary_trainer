@@ -52,7 +52,7 @@ async function finishSessionWithCorrectAnswers(page) {
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
     await page.locator('#answer-input').fill('good');
     await page.locator('#answer-form button[type="submit"]').click();
-    await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
     await page.locator('#next-btn').click();
   }
   await expect(page.locator('#success-state')).toBeVisible({ timeout: 12_000 });

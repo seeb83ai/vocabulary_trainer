@@ -629,6 +629,31 @@ func TestUserSettings_GameModeColumns_DefaultOnAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestUserSettings_MatchGameShowSummary_DefaultOnAndRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.MatchGameShowSummary {
+		t.Fatal("expected match_game_show_summary on by default")
+	}
+
+	st.MatchGameShowSummary = false
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MatchGameShowSummary {
+		t.Error("match_game_show_summary should be false after update")
+	}
+}
+
 func TestGamificationHidePinyinFromBucket_DefaultAndRoundTrip(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

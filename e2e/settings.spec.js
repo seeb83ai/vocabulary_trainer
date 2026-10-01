@@ -222,6 +222,27 @@ test.describe('Settings – Blur pinyin (issue #201)', () => {
   });
 });
 
+test.describe('Settings – Match-game round summary', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('"show round summary" defaults to on and persists when turned off', async ({ page }) => {
+    await page.goto('/settings');
+    const toggle = page.locator('#match-game-show-summary');
+    await expect(toggle).toBeChecked();
+    await captureForPR(page, 'settings-match-game-show-summary');
+    await toggle.uncheck();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+
+    await page.reload();
+    await expect(toggle).not.toBeChecked();
+    expect((await (await page.request.get('/api/settings')).json()).match_game_show_summary).toBe(false);
+
+    // Reset to default.
+    await toggle.check();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
+});
+
 // Translation ranking: hide rare CEDICT/HanDeDict-derived translations during
 // training, ranked by word frequency, while user-added ones always show.
 test.describe('Settings – Translation ranking', () => {

@@ -76,6 +76,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GamificationHidePinyinFromBucket string   `json:"gamification_hide_pinyin_from_bucket"`
 		MatchGamePinyinReveal            string   `json:"match_game_pinyin_reveal"`
 		MatchGameSM2Update               string   `json:"match_game_sm2_update"`
+		MatchGameShowSummary             *bool    `json:"match_game_show_summary"`
 		BlurPinyin                       bool     `json:"blur_pinyin"`
 		NoAutoVoiceOnBlur                bool     `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange            bool     `json:"celebrate_bucket_change"`
@@ -250,6 +251,16 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		resolvedGamificationEnabled = *req.GamificationEnabled
 	}
 
+	// Omitted by older clients → keep the stored value.
+	resolvedMatchGameShowSummary := true
+	if req.MatchGameShowSummary == nil {
+		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
+			resolvedMatchGameShowSummary = existing.MatchGameShowSummary
+		}
+	} else {
+		resolvedMatchGameShowSummary = *req.MatchGameShowSummary
+	}
+
 	randCfg := models.RandomModeConfig{
 		TranslToZh:        req.RandomModeRangeTranslToZh,
 		ZhToTransl:        req.RandomModeRangeZhToTransl,
@@ -344,6 +355,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		GamificationHidePinyinFromBucket: req.GamificationHidePinyinFromBucket,
 		MatchGamePinyinReveal:            req.MatchGamePinyinReveal,
 		MatchGameSM2Update:               req.MatchGameSM2Update,
+		MatchGameShowSummary:             resolvedMatchGameShowSummary,
 		BlurPinyin:                       req.BlurPinyin,
 		NoAutoVoiceOnBlur:                req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:            req.CelebrateBucketChange,

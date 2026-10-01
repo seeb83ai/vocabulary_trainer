@@ -363,6 +363,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	card := models.QuizCard{
 		WordID:           word.ID,
 		Mode:             mode,
+		Tier:             sm2.ClassifyTier(*progress).String(),
 		DueDate:          progress.DueDate,
 		IntervalDays:     progress.IntervalDays,
 		LearningNewWord:  progress.LearningNewWord,

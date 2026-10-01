@@ -92,8 +92,15 @@ async function loadComebackInfo(wordsImproved) {
       apiFetch('/api/quiz/due-date-distribution' + params),
     ]);
     const streak = computeDayStreak(daily.days, localDateStr(0));
+    const letters = t('success.weekLetters').split(',');
+    $('success-week').innerHTML = weekGrid(daily.days, localDateStr(0)).map(d =>
+      `<div class="tr-week-day${d.trained ? ' is-trained' : ''}${d.today ? ' is-today' : ''}" title="${escHtml(d.date)}"><span class="tr-week-bar"></span><span class="tr-week-label">${escHtml(letters[d.weekday] || '')}</span></div>`).join('');
     const due = dueTomorrowCount(dist.dates, localDateStr(1));
     setText('success-streak', String(streak));
+    // The day streak and its week grid are gamification elements; the
+    // "words moved up" line in the same card stays.
+    $('success-streak-title').classList.toggle('hidden', !_gamificationEnabled);
+    $('success-week').classList.toggle('hidden', !_gamificationEnabled);
     setText('success-due-tomorrow', String(due));
     setText('success-comeback-msg', t(due > 0 ? 'success.comebackDue' : 'success.comebackNoDue'));
     if (wordsImproved > 0) {
@@ -102,10 +109,34 @@ async function loadComebackInfo(wordsImproved) {
     } else {
       hide('success-improved');
     }
+    $('success-streak-card').classList.toggle('hidden', !_gamificationEnabled && !(wordsImproved > 0));
     show('success-comeback');
   } catch (e) {
     hide('success-comeback');
   }
+}
+
+// sessionProgress returns the session bar's "X of Y today" numbers: answers
+// given today against answers plus the cards still due.
+function sessionProgress(doneToday, dueLeft) {
+  const done = Math.max(0, doneToday || 0);
+  const total = done + Math.max(0, dueLeft || 0);
+  return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+}
+
+// weekGrid returns the 7 days ending at `today` (YYYY-MM-DD) for the all-done
+// streak card. weekday is 0 = Monday … 6 = Sunday.
+function weekGrid(days, today) {
+  const trained = new Set((days || []).filter(d => d.attempts > 0).map(d => d.date));
+  const out = [];
+  const cur = new Date(today + 'T00:00:00Z');
+  cur.setUTCDate(cur.getUTCDate() - 6);
+  for (let i = 0; i < 7; i++) {
+    const date = cur.toISOString().slice(0, 10);
+    out.push({ date, weekday: (cur.getUTCDay() + 6) % 7, trained: trained.has(date), today: date === today });
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
 }
 
 // dueDisplayCount computes the "remaining today" number shown to the user.
@@ -125,6 +156,14 @@ function accuracyPauseParams(stats) {
   return { pct: stats.accuracy_pause_pct, min: stats.accuracy_pause_min };
 }
 
+// renderSessionProgress fills the session bar's "X of Y today" label and bar.
+function renderSessionProgress(doneToday, dueLeft) {
+  const p = sessionProgress(doneToday, dueLeft);
+  setText('session-progress-label', t('session.progress', { done: p.done, total: p.total }));
+  const bar = document.getElementById('session-progress-bar');
+  if (bar) bar.style.width = p.pct + '%';
+}
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
@@ -136,9 +175,11 @@ async function loadStats() {
     const statsUrl = qs ? `/api/quiz/stats?${qs}` : '/api/quiz/stats';
     const stats = await apiFetch(statsUrl);
     latestStats = stats;
-    setText('stats-due', dueDisplayCount(stats, false));
+    const dueLeft = dueDisplayCount(stats, false);
+    setText('stats-due', dueLeft);
     setText('stats-total', stats.total);
-    setText('stats-new', `${stats.new_today} / ${stats.max_new_per_day}`);
+    setText('stats-new', t('session.newOf', { n: stats.new_today, max: stats.max_new_per_day }));
+    renderSessionProgress(stats.today_attempts, dueLeft);
     const pause = accuracyPauseParams(stats);
     const pausedEl = document.getElementById('stats-new-paused');
     if (pausedEl) {

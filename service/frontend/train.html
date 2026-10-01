@@ -1,81 +1,42 @@
 {{template "layout" .}}
 {{define "content"}}
 
-  <!-- Stats bar -->
-  <div class="bg-blue-50 border-b border-blue-100">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex items-center gap-6 text-sm text-blue-700">
-      <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.dueToday">Due today:</span> <strong id="stats-due">—</strong></span>
-      <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.totalWords">Total words:</span> <strong id="stats-total">—</strong></span>
-      <span class="flex flex-col sm:flex-row sm:gap-1"><span data-i18n="statsBar.newToday">New today:</span> <strong id="stats-new">—</strong></span>
-      <button id="open-filter-overlay" class="sm:hidden ml-auto bg-white text-xs text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:bg-gray-50 transition" data-i18n="filter.edit">▼ Edit</button>
+  <!-- Session bar: progress, due/new counts, session chip, audio + fullscreen -->
+  <div id="session-bar" class="tr-bar">
+    <div class="tr-bar-inner">
+      <div class="tr-progress">
+        <div class="tr-progress-row">
+          <span id="session-progress-label" class="tr-progress-label">—</span>
+          <span class="tr-progress-meta"><strong id="stats-due">—</strong> <span data-i18n="session.due">due</span> · <span id="stats-new">—</span></span>
+        </div>
+        <div class="tr-progress-track"><div id="session-progress-bar" class="tr-progress-fill" style="width:0%"></div></div>
+      </div>
+      <div class="tr-bar-actions">
+        <span id="difficult-drill-bar" class="hidden">
+          <button id="difficult-drill-pill" type="button" class="tr-drill-pill" title="Exit difficult-words drill" data-i18n-title="filter.difficultDrillExit">
+            <span data-i18n="filter.difficultDrill">Difficult words</span>
+            <span id="difficult-drill-count"></span>
+            <span aria-hidden="true">✕</span>
+          </button>
+        </span>
+        <button id="open-filter-overlay" type="button" class="tr-chip" aria-haspopup="dialog" aria-controls="filter-overlay">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4"/></svg>
+          <span id="session-chip-label">—</span>
+        </button>
+        <button id="autoplay-toggle-btn" type="button" aria-pressed="false" class="tr-icon-btn"
+          aria-label="Auto-play sound" title="Auto-play sound" data-i18n-title="train.autoPlay.offTitle"></button>
+        <button id="fullscreen-toggle-btn" type="button" aria-pressed="false" class="tr-icon-btn hidden"
+          aria-label="Toggle fullscreen" title="Enter fullscreen" data-i18n-title="fullscreen.enterTitle">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+      </div>
     </div>
-    <div id="stats-new-paused" class="hidden max-w-2xl mx-auto px-4 pb-2 text-xs text-amber-700"></div>
-  </div>
-
-  <!-- Difficult-words drill indicator (shown only while a drill is active) -->
-  <div id="difficult-drill-bar" class="hidden bg-amber-50 border-b border-amber-200">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex items-center gap-2">
-      <button id="difficult-drill-pill" type="button" title="Exit difficult-words drill"
-        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500 text-white hover:bg-amber-600 transition">
-        <span data-i18n="filter.difficultDrill">Difficult words</span>
-        <span id="difficult-drill-count" class="font-semibold"></span>
-        <span class="ml-0.5 font-bold" aria-hidden="true">✕</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- Mode selector (desktop only; mobile uses the Edit overlay instead) -->
-  <div class="hidden sm:block bg-white border-b border-gray-200">
-    <div class="flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap">
-      <button data-mode="progressive"     class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.progressive">Progressive</button>
-      <button data-mode="random"          class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.random">Random</button>
-      <button data-mode="cycle"           class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.cycle">Cycle</button>
-      <button data-mode="transl_to_zh"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.transl_to_zh">Transl → ZH</button>
-      <button data-mode="zh_to_transl"        class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.zh_to_transl">ZH → Transl</button>
-      <button data-mode="zh_pinyin_to_transl" class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.zh_pinyin_to_transl">ZH + Pinyin → Transl</button>
-      <button data-mode="zh_to_transl_no_sound" class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.zh_to_transl_no_sound">Chinese (no sound)</button>
-      <button data-mode="voice_to_transl"       class="mode-btn px-3 py-1 rounded-full text-sm font-medium transition" data-i18n="mode.voice_to_transl">Voice</button>
-    </div>
-  </div>
-
-  <!-- Tier filter (desktop only; mobile uses overlay) -->
-  <div id="tier-filter-bar" class="hidden sm:block bg-white border-b border-gray-200">
-    <div class="max-w-2xl mx-auto px-4 py-2 flex gap-2 flex-wrap items-center">
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.level">Level:</span>
-      <button data-bucket="" class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.all">All</button>
-      <button data-bucket="new"    class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.new">New</button>
-      <button data-bucket="0-49"   class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.struggling">Struggling</button>
-      <button data-bucket="50-69"  class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.learning">Learning</button>
-      <button data-bucket="70-84"  class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.practicing">Practicing</button>
-      <button data-bucket="85-100" class="tier-pill px-2.5 py-0.5 rounded-full text-xs font-medium transition" data-i18n="tier.mastered">Mastered</button>
-    </div>
-  </div>
-
-  <!-- Language + Mnemonics filter (desktop only; hidden on mobile — use overlay instead) -->
-  <div id="lang-filter-bar" class="hidden sm:block bg-white border-b border-gray-200">
-    <div id="lang-chips-desktop" class="flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.langs">Languages:</span>
-      <!-- lang pills injected here by applyLangChips() -->
-      <span class="text-gray-300 select-none mx-1">|</span>
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.mnemonics">Mnemonics:</span>
-      <button id="mnemonics-pill" class="px-2.5 py-0.5 rounded-full text-xs font-medium transition"></button>
-      <span class="text-gray-300 select-none mx-1">|</span>
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.components">Components:</span>
-      <button id="components-pill" class="px-2.5 py-0.5 rounded-full text-xs font-medium transition"></button>
-    </div>
-  </div>
-
-  <!-- Tag filter (desktop only; hidden on mobile — use overlay instead) -->
-  <div id="tag-filter-bar" class="hidden sm:block bg-white border-b border-gray-200">
-    <div id="tag-chips-desktop" class="flex max-w-2xl mx-auto px-4 py-2 gap-2 flex-wrap items-center">
-      <span class="text-xs text-gray-500 font-medium mr-1" data-i18n="filter.tags">Tags:</span>
-      <!-- tag pills injected here by loadTrainTags() -->
-    </div>
+    <div id="stats-new-paused" class="hidden tr-notice"></div>
   </div>
 
   <!-- Main content -->
-  <main class="flex-1 flex items-start justify-center px-4 py-4 sm:py-10">
-    <div id="train-container" class="w-full max-w-xs sm:max-w-sm md:max-w-lg">
+  <main class="tr-main">
+    <div id="train-container">
 
       <!-- Empty state (no vocabulary added yet) — first vocabulary setup wizard,
            with the shared-library picker behind "Import my own list instead". -->
@@ -84,56 +45,71 @@
       </div>
 
       <!-- Success state (all words reviewed for today) -->
-      <div id="success-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-5xl mb-4">🎉</div>
-        <h2 class="text-xl font-semibold text-gray-700 mb-2" data-i18n="success.title">All done for today!</h2>
-        <p id="success-stats" class="text-gray-500 mb-6"></p>
-        <div id="success-comeback" class="hidden mb-6 mx-auto max-w-md bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-900 text-left">
-          <p class="font-semibold mb-1">🔥 <span data-i18n="success.dayStreak">Day streak:</span> <span id="success-streak"></span></p>
-          <p><span id="success-due-tomorrow"></span> <span id="success-comeback-msg"></span></p>
-          <p id="success-improved" class="hidden">📈 <span id="success-improved-count"></span> <span data-i18n="success.wordsImproved">words moved up a level today!</span></p>
+      <div id="success-state" class="hidden tr-card tr-card-roomy">
+        <div class="tr-center">
+          <div class="tr-tile tr-tile-green font-hanzi" aria-hidden="true">好</div>
+          <h2 class="tr-h1" data-i18n="success.title">All done for today!</h2>
+          <p id="success-stats" class="tr-sub"></p>
         </div>
-        <div class="mb-5">
-          <p id="success-amount-label" class="text-sm font-medium text-gray-600 mb-3" data-i18n="success.learnMore">Learn more words?</p>
-          <div class="flex gap-3 justify-center">
-            <button data-advance="10" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">10</button>
-            <button data-advance="20" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">20</button>
-            <button data-advance="30" class="advance-btn px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed">30</button>
+        <div id="success-comeback" class="hidden">
+          <div id="success-streak-card" class="tr-streak-card">
+            <div class="tr-streak-head">
+              <span id="success-streak-title" class="tr-streak-title"><span id="success-streak"></span> <span data-i18n="success.dayStreakShort">day streak</span></span>
+              <span id="success-improved" class="hidden tr-muted-sm"><span id="success-improved-count"></span> <span data-i18n="success.wordsImproved">words moved up a level today!</span></span>
+            </div>
+            <div id="success-week" class="tr-week"></div>
           </div>
-          <label class="flex items-center justify-center gap-2 text-sm text-gray-600 cursor-pointer select-none mt-3">
-            <input type="checkbox" id="difficult-words-checkbox" class="rounded">
-            <span data-i18n="success.difficultWords">Drill my hardest words instead</span>
-          </label>
+          <p class="tr-tomorrow"><span id="success-due-tomorrow"></span> <span id="success-comeback-msg"></span></p>
         </div>
-        <label class="flex items-center justify-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-          <input type="checkbox" id="reset-cap-checkbox" class="rounded">
-          <span data-i18n="success.alsoNew">Also introduce new words today</span>
-        </label>
-        <button id="introduce-new-btn" class="hidden mt-3 w-full px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition" data-i18n="success.introduceNew">Introduce new words</button>
+        <div class="tr-done-more">
+          <div id="success-amount-label" class="tr-label" data-i18n="success.learnMore">Learn more words?</div>
+          <div class="tr-advance-grid">
+            <button type="button" data-advance="10" class="advance-btn tr-advance-btn">10</button>
+            <button type="button" data-advance="20" class="advance-btn tr-advance-btn">20</button>
+            <button type="button" data-advance="30" class="advance-btn tr-advance-btn">30</button>
+          </div>
+          <label class="tr-toggle-row" for="difficult-words-checkbox">
+            <span data-i18n="success.difficultWords">Drill my hardest words instead</span>
+            <span class="ui-toggle"><input type="checkbox" id="difficult-words-checkbox"><span></span></span>
+          </label>
+          <label class="tr-toggle-row" for="reset-cap-checkbox">
+            <span data-i18n="success.alsoNew">Also introduce new words today</span>
+            <span class="ui-toggle"><input type="checkbox" id="reset-cap-checkbox"><span></span></span>
+          </label>
+          <button id="introduce-new-btn" type="button" class="hidden ui-btn ui-btn-primary tr-block" data-i18n="success.introduceNew">Introduce new words</button>
+        </div>
       </div>
 
       <!-- Error state -->
-      <div id="error-state" class="hidden text-center bg-white rounded-2xl shadow p-10">
-        <div class="text-4xl mb-4">⚠️</div>
-        <p id="error-msg" class="text-red-600"></p>
+      <div id="error-state" class="hidden tr-card tr-card-roomy tr-center">
+        <div class="tr-tile tr-tile-red" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></div>
+        <h2 class="tr-h1" data-i18n="error.cardTitle">Couldn’t load your next card</h2>
+        <p class="tr-sub" data-i18n="error.cardBody">The server didn’t respond. Your answers so far are saved.</p>
+        <p id="error-msg" class="tr-error-detail"></p>
+        <div class="tr-actions-center">
+          <button id="error-retry-btn" type="button" class="ui-btn ui-btn-primary" data-i18n="error.retry">Try again</button>
+          <button id="error-report-btn" type="button" class="ui-btn ui-btn-secondary hidden" data-i18n="nav.report">Report an issue</button>
+        </div>
       </div>
 
       <!-- Card area -->
       <div id="card-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-5 sm:p-8">
-          <div id="mode-label" class="text-sm font-medium text-blue-600 uppercase tracking-wider mb-3 sm:mb-6"></div>
-
-          <div class="flex items-center gap-3 mb-3">
-            <div id="prompt-word" class="text-4xl sm:text-5xl font-bold text-gray-800 break-words flex-1 min-w-0"></div>
-            <button id="play-btn" type="button" class="hidden text-3xl text-blue-400 hover:text-blue-600 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
+        <div class="tr-card">
+          <div class="tr-card-head">
+            <div id="mode-label" class="tr-eyebrow"></div>
+            <span id="card-tier" class="hidden tier-chip"></span>
           </div>
-          <div id="pinyin-hint" class="hidden text-xl text-gray-500 mb-3 sm:mb-6"></div>
-          <div id="translations-hint" class="hidden text-2x1 text-gray-400 mb-4"></div>
-          <div id="sentence-context" class="hidden text-lg text-gray-500 mb-4"></div>
-          <div id="hmm-type-badge" class="hidden inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-2"></div>
-          <div id="hmm-actor-hint" class="hidden text-sm text-gray-400 mb-4"></div>
+          <div class="tr-prompt-row">
+            <div id="prompt-word" class="tr-prompt font-hanzi"></div>
+            <button id="play-btn" type="button" class="hidden tr-speak" data-i18n-title="card.readAloud" title="Read aloud" aria-label="Read aloud"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
+          </div>
+          <div id="pinyin-hint" class="hidden tr-pinyin"></div>
+          <div id="translations-hint" class="hidden tr-also"></div>
+          <div id="sentence-context" class="hidden tr-context"></div>
+          <div id="hmm-type-badge" class="hidden"></div>
+          <div id="hmm-actor-hint" class="hidden tr-muted-sm"></div>
 
-          <form id="answer-form" class="mt-3 sm:mt-6">
+          <form id="answer-form" class="tr-answer-form">
             <input
               id="answer-input"
               type="text"
@@ -142,246 +118,211 @@
               spellcheck="false"
               placeholder="Type your answer…"
               data-i18n-placeholder="card.placeholder"
-              class="w-full border border-gray-300 rounded-xl px-4 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              class="tr-input tr-input-lg"
             >
-            <button
-              type="submit"
-              class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
-              data-i18n="card.submit"
-            >
-              Submit
-            </button>
-            <button
-              id="skip-today-btn"
-              type="button"
-              class="w-full mt-3 border border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-700 font-medium py-2 rounded-xl text-sm transition"
-              data-i18n="card.skipToday"
-            >
-              Skip for Today
-            </button>
+            <button type="submit" class="ui-btn ui-btn-primary tr-block tr-btn-lg" data-i18n="card.submit">Check</button>
           </form>
+          <div class="tr-center">
+            <button id="skip-today-btn" type="button" class="tr-text-btn" data-i18n="card.skipToday">Skip for today</button>
+          </div>
         </div>
       </div>
 
       <!-- New word introduction area (progressive mode) -->
       <div id="new-word-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-5 sm:p-8 text-center">
-          <div class="text-sm font-medium text-emerald-600 uppercase tracking-wider mb-6" data-i18n="newWord.label">New Word</div>
-          <div class="flex items-center justify-center gap-3 mb-3">
-            <div id="new-word-zh" class="text-5xl font-bold text-gray-800 min-w-0 break-words"></div>
-            <button id="new-word-play-btn" type="button" class="text-3xl text-blue-400 hover:text-blue-600 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
+        <div class="tr-card">
+          <span class="tier-chip tier-chip-new tr-upper"><span aria-hidden="true">🌰</span><span data-i18n="newWord.label">New word</span></span>
+          <div class="tr-word-row tr-mt-18">
+            <div class="tr-word-main">
+              <div class="tr-word-head">
+                <span id="new-word-zh" class="tr-hanzi-xl font-hanzi"></span>
+                <span id="new-word-pinyin" class="tr-pinyin-lg"></span>
+              </div>
+              <div id="new-word-en" class="tr-meanings-list"></div>
+            </div>
+            <button id="new-word-play-btn" type="button" class="tr-speak" data-i18n-title="card.readAloud" title="Read aloud" aria-label="Read aloud"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
           </div>
-          <div id="new-word-pinyin" class="text-xl text-gray-500 mb-4"></div>
-          <div id="new-word-en" class="text-lg text-gray-700 mb-4"></div>
-          <div id="new-word-breakdown" class="hidden mb-4"></div>
+          <div id="new-word-breakdown" class="hidden tr-mt-12"></div>
 
           <!-- Input practice area -->
-          <div id="new-word-inputs" class="mb-6 space-y-3 text-left">
-            <div id="new-word-zh-row">
-              <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1"
-                   data-i18n="newWord.typeZh">Type the Chinese</div>
-              <div class="flex items-center gap-2">
-                <input type="text" id="new-word-zh-input"
-                       class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-base sm:text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
-                       autocomplete="off" spellcheck="false">
-                <span id="new-word-zh-check" class="text-xl w-6 text-center"></span>
-              </div>
-            </div>
-            <div id="new-word-trans-row">
-              <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1"
-                   data-i18n="newWord.typeTrans">Type the translation</div>
-              <div class="flex items-center gap-2">
-                <input type="text" id="new-word-trans-input"
-                       class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-sm sm:text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
-                       autocomplete="off">
-                <span id="new-word-trans-check" class="text-xl w-6 text-center"></span>
-              </div>
-            </div>
+          <div id="new-word-inputs" class="tr-inputs">
+            <label id="new-word-zh-row" class="tr-check-field">
+              <span class="tr-label" data-i18n="newWord.typeZh">Type the Chinese</span>
+              <span class="tr-check-row">
+                <input type="text" id="new-word-zh-input" class="tr-input font-hanzi" autocomplete="off" spellcheck="false">
+                <span id="new-word-zh-check" class="tr-check"></span>
+              </span>
+            </label>
+            <label id="new-word-trans-row" class="tr-check-field">
+              <span class="tr-label" data-i18n="newWord.typeTrans">Type the meaning</span>
+              <span class="tr-check-row">
+                <input type="text" id="new-word-trans-input" class="tr-input" autocomplete="off">
+                <span id="new-word-trans-check" class="tr-check"></span>
+              </span>
+            </label>
           </div>
 
-          <div class="flex gap-3">
-            <button id="new-word-skip-btn" class="flex-1 border border-gray-300 hover:border-gray-400 text-gray-600 font-semibold py-2 sm:py-3 rounded-xl text-sm sm:text-lg transition" data-i18n="newWord.skip">
-              Skip (7 days)
-            </button>
-            <button id="new-word-got-it-btn" disabled
-                    class="flex-1 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2 sm:py-3 rounded-xl text-sm sm:text-lg transition"
-                    data-i18n="newWord.gotIt">
-              Got it
-            </button>
+          <div class="tr-two-btns">
+            <button id="new-word-skip-btn" type="button" class="ui-btn ui-btn-secondary" data-i18n="newWord.skip">Skip (7 days)</button>
+            <button id="new-word-got-it-btn" type="button" disabled class="ui-btn ui-btn-primary" data-i18n="newWord.gotIt">Got it</button>
           </div>
-          <button id="new-word-no-new-btn" class="mt-3 w-full text-sm text-gray-400 hover:text-gray-600 py-2 transition" data-i18n="newWord.noNew">
-            No new words for now
-          </button>
+          <div class="tr-center">
+            <button id="new-word-no-new-btn" type="button" class="tr-text-btn" data-i18n="newWord.noNew">No new words for now</button>
+          </div>
         </div>
       </div>
 
       <!-- New component introduction area -->
       <div id="new-component-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-5 sm:p-8 text-center">
-          <div class="text-sm font-medium text-purple-600 uppercase tracking-wider mb-6" data-i18n="component.newLabel">New Component</div>
-          <div class="flex items-center justify-center gap-3 mb-2">
-            <div id="new-component-char" class="text-5xl font-bold text-gray-800"></div>
-            <button id="new-component-play-btn" type="button" class="text-3xl text-blue-400 hover:text-blue-600 transition leading-none shrink-0" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
+        <div class="tr-card">
+          <span class="tier-chip tier-chip-new tr-upper" data-i18n="component.newLabel">New Component</span>
+          <div class="tr-word-row tr-mt-18">
+            <div class="tr-word-main">
+              <div class="tr-word-head">
+                <span id="new-component-char" class="tr-hanzi-xl font-hanzi"></span>
+                <span id="new-component-pinyin-row" class="hidden tr-pinyin-lg"><span id="new-component-pinyin"></span></span>
+              </div>
+            </div>
+            <button id="new-component-play-btn" type="button" class="tr-speak" data-i18n-title="card.readAloud" title="Read aloud" aria-label="Read aloud"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
           </div>
-          <div id="new-component-pinyin-row" class="text-gray-400 text-sm mb-4 hidden"><span id="new-component-pinyin"></span></div>
-          <div id="new-component-defs" class="space-y-2 mb-8 text-left"></div>
-          <button id="new-component-got-it-btn" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition" data-i18n="component.gotIt">
-            Got it!
-          </button>
+          <div id="new-component-defs" class="tr-defs"></div>
+          <button id="new-component-got-it-btn" type="button" class="ui-btn ui-btn-primary tr-block tr-btn-lg" data-i18n="component.gotIt">Got it!</button>
         </div>
       </div>
 
       <!-- Result area -->
       <div id="result-area" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-5 sm:p-8 text-center">
-          <div id="result-question" class="hidden mb-4 p-3 bg-gray-50 border border-gray-100 rounded-xl text-left">
-            <div id="result-question-label" class="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1"></div>
-            <div id="result-question-word" class="text-2xl font-bold text-gray-800 break-words"></div>
-            <div id="result-question-pinyin" class="hidden text-sm text-gray-500 mt-0.5"></div>
-            <div id="result-question-translations" class="hidden text-sm text-gray-400 mt-0.5"></div>
+        <div class="tr-card">
+          <div class="tr-result-head">
+            <span id="result-status-icon" class="tr-status-icon" aria-hidden="true"></span>
+            <span id="result-icon" class="tr-result-title"></span>
           </div>
-          <div id="result-icon" class="text-3xl font-bold mb-4"></div>
-          <button id="result-play-btn" type="button" class="hidden text-3xl text-gray-400 hover:text-blue-500 transition mb-3" data-i18n-title="card.readAloud" title="Read aloud">🔊</button>
+          <p id="result-subtitle" class="hidden tr-sub tr-left"></p>
+          <div id="result-question" class="hidden tr-question-recap">
+            <div id="result-question-label" class="tr-eyebrow-sm"></div>
+            <div id="result-question-word" class="tr-recap-word"></div>
+            <div id="result-question-pinyin" class="hidden tr-pinyin-sm"></div>
+            <div id="result-question-translations" class="hidden tr-muted-sm"></div>
+          </div>
+          <button id="result-play-btn" type="button" class="hidden tr-speak" data-i18n-title="card.readAloud" title="Read aloud" aria-label="Read aloud"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
 
-          <div id="word-breakdown" class="hidden mb-2"></div>
-          <div id="wrong-retype-area" class="hidden mb-4 space-y-3 text-left">
-            <div id="wrong-retype-zh-group">
-              <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" data-i18n="newWord.typeZh">Type the Chinese</div>
-              <div class="flex items-center gap-2">
-                <input type="text" id="wrong-retype-zh-input"
-                       class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-base sm:text-xl text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
-                       autocomplete="off" spellcheck="false">
-                <span id="wrong-retype-zh-check" class="text-xl w-6 text-center"></span>
-              </div>
-            </div>
-            <div id="wrong-retype-trans-group">
-              <div class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1" data-i18n="newWord.typeTrans">Type the translation</div>
-              <div class="flex items-center gap-2">
-                <input type="text" id="wrong-retype-trans-input"
-                       class="flex-1 min-w-0 border border-gray-300 rounded-xl px-3 py-1.5 sm:py-2 text-sm sm:text-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-300"
-                       autocomplete="off">
-                <span id="wrong-retype-trans-check" class="text-xl w-6 text-center"></span>
-              </div>
-            </div>
+          <div id="word-breakdown" class="hidden"></div>
+          <div id="add-translation-row" class="hidden tr-add-row">
+            <button id="add-translation-btn" type="button" class="tr-add-btn"></button>
+            <select id="add-translation-lang-select" class="hidden tr-add-lang"></select>
           </div>
-          <div id="add-translation-row" class="hidden mb-3 flex items-center gap-2">
-            <button id="add-translation-btn" class="flex-1"></button>
-            <select id="add-translation-lang-select" class="hidden shrink-0 w-16 border border-gray-300 rounded-xl px-1.5 py-2 text-xs text-center"></select>
+          <button id="accept-correct-btn" type="button" class="hidden tr-accept-btn"></button>
+          <div id="wrong-retype-area" class="hidden tr-retype">
+            <div class="tr-label" data-i18n="result.retypeTitle">Type the correct answer once to continue</div>
+            <label id="wrong-retype-zh-group" class="tr-check-field">
+              <span class="tr-label-sm" data-i18n="newWord.typeZh">Type the Chinese</span>
+              <span class="tr-check-row">
+                <input type="text" id="wrong-retype-zh-input" class="tr-input font-hanzi" autocomplete="off" spellcheck="false">
+                <span id="wrong-retype-zh-check" class="tr-check"></span>
+              </span>
+            </label>
+            <label id="wrong-retype-trans-group" class="tr-check-field">
+              <span class="tr-label-sm" data-i18n="newWord.typeTrans">Type the meaning</span>
+              <span class="tr-check-row">
+                <input type="text" id="wrong-retype-trans-input" class="tr-input" autocomplete="off">
+                <span id="wrong-retype-trans-check" class="tr-check"></span>
+              </span>
+            </label>
           </div>
-          <button id="accept-correct-btn" class="hidden w-full border border-green-400 hover:border-green-500 text-green-700 hover:text-green-800 font-medium py-2 rounded-xl text-sm transition mb-2"></button>
 
-          <div id="review-edit-row" class="flex gap-3 mb-3">
-            <button
-              id="edit-card-btn"
-              class="w-1/2 border border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-700 font-medium py-2 rounded-xl text-sm transition"
-            >
-              Edit
+          <div id="result-hmm" class="hidden tr-disclosure-wrap"></div>
+          <div id="result-decompose" class="hidden tr-disclosure-wrap">
+            <button id="result-decompose-toggle" type="button" class="tr-disclosure"></button>
+            <div id="result-decompose-content" class="hidden tr-mt-8"></div>
+          </div>
+
+          <div class="tr-status-row">
+            <div class="tr-status-left">
+              <span id="bucket-info" class="hidden tier-chip"></span>
+              <span id="streak-dots" class="hidden tr-dots"></span>
+              <span id="attempt-stats" class="tr-muted-sm"></span>
+              <span id="streak-info" class="hidden tr-muted-sm"></span>
+            </div>
+            <span id="next-due-info" class="tr-next-due"></span>
+          </div>
+
+          <div id="review-edit-row" class="tr-two-btns tr-two-equal">
+            <button id="edit-card-btn" type="button" class="ui-btn ui-btn-secondary tr-btn-sm">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg><span data-i18n="result.edit">Edit</span>
             </button>
-            <button
-              id="needs-review-btn"
-              class="w-1/2 border border-orange-300 hover:border-orange-400 text-orange-600 hover:text-orange-700 font-medium py-2 rounded-xl text-sm transition"
-              data-i18n="result.flagReview"
-            >
-              Flag for Review
-            </button>
+            <button id="needs-review-btn" type="button" class="ui-btn ui-btn-secondary tr-btn-sm" data-i18n="result.flagReview">Flag for review</button>
           </div>
-          <button
-            id="next-btn"
-            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl text-lg transition"
-            data-i18n="result.next"
-          >
-            Next →
-          </button>
-
-          <div id="result-hmm" class="hidden mb-2 text-left"></div>
-
-          <div id="result-decompose" class="hidden mb-2 text-left">
-            <button id="result-decompose-toggle" type="button" class="text-sm text-gray-400 hover:text-gray-600 transition"></button>
-            <div id="result-decompose-content" class="hidden mt-2"></div>
-          </div>
-
-          <div class="flex justify-center gap-6 text-sm text-gray-500 mb-8 mt-3">
-            <div class="text-center flex items-center justify-center gap-1.5">
-              <span id="bucket-info" class="hidden text-base leading-none"></span>
-              <span id="next-due-info"></span>
-            </div>
-            <div class="text-center">
-              <span id="attempt-stats"></span>
-              <div id="streak-info" class="hidden text-xs text-gray-400 mt-0.5"></div>
-            </div>
-          </div>
+          <button id="next-btn" type="button" class="ui-btn ui-btn-primary tr-block tr-btn-lg tr-mt-10" data-i18n="result.next">Next</button>
         </div>
       </div>
 
       <div id="celebration-screen" class="hidden">
-        <div class="bg-white rounded-2xl shadow p-5 sm:p-8 text-center">
-          <div class="text-4xl mb-2">🎉</div>
-          <div class="text-lg font-bold text-gray-800 mb-4" data-i18n="celebration.levelUp">Level up!</div>
-          <div id="celebration-icons" class="relative mx-auto mb-3 text-3xl" style="width: 2.5em; height: 2.5em;">
-            <span id="celebration-icon-old" class="absolute inset-0 flex items-center justify-center"></span>
-            <span id="celebration-icon-new" class="absolute inset-0 flex items-center justify-center"></span>
+        <div class="tr-card tr-card-roomy tr-center">
+          <span class="tr-eyebrow" data-i18n="celebration.levelUp">Level up</span>
+          <div id="celebration-icons" class="tr-morph">
+            <span id="celebration-tile" class="tr-morph-tile"></span>
+            <span id="celebration-ring" class="tr-morph-ring"></span>
+            <span id="celebration-icon-old" class="tr-morph-icon"></span>
+            <span id="celebration-icon-new" class="tr-morph-icon"></span>
           </div>
-          <div id="celebration-transition" class="text-sm text-gray-500 mb-6"></div>
-          <button
-            id="celebration-continue-btn"
-            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-xl text-lg transition"
-            data-i18n="celebration.continue"
-          >
-            Continue
-          </button>
+          <div id="celebration-word" class="tr-word-head tr-justify-center"></div>
+          <div id="celebration-meanings" class="tr-sub"></div>
+          <div id="celebration-transition" class="tr-level-chips"></div>
+          <p class="tr-level-note" data-i18n="celebration.note">This word moved up a level and now comes back less often.</p>
+          <button id="celebration-continue-btn" type="button" class="ui-btn ui-btn-primary" data-i18n="celebration.continue">Continue</button>
         </div>
       </div>
 
     </div>
   </main>
 
-  <!-- Mobile filter overlay (bottom sheet) -->
-  <div id="filter-overlay" class="hidden fixed inset-0 z-50 sm:hidden" role="dialog" aria-modal="true">
-    <div id="filter-overlay-backdrop" class="absolute inset-0 bg-black/50"></div>
-    <div class="absolute top-10 left-0 right-0 bg-white rounded-t-2xl shadow-xl max-h-[80vh] overflow-y-auto">
-      <div class="p-5">
-        <div class="mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.quizMode">Quiz Mode</div>
-          <div class="flex flex-wrap gap-2">
-            <button data-mode="progressive"     class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.progressive">Progressive</button>
-            <button data-mode="random"          class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.random">Random</button>
-            <button data-mode="cycle"           class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.cycle">Cycle</button>
-            <button data-mode="transl_to_zh"        class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.transl_to_zh">Transl → ZH</button>
-            <button data-mode="zh_to_transl"        class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.zh_to_transl">ZH → Transl</button>
-            <button data-mode="zh_pinyin_to_transl" class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.zh_pinyin_to_transl">ZH + Pinyin → Transl</button>
-            <button data-mode="zh_to_transl_no_sound" class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.zh_to_transl_no_sound">Chinese (no sound)</button>
-            <button data-mode="voice_to_transl"       class="overlay-mode-btn px-4 py-2 rounded-full text-sm font-medium transition" data-i18n="mode.voice_to_transl">Voice</button>
+  <!-- Session sheet: quiz mode, level, meaning languages, mnemonics,
+       components and tags. Bottom sheet on phones, centred on desktop. -->
+  <div id="filter-overlay" class="hidden tr-sheet" role="dialog" aria-modal="true" aria-labelledby="filter-overlay-title">
+    <div id="filter-overlay-backdrop" class="tr-sheet-backdrop"></div>
+    <div class="tr-sheet-panel">
+      <div class="app-sheet-handle"></div>
+      <h2 id="filter-overlay-title" class="tr-sheet-title" data-i18n="session.title">Session</h2>
+      <p class="tr-muted-sm tr-sheet-sub"><span id="stats-total">—</span> <span data-i18n="session.wordsInTraining">words in training</span></p>
+      <div class="tr-sheet-groups">
+        <div>
+          <div class="tr-label" data-i18n="filter.quizMode">Quiz mode</div>
+          <div class="tr-chips">
+            <button type="button" data-mode="progressive" class="overlay-mode-btn ui-chip" aria-pressed="false" data-i18n="mode.progressive">Progressive</button>
+            <button type="button" data-mode="random" class="overlay-mode-btn ui-chip" aria-pressed="false" data-i18n="mode.random">Random</button>
+            <button type="button" data-mode="cycle" class="overlay-mode-btn ui-chip" aria-pressed="false" data-i18n="mode.cycle">Cycle</button>
+            <button type="button" data-mode="transl_to_zh" class="overlay-mode-btn ui-chip" aria-pressed="false" data-i18n="mode.transl_to_zh">To Chinese</button>
+            <button type="button" data-mode="zh_to_transl" class="overlay-mode-btn ui-chip" aria-pressed="false" data-i18n="mode.zh_to_transl">Chinese</button>
+            <button type="button" data-mode="zh_pinyin_to_transl" class="overlay-mode-btn ui-chip" aria-pressed="false" data-i18n="mode.zh_pinyin_to_transl">Chinese + Pinyin</button>
+            <button type="button" data-mode="zh_to_transl_no_sound" class="overlay-mode-btn ui-chip" aria-pressed="false" data-i18n="mode.zh_to_transl_no_sound">Chinese (no sound)</button>
+            <button type="button" data-mode="voice_to_transl" class="overlay-mode-btn ui-chip" aria-pressed="false" data-i18n="mode.voice_to_transl">Voice</button>
           </div>
         </div>
-        <div class="mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.level">Level</div>
-          <div class="flex flex-wrap gap-2">
-            <button data-bucket="" class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.all">All</button>
-            <button data-bucket="new"    class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.new">New</button>
-            <button data-bucket="0-49"   class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.struggling">Struggling</button>
-            <button data-bucket="50-69"  class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.learning">Learning</button>
-            <button data-bucket="70-84"  class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.practicing">Practicing</button>
-            <button data-bucket="85-100" class="overlay-tier-btn px-3 py-1.5 rounded-full text-sm font-medium transition" data-i18n="tier.mastered">Mastered</button>
+        <div>
+          <div class="tr-label" data-i18n="filter.level">Level</div>
+          <div class="tr-chips">
+            <button type="button" data-bucket="" class="overlay-tier-btn ui-chip" aria-pressed="false"><span data-i18n="tier.all">All</span></button>
+            <button type="button" data-bucket="new" class="overlay-tier-btn ui-chip" aria-pressed="false"><span aria-hidden="true">🌰</span><span data-i18n="tier.new">New</span></button>
+            <button type="button" data-bucket="0-49" class="overlay-tier-btn ui-chip" aria-pressed="false"><span aria-hidden="true">🌱</span><span data-i18n="tier.struggling">Struggling</span></button>
+            <button type="button" data-bucket="50-69" class="overlay-tier-btn ui-chip" aria-pressed="false"><span aria-hidden="true">🌿</span><span data-i18n="tier.learning">Learning</span></button>
+            <button type="button" data-bucket="70-84" class="overlay-tier-btn ui-chip" aria-pressed="false"><span aria-hidden="true">🌳</span><span data-i18n="tier.practicing">Practicing</span></button>
+            <button type="button" data-bucket="85-100" class="overlay-tier-btn ui-chip" aria-pressed="false"><span aria-hidden="true">🌸</span><span data-i18n="tier.mastered">Mastered</span></button>
           </div>
         </div>
-        <div class="mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.mnemonics">Mnemonics</div>
-          <button id="overlay-mnemonics-pill" class="px-4 py-2 rounded-full text-sm font-medium transition"></button>
+        <div id="overlay-langs-section" class="hidden">
+          <div class="tr-label" data-i18n="filter.meaningIn">Meaning in</div>
+          <div id="overlay-lang-chips" class="tr-chips"></div>
         </div>
-        <div class="mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.components">Components</div>
-          <button id="overlay-components-pill" class="px-4 py-2 rounded-full text-sm font-medium transition"></button>
-        </div>
-        <div id="overlay-langs-section" class="hidden mb-5">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.langs">Languages</div>
-          <div id="overlay-lang-chips" class="flex flex-wrap gap-2"></div>
+        <div class="tr-sheet-toggles">
+          <button id="overlay-mnemonics-pill" type="button" class="tr-toggle-row" aria-pressed="false"><span data-i18n="filter.mnemonicsShort">Mnemonics</span><span class="ui-toggle-vis"></span></button>
+          <button id="overlay-components-pill" type="button" class="tr-toggle-row" aria-pressed="false"><span data-i18n="filter.componentsShort">Components</span><span class="ui-toggle-vis"></span></button>
         </div>
         <div id="overlay-tags-section" class="hidden">
-          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3" data-i18n="filter.tags">Tags</div>
-          <div id="overlay-tag-chips" class="flex flex-wrap gap-2"></div>
+          <div class="tr-label" data-i18n="filter.tagsShort">Tags</div>
+          <div id="overlay-tag-chips" class="tr-chips"></div>
         </div>
-        <button id="filter-overlay-close" class="mt-5 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2.5 rounded-xl text-sm transition" data-i18n="filter.done">Done</button>
       </div>
+      <button id="filter-overlay-close" type="button" class="ui-btn ui-btn-primary tr-block tr-mt-24" data-i18n="filter.done">Done</button>
     </div>
   </div>
 

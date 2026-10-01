@@ -123,3 +123,22 @@ describe('matchGameOutcome', () => {
     expect(matchGameOutcome(1, 0, 'Hilfe', 'Hilfe', ['Hilfe'], new Set())).toBe('swap');
   });
 });
+
+// ── Match-game done note (progress setting) ────────────────────────────────
+
+function matchGameDoneNoteKey(sm2Update) {
+  if (sm2Update === 'never') return null;
+  return sm2Update === 'wrong_only' ? 'match.doneNoteWrongOnly' : 'match.doneNote';
+}
+
+describe('matchGameDoneNoteKey', () => {
+  it('has no note when matches never change progress', () => {
+    expect(matchGameDoneNoteKey('never')).toBeNull();
+  });
+  it('uses the wrong-only note for "only wrong answers"', () => {
+    expect(matchGameDoneNoteKey('wrong_only')).toBe('match.doneNoteWrongOnly');
+  });
+  it('uses the generic note for "always"', () => {
+    expect(matchGameDoneNoteKey('always')).toBe('match.doneNote');
+  });
+});

@@ -379,7 +379,7 @@ test.describe('First vocabulary setup wizard', () => {
       const prompt = await page.locator('#prompt-word').innerText();
       await page.locator('#answer-input').fill(prompt === '我' ? 'I' : '我');
       await page.locator('#answer-form button[type="submit"]').click();
-      await expect(page.locator('#result-icon')).toHaveText('✓ Correct!', { timeout: 8_000 });
+      await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
       await page.locator('#next-btn').click();
       await waitForCardOrNewWord();
     }

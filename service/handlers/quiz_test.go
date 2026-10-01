@@ -1461,3 +1461,26 @@ func TestQuizAnswer_ResultHidesPinyinTranslation(t *testing.T) {
 		t.Errorf("want result translations [south], got %v", got)
 	}
 }
+
+// TestQuizNext_IncludesTier covers the redesigned question card, which shows
+// the word's current tier chip before the answer.
+func TestQuizNext_IncludesTier(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	id := seedWord(t, s, "朋友", "péngyou", []string{"friend"})
+	if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+		t.Fatalf("AcknowledgeWord: %v", err)
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/next?mode=zh_to_transl&langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Tier != "New" {
+		t.Errorf("want tier %q, got %q", "New", card.Tier)
+	}
+}
