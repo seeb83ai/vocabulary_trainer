@@ -348,9 +348,12 @@ label.st-text { cursor: pointer; }
 @media (max-width: 879px) {
   .st-index { display: none; }
   .st-chips { display: flex; }
+  .st-chip { padding: 5px 10px; font-size: 12px; }
   .st-row-range { flex-direction: column; align-items: stretch; }
   .st-range { justify-content: flex-start; }
-  #sec-progressive .st-row { flex-direction: column; align-items: stretch; }
+  #sec-languages .st-row,
+  #sec-progressive .st-row,
+  #sec-cycle .st-row { flex-direction: column; align-items: stretch; }
 }
 @media (max-width: 480px) {
   .st-row { flex-wrap: wrap; }
