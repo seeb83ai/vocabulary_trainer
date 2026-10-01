@@ -291,6 +291,7 @@ body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', system-ui, sans-serif; 
 .st-index-link:hover, .st-index-link.is-active { background: #fff; color: #1d4ed8; }
 .st-chips { display: none; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin: 0 0 14px; scrollbar-width: none; }
 .st-chip { flex: none; padding: 7px 12px; border-radius: 99px; border: 1.5px solid #e5e7eb; background: #fff; color: #374151; font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.st-jump-select { display: none; width: 100%; margin-bottom: 14px; border: 1.5px solid #d1d5db; border-radius: 12px; background: #fff; color: #111827; font-size: 14px; font-family: inherit; min-height: 40px; padding: 7px 10px; }
 .st-sections { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .st-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 18px clamp(16px,3vw,22px) 8px; scroll-margin-top: 16px; }
 .st-title { margin: 0 0 4px; font-size: 17px; font-weight: 800; color: #111827; }
@@ -347,8 +348,8 @@ label.st-text { cursor: pointer; }
 .ui-seg-opt input:focus-visible + span { box-shadow: 0 0 0 3px #dbeafe; }
 @media (max-width: 879px) {
   .st-index { display: none; }
-  .st-chips { display: flex; }
-  .st-chip { padding: 5px 10px; font-size: 12px; }
+  .st-jump-select { display: block; }
+  .st-box { scroll-margin-top: 60px; }
   .st-row-range { flex-direction: column; align-items: stretch; }
   .st-range { justify-content: flex-start; }
   #sec-languages .st-row,

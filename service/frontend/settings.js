@@ -904,5 +904,33 @@ document.querySelectorAll('[data-ui-lang]').forEach(b => {
   Object.keys(byId).forEach(id => { const el = document.getElementById(id); if (el) obs.observe(el); });
 })();
 
+// Mobile section-jump dropdown: populated from the chips nav so i18n stays in one place.
+(function initJumpSelect() {
+  const sel = document.getElementById('settings-jump');
+  if (!sel) return;
+  function build() {
+    const prev = sel.value;
+    sel.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '— Jump to section —';
+    sel.appendChild(placeholder);
+    document.querySelectorAll('#settings-chips .st-chip').forEach(a => {
+      const o = document.createElement('option');
+      o.value = a.getAttribute('href').slice(1);
+      o.textContent = a.textContent.trim();
+      sel.appendChild(o);
+    });
+    if (prev) sel.value = prev;
+  }
+  build();
+  sel.addEventListener('change', () => {
+    const el = document.getElementById(sel.value);
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+    sel.value = '';
+  });
+  document.addEventListener('langchange', build);
+})();
+
 document.addEventListener('langchange', () => { syncUILangButtons(); syncRadioDescriptions(); });
 syncUILangButtons();
