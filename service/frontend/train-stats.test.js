@@ -193,7 +193,7 @@ describe('accuracyPauseParams', () => {
 });
 
 // ── Redesign session bar / all-done helpers ──────────────────────────────────
-// Inlined from train-stats.js.
+// Inlined from train-stats.js (sessionProgress lives in app.js).
 // sessionProgress returns the session bar's "X of Y today" numbers: answers
 // given today against answers plus the cards still due.
 function sessionProgress(doneToday, dueLeft) {

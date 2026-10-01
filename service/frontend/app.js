@@ -9,6 +9,14 @@ const TIERS = [
   { key: '85-100', label: 'Mastered',   i18nKey: 'tier.mastered',   desc: 'All modes',        color: '#22c55e', pill: 'bg-green-100 text-green-700', icon: '🌸', tile: '#f0fdf4', soft: '#dcfce7', fg: '#15803d' },
 ];
 
+// sessionProgress returns a session bar's (Train, Pinyin) "X of Y today" numbers: answers
+// given today against answers plus the cards still due.
+function sessionProgress(doneToday, dueLeft) {
+  const done = Math.max(0, doneToday || 0);
+  const total = done + Math.max(0, dueLeft || 0);
+  return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
+}
+
 // Builds a single icon for the word's current tier — the compact inline
 // indicator shown on every result screen (vocab word, HMM, component).
 // Pure — testable in isolation. The celebration screen builds its own

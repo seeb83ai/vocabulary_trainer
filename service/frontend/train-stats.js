@@ -116,14 +116,6 @@ async function loadComebackInfo(wordsImproved) {
   }
 }
 
-// sessionProgress returns the session bar's "X of Y today" numbers: answers
-// given today against answers plus the cards still due.
-function sessionProgress(doneToday, dueLeft) {
-  const done = Math.max(0, doneToday || 0);
-  const total = done + Math.max(0, dueLeft || 0);
-  return { done, total, pct: total > 0 ? Math.round((done / total) * 100) : 0 };
-}
-
 // weekGrid returns the 7 days ending at `today` (YYYY-MM-DD) for the all-done
 // streak card. weekday is 0 = Monday … 6 = Sunday.
 function weekGrid(days, today) {
