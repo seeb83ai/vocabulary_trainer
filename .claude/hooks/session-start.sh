@@ -18,6 +18,9 @@ echo "Installing npm dependencies..."
 cd "${CLAUDE_PROJECT_DIR}"
 # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: environment pre-installs Chromium at
 # /opt/pw-browsers (set via PLAYWRIGHT_BROWSERS_PATH). No download needed.
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install
+# npm ci (not npm install): never rewrites package-lock.json. The lockfile is
+# written by a newer npm (Dependabot) that records "libc" fields; the older
+# npm in the container strips them on install and leaves the tree dirty.
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
 
 echo "Environment setup complete."
