@@ -9,7 +9,7 @@ test.describe('Vocabulary Management', () => {
     await page.goto('/vocab');
     const tbody = page.locator('#words-tbody');
     // globalSetup seeds at least one word (你好)
-    await expect(tbody.locator('tr').first()).toBeVisible({ timeout: 10_000 });
+    await expect(tbody.locator('.vb-row').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('#words-tbody')).toContainText('你好');
   });
 
@@ -18,6 +18,7 @@ test.describe('Vocabulary Management', () => {
 
     // Wait for the EN translation input to appear — it's created after loadLangSettings()
     // resolves (async settings fetch), so we must wait before filling it.
+    await page.locator('#open-add-btn').click();
     await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
 
     // Fill Chinese word
@@ -42,6 +43,7 @@ test.describe('Vocabulary Management', () => {
     // 足球 ("football/soccer"), so creating 踢足球 should auto-create 足球
     // as its own inert vocabulary word, tagged HSK1 like its parent (issue #293).
     await page.goto('/vocab');
+    await page.locator('#open-add-btn').click();
     await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
 
     await page.locator('#form-zh').fill('踢足球');
@@ -57,7 +59,7 @@ test.describe('Vocabulary Management', () => {
     // hidden by the default "hide unseen" filter — reveal it, then search.
     await page.locator('#hide-unseen-btn').click();
     await page.locator('#search-input').fill('足球');
-    const row = page.locator('#words-tbody tr', { hasText: '足球' }).filter({ hasNotText: '踢足球' });
+    const row = page.locator('#words-tbody .vb-row', { hasText: '足球' }).filter({ hasNotText: '踢足球' });
     await expect(row).toBeVisible({ timeout: 8_000 });
   });
 
@@ -67,6 +69,7 @@ test.describe('Vocabulary Management', () => {
     // before under the default created_at-desc order) — searching should
     // still put the exact match 谢谢 first.
     await page.goto('/vocab');
+    await page.locator('#open-add-btn').click();
     await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
 
     await page.locator('#form-zh').fill('谢谢你');
@@ -76,7 +79,7 @@ test.describe('Vocabulary Management', () => {
     await expect(page.locator('#words-tbody')).toContainText('谢谢你', { timeout: 8_000 });
 
     await page.locator('#search-input').fill('谢谢');
-    const firstRow = page.locator('#words-tbody tr').first();
+    const firstRow = page.locator('#words-tbody .vb-row').first();
     await expect(firstRow).toContainText('谢谢', { timeout: 8_000 });
     await expect(firstRow).not.toContainText('谢谢你');
   });
@@ -86,6 +89,7 @@ test.describe('Vocabulary Management', () => {
     // Translate button should fill it in via the free local lookup — no
     // plus role or DeepL key needed.
     await page.goto('/vocab');
+    await page.locator('#open-add-btn').click();
     await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
 
     await page.locator('#form-zh').fill('足球');
@@ -106,6 +110,7 @@ test.describe('Vocabulary Management', () => {
   // nothing for virtually every word.
   test('translations filled by the Translate button are stored as cedict-sourced; edited ones become user-sourced', async ({ page }) => {
     await page.goto('/vocab');
+    await page.locator('#open-add-btn').click();
     await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
 
     await page.locator('#form-zh').fill('足球');
@@ -140,7 +145,7 @@ test.describe('Vocabulary Management', () => {
     await page.setViewportSize({ width: 360, height: 641 });
     await page.goto('/vocab');
 
-    const title = page.locator('h2[data-i18n="vocab.listTitle"]');
+    const title = page.locator('h1[data-i18n="vocab.listTitle"]');
     const toggleBtn = page.locator('#view-words-btn');
 
     await expect(title).toBeVisible({ timeout: 8_000 });
@@ -181,12 +186,12 @@ test.describe('Vocabulary Management', () => {
 
   test('reset a trained word restores it to unseen state', async ({ page }) => {
     await page.goto('/vocab');
-    await expect(page.locator('#words-tbody tr').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#words-tbody .vb-row').first()).toBeVisible({ timeout: 10_000 });
 
     // The seeded word (你好) is trained (start_training=true in global-setup),
     // so editing it should show the Reset button, not the "start training" row.
-    const row = page.locator('#words-tbody tr', { hasText: '你好' }).first();
-    await row.locator('.btn-edit').click();
+    const row = page.locator('#words-tbody .vb-row', { hasText: '你好' }).first();
+    await row.click();
 
     const resetBtn = page.locator('#form-reset-btn');
     await expect(resetBtn).toBeVisible({ timeout: 8_000 });
@@ -208,25 +213,29 @@ test.describe('Vocabulary Management', () => {
     expect(created.ok()).toBe(true);
 
     await page.goto('/vocab');
-    const row = page.locator('#words-tbody tr', { hasText: '认识' }).first();
+    const row = page.locator('#words-tbody .vb-row', { hasText: '认识' }).first();
     await expect(row).toBeVisible({ timeout: 10_000 });
-    await row.locator('.btn-edit').click();
+    await row.click();
 
     await page.locator('#form-known-btn').click();
     await expect(page.locator('#form-known-btn')).toContainText(/Back to training/, { timeout: 8_000 });
-    await expect(page.locator('#words-tbody tr', { hasText: '认识' }).first()).toContainText('Known');
+    await expect(page.locator('#words-tbody .vb-row', { hasText: '认识' }).first()).toContainText('Known');
+    // Close the edit sheet to reach the filter chips.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#vocab-sheet')).toBeHidden();
 
     await page.locator('#due-known-btn').click();
     await expect(page.locator('#words-tbody')).toContainText('认识', { timeout: 8_000 });
     await expect(page.locator('#words-tbody')).not.toContainText('你好');
 
-    await page.locator('#words-tbody tr', { hasText: '认识' }).first().locator('.btn-edit').click();
+    await page.locator('#words-tbody .vb-row', { hasText: '认识' }).first().click();
     await page.locator('#form-known-btn').click();
     await expect(page.locator('#words-tbody')).not.toContainText('认识', { timeout: 8_000 });
   });
 
   test('pinyin auto-fill does not overwrite an existing value until blur (issue #310)', async ({ page }) => {
     await page.goto('/vocab');
+    await page.locator('#open-add-btn').click();
     await page.locator('#en-inputs-container .en-input').first().waitFor({ state: 'visible', timeout: 8_000 });
 
     const zhInput = page.locator('#form-zh');
@@ -254,35 +263,21 @@ test.describe('Vocabulary Management', () => {
     await expect.poll(() => dialogSeen, { timeout: 3_000 }).toBe(true);
   });
 
-  test('delete a word removes it from the list', async ({ page }) => {
+  test('delete a word from the edit sheet removes it from the list', async ({ page }) => {
+    const created = await page.request.post('/api/words', {
+      data: { zh_text: '删除', pinyin: 'shān chú', translations: { en: ['to delete'] }, tags: [], start_training: true },
+    });
+    expect(created.ok()).toBe(true);
     await page.goto('/vocab');
 
-    // Wait for words to load
-    await expect(page.locator('#words-tbody tr').first()).toBeVisible({ timeout: 10_000 });
+    const row = page.locator('#words-tbody .vb-row', { hasText: '删除' }).first();
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await row.click();
 
-    // Get the text of the first word so we can verify it's gone
-    const firstRow = page.locator('#words-tbody tr').first();
-    const zhText = await firstRow.locator('td').first().textContent();
-    const trimmedZh = zhText?.replace(/[🔊]/g, '').trim().slice(0, 5) || '';
+    page.once('dialog', dialog => dialog.accept());
+    await page.locator('#form-delete-btn').click();
 
-    // Click the delete button for the first word
-    const deleteBtn = firstRow.locator('.btn-delete');
-    await deleteBtn.click();
-
-    // Confirm the deletion dialog (browser confirm dialog)
-    page.on('dialog', dialog => dialog.accept());
-
-    // Give the page a moment to refresh
-    await page.waitForTimeout(1_500);
-
-    // The deleted word's zh text should no longer be the first row
-    // (it's either gone or a different word is first)
-    // We just verify the request succeeded by checking the row count changed or the text is gone
-    const rows = page.locator('#words-tbody tr');
-    const count = await rows.count();
-    if (trimmedZh && count > 0) {
-      // If there are still rows, verify at least that the page reloaded fine
-      await expect(page.locator('#words-tbody')).toBeVisible();
-    }
+    await expect(page.locator('#vocab-sheet')).toBeHidden({ timeout: 8_000 });
+    await expect(page.locator('#words-tbody')).not.toContainText('删除');
   });
 });

@@ -17,55 +17,55 @@ async function loadComponents() {
 }
 
 function renderComponentTable(components) {
-  const tbody = $('components-tbody');
-  tbody.innerHTML = '';
+  const list = $('components-tbody');
+  list.innerHTML = '';
   if (!components || components.length === 0) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="6" class="text-center py-8 text-gray-500">${escHtml(t('vocab.noEntries'))}</td>`;
-    tbody.appendChild(tr);
+    list.innerHTML = `<div class="vb-empty">${escHtml(t('vocab.noEntries'))}</div>`;
     return;
   }
   for (const comp of components) {
-    const tr = document.createElement('tr');
-    tr.className = 'border-b border-gray-200 hover:bg-gray-50';
-    tr.dataset.char = comp.character;
-    tr.innerHTML = `
-      <td class="py-3 px-4 text-lg font-medium">${escHtml(comp.character)}${crossRefBadge(comp.is_also_word, t('vocab.alsoWord'))}</td>
-      <td class="py-3 px-4 text-gray-500 text-sm">${comp.pinyin ? escHtml(comp.pinyin) : '<span class="text-gray-400">—</span>'}</td>
-      <td class="py-3 px-4 text-gray-600">${comp.definition_en ? escHtml(comp.definition_en) : '<span class="text-gray-400">—</span>'}</td>
-      <td class="py-3 px-4 text-gray-600">${comp.definition_de ? escHtml(comp.definition_de) : '<span class="text-gray-400">—</span>'}</td>
-      <td class="py-3 px-4 whitespace-nowrap">${renderComponentLevel(comp)}</td>
-      <td class="py-3 px-4 whitespace-nowrap text-xs">${renderComponentDue(comp)}</td>
-      <td class="py-3 px-4 whitespace-nowrap">
-        <button class="btn-comp-edit text-blue-600 hover:text-blue-800 font-medium"
-                data-char="${escHtml(comp.character)}"
-                data-en="${escHtml(comp.definition_en || '')}"
-                data-de="${escHtml(comp.definition_de || '')}">${escHtml(t('vocab.edit'))}</button>
-      </td>`;
-    tbody.appendChild(tr);
+    const row = document.createElement('div');
+    row.className = 'vb-row btn-comp-edit';
+    row.setAttribute('role', 'listitem');
+    row.tabIndex = 0;
+    row.dataset.char = comp.character;
+    row.innerHTML = renderComponentRow(comp);
+    const open = () => openComponentEdit(comp.character);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+    list.appendChild(row);
   }
+}
 
-  tbody.querySelectorAll('.btn-comp-edit').forEach(btn => {
-    btn.addEventListener('click', () => openComponentEdit(btn.dataset.char));
-  });
+// renderComponentRow renders the inner HTML of one component list row.
+function renderComponentRow(comp) {
+  const line = (lang, text) => `<span><span class="vb-lang">${lang}</span>${text ? escHtml(text) : '<span class="vb-row-py">—</span>'}</span>`;
+  return `
+    <div class="vb-row-main">
+      <div class="vb-row-head">
+        <span class="vb-row-zh font-hanzi">${escHtml(comp.character)}</span>
+        <span class="vb-row-py">${comp.pinyin ? escHtml(comp.pinyin) : '—'}</span>
+        ${crossRefBadge(comp.is_also_word, t('vocab.alsoWord'))}
+      </div>
+      <div class="vb-row-lines">${line('EN', comp.definition_en)}${line('DE', comp.definition_de)}</div>
+    </div>
+    <div class="vb-row-side">${renderComponentLevel(comp)}${renderComponentDue(comp)}</div>`;
 }
 
 function renderComponentLevel(comp) {
-  if (!comp.first_seen_date) {
-    return `<span class="text-gray-400 text-xs">${escHtml(t('vocab.unseen'))}</span>`;
-  }
+  if (!comp.first_seen_date) return tierChipFor(null);
   const tier = wordTier(comp.total_correct, comp.total_attempts, false, 0);
-  if (!tier) return `<span class="text-gray-400 text-xs">${escHtml(t('vocab.unseen'))}</span>`;
+  if (!tier) return tierChipFor(null);
   const pct = comp.total_attempts > 0 ? Math.round(comp.total_correct / comp.total_attempts * 100) : 0;
-  return `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tier.pill}">${t(tier.i18nKey)}</span><span class="ml-1.5 text-xs text-gray-400">${pct}%</span>`;
+  return tierChipFor(tier, pct);
 }
 
 function renderComponentDue(comp) {
-  if (!comp.due_date) return '<span class="text-gray-400">—</span>';
+  if (!comp.due_date) return '';
   const today = new Date().toISOString().slice(0, 10);
-  if (comp.due_date <= today) return `<span class="text-orange-500">${escHtml(t('vocab.dueLabel'))}</span>`;
+  if (comp.due_date <= today) return `<span class="vb-due is-today">${escHtml(t('vocab.dueTodayLabel'))}</span>`;
   const diffDays = Math.round((new Date(comp.due_date) - new Date(today)) / 86400000);
-  return `<span class="text-gray-500">${escHtml(t('vocab.inDays', { n: diffDays }))}</span>`;
+  return `<span class="vb-due">${escHtml(t(diffDays === 1 ? 'vocab.dueTomorrowLabel' : 'vocab.inDays', { n: diffDays }))}</span>`;
 }
 
 let editingCompChar = null;
@@ -76,12 +76,9 @@ function openComponentEdit(char) {
   const hanziwayLink = $('comp-hanziway-link');
   hanziwayLink.href = 'https://hanziway.com/en/char?q=' + encodeURIComponent(char);
   show('comp-hanziway-link');
-  const tabComp = $('tab-comp');
-  tabComp.classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none', 'text-gray-400');
-  tabComp.classList.add('hover:text-gray-700', 'text-gray-500');
+  $('tab-comp').classList.remove('is-disabled');
   $('comp-edit-form').innerHTML = `<span class="text-gray-400 text-sm">${escHtml(t('vocab.loading') || 'Loading…')}</span>`;
-  switchTab('comp');
-  $('word-form-panel').scrollIntoView({ behavior: 'smooth' });
+  openVocabSheet('comp');
 
   Promise.all([
     apiFetch(`/api/components/${encodeURIComponent(char)}/translations`),
