@@ -62,6 +62,7 @@ type UserSettings struct {
 	GamificationHidePinyinFromBucket string   `json:"gamification_hide_pinyin_from_bucket"`
 	MatchGamePinyinReveal            string   `json:"match_game_pinyin_reveal"`
 	MatchGameSM2Update               string   `json:"match_game_sm2_update"`
+	MatchGameShowSummary             bool     `json:"match_game_show_summary"`
 	TrainMode                        string   `json:"train_mode"`
 	TrainBucket                      string   `json:"train_bucket"`
 	TrainLangs                       []string `json:"train_langs"`

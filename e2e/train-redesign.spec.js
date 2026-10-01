@@ -223,6 +223,46 @@ test.describe('Train redesign – new word and match game', () => {
     // @ts-ignore
     expect(await page.evaluate(() => window.__mgDone)).toBe(true);
   });
+
+  async function playMatchGame(page, settings) {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    const st = await (await page.request.get('/api/settings')).json();
+    await page.request.patch('/api/settings', { data: { ...st, ...settings } });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.evaluate(() => {
+      // @ts-ignore
+      window.__mgDone = false;
+      // @ts-ignore
+      window.showMatchGame([
+        { zh_word_id: 9601, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
+        { zh_word_id: 9602, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+      ]).then(() => { window.__mgDone = true; });
+    });
+    const game = page.locator('#match-game-overlay');
+    await game.locator('.mg-tile', { hasText: 'dog' }).click();
+    await game.locator('.mg-tile', { hasText: '狗' }).click();
+    await game.locator('.mg-tile', { hasText: 'cat' }).click();
+    await game.locator('.mg-tile', { hasText: '猫' }).click();
+    return game;
+  }
+
+  test('the done note says only wrong matches count when progress is "only wrong answers"', async ({ page }) => {
+    await playMatchGame(page, { match_game_sm2_update: 'wrong_only' });
+    await expect(page.locator('#match-continue-btn')).toBeVisible();
+    await expect(page.locator('#match-game-overlay')).toContainText('Only wrong matches count as a training answer');
+    await captureForPR(page, 'train-match-game-done-wrong-only');
+  });
+
+  test('the done screen is skipped when "show round summary" is off', async ({ page }) => {
+    const game = await playMatchGame(page, { match_game_show_summary: false });
+    await expect(game).toBeHidden();
+    await expect(page.locator('#match-continue-btn')).toHaveCount(0);
+    // @ts-ignore
+    expect(await page.evaluate(() => window.__mgDone)).toBe(true);
+  });
 });
 
 test.describe('Train redesign – phone', () => {

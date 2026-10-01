@@ -74,6 +74,11 @@ function pickMatchGameTranslationText(translations, fallbackText) {
 // It renders inline in the Train card column (not as a modal): left column
 // Chinese tiles, right column one translation each, shuffled. Either column
 // can be tapped first. Resolves when the round is finished or skipped.
+function matchGameDoneNoteKey(sm2Update) {
+  if (sm2Update === 'never') return null;
+  return sm2Update === 'wrong_only' ? 'match.doneNoteWrongOnly' : 'match.doneNote';
+}
+
 function showMatchGame(words) {
   return new Promise(resolve => {
     const host = document.getElementById('train-container') || document.body;
@@ -198,12 +203,14 @@ function showMatchGame(words) {
     }
 
     function showDone() {
+      if (!_matchGameShowSummary) { finish(); return; }
+      const noteKey = matchGameDoneNoteKey(_matchGameSm2Update);
       overlay.innerHTML = `
         <div class="tr-center">
           <div class="tr-tile tr-tile-violet font-hanzi" aria-hidden="true">对</div>
           <h2 class="tr-h1">${escHtml(t('match.doneTitle'))}</h2>
           <p class="tr-sub">${escHtml(t('match.doneStats', { pairs: words.length, mistakes }))}</p>
-          ${_matchGameSm2Update !== 'never' ? `<p class="tr-muted-sm" style="margin:10px auto 0;max-width:36ch">${escHtml(t('match.doneNote'))}</p>` : ''}
+          ${noteKey ? `<p class="tr-muted-sm" style="margin:10px auto 0;max-width:36ch">${escHtml(t(noteKey))}</p>` : ''}
           <button id="match-continue-btn" type="button" class="ui-btn ui-btn-primary tr-mt-24">${escHtml(t('match.continue'))}</button>
         </div>`;
       const btn = overlay.querySelector('#match-continue-btn');

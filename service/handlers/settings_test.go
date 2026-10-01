@@ -1543,6 +1543,37 @@ func TestSettingsPatch_MatchGameSM2Update(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_MatchGameShowSummary(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["match_game_show_summary"] != true {
+		t.Errorf("default match_game_show_summary: want true, got %v", st["match_game_show_summary"])
+	}
+
+	body := baseSettingsPatch()
+	body["match_game_show_summary"] = false
+	if rec = do(t, r, "PATCH", "/api/settings", body); rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	decodeJSON(t, do(t, r, "GET", "/api/settings", nil), &st)
+	if st["match_game_show_summary"] != false {
+		t.Errorf("after patch false: got %v", st["match_game_show_summary"])
+	}
+
+	// A client that omits the field must not reset the stored value.
+	if rec = do(t, r, "PATCH", "/api/settings", baseSettingsPatch()); rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	decodeJSON(t, do(t, r, "GET", "/api/settings", nil), &st)
+	if st["match_game_show_summary"] != false {
+		t.Errorf("omitted field should keep false, got %v", st["match_game_show_summary"])
+	}
+}
+
 func TestSettingsPatch_MatchGameSM2Update_Invalid(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

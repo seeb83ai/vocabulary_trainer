@@ -16,6 +16,7 @@ let _gamificationFrequencyMs = 5 * 60 * 1000;
 let _lastGameShownAt = 0;
 let _matchGamePinyinReveal = 'always';
 let _matchGameSm2Update = 'always';
+let _matchGameShowSummary = true;
 const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
@@ -29,6 +30,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   _matchGamePinyinReveal = st?.match_game_pinyin_reveal || 'always';
   _matchGameSm2Update = st?.match_game_sm2_update || 'always';
+  _matchGameShowSummary = st?.match_game_show_summary !== false;
   const btn = document.getElementById('new-word-skip-btn');
   if (btn && !skipNewWordsVisible) btn.classList.add('hidden');
   // Restore server-persisted training filter settings (overrides localStorage).

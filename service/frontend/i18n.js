@@ -708,6 +708,8 @@ const I18N = {
     'settings.sm2UpdateNever': 'Never',
     'settings.sm2UpdateWrongOnly': 'Only wrong answers',
     'settings.sm2UpdateAlways': 'Always',
+    'settings.matchGameShowSummary': 'Show round summary after the match game',
+    'settings.matchGameShowSummaryDesc': 'Show the "Round complete" screen after each match game. When off, training continues right away.',
 
     'settings.componentTraining': 'Component Training',
     'settings.componentTrainingDesc': "Words are broken into hanzi components (radicals and sub-parts) for the character breakdown and component quiz. Instead of training every component, pick a target: as new words start training, only enough components — starting with whichever unlocks the most words you haven't covered yet — are added to reach that share of your Chinese vocabulary. Already-trained components are never removed by this setting.",
@@ -946,6 +948,7 @@ const I18N = {
     'match.doneTitle': 'Round complete',
     'match.doneStats': '{pairs} pairs · {mistakes} mistake(s)',
     'match.doneNote': 'Each match counts as a training answer for that word.',
+    'match.doneNoteWrongOnly': 'Only wrong matches count as a training answer for that word.',
     'match.continue': 'Continue training',
   },
 
@@ -1656,6 +1659,8 @@ const I18N = {
     'settings.sm2UpdateNever': '从不',
     'settings.sm2UpdateWrongOnly': '仅答错时',
     'settings.sm2UpdateAlways': '总是',
+    'settings.matchGameShowSummary': '配对游戏后显示本轮总结',
+    'settings.matchGameShowSummaryDesc': '每次配对游戏结束后显示“本轮完成”界面。关闭后将直接继续训练。',
 
     'settings.componentTraining': '部件训练',
     'settings.componentTrainingDesc': '词汇会被拆分为汉字部件（部首和子部分），用于字形拆解和部件测验。你可以设定一个目标，而不是训练每个部件：当新词开始训练时，只添加足够的部件——优先选择能覆盖最多尚未覆盖词汇的部件——以达到你中文词汇的目标覆盖率。已在训练中的部件永远不会被此设置移除。',
@@ -1894,6 +1899,7 @@ const I18N = {
     'match.doneTitle': '本轮完成',
     'match.doneStats': '{pairs} 对 · {mistakes} 次错误',
     'match.doneNote': '每次配对都算作该词的一次训练答题。',
+    'match.doneNoteWrongOnly': '仅答错的配对会算作该词的一次训练答题。',
     'match.continue': '继续训练',
   },
 
@@ -2604,6 +2610,8 @@ const I18N = {
     'settings.sm2UpdateNever': 'Nie',
     'settings.sm2UpdateWrongOnly': 'Nur falsche Antworten',
     'settings.sm2UpdateAlways': 'Immer',
+    'settings.matchGameShowSummary': 'Rundenzusammenfassung nach dem Zuordnungsspiel anzeigen',
+    'settings.matchGameShowSummaryDesc': 'Zeigt nach jedem Zuordnungsspiel den Bildschirm „Runde geschafft“. Wenn aus, geht das Training sofort weiter.',
 
     'settings.componentTraining': 'Bestandteil-Training',
     'settings.componentTrainingDesc': 'Wörter werden für die Zeichen-Zerlegung und das Bestandteil-Quiz in Hanzi-Bestandteile (Radikale und Unterteile) zerlegt. Statt jeden Bestandteil zu trainieren, gibst du ein Ziel vor: Sobald neue Wörter ins Training kommen, werden nur so viele Bestandteile hinzugefügt wie nötig — angefangen mit dem, der die meisten noch nicht abgedeckten Wörter freischaltet — um diesen Anteil deines chinesischen Wortschatzes zu erreichen. Schon trainierte Bestandteile werden durch diese Einstellung nie entfernt.',
@@ -2842,6 +2850,7 @@ const I18N = {
     'match.doneTitle': 'Runde geschafft',
     'match.doneStats': '{pairs} Paare · {mistakes} Fehler',
     'match.doneNote': 'Jedes Paar zählt als Trainingsantwort für das Wort.',
+    'match.doneNoteWrongOnly': 'Nur falsche Paare zählen als Trainingsantwort für das Wort.',
     'match.continue': 'Weiter trainieren',
   },
 };
