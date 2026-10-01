@@ -569,6 +569,60 @@ cd service && go run ./cmd/import-cedict -db ../data/vocab.db -file ../handedict
 
 Like `import-hanzi`, this is a manual, one-time (or re-run-on-update) operational step against `data/vocab.db` — it is not run automatically at startup.
 
+### Topic word lists (classify-topics)
+
+A one-off tool that sorts vocabulary into topic word lists (travel, food, body, health, …, 28 topics in total) with Claude. The app does not read the CSV files. `import-topics` (see below) loads them into the shared library as importable word lists.
+
+The candidates are every library word tagged with an HSK level (`hsk2-N` or `hsk3-N`) and every word in the top `-freq` of the zh frequency list that has a CC-CEDICT entry, so run `import-hsk` (both versions) and `import-cedict` first. Claude gives each word 0–2 topics. The tool appends each word to `<out>/<topic>.csv` (columns `zh,en`, where `en` is the first CC-CEDICT gloss). Words that fit no topic go to `<out>/_none.csv`. The tool skips every word that is already in a CSV file, so after an error or a Ctrl-C you can run it again and it continues where it stopped. On Ctrl-C, the tool starts no new requests but waits for the running requests and writes their results. A second Ctrl-C quits at once, and the running requests are done again on the next run.
+
+```bash
+# See how many words would be classified (no API calls)
+make classify-topics DRY=1
+
+ANTHROPIC_API_KEY=... make classify-topics
+
+# Or use your Claude subscription through a logged-in Claude Code install (no API key)
+make classify-topics CLI=claude
+
+# `make release` ships a prebuilt binary and copies data/topics/ (if present) to data/topics/ on the server.
+# To run the classification on the server instead:
+ANTHROPIC_API_KEY=... ./classify-topics -db data/vocab.db -out data/topics
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-out` | `data/topics` | Directory for the `<topic>.csv` files |
+| `-freq` | `8000` | Also classify non-HSK words up to this zh frequency rank |
+| `-chunk` | `100` | Words per Claude request |
+| `-workers` | `4` | Claude requests to run at the same time |
+| `-model` | `claude-opus-5` | Claude model ID |
+| `-effort` | `low` | Claude effort level |
+| `-claude-cli` | (empty) | Path or name of a Claude Code binary (for example `claude`). When set, each request runs through `claude -p` with your Claude Code login (subscription) instead of `ANTHROPIC_API_KEY`. Tools are turned off and the tool's system prompt replaces Claude Code's own. Subscription usage limits apply; when you reach a limit, the tool stops, and you can run it again later to continue. |
+| `-dry-run` | false | Print the number of words to classify, without calling Claude |
+
+With HSK 2.0 + 3.0 and `-freq 8000`, there are about 12,600 candidate words (about 126 requests).
+
+### Topic word list import (import-topics)
+
+This tool loads the `data/topics/<topic>.csv` lists from `classify-topics` into the shared library (user 1). It tags each word with `topic-<topic>` (for example `topic-travel`) and marks each tag as importable. Users then see the topic lists next to the HSK lists in onboarding ("Let me choose word lists myself") and in Vocabulary → Import. When a user imports a list, translations come from CC-CEDICT/HanDeDict, as with the HSK lists. Words without a dictionary translation are skipped. `_none.csv` is not imported.
+
+If a word is not in the library yet (the non-HSK frequency words), the tool adds it with its CC-CEDICT pinyin. You can run the tool again safely: it only adds missing tags and words. Run `import-cedict` first, so that the new words get pinyin.
+
+```bash
+make import-topics DRY=1   # preview
+make import-topics
+
+# On the server, after `make release` (which also copies data/topics/):
+./import-topics -db data/vocab.db -dir data/topics
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `-db` | `data/vocab.db` | Path to SQLite database |
+| `-dir` | `data/topics` | Directory with the `<topic>.csv` files |
+| `-dry-run` | false | Show what would change without writing |
+
 ### Pinyin audio import
 
 This tool imports pinyin pronunciation audio files from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. It enables the `/pinyin` listening training page.

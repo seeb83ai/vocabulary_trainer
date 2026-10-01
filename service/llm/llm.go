@@ -28,9 +28,13 @@ func truncateBody(b []byte) string {
 // System is an optional high-trust instruction; User is the (potentially
 // user-influenced) message. Keeping them separate lets each provider place
 // them in the correct API field rather than concatenating into a single string.
+// Model and Effort optionally override the provider default; only the
+// Anthropic client honours them (used by batch CLI tools, not the server).
 type Request struct {
 	System string
 	User   string
+	Model  string
+	Effort string
 }
 
 // Client is the common interface for all LLM providers.
@@ -245,6 +249,14 @@ func (c *anthropicClient) Generate(ctx context.Context, req Request) (string, er
 		"model":      "claude-haiku-4-5-20251001",
 		"max_tokens": 2000,
 		"messages":   []map[string]string{{"role": "user", "content": req.User}},
+	}
+	if req.Model != "" {
+		// Newer models think by default; thinking tokens count against max_tokens.
+		payload["model"] = req.Model
+		payload["max_tokens"] = 16000
+	}
+	if req.Effort != "" {
+		payload["output_config"] = map[string]string{"effort": req.Effort}
 	}
 	if req.System != "" {
 		payload["system"] = req.System

@@ -115,6 +115,13 @@ func lookupCedictToken(ctx context.Context, q querier, simplified string) (en, d
 	return enDef.String, deDef.String, pinyin, true, nil
 }
 
+// LookupPinyin returns the CC-CEDICT pinyin for simplified (HanDeDict as a
+// fallback), or "" when neither dictionary has the word.
+func (s *Store) LookupPinyin(ctx context.Context, simplified string) (string, error) {
+	_, _, pinyin, _, err := lookupCedictToken(ctx, s.db, simplified)
+	return pinyin, err
+}
+
 // LookupDictionary returns every cedict_entries definition for an exact
 // simplified-text match in the given language ("en" or "de"), used by the
 // free dictionary-lookup step in the word add/edit "Translate" flow. Returns

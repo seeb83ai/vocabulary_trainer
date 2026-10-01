@@ -277,3 +277,66 @@ func TestSetWordTags_ReusesSingleTagRow(t *testing.T) {
 		t.Errorf("want 1 tag row named hsk3-5, got %d", n)
 	}
 }
+
+func TestGetTopicCandidates(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	for _, w := range []struct{ zh, tag string }{
+		{"你好", "hsk2-1"},
+		{"护照", "hsk3-4"},
+		{"护照", "hsk2-3"},
+		{"随便", "a1"},
+	} {
+		if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{ZhText: w.zh, Tags: []string{w.tag}}); err != nil {
+			t.Fatalf("CreateWord %s: %v", w.zh, err)
+		}
+	}
+	// A user-owned HSK-tagged word is not a library word and must be ignored.
+	seedWordWithTags(t, s, "私人", "", []string{"private"}, []string{"hsk2-1"})
+
+	// The legacy word_frequency table is no longer read; ranks come from word_frequency_lang.
+	if _, err := s.ExecForTest(`DELETE FROM word_frequency`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ExecForTest(`DELETE FROM word_frequency_lang WHERE lang = 'zh'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ExecForTest(`INSERT INTO word_frequency_lang (word, lang, rank) VALUES ('常用', 'zh', 10), ('你好', 'zh', 20), ('罕见', 'zh', 9000), ('无词典', 'zh', 30)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range [][3]string{
+		{"你好", "en", "hello"},
+		{"你好", "de", "hallo"},
+		{"护照", "en", "passport"},
+		{"护照", "en", "second gloss"},
+		{"常用", "en", "common"},
+		{"罕见", "en", "rare"},
+	} {
+		if err := s.SeedCedictEntryForTest(ctx, e[0], e[1], "", e[2]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.GetTopicCandidates(ctx, 8000)
+	if err != nil {
+		t.Fatalf("GetTopicCandidates: %v", err)
+	}
+	want := []models.TopicCandidate{
+		{Zh: "你好", En: "hello"},
+		{Zh: "护照", En: "passport"},
+		{Zh: "常用", En: "common"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	byZh := map[string]string{}
+	for _, c := range got {
+		byZh[c.Zh] = c.En
+	}
+	for _, w := range want {
+		if en, ok := byZh[w.Zh]; !ok || en != w.En {
+			t.Errorf("candidate %s: got %q (present=%v), want %q", w.Zh, en, ok, w.En)
+		}
+	}
+}

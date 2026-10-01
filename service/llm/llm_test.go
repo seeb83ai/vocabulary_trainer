@@ -181,6 +181,36 @@ func TestAnthropicClient_Generate_NoSystem(t *testing.T) {
 	}
 }
 
+func TestAnthropicClient_Generate_ModelOverride(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["model"] != "claude-opus-5" {
+			t.Errorf("model = %v, want claude-opus-5", body["model"])
+		}
+		if v, _ := body["max_tokens"].(float64); v != 16000 {
+			t.Errorf("max_tokens = %v, want 16000", v)
+		}
+		oc, _ := body["output_config"].(map[string]any)
+		if oc["effort"] != "low" {
+			t.Errorf("output_config = %v, want effort low", body["output_config"])
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"content": []map[string]string{{"type": "thinking", "text": ""}, {"type": "text", "text": "ok"}},
+		})
+	}))
+	defer srv.Close()
+
+	c := &anthropicClient{apiKey: "k", httpClient: srv.Client(), BaseURL: srv.URL}
+	got, err := c.Generate(context.Background(), Request{User: "prompt", Model: "claude-opus-5", Effort: "low"})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got != "ok" {
+		t.Errorf("got %q", got)
+	}
+}
+
 func TestAnthropicClient_Generate_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)

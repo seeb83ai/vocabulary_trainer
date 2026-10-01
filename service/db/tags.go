@@ -259,3 +259,43 @@ func (s *Store) cleanOrphanTags(ctx context.Context) error {
 	}
 	return nil
 }
+
+// GetTopicCandidates returns the words to classify into topic lists: every
+// library (user 1) zh word tagged with an HSK 2.0 or 3.0 level (hsk2-N,
+// hsk3-N), plus every word within the top maxFreqRank of the zh word_frequency_lang list that
+// has a CC-CEDICT entry. Each word appears once, with its first English gloss.
+func (s *Store) GetTopicCandidates(ctx context.Context, maxFreqRank int) ([]models.TopicCandidate, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		WITH cand AS (
+			SELECT w.text AS zh
+			FROM words w
+			JOIN word_tags wt ON wt.word_id = w.id
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE w.user_id = 1 AND w.language = 'zh'
+			  AND (tg.name LIKE 'hsk2-%' OR tg.name LIKE 'hsk3-%')
+			UNION
+			SELECT f.word
+			FROM word_frequency_lang f
+			WHERE f.lang = 'zh' AND f.rank <= ?
+			  AND EXISTS (SELECT 1 FROM cedict_entries ce WHERE ce.simplified = f.word)
+		)
+		SELECT cand.zh,
+		       COALESCE((SELECT ce.definition FROM cedict_entries ce
+		                 WHERE ce.simplified = cand.zh AND ce.lang = 'en'
+		                 ORDER BY ce.id LIMIT 1), '')
+		FROM cand
+		ORDER BY cand.zh`, maxFreqRank)
+	if err != nil {
+		return nil, fmt.Errorf("get topic candidates: %w", err)
+	}
+	defer rows.Close()
+	var out []models.TopicCandidate
+	for rows.Next() {
+		var c models.TopicCandidate
+		if err := rows.Scan(&c.Zh, &c.En); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}

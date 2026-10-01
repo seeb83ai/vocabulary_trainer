@@ -201,7 +201,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/components_confusion.go` | Component confusion detection |
 | `service/db/components_stats.go` | Component stats history and coverage |
 | `service/db/components_test_helpers.go` | Test-only seed/set helpers for component tests |
-| `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary` |
+| `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary`, `LookupPinyin` |
 | `service/db/translation_rank.go` | `computeTranslationRank` — scores an auto-derived translation gloss against `word_frequency_lang` |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
@@ -270,6 +270,8 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-cedict/main.go` | Import CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for sub-word segmentation + free dictionary lookup |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 | `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
+| `service/cmd/classify-topics/main.go` | Sort HSK + top-frequency words into `data/topics/<topic>.csv` lists with Claude (resumable) |
+| `service/cmd/import-topics/main.go` | Load `data/topics/<topic>.csv` into the shared library as importable `topic-<topic>` tags |
 
 ### E2E tests (`e2e/`)
 | Path | Purpose |
