@@ -65,7 +65,9 @@
       <!-- Top bar (< 880px) -->
       <header id="app-topbar" class="app-topbar"><span class="brand-tile" aria-hidden="true">词</span><span data-i18n="{{if eq .ActiveNav "train"}}nav.train{{else if eq .ActiveNav "pinyin"}}nav.pinyin{{else if eq .ActiveNav "vocab"}}nav.vocabulary{{else if eq .ActiveNav "mnemonics"}}nav.mnemonics{{else if eq .ActiveNav "mismatches"}}nav.mismatches{{else if eq .ActiveNav "stats"}}nav.stats{{else if eq .ActiveNav "settings"}}nav.settings{{else if eq .ActiveNav "admin-dashboard"}}nav.dashboard{{else}}nav.brand{{end}}">{{.Title}}</span></header>
 
-      {{block "content" .}}{{end}}
+      <div class="app-content">
+        {{block "content" .}}{{end}}
+      </div>
     </div>
   </div>
 

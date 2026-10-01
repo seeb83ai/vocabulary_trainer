@@ -77,6 +77,12 @@ test.describe('App shell – phone tab bar', () => {
     await expect(page.locator('#issue-dialog')).toBeVisible();
     await captureForPR(page, 'report-issue-sheet-phone');
   });
+
+  test('tab bar stays in viewport after scrolling content', async ({ page }) => {
+    await page.goto('/vocab');
+    await page.locator('.app-content').evaluate(el => { el.scrollTop = el.scrollHeight; });
+    await expect(page.locator('#app-tabbar')).toBeInViewport();
+  });
 });
 
 test.describe('App shell – report tab when reporting is off', () => {
