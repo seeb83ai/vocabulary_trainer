@@ -14,7 +14,9 @@ test.describe('Settings – Auto-save', () => {
       'daily-save-btn', 'accept-mode-save-btn', 'gamification-save-btn', 'component-threshold-save-btn']) {
       await expect(page.locator(`#${id}`)).toHaveCount(0);
     }
-    // Change Password and API Keys remain explicit-submit.
+    // Change Password and API Keys remain explicit-submit. The password form
+    // is folded behind the "Change password" button.
+    await page.locator('#pw-toggle').click();
     await expect(page.locator('#pw-btn')).toBeVisible();
     await expect(page.locator('#apikey-save-btn')).toBeVisible();
   });
@@ -252,10 +254,12 @@ test.describe('Settings – Translation ranking', () => {
     expect(settings.max_translations_shown).toBe(2);
     expect(settings.translation_hide_unranked).toBe(true);
 
-    // Reset to default.
+    // Reset to default. "Also hide…" is only shown while ranking is on, so
+    // clear it first.
+    await page.locator('#translation-hide-unranked').uncheck();
     await page.locator('#translation-ranking-enabled').uncheck();
     await page.locator('#max-translations-shown').fill('3');
-    await page.locator('#translation-hide-unranked').uncheck();
+    await expect(page.locator('#translation-hide-unranked')).toBeHidden();
     await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 

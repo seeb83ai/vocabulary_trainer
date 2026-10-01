@@ -24,109 +24,167 @@
   </style>
   {{.ExtraHead}}
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col">
+<body class="bg-gray-100 min-h-screen" data-active-nav="{{.ActiveNav}}">
 
-  <!-- Navigation -->
-  <nav class="bg-white shadow-sm border-b border-gray-200">
-    <div class="max-w-4xl mx-auto px-4 py-2 sm:py-3 flex items-center justify-between relative">
-      <span class="flex items-center whitespace-nowrap mr-4"><span class="brand-tile" aria-hidden="true">词</span><span class="text-lg font-bold text-gray-800" data-i18n="nav.title">词汇训练 · Vocab Trainer</span></span>
-      <button id="nav-menu-btn" class="sm:hidden p-1 rounded text-gray-500 hover:text-gray-800 transition" aria-label="Open navigation menu">☰</button>
-      <div id="nav-menu" class="hidden sm:flex sm:flex-row sm:items-center sm:gap-4 sm:static absolute top-full right-0 bg-white shadow-md rounded-b-lg px-4 py-3 flex-col gap-3 z-50 sm:shadow-none sm:rounded-none sm:px-0 sm:py-0">
+  <div class="app-shell">
+    <!-- Sidebar (>= 880px) -->
+    <aside id="app-sidebar" class="app-sidebar">
+      <a href="{{if .IsAdmin}}/vocab{{else}}/train{{end}}" class="app-brand"><span class="brand-tile" aria-hidden="true">词</span><span data-i18n="nav.brand">Vocab Trainer</span></a>
+      <nav class="app-nav" aria-label="Main">
         {{if .IsAdmin}}
-        <a href="/vocab"          class="{{if eq .ActiveNav "vocab"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.vocabulary">Vocabulary</a>
-        <a href="/admin-dashboard" class="{{if eq .ActiveNav "admin-dashboard"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}">Dashboard</a>
+        <div class="app-nav-group">
+          <a href="/vocab" class="app-nav-item"{{if eq .ActiveNav "vocab"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V5a2 2 0 0 1 2-2h14v15H6.5A2.5 2.5 0 0 0 4 20.5 2.5 2.5 0 0 0 6.5 23H20"/></svg><span data-i18n="nav.vocabulary">Vocabulary</span></a>
+          <a href="/admin-dashboard" class="app-nav-item"{{if eq .ActiveNav "admin-dashboard"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-7"/></svg><span data-i18n="nav.dashboard">Dashboard</span></a>
+        </div>
         {{else}}
-        <a href="/train"      class="{{if eq .ActiveNav "train"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.train">Train</a>
-        <a href="/pinyin"     class="{{if eq .ActiveNav "pinyin"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.pinyin">Pinyin</a>
-        <a href="/vocab"      class="{{if eq .ActiveNav "vocab"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.vocabulary">Vocabulary</a>
-        <a href="/mnemonics"  class="{{if eq .ActiveNav "mnemonics"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.mnemonics">Mnemonics</a>
-        <a href="/mismatches" class="{{if eq .ActiveNav "mismatches"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.mismatches">Mismatches</a>
-        <a href="/stats"      class="{{if eq .ActiveNav "stats"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.stats">Stats</a>
-        <a href="/settings"   class="{{if eq .ActiveNav "settings"}}text-blue-600 font-medium border-b-2 border-blue-600 pb-0.5{{else}}text-gray-500 hover:text-gray-800 font-medium{{end}}" data-i18n="nav.settings">Settings</a>
+        <div class="app-nav-group">
+          <span class="app-nav-label" data-i18n="nav.groupPractice">Practice</span>
+          <a href="/train" class="app-nav-item"{{if eq .ActiveNav "train"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 8h6M9 12h6M9 16h3"/></svg><span data-i18n="nav.train">Train</span></a>
+          <a href="/pinyin" class="app-nav-item"{{if eq .ActiveNav "pinyin"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 14c2.5-5 4.5-5 7 0s4.5 5 7 0 3-4 4-4"/></svg><span data-i18n="nav.pinyin">Pinyin</span></a>
+        </div>
+        <div class="app-nav-group">
+          <span class="app-nav-label" data-i18n="nav.groupLibrary">Library</span>
+          <a href="/vocab" class="app-nav-item"{{if eq .ActiveNav "vocab"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V5a2 2 0 0 1 2-2h14v15H6.5A2.5 2.5 0 0 0 4 20.5 2.5 2.5 0 0 0 6.5 23H20"/></svg><span data-i18n="nav.vocabulary">Vocabulary</span></a>
+          <a href="/mnemonics" class="app-nav-item"{{if eq .ActiveNav "mnemonics"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/></svg><span data-i18n="nav.mnemonics">Mnemonics</span></a>
+          <a href="/mismatches" class="app-nav-item"{{if eq .ActiveNav "mismatches"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h14l-3-3M20 17H6l3 3"/></svg><span data-i18n="nav.mismatches">Mismatches</span></a>
+        </div>
+        <div class="app-nav-group">
+          <span class="app-nav-label" data-i18n="nav.groupYou">You</span>
+          <a href="/stats" class="app-nav-item"{{if eq .ActiveNav "stats"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-7"/></svg><span data-i18n="nav.stats">Stats</span></a>
+          <a href="/settings" class="app-nav-item"{{if eq .ActiveNav "settings"}} aria-current="page"{{end}}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4"/></svg><span data-i18n="nav.settings">Settings</span></a>
+        </div>
         {{end}}
-        <select id="lang-select" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="en">🇬🇧</option>
-          <option value="zh">🇨🇳</option>
-          <option value="de">🇩🇪</option>
-        </select>
-        <button id="logout-btn" type="button" class="hidden whitespace-nowrap text-gray-400 hover:text-gray-700 text-sm font-medium transition" data-i18n="nav.signOut">Sign out</button>
+      </nav>
+      <div class="app-foot">
+        <button id="nav-report" type="button" class="app-foot-item hidden"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span data-i18n="nav.report">Report an issue</span></button>
+        <button id="logout-btn" type="button" class="app-foot-item hidden"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span data-i18n="nav.signOut">Sign out</span></button>
+      </div>
+    </aside>
+
+    <div class="app-column">
+      <!-- Top bar (< 880px) -->
+      <header id="app-topbar" class="app-topbar"><span class="brand-tile" aria-hidden="true">词</span><span data-i18n="{{if eq .ActiveNav "train"}}nav.train{{else if eq .ActiveNav "pinyin"}}nav.pinyin{{else if eq .ActiveNav "vocab"}}nav.vocabulary{{else if eq .ActiveNav "mnemonics"}}nav.mnemonics{{else if eq .ActiveNav "mismatches"}}nav.mismatches{{else if eq .ActiveNav "stats"}}nav.stats{{else if eq .ActiveNav "settings"}}nav.settings{{else if eq .ActiveNav "admin-dashboard"}}nav.dashboard{{else}}nav.brand{{end}}">{{.Title}}</span></header>
+
+      <div class="app-content">
+        {{block "content" .}}{{end}}
       </div>
     </div>
+  </div>
+
+  <!-- Bottom tab bar (< 880px) -->
+  <nav id="app-tabbar" class="app-tabbar" aria-label="Main">
+    {{if .IsAdmin}}
+    <a href="/vocab" class="app-tab"{{if eq .ActiveNav "vocab"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V5a2 2 0 0 1 2-2h14v15H6.5A2.5 2.5 0 0 0 4 20.5 2.5 2.5 0 0 0 6.5 23H20"/></svg><span data-i18n="nav.vocabulary">Vocabulary</span></a>
+    <a href="/admin-dashboard" class="app-tab"{{if eq .ActiveNav "admin-dashboard"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-7"/></svg><span data-i18n="nav.dashboard">Dashboard</span></a>
+    {{else}}
+    <a href="/train" class="app-tab"{{if eq .ActiveNav "train"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 8h6M9 12h6M9 16h3"/></svg><span data-i18n="nav.train">Train</span></a>
+    <a href="/vocab" class="app-tab"{{if eq .ActiveNav "vocab"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5V5a2 2 0 0 1 2-2h14v15H6.5A2.5 2.5 0 0 0 4 20.5 2.5 2.5 0 0 0 6.5 23H20"/></svg><span data-i18n="nav.vocabulary">Vocabulary</span></a>
+    <a href="/stats" class="app-tab"{{if eq .ActiveNav "stats"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11M12 20V4M19 20v-7"/></svg><span data-i18n="nav.stats">Stats</span></a>
+    {{end}}
+    <button id="tab-report" type="button" class="app-tab hidden"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span data-i18n="nav.reportShort">Report</span></button>
+    <button id="tab-more" type="button" class="app-tab"{{if or (eq .ActiveNav "pinyin") (eq .ActiveNav "mnemonics") (eq .ActiveNav "mismatches") (eq .ActiveNav "settings")}} aria-current="page"{{end}} aria-haspopup="dialog" aria-controls="more-sheet"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg><span data-i18n="nav.more">More</span></button>
   </nav>
 
-  {{block "content" .}}{{end}}
+  <!-- "More" sheet (< 880px) -->
+  <div id="more-sheet" class="app-sheet hidden" role="dialog" aria-modal="true" aria-label="More pages" data-i18n-aria-label="nav.moreTitle">
+    <div id="more-sheet-backdrop" class="app-sheet-backdrop"></div>
+    <div class="app-sheet-panel">
+      <div class="app-sheet-handle"></div>
+      <div>
+        {{if not .IsAdmin}}
+        <a href="/pinyin" class="app-sheet-item"{{if eq .ActiveNav "pinyin"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 14c2.5-5 4.5-5 7 0s4.5 5 7 0 3-4 4-4"/></svg><span data-i18n="nav.pinyin">Pinyin</span></a>
+        <a href="/mnemonics" class="app-sheet-item"{{if eq .ActiveNav "mnemonics"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/></svg><span data-i18n="nav.mnemonics">Mnemonics</span></a>
+        <a href="/mismatches" class="app-sheet-item"{{if eq .ActiveNav "mismatches"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h14l-3-3M20 17H6l3 3"/></svg><span data-i18n="nav.mismatches">Mismatches</span></a>
+        <a href="/settings" class="app-sheet-item"{{if eq .ActiveNav "settings"}} aria-current="page"{{end}}><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4"/></svg><span data-i18n="nav.settings">Settings</span></a>
+        {{end}}
+        <button id="more-fullscreen-btn" type="button" class="app-sheet-item hidden" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span data-i18n="nav.fullscreen">Fullscreen</span></button>
+      </div>
+      <button id="more-logout-btn" type="button" class="app-sheet-signout hidden" data-i18n="nav.signOut">Sign out</button>
+    </div>
+  </div>
 
   {{if eq .ActiveNav "train"}}
   <!-- Floating auto-play toggle. Train-page only. Off by default and never
        persisted — resets on reload (train.js). -->
   <button id="autoplay-toggle-btn" type="button" aria-pressed="false"
-    class="fixed bottom-5 right-20 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition" style="z-index:60"
+    class="app-fab right-20 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition"
     aria-label="Auto-play sound" title="Auto-play sound" data-i18n-title="train.autoPlay.offTitle">
     <span aria-hidden="true">🔇</span>
   </button>
-  {{end}}
 
-  <!-- Floating fullscreen toggle. Hidden by default; app.js shows it only
-       when the Fullscreen API is available (mobile browsers can't be forced
-       into fullscreen on load — it requires a user gesture like this tap). -->
+  <!-- Floating fullscreen toggle (Train page). Hidden until app.js confirms
+       the Fullscreen API is available; other pages use the More sheet. -->
   <button id="fullscreen-toggle-btn" type="button" aria-pressed="false"
-    class="hidden fixed bottom-5 left-5 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition" style="z-index:60"
+    class="hidden app-fab right-5 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition"
     aria-label="Toggle fullscreen" title="Enter fullscreen" data-i18n-title="fullscreen.enterTitle">
     <span aria-hidden="true">⛶</span>
   </button>
+  {{end}}
 
-  <!-- Floating issue-report button + modal. Hidden until app.js confirms the
-       GitHub issue-reporting feature is enabled (GET /api/github/config). -->
-  <button id="issue-report-btn" type="button"
-    class="hidden fixed bottom-5 right-5 bg-gray-800 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg hover:bg-gray-700 transition" style="z-index:60"
-    aria-label="Report an issue" title="Report an issue" data-i18n-title="issue.buttonTitle">
-    <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 9v4"/><path d="M12 17h.01"/>
-      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-    </svg>
-  </button>
+  <!-- Report an issue: centred card >= 880px, bottom sheet below. Hidden
+       until app.js confirms the feature is enabled (GET /api/github/config). -->
+  <div id="issue-modal" class="hidden rp-scrim" style="z-index:60">
+    <div id="issue-dialog" class="rp-card" role="dialog" aria-modal="true" aria-labelledby="issue-dialog-title">
+      <div class="rp-handle"></div>
+      <div class="rp-head">
+        <h3 id="issue-dialog-title" class="rp-title" data-i18n="issue.title">Report an issue</h3>
+        <button id="issue-close" type="button" class="rp-close" aria-label="Close" data-i18n-aria-label="issue.close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
 
-  <div id="issue-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4" style="z-index:60">
-    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-      <h3 class="text-lg font-semibold text-gray-800" data-i18n="issue.title">Report an issue</h3>
+      <div id="issue-form-view">
+        <input id="issue-category" type="hidden" value="bug">
+        <div class="rp-label"><span data-i18n="issue.category">Type</span></div>
+        <div class="rp-cats" role="group">
+          <button type="button" class="rp-cat" data-issue-cat="bug" aria-pressed="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 9V7a4 4 0 0 1 8 0v2M6 13h12M6 9h12v5a6 6 0 0 1-12 0zM3 13h3M18 13h3M4 7l2 2M20 7l-2 2M4 20l2.5-2.5M20 20l-2.5-2.5"/></svg><span data-i18n="issue.cat.bug">Bug</span></button>
+          <button type="button" class="rp-cat" data-issue-cat="idea" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg><span data-i18n="issue.cat.idea">Idea</span></button>
+          <button type="button" class="rp-cat" data-issue-cat="question" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5M12 18h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z"/></svg><span data-i18n="issue.cat.question">Question</span></button>
+          <button type="button" class="rp-cat" data-issue-cat="misc" aria-pressed="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg><span data-i18n="issue.cat.misc">Misc</span></button>
+        </div>
 
-      <label class="block text-sm font-medium text-gray-700">
-        <span data-i18n="issue.category">Type</span>
-        <select id="issue-category" class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="bug" data-i18n="issue.cat.bug">Bug</option>
-          <option value="idea" data-i18n="issue.cat.idea">Idea</option>
-          <option value="question" data-i18n="issue.cat.question">Question</option>
-          <option value="misc" data-i18n="issue.cat.misc">Misc</option>
-        </select>
-      </label>
+        <div class="rp-field">
+          <label class="rp-label" for="issue-title"><span data-i18n="issue.titleLabel">Title</span><span id="issue-title-count" class="rp-count">0/120</span></label>
+          <input id="issue-title" type="text" maxlength="120" class="rp-input" placeholder="Short summary" data-i18n-placeholder="issue.titlePh">
+          <p id="issue-title-err" class="rp-err hidden" data-i18n="issue.errTitle">Please enter a title.</p>
+        </div>
 
-      <label class="block text-sm font-medium text-gray-700">
-        <span data-i18n="issue.titleLabel">Title</span>
-        <input id="issue-title" type="text" maxlength="120"
-          class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-      </label>
+        <div class="rp-field">
+          <label class="rp-label" for="issue-description"><span data-i18n="issue.descLabel">Description</span><span id="issue-description-count" class="rp-count">0/4000</span></label>
+          <textarea id="issue-description" rows="4" maxlength="4000" class="rp-input" placeholder="What happened, and what did you expect?"></textarea>
+          <p id="issue-description-err" class="rp-err hidden" data-i18n="issue.errDescription">Please enter a description.</p>
+        </div>
 
-      <label class="block text-sm font-medium text-gray-700">
-        <span data-i18n="issue.descLabel">Description</span>
-        <textarea id="issue-description" rows="4" maxlength="4000"
-          class="mt-1 block w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-      </label>
+        <div class="rp-shot">
+          <label class="rp-shot-row" for="issue-include-screenshot">
+            <span data-i18n="issue.includeScreenshot">Include a screenshot of this page</span>
+            <span class="ui-toggle"><input id="issue-include-screenshot" type="checkbox" checked><span></span></span>
+          </label>
+          <div id="issue-shot-body">
+            <div id="issue-fullpage-label" class="ui-seg" style="margin-top:10px" role="group">
+              <button type="button" id="issue-shot-visible" aria-pressed="true" data-i18n="issue.visibleArea">Visible area</button>
+              <button type="button" id="issue-shot-full" aria-pressed="false" data-i18n="issue.fullPage">Full page</button>
+            </div>
+            <input id="issue-fullpage-screenshot" type="checkbox" class="hidden">
+            <div id="issue-preview-wrap" class="rp-preview-wrap hidden">
+              <img id="issue-screenshot-preview" alt="screenshot preview" class="hidden">
+              <div id="issue-capturing" class="rp-capturing hidden"><span class="ui-spinner"></span><span data-i18n="issue.capturing">Capturing…</span></div>
+            </div>
+          </div>
+        </div>
 
-      <label class="flex items-center gap-2 text-sm text-gray-700">
-        <input id="issue-include-screenshot" type="checkbox" checked class="rounded border-gray-300">
-        <span data-i18n="issue.includeScreenshot">Include a screenshot of this page</span>
-      </label>
-      <label id="issue-fullpage-label" class="flex items-center gap-2 text-sm text-gray-500 pl-5">
-        <input id="issue-fullpage-screenshot" type="checkbox" class="rounded border-gray-300">
-        <span data-i18n="issue.fullPageScreenshot">Capture full page (not just visible area)</span>
-      </label>
-      <img id="issue-screenshot-preview" alt="screenshot preview" class="hidden w-full rounded-lg border border-gray-200">
+        <div id="issue-status" class="rp-error hidden" role="status" aria-live="polite"></div>
 
-      <p id="issue-status" class="text-sm text-gray-600 min-h-[1.25rem]" role="status" aria-live="polite"></p>
+        <div class="rp-actions">
+          <button id="issue-cancel" type="button" class="ui-btn ui-btn-secondary" data-i18n="issue.cancel">Cancel</button>
+          <button id="issue-submit" type="button" class="ui-btn ui-btn-primary"><span id="issue-submit-spinner" class="ui-spinner hidden"></span><span id="issue-submit-label" data-i18n="issue.submit">Submit</span></button>
+        </div>
+      </div>
 
-      <div class="flex justify-end gap-3 pt-2">
-        <button id="issue-cancel" type="button" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800" data-i18n="issue.cancel">Cancel</button>
-        <button id="issue-submit" type="button" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition" data-i18n="issue.submit">Submit</button>
+      <div id="issue-success" class="rp-success hidden">
+        <div class="rp-success-tile"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+        <h4 class="rp-title" data-i18n="issue.successTitle">Thanks!</h4>
+        <p style="margin:6px 0 0;font-size:14.5px;color:#4b5563" data-i18n="issue.successBody">Your report was created as an issue on GitHub.</p>
+        <a id="issue-success-link" class="rp-issue-link" href="#" target="_blank" rel="noopener"><span id="issue-success-num" class="rp-issue-num"></span><span id="issue-success-title"></span></a>
+        <button id="issue-done" type="button" class="ui-btn ui-btn-primary" style="width:100%" data-i18n="issue.backToApp">Back to the app</button>
       </div>
     </div>
   </div>

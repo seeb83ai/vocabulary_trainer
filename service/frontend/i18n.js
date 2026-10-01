@@ -861,6 +861,40 @@ const I18N = {
     'wz.lib.doneText': 'Imported from {count}.',
     'wz.lib.change': 'Change selection',
     'wz.lib.noLists': 'The shared library has no word lists yet.',
+    'nav.brand': 'Vocab Trainer',
+    'nav.groupPractice': 'Practice',
+    'nav.groupLibrary': 'Library',
+    'nav.groupYou': 'You',
+    'nav.more': 'More',
+    'nav.report': 'Report an issue',
+    'nav.reportShort': 'Report',
+    'nav.dashboard': 'Dashboard',
+    'nav.fullscreen': 'Fullscreen',
+    'nav.moreTitle': 'More pages',
+    'issue.titlePh': 'Short summary',
+    'issue.descPh.bug': 'What happened, and what did you expect?',
+    'issue.descPh.idea': 'What would you like to see?',
+    'issue.descPh.question': 'What would you like to know?',
+    'issue.descPh.misc': 'Tell us more',
+    'issue.visibleArea': 'Visible area',
+    'issue.fullPage': 'Full page',
+    'issue.capturing': 'Capturing…',
+    'issue.retry': 'Try again',
+    'issue.successTitle': 'Thanks!',
+    'issue.successBody': 'Your report was created as an issue on GitHub.',
+    'issue.backToApp': 'Back to the app',
+    'issue.close': 'Close',
+    'settings.appLanguage': 'App language',
+    'settings.appLanguageDesc': 'The language of menus, buttons and messages.',
+    'settings.languages': 'Languages',
+    'settings.training': 'Training',
+    'settings.progressiveMode': 'Progressive mode',
+    'settings.autosaveNote': 'Changes save automatically.',
+    'settings.email': 'Email',
+    'settings.password': 'Password',
+    'settings.changePasswordBtn': 'Change password',
+    'settings.translationUserOrderDesc': 'Applies while rare translations are hidden.',
+    'settings.sections': 'Sections',
   },
 
   zh: {
@@ -1318,7 +1352,7 @@ const I18N = {
     'issue.buttonTitle': '报告问题',
     'issue.title': '报告问题',
     'issue.category': '类型',
-    'issue.cat.bug': '缺陷',
+    'issue.cat.bug': '错误',
     'issue.cat.idea': '想法',
     'issue.cat.question': '问题',
     'issue.cat.misc': '其他',
@@ -1723,6 +1757,40 @@ const I18N = {
     'wz.lib.doneText': '已导入：{count}。',
     'wz.lib.change': '更改选择',
     'wz.lib.noLists': '共享词库中还没有词表。',
+    'nav.brand': '词汇训练',
+    'nav.groupPractice': '练习',
+    'nav.groupLibrary': '词库',
+    'nav.groupYou': '我的',
+    'nav.more': '更多',
+    'nav.report': '报告问题',
+    'nav.reportShort': '报告',
+    'nav.dashboard': '仪表板',
+    'nav.fullscreen': '全屏',
+    'nav.moreTitle': '更多页面',
+    'issue.titlePh': '简短概述',
+    'issue.descPh.bug': '发生了什么？你原本期望什么？',
+    'issue.descPh.idea': '你希望看到什么？',
+    'issue.descPh.question': '你想了解什么？',
+    'issue.descPh.misc': '请告诉我们更多',
+    'issue.visibleArea': '可见区域',
+    'issue.fullPage': '整页',
+    'issue.capturing': '正在截图…',
+    'issue.retry': '重试',
+    'issue.successTitle': '谢谢！',
+    'issue.successBody': '你的报告已在 GitHub 上创建为议题。',
+    'issue.backToApp': '返回应用',
+    'issue.close': '关闭',
+    'settings.appLanguage': '应用语言',
+    'settings.appLanguageDesc': '菜单、按钮和提示的语言。',
+    'settings.languages': '语言',
+    'settings.training': '训练',
+    'settings.progressiveMode': '渐进模式',
+    'settings.autosaveNote': '更改会自动保存。',
+    'settings.email': '邮箱',
+    'settings.password': '密码',
+    'settings.changePasswordBtn': '修改密码',
+    'settings.translationUserOrderDesc': '在隐藏罕见翻译时生效。',
+    'settings.sections': '分区',
   },
 
   de: {
@@ -2585,6 +2653,40 @@ const I18N = {
     'wz.lib.doneText': 'Importiert aus: {count}.',
     'wz.lib.change': 'Auswahl ändern',
     'wz.lib.noLists': 'Die gemeinsame Bibliothek hat noch keine Wortlisten.',
+    'nav.brand': 'Vocab Trainer',
+    'nav.groupPractice': 'Üben',
+    'nav.groupLibrary': 'Sammlung',
+    'nav.groupYou': 'Du',
+    'nav.more': 'Mehr',
+    'nav.report': 'Problem melden',
+    'nav.reportShort': 'Melden',
+    'nav.dashboard': 'Dashboard',
+    'nav.fullscreen': 'Vollbild',
+    'nav.moreTitle': 'Weitere Seiten',
+    'issue.titlePh': 'Kurze Zusammenfassung',
+    'issue.descPh.bug': 'Was ist passiert, und was hast du erwartet?',
+    'issue.descPh.idea': 'Was wünschst du dir?',
+    'issue.descPh.question': 'Was möchtest du wissen?',
+    'issue.descPh.misc': 'Erzähl uns mehr',
+    'issue.visibleArea': 'Sichtbarer Bereich',
+    'issue.fullPage': 'Ganze Seite',
+    'issue.capturing': 'Wird erfasst…',
+    'issue.retry': 'Erneut versuchen',
+    'issue.successTitle': 'Danke!',
+    'issue.successBody': 'Deine Meldung wurde als Issue auf GitHub angelegt.',
+    'issue.backToApp': 'Zurück zur App',
+    'issue.close': 'Schließen',
+    'settings.appLanguage': 'App-Sprache',
+    'settings.appLanguageDesc': 'Die Sprache von Menüs, Schaltflächen und Meldungen.',
+    'settings.languages': 'Sprachen',
+    'settings.training': 'Training',
+    'settings.progressiveMode': 'Fortschreitender Modus',
+    'settings.autosaveNote': 'Änderungen werden automatisch gespeichert.',
+    'settings.email': 'E-Mail',
+    'settings.password': 'Passwort',
+    'settings.changePasswordBtn': 'Passwort ändern',
+    'settings.translationUserOrderDesc': 'Gilt, solange seltene Übersetzungen ausgeblendet sind.',
+    'settings.sections': 'Abschnitte',
   },
 };
 
@@ -2598,6 +2700,19 @@ function getUILang() {
 function setUILang(lang) {
   _uiLang = lang;
   localStorage.setItem('uiLang', lang);
+}
+
+// UI languages the app ships. The signed-in app stores the choice on the
+// server (user_settings.ui_lang); localStorage only caches it for first paint.
+const UI_LANGS = ['en', 'de', 'zh'];
+
+// resolveUILang decides which UI language to use once the server value is
+// known. The server wins; if it has none yet, the browser's cached choice
+// (e.g. picked on the login page) is used and should be seeded to the server.
+function resolveUILang(serverLang, localLang) {
+  if (UI_LANGS.includes(serverLang)) return { lang: serverLang, seed: false };
+  if (UI_LANGS.includes(localLang)) return { lang: localLang, seed: true };
+  return { lang: 'en', seed: false };
 }
 
 // Translate a key, with optional named interpolation: t('key', {n: 5})
@@ -2621,6 +2736,9 @@ function applyTranslations() {
   });
   document.querySelectorAll('[data-i18n-title]').forEach(el => {
     el.title = t(el.dataset.i18nTitle);
+  });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+    el.setAttribute('aria-label', t(el.dataset.i18nAriaLabel));
   });
   // Update the language selector display
   const langSelect = document.getElementById('lang-select');

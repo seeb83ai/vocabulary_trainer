@@ -200,3 +200,39 @@ describe('localValidationError', () => {
     expect(localValidationError('mode', { primary_lang: 'en', secondary_lang: 'en' })).toBeNull();
   });
 });
+
+// ── stepNumberValue (redesign − value + stepper) ─────────────────────────────
+// Inlined from settings.js.
+function stepNumberValue(value, dir, min, max, step) {
+  const s = step > 0 ? step : 1;
+  const n = parseFloat(value);
+  let next = isNaN(n) ? min + (dir > 0 ? s : 0) : n + dir * s;
+  if (isNaN(n) && dir < 0) next = min;
+  next = Math.min(max, Math.max(min, next));
+  // Round to the step's precision so 0.1 + 0.2 style float noise never shows.
+  const decimals = (String(s).split('.')[1] || '').length;
+  return String(Number(next.toFixed(decimals)));
+}
+
+describe('stepNumberValue', () => {
+  it('adds and subtracts one step', () => {
+    expect(stepNumberValue('5', 1, 1, 50, 1)).toBe('6');
+    expect(stepNumberValue('5', -1, 1, 50, 1)).toBe('4');
+  });
+
+  it('clamps to min and max', () => {
+    expect(stepNumberValue('1', -1, 1, 50, 1)).toBe('1');
+    expect(stepNumberValue('50', 1, 1, 50, 1)).toBe('50');
+  });
+
+  it('supports decimal and larger steps without float noise', () => {
+    expect(stepNumberValue('0.5', 1, 0, 100, 0.5)).toBe('1');
+    expect(stepNumberValue('1.5', 1, 0, 100, 0.5)).toBe('2');
+    expect(stepNumberValue('20', 1, 0, 100, 5)).toBe('25');
+  });
+
+  it('starts from min when the field is empty or invalid', () => {
+    expect(stepNumberValue('', 1, 0, 100, 5)).toBe('5');
+    expect(stepNumberValue('abc', -1, 1, 50, 1)).toBe('1');
+  });
+});

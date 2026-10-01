@@ -78,43 +78,70 @@ async function logout() {
   window.location.href = '/login';
 }
 
-// Show the logout button only when auth is enabled.
-// Initialize language selector and apply translations.
-document.addEventListener('DOMContentLoaded', async () => {
-  // Mobile hamburger menu toggle
-  const navBtn = document.getElementById('nav-menu-btn');
-  const navMenu = document.getElementById('nav-menu');
-  if (navBtn && navMenu) {
-    navBtn.addEventListener('click', () => {
-      const isHidden = navMenu.classList.contains('hidden');
-      if (isHidden) {
-        navMenu.classList.remove('hidden');
-        navMenu.classList.add('flex', 'flex-col', 'gap-3', 'w-full', 'pt-3', 'mt-1', 'border-t', 'border-gray-100');
-      } else {
-        navMenu.classList.add('hidden');
-        navMenu.classList.remove('flex', 'flex-col', 'gap-3', 'w-full', 'pt-3', 'mt-1', 'border-t', 'border-gray-100');
-      }
-    });
-  }
+// changeUILang switches the UI language, re-renders translated text and stores
+// the choice on the server (Settings → Languages → App language).
+function changeUILang(lang) {
+  if (!UI_LANGS.includes(lang)) return Promise.resolve();
+  setUILang(lang);
+  applyTranslations();
+  document.dispatchEvent(new Event('langchange'));
+  return apiFetch('/api/settings/ui-lang', { method: 'PUT', body: JSON.stringify({ ui_lang: lang }) });
+}
 
-  // Language selector
-  const langSelect = document.getElementById('lang-select');
-  if (langSelect) {
-    langSelect.value = getUILang();
+// syncUILang applies the server-stored UI language (it wins over the
+// localStorage cache) and seeds the server from the cache for users who
+// picked a language before it was stored server-side.
+async function syncUILang() {
+  let st;
+  try {
+    const res = await fetch('/api/settings');
+    if (!res.ok) return;
+    st = await res.json();
+  } catch (_) { return; }
+  const { lang, seed } = resolveUILang(st.ui_lang, localStorage.getItem('uiLang'));
+  if (lang !== getUILang()) {
+    setUILang(lang);
     applyTranslations();
-    langSelect.addEventListener('change', () => {
-      setUILang(langSelect.value);
-      applyTranslations();
-      // Fire a custom event so page-specific JS can re-render dynamic content
-      document.dispatchEvent(new Event('langchange'));
-    });
+    document.dispatchEvent(new Event('langchange'));
   }
+  if (seed) {
+    fetch('/api/settings/ui-lang', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ui_lang: lang }),
+    }).catch(() => {});
+  }
+}
+
+function openMoreSheet() {
+  show('more-sheet');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeMoreSheet() {
+  hide('more-sheet');
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  applyTranslations();
+
+  const moreBtn = $('tab-more');
+  if (moreBtn) moreBtn.addEventListener('click', openMoreSheet);
+  const moreBackdrop = $('more-sheet-backdrop');
+  if (moreBackdrop) moreBackdrop.addEventListener('click', closeMoreSheet);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && $('more-sheet') && !$('more-sheet').classList.contains('hidden')) closeMoreSheet();
+  });
+
+  if ($('app-sidebar')) syncUILang();
 
   try {
     const res = await fetch('/api/auth/status');
     if (res.ok) {
-      const btn = document.getElementById('logout-btn');
-      if (btn) {
+      for (const id of ['logout-btn', 'more-logout-btn']) {
+        const btn = $(id);
+        if (!btn) continue;
         btn.classList.remove('hidden');
         btn.addEventListener('click', logout);
       }
@@ -124,30 +151,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   initFullscreenToggle();
 });
 
-// Fullscreen can't be forced on page load — browsers only grant it from a
-// user gesture — so this shows a floating toggle button instead. Hidden
-// entirely when the Fullscreen API isn't available (e.g. already running
-// installed/standalone, where there's no browser chrome left to hide).
-function initFullscreenToggle() {
-  const btn = document.getElementById('fullscreen-toggle-btn');
-  if (!btn || !document.documentElement.requestFullscreen || window.matchMedia('(display-mode: standalone)').matches) {
-    return;
+function fullscreenAvailable() {
+  return !!document.documentElement.requestFullscreen && !window.matchMedia('(display-mode: standalone)').matches;
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else {
+    document.documentElement.requestFullscreen().catch(() => {});
   }
-  btn.classList.remove('hidden');
+}
+
+// Fullscreen can't be forced on page load — browsers only grant it from a
+// user gesture — so the Train page shows a toggle button and every page gets
+// a "Fullscreen" row in the phone More sheet. Both stay hidden when the
+// Fullscreen API isn't available (e.g. already running installed/standalone,
+// where there's no browser chrome left to hide).
+function initFullscreenToggle() {
+  if (!fullscreenAvailable()) return;
+  const btn = $('fullscreen-toggle-btn');
+  const row = $('more-fullscreen-btn');
+  if (btn) btn.classList.remove('hidden');
+  if (row) row.classList.remove('hidden');
   const updateLabel = () => {
     const active = !!document.fullscreenElement;
-    btn.setAttribute('aria-pressed', String(active));
     const key = active ? 'fullscreen.exitTitle' : 'fullscreen.enterTitle';
-    btn.title = t(key);
-    btn.setAttribute('data-i18n-title', key);
-  };
-  btn.addEventListener('click', () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen();
-    } else {
-      document.documentElement.requestFullscreen().catch(() => {});
+    for (const el of [btn, row]) {
+      if (!el) continue;
+      el.setAttribute('aria-pressed', String(active));
+      el.title = t(key);
+      el.setAttribute('data-i18n-title', key);
     }
-  });
+  };
+  if (btn) btn.addEventListener('click', toggleFullscreen);
+  if (row) row.addEventListener('click', () => { closeMoreSheet(); toggleFullscreen(); });
   document.addEventListener('fullscreenchange', updateLabel);
   updateLabel();
 }
@@ -261,25 +299,20 @@ function screenshotOptions(fullPage, win) {
 async function captureScreenshot(fullPage) {
   const h2c = await loadHtml2Canvas();
   if (!h2c) return '';
-  const btn = $('issue-report-btn');
   const modal = $('issue-modal');
-  const btnWasHidden = btn && btn.classList.contains('hidden');
   const modalWasHidden = modal && modal.classList.contains('hidden');
-  if (btn) btn.classList.add('hidden');
   if (modal) modal.classList.add('hidden');
   try {
     const canvas = await h2c(document.body, screenshotOptions(fullPage, window));
     return canvas.toDataURL('image/png');
   } finally {
-    if (btn && !btnWasHidden) btn.classList.remove('hidden');
     if (modal && !modalWasHidden) modal.classList.remove('hidden');
   }
 }
 
 async function initIssueReporter() {
-  const btn = $('issue-report-btn');
   const modal = $('issue-modal');
-  if (!btn || !modal) return;
+  if (!modal) return;
 
   // Only enable when the server reports the feature is configured.
   let enabled = false;
@@ -288,80 +321,177 @@ async function initIssueReporter() {
     if (res.ok) enabled = (await res.json()).enabled === true;
   } catch (_) { /* feature unavailable */ }
   if (!enabled) return;
-  btn.classList.remove('hidden');
+  show('nav-report');
+  show('tab-report');
 
   let screenshotDataUrl = '';
+  let submitting = false;
+
+  const titleEl = $('issue-title');
+  const descEl = $('issue-description');
+  const includeEl = $('issue-include-screenshot');
+  const fullPageEl = $('issue-fullpage-screenshot');
+
+  function setCategory(cat) {
+    $('issue-category').value = cat;
+    modal.querySelectorAll('[data-issue-cat]').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.issueCat === cat));
+    });
+    descEl.placeholder = t('issue.descPh.' + cat);
+  }
+
+  function updateCounters() {
+    setText('issue-title-count', `${titleEl.value.length}/120`);
+    setText('issue-description-count', `${descEl.value.length}/4000`);
+  }
+
+  function setFieldError(field, on) {
+    const input = $('issue-' + field);
+    const err = $('issue-' + field + '-err');
+    if (input) input.classList.toggle('rp-invalid', on);
+    if (err) err.classList.toggle('hidden', !on);
+  }
+
+  function clearErrors() {
+    setFieldError('title', false);
+    setFieldError('description', false);
+    hide('issue-status');
+  }
+
+  function setSubmitState(state) {
+    const btn = $('issue-submit');
+    const busy = state === 'busy';
+    btn.disabled = busy;
+    btn.classList.toggle('is-busy', busy);
+    $('issue-submit-spinner').classList.toggle('hidden', !busy);
+    const key = busy ? 'issue.submitting' : state === 'retry' ? 'issue.retry' : 'issue.submit';
+    const label = $('issue-submit-label');
+    label.setAttribute('data-i18n', key);
+    label.textContent = t(key);
+  }
+
+  function syncShotControls() {
+    const on = includeEl.checked;
+    $('issue-shot-body').classList.toggle('hidden', !on);
+    $('issue-shot-visible').setAttribute('aria-pressed', String(!fullPageEl.checked));
+    $('issue-shot-full').setAttribute('aria-pressed', String(fullPageEl.checked));
+    $('issue-preview-wrap').classList.toggle('rp-full', fullPageEl.checked);
+  }
 
   async function refreshScreenshot() {
     const preview = $('issue-screenshot-preview');
-    const include = $('issue-include-screenshot');
-    const fullPageCb = $('issue-fullpage-screenshot');
     screenshotDataUrl = '';
     preview.classList.add('hidden');
-    if (!include || !include.checked) return;
+    syncShotControls();
+    if (!includeEl.checked) return;
+    show('issue-preview-wrap');
+    show('issue-capturing');
     try {
-      screenshotDataUrl = await captureScreenshot(fullPageCb && fullPageCb.checked);
+      screenshotDataUrl = await captureScreenshot(fullPageEl.checked);
       if (screenshotDataUrl) {
         preview.src = screenshotDataUrl;
         preview.classList.remove('hidden');
+      } else {
+        hide('issue-preview-wrap');
       }
-    } catch (_) { /* screenshot is best-effort */ }
-  }
-
-  function syncFullPageVisibility() {
-    const include = $('issue-include-screenshot');
-    const label = $('issue-fullpage-label');
-    if (!label) return;
-    if (include && include.checked) {
-      label.classList.remove('hidden');
-    } else {
-      label.classList.add('hidden');
+    } catch (_) {
+      hide('issue-preview-wrap'); /* screenshot is best-effort */
+    } finally {
+      hide('issue-capturing');
     }
   }
 
-  btn.addEventListener('click', async () => {
-    setText('issue-status', '');
-    syncFullPageVisibility();
+  function closeReport() {
+    if (submitting) return;
+    hide('issue-modal');
+  }
+
+  async function openReport() {
+    closeMoreSheet();
+    clearErrors();
+    setSubmitState('idle');
+    show('issue-form-view');
+    hide('issue-success');
+    setCategory($('issue-category').value || 'bug');
+    updateCounters();
     await refreshScreenshot();
     show('issue-modal');
-  });
+  }
 
-  $('issue-cancel').addEventListener('click', () => hide('issue-modal'));
-  modal.addEventListener('click', e => { if (e.target === modal) hide('issue-modal'); });
-  $('issue-include-screenshot').addEventListener('change', () => {
-    syncFullPageVisibility();
+  for (const id of ['nav-report', 'tab-report']) {
+    const el = $(id);
+    if (el) el.addEventListener('click', openReport);
+  }
+  modal.querySelectorAll('[data-issue-cat]').forEach(b => {
+    b.addEventListener('click', () => setCategory(b.dataset.issueCat));
+  });
+  titleEl.addEventListener('input', () => { updateCounters(); setFieldError('title', false); });
+  descEl.addEventListener('input', () => { updateCounters(); setFieldError('description', false); });
+  $('issue-close').addEventListener('click', closeReport);
+  $('issue-cancel').addEventListener('click', closeReport);
+  $('issue-done').addEventListener('click', closeReport);
+  modal.addEventListener('click', e => { if (e.target === modal) closeReport(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeReport();
+  });
+  includeEl.addEventListener('change', refreshScreenshot);
+  $('issue-shot-visible').addEventListener('click', () => {
+    if (!fullPageEl.checked) return;
+    fullPageEl.checked = false;
     refreshScreenshot();
   });
-  const fullPageCbInit = $('issue-fullpage-screenshot');
-  if (fullPageCbInit) fullPageCbInit.addEventListener('change', refreshScreenshot);
+  $('issue-shot-full').addEventListener('click', () => {
+    if (fullPageEl.checked) return;
+    fullPageEl.checked = true;
+    refreshScreenshot();
+  });
+  document.addEventListener('langchange', () => setCategory($('issue-category').value || 'bug'));
 
   $('issue-submit').addEventListener('click', async () => {
     const form = {
       category: $('issue-category').value,
-      title: $('issue-title').value,
-      description: $('issue-description').value,
+      title: titleEl.value,
+      description: descEl.value,
     };
+    clearErrors();
     const errKey = validateIssueForm(form);
-    if (errKey) { setText('issue-status', t(errKey)); return; }
+    if (errKey === 'issue.errTitle') { setFieldError('title', true); return; }
+    if (errKey === 'issue.errDescription') { setFieldError('description', true); return; }
+    if (errKey) { setText('issue-status', t(errKey)); show('issue-status'); return; }
 
-    setText('issue-status', t('issue.submitting'));
     const payload = {
       ...form,
       page_url: location.pathname,
       meta: buildIssueMetadata(window),
     };
-    const include = $('issue-include-screenshot');
-    if (include && include.checked && screenshotDataUrl) {
+    if (includeEl.checked && screenshotDataUrl) {
       payload.screenshot_png_b64 = screenshotDataUrl;
     }
+    submitting = true;
+    setSubmitState('busy');
     try {
       const res = await apiFetch('/api/github/issues', { method: 'POST', body: JSON.stringify(payload) });
-      const statusEl = $('issue-status');
-      $('issue-title').value = '';
-      $('issue-description').value = '';
-      hide('issue-modal');
+      setText('issue-success-num', res && res.number ? `#${res.number}` : '');
+      setText('issue-success-title', form.title.trim());
+      const link = $('issue-success-link');
+      if (res && res.issue_url) {
+        link.href = res.issue_url;
+        link.classList.remove('hidden');
+      } else {
+        link.classList.add('hidden');
+      }
+      titleEl.value = '';
+      descEl.value = '';
+      updateCounters();
+      hide('issue-form-view');
+      show('issue-success');
+      setSubmitState('idle');
     } catch (err) {
       setText('issue-status', t('issue.error') + ' ' + err.message);
+      show('issue-status');
+      setSubmitState('retry');
+    } finally {
+      submitting = false;
     }
   });
 }

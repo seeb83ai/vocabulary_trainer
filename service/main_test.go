@@ -93,8 +93,9 @@ func TestRenderTemplate_ActiveNavLink(t *testing.T) {
 			if !strings.Contains(body, tc.wantSub) {
 				t.Errorf("nav link not found: %q", tc.wantSub)
 			}
-			if !strings.Contains(body, "border-b-2 border-blue-600") {
-				t.Errorf("active nav style not found for %s", tc.page)
+			// The sidebar marks the active link with aria-current="page".
+			if !strings.Contains(body, tc.wantSub+` class="app-nav-item" aria-current="page"`) {
+				t.Errorf("active sidebar link not marked for %s", tc.page)
 			}
 		})
 	}

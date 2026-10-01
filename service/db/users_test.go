@@ -653,3 +653,41 @@ func TestGamificationHidePinyinFromBucket_DefaultAndRoundTrip(t *testing.T) {
 		t.Errorf("GamificationHidePinyinFromBucket round-trip: want %q, got %q", "85-100", got.GamificationHidePinyinFromBucket)
 	}
 }
+
+func TestSetUILang_PersistsAndReloads(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	st, err := s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.UILang != "" {
+		t.Errorf("want default ui_lang empty, got %q", st.UILang)
+	}
+
+	if err := s.SetUILang(ctx, userID, "de"); err != nil {
+		t.Fatalf("SetUILang: %v", err)
+	}
+	st, err = s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.UILang != "de" {
+		t.Errorf("want ui_lang=de, got %q", st.UILang)
+	}
+
+	// A full settings update must not wipe the UI language.
+	st.PrimaryLang = "en"
+	if err := s.UpdateUserSettings(ctx, userID, *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+	st, err = s.GetUserSettings(ctx, userID)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	if st.UILang != "de" {
+		t.Errorf("want ui_lang=de after UpdateUserSettings, got %q", st.UILang)
+	}
+}

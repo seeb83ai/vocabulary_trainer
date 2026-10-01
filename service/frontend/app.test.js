@@ -283,3 +283,33 @@ describe('apiFetch', () => {
     expect(call.headers['X-Custom']).toBe('val');
   });
 });
+
+// ── UI language resolution (redesign) ───────────────────────────────────────
+// Inlined from i18n.js (resolveUILang).
+
+const UI_LANGS = ['en', 'de', 'zh'];
+function resolveUILang(serverLang, localLang) {
+  if (UI_LANGS.includes(serverLang)) return { lang: serverLang, seed: false };
+  if (UI_LANGS.includes(localLang)) return { lang: localLang, seed: true };
+  return { lang: 'en', seed: false };
+}
+
+describe('resolveUILang', () => {
+  it('uses the server value when it is set', () => {
+    expect(resolveUILang('de', 'en')).toEqual({ lang: 'de', seed: false });
+    expect(resolveUILang('zh', null)).toEqual({ lang: 'zh', seed: false });
+  });
+
+  it('seeds the server from localStorage when the server has no value', () => {
+    expect(resolveUILang('', 'de')).toEqual({ lang: 'de', seed: true });
+  });
+
+  it('falls back to English without seeding when nothing is known', () => {
+    expect(resolveUILang('', null)).toEqual({ lang: 'en', seed: false });
+    expect(resolveUILang(undefined, 'fr')).toEqual({ lang: 'en', seed: false });
+  });
+
+  it('ignores an unknown server value', () => {
+    expect(resolveUILang('fr', 'de')).toEqual({ lang: 'de', seed: true });
+  });
+});

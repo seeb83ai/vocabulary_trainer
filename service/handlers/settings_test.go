@@ -1635,3 +1635,31 @@ func TestSettingsPatch_AutoplayAlways(t *testing.T) {
 		t.Errorf("autoplay_always: want true after update, got %v", st["autoplay_always"])
 	}
 }
+
+func TestPutUILang_Valid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, http.MethodPut, "/api/settings/ui-lang", map[string]any{"ui_lang": "zh"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, r, http.MethodGet, "/api/settings", nil)
+	var st models.UserSettings
+	decodeJSON(t, rec, &st)
+	if st.UILang != "zh" {
+		t.Errorf("want ui_lang=zh, got %q", st.UILang)
+	}
+}
+
+func TestPutUILang_Invalid(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	for _, lang := range []string{"", "fr", "EN"} {
+		rec := do(t, r, http.MethodPut, "/api/settings/ui-lang", map[string]any{"ui_lang": lang})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("ui_lang=%q: want 400, got %d: %s", lang, rec.Code, rec.Body.String())
+		}
+	}
+}
