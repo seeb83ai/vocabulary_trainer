@@ -79,9 +79,9 @@ body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', system-ui, sans-serif; 
 .rp-card { position: relative; background: #fff; width: 100%; max-width: 520px; border-radius: 24px; box-shadow: 0 30px 60px -30px rgba(17,24,39,.5); max-height: 92vh; overflow: auto; padding: 22px clamp(18px,4vw,26px) 22px; }
 .rp-handle { display: none; width: 40px; height: 4px; border-radius: 99px; background: #d1d5db; margin: 0 auto 12px; }
 @media (max-width: 879px) {
-  .rp-scrim { align-items: flex-end; padding: 0; }
-  .rp-card { max-width: none; border-radius: 24px 24px 0 0; max-height: 94vh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
-  .rp-handle { display: block; }
+  .rp-scrim { align-items: flex-start; padding: 0; }
+  .rp-card { max-width: none; border-radius: 0; max-height: none; height: 100dvh; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  .rp-handle { display: none; }
 }
 .rp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .rp-title { margin: 0; font-size: 20px; font-weight: 800; color: #111827; letter-spacing: -0.01em; }
@@ -350,6 +350,7 @@ label.st-text { cursor: pointer; }
   .st-chips { display: flex; }
   .st-row-range { flex-direction: column; align-items: stretch; }
   .st-range { justify-content: flex-start; }
+  #sec-progressive .st-row { flex-direction: column; align-items: stretch; }
 }
 @media (max-width: 480px) {
   .st-row { flex-wrap: wrap; }
