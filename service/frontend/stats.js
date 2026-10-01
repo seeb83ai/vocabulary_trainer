@@ -10,36 +10,92 @@ function initTabs() {
     $(btn).addEventListener('click', () => {
       tabs.forEach(({ btn: b, panel: p }) => {
         const active = b === btn;
-        $(b).className = `tab-btn px-5 py-2 rounded-lg text-sm font-medium transition ${active ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-800'}`;
+        $(b).setAttribute('aria-pressed', String(active));
         $(p).classList.toggle('hidden', !active);
       });
     });
   });
 }
 
+// Folded "Last 14 days" tables: a disclosure button toggles its table.
+function initTableToggles() {
+  ['stats-table', 'pinyin-table', 'comp-table'].forEach(id => {
+    const btn = $(id + '-toggle');
+    const wrap = $(id + '-wrap');
+    if (!btn || !wrap) return;
+    btn.addEventListener('click', () => {
+      const open = wrap.classList.contains('hidden');
+      wrap.classList.toggle('hidden', !open);
+      btn.setAttribute('aria-expanded', String(open));
+      btn.innerHTML = `${open ? '▾' : '▸'} <span>${escHtml(t(open ? 'stats.hideTable' : 'stats.showTable'))}</span>`;
+    });
+  });
+}
+
+function setTile(key, value, sub, subClass) {
+  setText(`tile-${key}-value`, value);
+  const el = $(`tile-${key}-sub`);
+  if (!el) return;
+  el.textContent = sub || '';
+  el.className = 'sx-tile-sub' + (subClass ? ' ' + subClass : '');
+}
+
+// renderSummaryTiles fills the four summary tiles above the training history.
+function renderSummaryTiles(days, quizStats, gamification) {
+  const today = new Date().toISOString().slice(0, 10);
+  const s = statsSummary(days, today);
+  setTile('answers', String(s.answersToday), t('stats.mistakesCount', { n: s.mistakesToday }));
+  let deltaText = '';
+  let deltaClass = '';
+  if (s.accuracyDelta !== null) {
+    const sign = s.accuracyDelta > 0 ? '+' : s.accuracyDelta < 0 ? '−' : '±';
+    deltaText = t('stats.vsPrevious', { delta: `${sign}${Math.abs(s.accuracyDelta)} %` });
+    deltaClass = s.accuracyDelta > 0 ? 'sx-up' : s.accuracyDelta < 0 ? 'sx-down' : '';
+  }
+  setTile('accuracy', s.accuracy === null ? '—' : `${s.accuracy}%`, deltaText, deltaClass);
+  if (quizStats) setText('tile-training-sub', t('stats.dueTodayCount', { n: quizStats.due_today || 0 }));
+  if (gamification) {
+    setText('tile-streak-label', t('stats.dayStreak'));
+    setTile('streak', String(s.streak), s.streak > 0 ? '🔥' : '');
+  } else {
+    setText('tile-streak-label', t('stats.trainingTimeLong'));
+    setTile('streak', formatTrainingTime(s.trainingSeconds), t('stats.last14Days'));
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
   initTabs();
+  initTableToggles();
+  if (window.Chart) {
+    Chart.defaults.datasets.bar.maxBarThickness = 28;
+    Chart.defaults.datasets.bar.borderRadius = 4;
+  }
 
   // Load all tabs in parallel
-  const [wordsResult, pinyinResult, compResult, hmmResult, compDueDateResult] = await Promise.allSettled([
+  const [wordsResult, pinyinResult, compResult, hmmResult, compDueDateResult, quizStatsResult, settingsResult] = await Promise.allSettled([
     apiFetch('/api/quiz/daily-stats'),
     apiFetch('/api/pinyin-quiz/daily-stats'),
     apiFetch('/api/component/stats'),
     apiFetch('/api/hmm/breakdown'),
     apiFetch('/api/component/due-date-distribution'),
+    apiFetch('/api/quiz/stats'),
+    apiFetch('/api/settings'),
   ]);
+  const quizStats = quizStatsResult.status === 'fulfilled' ? quizStatsResult.value : null;
+  const gamification = settingsResult.status === 'fulfilled' && !!settingsResult.value.gamification_enabled;
 
   // --- Words tab ---
   if (wordsResult.status === 'rejected') {
     $('stats-table-body').innerHTML =
-      `<tr><td colspan="12" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
+      `<tr><td colspan="12" class="sx-empty sx-error">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
   } else {
     const days = (wordsResult.value.days) || [];
+    renderSummaryTiles(days, quizStats, gamification);
     if (days.length === 0) {
-      $('stats-chart').style.display = 'none';
+      $('stats-chart').parentElement.style.display = 'none';
       show('chart-empty');
       $('stats-table-body').innerHTML =
-        `<tr><td colspan="12" class="py-8 text-center text-gray-400">${escHtml(t('stats.noTrainingDataShort'))}</td></tr>`;
+        `<tr><td colspan="12" class="sx-empty">${escHtml(t('stats.noTrainingDataShort'))}</td></tr>`;
     } else {
       renderChart(days);
       renderBucketChart(days);
@@ -56,14 +112,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- Components tab ---
   if (compResult.status === 'rejected') {
     $('comp-table-body').innerHTML =
-      `<tr><td colspan="4" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
+      `<tr><td colspan="4" class="sx-empty sx-error">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
   } else {
     const cdays = (compResult.value.days) || [];
     if (cdays.length === 0) {
-      $('comp-stats-chart').style.display = 'none';
+      $('comp-stats-chart').parentElement.style.display = 'none';
       show('comp-chart-empty');
       $('comp-table-body').innerHTML =
-        `<tr><td colspan="4" class="py-8 text-center text-gray-400">${escHtml(t('stats.noCompTrainingData'))}</td></tr>`;
+        `<tr><td colspan="4" class="sx-empty">${escHtml(t('stats.noCompTrainingData'))}</td></tr>`;
     } else {
       renderCompChart(cdays);
       renderCompTable(cdays);
@@ -74,22 +130,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cdates = compDueDateResult.value.dates || [];
     const canvas = $('comp-due-date-chart');
     if (cdates.length === 0) {
-      canvas.style.display = 'none';
+      canvas.parentElement.style.display = 'none';
       show('comp-due-chart-empty');
     } else {
-      canvas.style.display = '';
+      canvas.parentElement.style.display = '';
       hide('comp-due-chart-empty');
       renderCompDueDateChart(cdates);
     }
   } else {
-    $('comp-due-date-chart').style.display = 'none';
+    $('comp-due-date-chart').parentElement.style.display = 'none';
     show('comp-due-chart-empty');
   }
 
   // --- Mnemonics tab ---
   if (hmmResult.status === 'rejected') {
     $('hmm-breakdown-body').innerHTML =
-      `<tr><td colspan="5" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
+      `<tr><td colspan="5" class="sx-empty sx-error">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
   } else {
     const breakdown = (hmmResult.value.breakdown) || [];
     if (breakdown.length === 0) {
@@ -103,14 +159,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   // --- Pinyin tab ---
   if (pinyinResult.status === 'rejected') {
     $('pinyin-table-body').innerHTML =
-      `<tr><td colspan="5" class="py-8 text-center text-red-500">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
+      `<tr><td colspan="5" class="sx-empty sx-error">${escHtml(t('stats.failedToLoad'))}</td></tr>`;
   } else {
     const pdays = (pinyinResult.value.days) || [];
     if (pdays.length === 0) {
-      $('pinyin-stats-chart').style.display = 'none';
+      $('pinyin-stats-chart').parentElement.style.display = 'none';
       show('pinyin-chart-empty');
       $('pinyin-table-body').innerHTML =
-        `<tr><td colspan="5" class="py-8 text-center text-gray-400">${escHtml(t('stats.noPinyinTrainingData'))}</td></tr>`;
+        `<tr><td colspan="5" class="sx-empty">${escHtml(t('stats.noPinyinTrainingData'))}</td></tr>`;
     } else {
       renderPinyinChart(pdays);
       renderPinyinToneChart(pdays);
@@ -118,6 +174,50 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 });
+
+// statsSummary computes the summary tiles from the daily stats: today's
+// answers, 14-day accuracy and its change vs the 14 days before, the day
+// streak and the 14-day training time. Pure for unit testing.
+function statsSummary(days, today) {
+  const byDate = new Map((days || []).map(d => [d.date, d]));
+  const shift = (date, n) => {
+    const d = new Date(date + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const windowTotals = (fromOffset, toOffset) => {
+    let attempts = 0, mistakes = 0, seconds = 0;
+    for (let i = fromOffset; i <= toOffset; i++) {
+      const d = byDate.get(shift(today, -i));
+      if (!d) continue;
+      attempts += d.attempts || 0;
+      mistakes += d.mistakes || 0;
+      seconds += d.training_seconds || 0;
+    }
+    return { attempts, mistakes, seconds };
+  };
+  const pct = w => (w.attempts > 0 ? Math.round(((w.attempts - w.mistakes) / w.attempts) * 100) : null);
+  const current = windowTotals(0, 13);
+  const previous = windowTotals(14, 27);
+  const accuracy = pct(current);
+  const prevAccuracy = pct(previous);
+  // The streak ends today, or yesterday while today has no answers yet.
+  let streak = 0;
+  let offset = (byDate.get(today)?.attempts || 0) > 0 ? 0 : 1;
+  while ((byDate.get(shift(today, -offset))?.attempts || 0) > 0) {
+    streak++;
+    offset++;
+  }
+  const todayRow = byDate.get(today);
+  return {
+    answersToday: todayRow?.attempts || 0,
+    mistakesToday: todayRow?.mistakes || 0,
+    accuracy,
+    accuracyDelta: accuracy !== null && prevAccuracy !== null ? accuracy - prevAccuracy : null,
+    streak,
+    trainingSeconds: current.seconds,
+  };
+}
 
 function formatTrainingTime(seconds) {
   if (!seconds || seconds <= 0) return '—';
@@ -139,21 +239,21 @@ function renderChart(days) {
         {
           label: t('chart.correct'),
           data: days.map(d => d.attempts - d.mistakes),
-          backgroundColor: 'rgba(34, 197, 94, 0.7)',
+          backgroundColor: '#2563eb',
           stack: 'answers',
         },
         {
           label: t('chart.mistakes'),
           data: days.map(d => d.mistakes),
-          backgroundColor: 'rgba(239, 68, 68, 0.7)',
+          backgroundColor: '#fca5a5',
           stack: 'answers',
         },
         {
           label: t('chart.wordsSeen'),
           data: days.map(d => d.words_seen),
           type: 'line',
-          borderColor: 'rgba(168, 85, 247, 0.9)',
-          backgroundColor: 'rgba(168, 85, 247, 0.1)',
+          borderColor: '#9ca3af',
+          backgroundColor: 'rgba(156, 163, 175, 0.1)',
           fill: false,
           yAxisID: 'y1',
           tension: 0.3,
@@ -163,6 +263,7 @@ function renderChart(days) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
@@ -236,6 +337,7 @@ function drawBucketChart(days) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
@@ -260,26 +362,26 @@ function renderTable(days) {
   const recent = days.slice(-14).reverse();
   const tbody = $('stats-table-body');
   if (recent.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="12" class="py-8 text-center text-gray-400">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" class="sx-empty">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
     return;
   }
   tbody.innerHTML = recent.map(d => {
     const correct = d.attempts - d.mistakes;
     const acc = d.attempts > 0 ? Math.round((correct / d.attempts) * 100) : 0;
-    const accColor = acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
-    return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-      <td class="py-2 pr-4 font-medium">${escHtml(formatDateLabel(d.date))}</td>
-      <td class="py-2 pr-4 text-right">${d.attempts}</td>
-      <td class="py-2 pr-4 text-right">${d.mistakes}</td>
-      <td class="py-2 pr-4 text-right ${accColor} font-medium">${acc}%</td>
-      <td class="py-2 pr-4 text-right">${d.words_seen}</td>
-      <td class="py-2 pr-4 text-right">${d.correct_streak}</td>
-      <td class="py-2 pr-4 text-right text-violet-600">${d.bucket_new || 0}</td>
-      <td class="py-2 pr-4 text-right text-red-600">${d.bucket_struggling || 0}</td>
-      <td class="py-2 pr-4 text-right text-amber-600">${d.bucket_learning || 0}</td>
-      <td class="py-2 pr-4 text-right text-blue-600">${d.bucket_practicing || 0}</td>
-      <td class="py-2 pr-4 text-right text-green-600">${d.bucket_mastered || 0}</td>
-      <td class="py-2 text-right text-gray-500">${formatTrainingTime(d.training_seconds)}</td>
+    const accColor = accClass(acc);
+    return `<tr>
+      <td class="sx-td-date">${escHtml(formatDateLabel(d.date))}</td>
+      <td class="num">${d.attempts}</td>
+      <td class="num">${d.mistakes}</td>
+      <td class="num ${accColor}">${acc}%</td>
+      <td class="num">${d.words_seen}</td>
+      <td class="num">${d.correct_streak}</td>
+      <td class="num sx-t-new">${d.bucket_new || 0}</td>
+      <td class="num sx-t-struggling">${d.bucket_struggling || 0}</td>
+      <td class="num sx-t-learning">${d.bucket_learning || 0}</td>
+      <td class="num sx-t-practicing">${d.bucket_practicing || 0}</td>
+      <td class="num sx-t-mastered">${d.bucket_mastered || 0}</td>
+      <td class="num sx-muted">${formatTrainingTime(d.training_seconds)}</td>
     </tr>`;
   }).join('');
 }
@@ -287,7 +389,6 @@ function renderTable(days) {
 // --- Word Statistics / Bucket Breakdown Tag Filter ---
 
 let wordStatsSelectedTags = [];
-let _accuracyChart = null;
 
 async function initWordStatsTagFilter() {
   let allTags = [];
@@ -304,7 +405,9 @@ function renderWordStatsTagChips(allTags) {
   for (const tag of allTags) {
     const pill = document.createElement('button');
     const active = wordStatsSelectedTags.includes(tag);
-    pill.className = `px-2.5 py-0.5 rounded-full text-xs font-medium transition cursor-pointer ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    pill.type = 'button';
+    pill.className = 'ui-chip sx-chip';
+    pill.setAttribute('aria-pressed', String(active));
     pill.textContent = tag;
     pill.addEventListener('click', () => {
       if (wordStatsSelectedTags.includes(tag)) {
@@ -326,6 +429,7 @@ async function loadWordStats() {
   }
   let ws;
   try { ws = await apiFetch(url); } catch (_) { return; }
+  if (ws && wordStatsSelectedTags.length === 0) setText('tile-training-value', String(ws.total_seen || 0));
   if (ws && (ws.total_seen > 0 || (ws.accuracy_buckets.unseen || 0) > 0)) {
     renderWordStats(ws);
     show('word-stats-section');
@@ -334,93 +438,60 @@ async function loadWordStats() {
   }
 }
 
-// Words never seen yet — only shown on the accuracy distribution, not a quiz tier.
-const UNSEEN_BUCKET = { key: 'unseen', i18nKey: 'tier.unseen', desc: '', color: '#9ca3af' };
+// Words never seen yet — only shown in Levels, not a quiz tier.
+const UNSEEN_BUCKET = { key: 'unseen', i18nKey: 'tier.unseen', color: '#d1d5db', icon: '○', fg: '#6b7280' };
+
+// Accuracy colour class for a percentage: green ≥ 80, amber ≥ 50, else red.
+function accClass(acc) {
+  return acc >= 80 ? 'sx-good' : acc >= 50 ? 'sx-mid' : 'sx-bad';
+}
 
 function renderWordStats(ws) {
-  // Accuracy distribution doughnut
-  if (_accuracyChart) {
-    _accuracyChart.destroy();
-    _accuracyChart = null;
-  }
-  const aCtx = $('accuracy-chart').getContext('2d');
+  // Safety: colours and icons come from the hardcoded TIERS array in app.js, never from user input.
   const buckets = [UNSEEN_BUCKET, ...TIERS];
-  const aData = buckets.map(b => ws.accuracy_buckets[b.key] || 0);
-  _accuracyChart = new Chart(aCtx, {
-    type: 'doughnut',
-    data: {
-      labels: buckets.map(b => t(b.i18nKey)),
-      datasets: [{
-        data: aData,
-        backgroundColor: buckets.map(b => b.color + 'b3'),
-      }],
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label(ctx) {
-              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-              const pct = total > 0 ? Math.round(ctx.raw / total * 100) : 0;
-              return `${ctx.label}: ${t('stats.wordsCount', { count: ctx.raw, pct })}`;
-            },
-          },
-        },
-      },
-    },
-  });
-
-  // Tier legend
-  // Safety: t.color values come from the hardcoded TIERS array in app.js, never from user input.
-  const legend = $('tier-legend');
-  const total = aData.reduce((a, b) => a + b, 0);
-  legend.innerHTML = buckets.map((tier, i) => {
-    const count = aData[i];
-    const pct = total > 0 ? Math.round(count / total * 100) : 0;
-    return `<div class="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
-      <div class="flex items-center gap-2">
-        <span class="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${tier.color}"></span>
-        <span class="font-medium text-gray-700">${escHtml(t(tier.i18nKey))}</span>
-        <span class="text-gray-400 text-xs">${escHtml(tier.desc)}</span>
-      </div>
-      <span class="text-gray-600 tabular-nums">${count} <span class="text-gray-400">(${pct}%)</span></span>
+  const counts = buckets.map(b => ws.accuracy_buckets[b.key] || 0);
+  const total = counts.reduce((a, b) => a + b, 0);
+  setText('levels-total', total === 1 ? t('stats.wordsTotalOne') : t('stats.wordsTotal', { n: total }));
+  $('levels-bar').innerHTML = buckets.map((b, i) =>
+    counts[i] > 0 ? `<span style="flex:${counts[i]};background:${b.color}" title="${escHtml(t(b.i18nKey))}: ${counts[i]}"></span>` : ''
+  ).join('');
+  $('tier-legend').innerHTML = buckets.map((b, i) => {
+    const pct = total > 0 ? Math.round(counts[i] / total * 100) : 0;
+    return `<div class="sx-level-row">
+      <span class="sx-level-icon">${b.icon}</span>
+      <span class="sx-level-name"><span style="color:${b.fg}">${escHtml(t(b.i18nKey))}</span><span class="sx-level-desc">${escHtml(t('stats.tierDesc.' + b.key))}</span></span>
+      <span class="sx-level-n">${counts[i]}</span>
+      <span class="sx-level-pct">${pct}%</span>
     </div>`;
   }).join('');
 
-  // Hardest words
-  renderWordTable('hardest-body', ws.hardest, ['accuracy', 'attempts']);
-  // Most practiced
-  renderWordTable('most-practiced-body', ws.most_practiced, ['attempts', 'accuracy']);
+  renderWordTable('hardest-body', ws.hardest, 'accuracy');
+  renderWordTable('most-practiced-body', ws.most_practiced, 'attempts');
 }
 
-function renderWordTable(tbodyId, words, cols) {
-  const tbody = $(tbodyId);
+// renderWordTable renders ranked word rows: word, pinyin, meanings, a bar
+// and the value (accuracy for "hardest", attempts for "most practiced").
+function renderWordTable(containerId, words, by) {
+  const box = $(containerId);
   if (!words || words.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="py-4 text-center text-gray-400">${escHtml(t('stats.notEnoughData'))}</td></tr>`;
+    box.innerHTML = `<div class="sx-empty">${escHtml(t('stats.notEnoughData'))}</div>`;
     return;
   }
-  tbody.innerHTML = words.map(w => {
+  const maxAttempts = Math.max(...words.map(w => w.total_attempts), 1);
+  box.innerHTML = words.map(w => {
     const acc = Math.round(w.accuracy);
-    const accColor = acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
-    const zhLabel = escHtml(w.zh_text) + (w.pinyin ? ` <span class="text-gray-400">${escHtml(w.pinyin)}</span>` : '');
-    const enLabel = Object.values(w.translations || {}).flat().map(t => escHtml(t)).join(', ');
-
-    if (cols[0] === 'accuracy') {
-      return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-        <td class="py-2 pr-4">${zhLabel}</td>
-        <td class="py-2 pr-4 text-gray-600">${enLabel}</td>
-        <td class="py-2 pr-4 text-right ${accColor} font-medium">${acc}%</td>
-        <td class="py-2 text-right">${w.total_attempts}</td>
-      </tr>`;
-    }
-    return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-      <td class="py-2 pr-4">${zhLabel}</td>
-      <td class="py-2 pr-4 text-gray-600">${enLabel}</td>
-      <td class="py-2 pr-4 text-right">${w.total_attempts}</td>
-      <td class="py-2 text-right ${accColor} font-medium">${acc}%</td>
-    </tr>`;
+    const meanings = Object.values(w.translations || {}).flat().map(x => escHtml(x)).join(', ');
+    const width = by === 'accuracy' ? acc : Math.round(w.total_attempts / maxAttempts * 100);
+    const barColor = by === 'accuracy' ? (acc < 50 ? '#ef4444' : acc < 80 ? '#f59e0b' : '#22c55e') : '#2563eb';
+    const value = by === 'accuracy' ? `${acc}%` : String(w.total_attempts);
+    const title = by === 'accuracy'
+      ? t('stats.attemptsCount', { n: w.total_attempts })
+      : `${acc}%`;
+    return `<div class="sx-rank-row" title="${escHtml(title)}">
+      <span class="sx-rank-word"><span class="hanzi sx-rank-zh">${escHtml(w.zh_text)}</span>${w.pinyin ? `<span class="sx-rank-py">${escHtml(w.pinyin)}</span>` : ''}<span class="sx-rank-en">${meanings}</span></span>
+      <span class="sx-rank-track"><span style="width:${width}%;background:${barColor}"></span></span>
+      <span class="sx-rank-value">${value}</span>
+    </div>`;
   }).join('');
 }
 
@@ -450,7 +521,9 @@ function renderDueTagChips(allTags) {
   for (const tag of allTags) {
     const pill = document.createElement('button');
     const active = dueSelectedTags.includes(tag);
-    pill.className = `px-2.5 py-0.5 rounded-full text-xs font-medium transition cursor-pointer ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`;
+    pill.type = 'button';
+    pill.className = 'ui-chip sx-chip';
+    pill.setAttribute('aria-pressed', String(active));
     pill.textContent = tag;
     pill.addEventListener('click', () => {
       if (dueSelectedTags.includes(tag)) {
@@ -475,12 +548,12 @@ async function loadDueDateChart() {
   const dates = data.dates || [];
   const canvas = $('due-date-chart');
   if (dates.length === 0) {
-    canvas.style.display = 'none';
+    canvas.parentElement.style.display = 'none';
     show('due-chart-empty');
     if (dueChart) { dueChart.destroy(); dueChart = null; }
     return;
   }
-  canvas.style.display = '';
+  canvas.parentElement.style.display = '';
   hide('due-chart-empty');
   renderDueDateChart(dates);
 }
@@ -496,21 +569,21 @@ function renderPinyinChart(days) {
         {
           label: t('chart.correct'),
           data: days.map(d => d.attempts - d.mistakes),
-          backgroundColor: 'rgba(34, 197, 94, 0.7)',
+          backgroundColor: '#7c3aed',
           stack: 'answers',
         },
         {
           label: t('chart.mistakes'),
           data: days.map(d => d.mistakes),
-          backgroundColor: 'rgba(239, 68, 68, 0.7)',
+          backgroundColor: '#fca5a5',
           stack: 'answers',
         },
         {
           label: t('stats.soundsSeen'),
           data: days.map(d => d.sounds_seen),
           type: 'line',
-          borderColor: 'rgba(168, 85, 247, 0.9)',
-          backgroundColor: 'rgba(168, 85, 247, 0.1)',
+          borderColor: '#9ca3af',
+          backgroundColor: 'rgba(156, 163, 175, 0.1)',
           fill: false,
           yAxisID: 'y1',
           tension: 0.3,
@@ -520,6 +593,7 @@ function renderPinyinChart(days) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
@@ -568,7 +642,7 @@ function renderPinyinToneChart(days) {
   }
   const hasData = correct.some(v => v > 0) || wrong.some(v => v > 0);
   if (!hasData) {
-    $('pinyin-tone-chart').style.display = 'none';
+    $('pinyin-tone-chart').parentElement.style.display = 'none';
     show('pinyin-tone-chart-empty');
     return;
   }
@@ -589,19 +663,20 @@ function renderPinyinToneChart(days) {
         {
           label: t('chart.correct'),
           data: correct,
-          backgroundColor: 'rgba(34, 197, 94, 0.7)',
+          backgroundColor: '#7c3aed',
           stack: 'tone',
         },
         {
           label: t('chart.mistakes'),
           data: wrong,
-          backgroundColor: 'rgba(239, 68, 68, 0.7)',
+          backgroundColor: '#fca5a5',
           stack: 'tone',
         },
       ],
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: {},
@@ -627,19 +702,19 @@ function renderPinyinTable(days) {
   const recent = days.slice(-14).reverse();
   const tbody = $('pinyin-table-body');
   if (recent.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-400">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="sx-empty">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
     return;
   }
   tbody.innerHTML = recent.map(d => {
     const correct = d.attempts - d.mistakes;
     const acc = d.attempts > 0 ? Math.round((correct / d.attempts) * 100) : 0;
-    const accColor = acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
-    return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-      <td class="py-2 pr-4 font-medium">${escHtml(formatDateLabel(d.date))}</td>
-      <td class="py-2 pr-4 text-right">${d.attempts}</td>
-      <td class="py-2 pr-4 text-right">${d.mistakes}</td>
-      <td class="py-2 pr-4 text-right ${accColor} font-medium">${acc}%</td>
-      <td class="py-2 text-right">${d.sounds_seen}</td>
+    const accColor = accClass(acc);
+    return `<tr>
+      <td class="sx-td-date">${escHtml(formatDateLabel(d.date))}</td>
+      <td class="num">${d.attempts}</td>
+      <td class="num">${d.mistakes}</td>
+      <td class="num ${accColor}">${acc}%</td>
+      <td class="num">${d.sounds_seen}</td>
     </tr>`;
   }).join('');
 }
@@ -657,21 +732,21 @@ function renderCompChart(days) {
         {
           label: t('chart.correct'),
           data: days.map(d => d.correct),
-          backgroundColor: 'rgba(34, 197, 94, 0.7)',
+          backgroundColor: '#2563eb',
           stack: 'answers',
         },
         {
           label: t('chart.mistakes'),
           data: days.map(d => d.wrong),
-          backgroundColor: 'rgba(239, 68, 68, 0.7)',
+          backgroundColor: '#fca5a5',
           stack: 'answers',
         },
         {
           label: t('stats.componentsInTraining'),
           data: days.map(d => d.components_total),
           type: 'line',
-          borderColor: 'rgba(168, 85, 247, 0.9)',
-          backgroundColor: 'rgba(168, 85, 247, 0.1)',
+          borderColor: '#9ca3af',
+          backgroundColor: 'rgba(156, 163, 175, 0.1)',
           fill: false,
           yAxisID: 'y1',
           tension: 0.3,
@@ -681,6 +756,7 @@ function renderCompChart(days) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
@@ -713,19 +789,19 @@ function renderCompTable(days) {
   const recent = days.slice(-14).reverse();
   const tbody = $('comp-table-body');
   if (recent.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-400">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="sx-empty">${escHtml(t('stats.noDataLast14'))}</td></tr>`;
     return;
   }
   tbody.innerHTML = recent.map(d => {
     const total = d.correct + d.wrong;
     const acc = total > 0 ? Math.round(d.correct / total * 100) : 0;
-    const accColor = acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
-    return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-      <td class="py-2 pr-4 font-medium">${escHtml(formatDateLabel(d.date))}</td>
-      <td class="py-2 pr-4 text-right">${total}</td>
-      <td class="py-2 pr-4 text-right">${d.wrong}</td>
-      <td class="py-2 pr-4 text-right ${accColor} font-medium">${acc}%</td>
-      <td class="py-2 text-right text-violet-600">${d.components_total || 0}</td>
+    const accColor = accClass(acc);
+    return `<tr>
+      <td class="sx-td-date">${escHtml(formatDateLabel(d.date))}</td>
+      <td class="num">${total}</td>
+      <td class="num">${d.wrong}</td>
+      <td class="num ${accColor}">${acc}%</td>
+      <td class="num sx-t-new">${d.components_total || 0}</td>
     </tr>`;
   }).join('');
 }
@@ -736,8 +812,8 @@ function renderCompDueDateChart(dates) {
   const today = new Date().toISOString().slice(0, 10);
   const labels = dates.map(d => d.date === today ? t('stats.today') : formatDateLabel(d.date));
   const colors = dates.map(d => {
-    if (d.date <= today) return 'rgba(239, 68, 68, 0.7)';   // overdue/today = red
-    return 'rgba(59, 130, 246, 0.7)';                        // future = blue
+    if (d.date <= today) return '#2563eb';   // overdue/today = solid blue
+    return '#bfdbfe';                        // future = light blue
   });
   const ctx = $('comp-due-date-chart').getContext('2d');
   if (compDueChart) compDueChart.destroy();
@@ -753,11 +829,13 @@ function renderCompDueDateChart(dates) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
         y: { beginAtZero: true, title: { display: true, text: t('vocab.viewComponents') }, ticks: { precision: 0 } },
       },
       plugins: {
+        legend: { display: false },
         tooltip: {
           callbacks: {
             title(items) {
@@ -788,37 +866,49 @@ function renderHMMBreakdown(breakdown) {
   let totalRow = { total: 0, due_today: 0, total_attempts: 0, total_correct: 0 };
   const rows = breakdown.map(b => {
     const acc = b.total_attempts > 0 ? Math.round(b.accuracy) : null;
-    const accColor = acc === null ? 'text-gray-400' : acc >= 80 ? 'text-green-600' : acc >= 50 ? 'text-yellow-600' : 'text-red-600';
+    const accColor = acc === null ? 'sx-muted' : accClass(acc);
     totalRow.total         += b.total;
     totalRow.due_today     += b.due_today;
     totalRow.total_attempts += b.total_attempts;
     totalRow.total_correct  += b.total_correct;
-    return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-      <td class="py-2 pr-4 font-medium">${escHtml(typeLabels[b.entity_type] || b.entity_type)}</td>
-      <td class="py-2 pr-4 text-right">${b.total}</td>
-      <td class="py-2 pr-4 text-right">${b.due_today > 0 ? `<span class="text-orange-500">${b.due_today}</span>` : b.due_today}</td>
-      <td class="py-2 pr-4 text-right">${b.total_attempts}</td>
-      <td class="py-2 text-right ${accColor} font-medium">${acc !== null ? acc + '%' : '—'}</td>
+    return `<tr>
+      <td class="sx-td-date">${escHtml(typeLabels[b.entity_type] || b.entity_type)}</td>
+      <td class="num">${b.total}</td>
+      <td class="num">${b.due_today > 0 ? `<span class="sx-due">${b.due_today}</span>` : b.due_today}</td>
+      <td class="num">${b.total_attempts}</td>
+      <td class="num ${accColor}">${acc !== null ? acc + '%' : '—'}</td>
     </tr>`;
   });
   const totalAcc = totalRow.total_attempts > 0 ? Math.round(totalRow.total_correct / totalRow.total_attempts * 100) : null;
-  const totalAccColor = totalAcc === null ? 'text-gray-400' : totalAcc >= 80 ? 'text-green-600' : totalAcc >= 50 ? 'text-yellow-600' : 'text-red-600';
-  rows.push(`<tr class="font-semibold border-t border-gray-300">
-    <td class="py-2 pr-4">${escHtml(t('stats.totalCol'))}</td>
-    <td class="py-2 pr-4 text-right">${totalRow.total}</td>
-    <td class="py-2 pr-4 text-right">${totalRow.due_today > 0 ? `<span class="text-orange-500">${totalRow.due_today}</span>` : totalRow.due_today}</td>
-    <td class="py-2 pr-4 text-right">${totalRow.total_attempts}</td>
-    <td class="py-2 text-right ${totalAccColor} font-medium">${totalAcc !== null ? totalAcc + '%' : '—'}</td>
+  const totalAccColor = totalAcc === null ? 'sx-muted' : accClass(totalAcc);
+  rows.push(`<tr class="sx-total-row">
+    <td>${escHtml(t('stats.totalCol'))}</td>
+    <td class="num">${totalRow.total}</td>
+    <td class="num">${totalRow.due_today > 0 ? `<span class="sx-due">${totalRow.due_today}</span>` : totalRow.due_today}</td>
+    <td class="num">${totalRow.total_attempts}</td>
+    <td class="num ${totalAccColor}">${totalAcc !== null ? totalAcc + '%' : '—'}</td>
   </tr>`);
   tbody.innerHTML = rows.join('');
+
+  // Summary tiles: one per entity type with total, due today and accuracy.
+  $('hmm-tiles').innerHTML = breakdown.map(b => {
+    const acc = b.total_attempts > 0 ? Math.round(b.accuracy) : null;
+    const meta = [t('stats.dueTodayCount', { n: b.due_today })];
+    if (acc !== null) meta.push(t('stats.accuracyPct', { n: acc }));
+    return `<div class="sx-tile sx-tile-mnem">
+      <div class="sx-tile-label">${escHtml(typeLabels[b.entity_type] || b.entity_type)}</div>
+      <div class="sx-tile-value">${b.total}</div>
+      <div class="sx-tile-sub">${escHtml(meta.join(' · '))}</div>
+    </div>`;
+  }).join('');
 }
 
 function renderDueDateChart(dates) {
   const today = new Date().toISOString().slice(0, 10);
   const labels = dates.map(d => d.date === today ? t('stats.today') : formatDateLabel(d.date));
   const colors = dates.map(d => {
-    if (d.date <= today) return 'rgba(239, 68, 68, 0.7)';   // overdue/today = red
-    return 'rgba(59, 130, 246, 0.7)';                        // future = blue
+    if (d.date <= today) return '#2563eb';   // overdue/today = solid blue
+    return '#bfdbfe';                        // future = light blue
   });
   const ctx = $('due-date-chart').getContext('2d');
   if (dueChart) dueChart.destroy();
@@ -834,11 +924,13 @@ function renderDueDateChart(dates) {
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       scales: {
         x: { ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 20 } },
         y: { beginAtZero: true, title: { display: true, text: t('stats.words') }, ticks: { precision: 0 } },
       },
       plugins: {
+        legend: { display: false },
         tooltip: {
           callbacks: {
             title(items) {
