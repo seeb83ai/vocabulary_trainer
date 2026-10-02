@@ -58,12 +58,16 @@ function shortenMatchGameTranslation(text) {
 // (train-card.js) — the match game used to skip that filter entirely and
 // could surface a raw example sentence as the box's only content (issue
 // #429). Walks languages in the order they appear on the word and returns
-// the first non-noise translation found (shortened per issue #428); falls
+// the first non-noise translation found (shortened per issue #428), trying
+// langOrder (primary language first, as on the quiz card — issue #507) before
+// any other language; falls
 // back to fallbackText only when every translation across every language is
 // noise.
-function pickMatchGameTranslationText(translations, fallbackText) {
-  for (const texts of Object.values(translations || {})) {
-    const clean = (texts || []).filter(t => !isNoise(t));
+function pickMatchGameTranslationText(translations, fallbackText, langOrder = []) {
+  const keys = Object.keys(translations || {});
+  const order = [...langOrder.filter(l => keys.includes(l)), ...keys.filter(l => !langOrder.includes(l))];
+  for (const lang of order) {
+    const clean = (translations[lang] || []).filter(t => !isNoise(t));
     if (clean.length > 0) return shortenMatchGameTranslation(clean[0]);
   }
   return fallbackText;
@@ -107,9 +111,10 @@ function showMatchGame(words) {
     const matchAnswerBody = (item, correct) => item.kind === 'component'
       ? { kind: 'component', character: item.character, correct }
       : { zh_word_id: item.zh_word_id, correct };
+    const langOrder = orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang);
     const rightItems = words.map((w, i) => ({
       idx: i,   // idx matches leftItems position — used to identify the correct pair
-      text: pickMatchGameTranslationText(w.translations, w.zh_text),
+      text: pickMatchGameTranslationText(w.translations, w.zh_text, langOrder),
     }));
     const shuffledRight = [...rightItems].sort(() => Math.random() - 0.5);
 

@@ -79,12 +79,58 @@ func (h *QuizHandler) MatchGame(w http.ResponseWriter, r *http.Request) {
 			internalError(w, err)
 			return
 		}
+		if err := h.orderTranslationsLikeCard(ctx, words, st); err != nil {
+			internalError(w, err)
+			return
+		}
 		markShown()
 		writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: words})
 		return
 	}
 
 	writeJSON(w, http.StatusOK, models.MatchGameResponse{Words: []models.MatchGameWord{}})
+}
+
+// orderTranslationsLikeCard reorders each word tile's translations per
+// language to match the quiz card (shown translations first, in the card's
+// order, then the rest), so the single translation the client shows is the
+// card's first one (issue #507). Component-kind tiles are left untouched.
+func (h *QuizHandler) orderTranslationsLikeCard(ctx context.Context, words []models.MatchGameWord, st *models.UserSettings) error {
+	for _, word := range words {
+		if word.Kind != models.ConfusionKindWord || word.ZhWordID <= 0 {
+			continue
+		}
+		for lang, texts := range word.Translations {
+			shown, extra, err := loadTranslationsForCard(ctx, h.Store, word.ZhWordID, word.Pinyin, lang, st, 0)
+			if err != nil {
+				return err
+			}
+			word.Translations[lang] = orderLikeCard(texts, append(shown, extra...))
+		}
+	}
+	return nil
+}
+
+// orderLikeCard returns texts sorted by their position in cardOrder; texts
+// missing from cardOrder keep their relative order after the known ones.
+func orderLikeCard(texts, cardOrder []string) []string {
+	ordered := make([]string, 0, len(texts))
+	used := make([]bool, len(texts))
+	for _, c := range cardOrder {
+		for i, t := range texts {
+			if !used[i] && t == c {
+				used[i] = true
+				ordered = append(ordered, t)
+				break
+			}
+		}
+	}
+	for i, t := range texts {
+		if !used[i] {
+			ordered = append(ordered, t)
+		}
+	}
+	return ordered
 }
 
 // hidePinyinAboveThreshold flags (via HidePinyin) any word tile (issue #349)

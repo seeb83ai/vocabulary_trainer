@@ -849,3 +849,46 @@ func TestMatchGame_Mismatch_SkipsBracketOnlyGloss(t *testing.T) {
 		}
 	}
 }
+
+// TestMatchGame_TranslationOrderMatchesQuizCard covers issue #507: the match
+// game must list a word's translations in the same order as the quiz card
+// (translation ranking, short-first), so its single shown translation is the
+// card's first one.
+func TestMatchGame_TranslationOrderMatchesQuizCard(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	enableOnlyGameMode(t, s, "newest")
+	id1 := seedWord(t, s, "塔", "tǎ", []string{"Bodenbelag auf dem Dach hier", "Turm"})
+	id2 := seedWord(t, s, "二", "èr", []string{"two"})
+	markWordTrained(t, s, id1)
+	markWordTrained(t, s, id2)
+
+	st, err := s.GetUserSettings(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.TranslationRankingEnabled = true
+	st.MaxTranslationsShown = 1
+	if err := s.UpdateUserSettings(ctx, int64(2), *st); err != nil {
+		t.Fatal(err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/match-game", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp models.MatchGameResponse
+	decodeJSON(t, rec, &resp)
+	for _, w := range resp.Words {
+		if w.ZhWordID != id1 {
+			continue
+		}
+		got := w.Translations["en"]
+		if len(got) != 2 || got[0] != "Turm" {
+			t.Fatalf("want Turm first (as on the quiz card), got %v", got)
+		}
+		return
+	}
+	t.Fatalf("word %d missing from response: %+v", id1, resp.Words)
+}
