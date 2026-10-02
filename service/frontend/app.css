@@ -359,6 +359,7 @@ label.st-text { cursor: pointer; }
 @media (max-width: 480px) {
   .st-row { flex-wrap: wrap; }
   .st-select { max-width: 100%; }
+  .st-row:has(> .st-select) { flex-direction: column; align-items: stretch; }
 }
 
 /* ---- Shared chips ---- */
