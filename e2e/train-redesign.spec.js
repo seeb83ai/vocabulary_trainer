@@ -191,6 +191,27 @@ test.describe('Train redesign – new word and match game', () => {
     await captureForPR(page, 'train-new-word');
   });
 
+  // Issue #507: the match game shows the same first translation language as
+  // the quiz card (primary language first), not the alphabetically-first one.
+  test('the match game shows the primary-language translation first', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.evaluate(() => {
+      // @ts-ignore
+      window.showMatchGame([
+        { zh_word_id: 9611, zh_text: '塔', pinyin: 'tǎ', translations: { de: ['Turm'], en: ['tower'] } },
+        { zh_word_id: 9612, zh_text: '狗', pinyin: 'gǒu', translations: { de: ['Hund'], en: ['dog'] } },
+      ]);
+    });
+    const game = page.locator('#match-game-overlay');
+    await expect(game.locator('.mg-tile', { hasText: 'tower' })).toBeVisible();
+    await expect(game.locator('.mg-tile', { hasText: 'Turm' })).toHaveCount(0);
+    await captureForPR(page, 'train-match-game-primary-lang');
+  });
+
   test('the match game renders inline and shows a done view', async ({ page }) => {
     await registerUser(page);
     await seed(page, '你好', 'nǐ hǎo', ['hello']);
