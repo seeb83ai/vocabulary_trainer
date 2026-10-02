@@ -47,3 +47,30 @@ describe('submitAnswer guard', () => {
     expect(canSubmit(false, null)).toBe(false);
   });
 });
+
+// ── Keyboard reveal (issue #512) ───────────────────────────────────────────
+// Mirrors scrollDeltaToReveal in train-card.js.
+
+function scrollDeltaToReveal(top, bottom, visibleHeight, margin = 12) {
+  const limit = visibleHeight - margin;
+  if (bottom <= limit) return 0;
+  return Math.max(0, Math.min(bottom - limit, top - margin));
+}
+
+describe('scrollDeltaToReveal', () => {
+  it('does not scroll when the element already fits in the visible area', () => {
+    expect(scrollDeltaToReveal(100, 250, 330)).toBe(0);
+  });
+
+  it('scrolls down just far enough to reveal the bottom edge plus margin', () => {
+    expect(scrollDeltaToReveal(300, 413, 330)).toBe(95);
+  });
+
+  it('never scrolls the top edge out of view when the element is taller than the area', () => {
+    expect(scrollDeltaToReveal(120, 700, 330)).toBe(108);
+  });
+
+  it('never scrolls upward', () => {
+    expect(scrollDeltaToReveal(-50, 700, 330)).toBe(0);
+  });
+});
