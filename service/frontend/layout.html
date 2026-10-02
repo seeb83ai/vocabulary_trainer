@@ -17,8 +17,8 @@
     /* Hovering toast notification (issue #347) — a fixed-position element
        reused for every save/error message, so it never shifts page layout. */
     @keyframes toast-pulse {
-      0%   { transform: scale(0.95); opacity: 0.7; }
-      100% { transform: scale(1);    opacity: 1;   }
+      0%   { transform: translateX(-50%) scale(0.95); opacity: 0.7; }
+      100% { transform: translateX(-50%) scale(1);    opacity: 1;   }
     }
     .toast-pulse { animation: toast-pulse 200ms ease-out; }
   </style>
