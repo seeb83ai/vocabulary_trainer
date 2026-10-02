@@ -312,3 +312,24 @@ test.describe('Train redesign – phone', () => {
     await expect(page.locator('#session-chip-label .tr-chip-extra')).toBeVisible();
   });
 });
+
+// Issue #506: the voice card hides the Chinese text, so its label must say
+// that the answer is the translation (not Chinese).
+test.describe('Train – voice card label', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('voice card label says the answer is the translation', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await page.route('**/api/quiz/next*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ word_id: 1, mode: 'voice_to_transl', prompt: '你好', pinyin: 'nǐ hǎo' }),
+    }));
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toBeHidden();
+    await expect(page.locator('#mode-label')).toHaveText('Voice → Translation');
+    await captureForPR(page, 'train-voice-label');
+  });
+});
