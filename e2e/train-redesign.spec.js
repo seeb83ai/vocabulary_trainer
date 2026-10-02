@@ -335,6 +335,33 @@ test.describe('Train redesign – phone', () => {
   });
 });
 
+// Issue #512: on a phone the on-screen keyboard covers half the screen. The
+// answer input and the Check button must scroll into the visible area.
+// Shrinking the viewport stands in for the keyboard opening.
+test.describe('Train – keyboard reveal', () => {
+  test.use({ viewport: { width: 360, height: 641 }, hasTouch: true, isMobile: true });
+
+  test('input and Check button stay visible when the keyboard opens', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#answer-input')).toBeFocused();
+
+    const keyboardTop = 330;
+    await page.setViewportSize({ width: 360, height: keyboardTop });
+    const submit = page.locator('#answer-form button[type="submit"]');
+    await expect(async () => {
+      const input = await page.locator('#answer-input').boundingBox();
+      const btn = await submit.boundingBox();
+      expect(input.y).toBeGreaterThanOrEqual(0);
+      expect(btn.y + btn.height).toBeLessThanOrEqual(keyboardTop);
+    }).toPass({ timeout: 5_000 });
+    await captureForPR(page, 'train-keyboard-reveal');
+  });
+});
+
 // Issue #510: on a phone the session bar scrolls past the sticky top bar.
 // The top bar must stay above it instead of being painted over.
 test.describe('Train – top bar stacking', () => {

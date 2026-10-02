@@ -187,6 +187,29 @@ function scrollCardIntoView(id) {
   $(id)?.scrollIntoView({ behavior: 'auto', block: 'start' });
 }
 
+// How far to scroll down so that [top, bottom] (viewport-relative px) fits in
+// a visible area of visibleHeight px, keeping `margin` px free below. Never
+// scrolls up, and never pushes the top edge out of view (issue #512).
+function scrollDeltaToReveal(top, bottom, visibleHeight, margin = 12) {
+  const limit = visibleHeight - margin;
+  if (bottom <= limit) return 0;
+  return Math.max(0, Math.min(bottom - limit, top - margin));
+}
+
+// On touch devices the on-screen keyboard covers part of the page. Scrolls
+// the answer input and its Check button into the area the keyboard leaves
+// free (issue #512).
+function revealAnswerForm() {
+  if (!window.matchMedia('(pointer: coarse)').matches) return;
+  const form = $('answer-form');
+  if (!form || document.activeElement !== $('answer-input')) return;
+  const vv = window.visualViewport;
+  const offsetTop = vv ? vv.offsetTop : 0;
+  const rect = form.getBoundingClientRect();
+  const delta = scrollDeltaToReveal(rect.top - offsetTop, rect.bottom - offsetTop, vv ? vv.height : window.innerHeight);
+  if (delta > 0) window.scrollBy({ top: delta, behavior: 'smooth' });
+}
+
 async function loadNextCard(trackCurrent = false) {
   _noCardsPaused = true;  // pause until we confirm a card is ready
   await _flushTime();
@@ -656,6 +679,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   $('answer-form').addEventListener('submit', submitAnswer);
+  $('answer-input').addEventListener('focus', () => setTimeout(revealAnswerForm, 300));
+  window.visualViewport?.addEventListener('resize', revealAnswerForm);
   $('next-btn').addEventListener('click', async () => {
     // Continuing past an unresolved ambiguous result reveals the normal
     // wrong-answer screen first; a second click then actually advances.
