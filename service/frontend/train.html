@@ -212,6 +212,12 @@
             <select id="add-translation-lang-select" class="hidden tr-add-lang"></select>
           </div>
           <button id="accept-correct-btn" type="button" class="hidden tr-accept-btn"></button>
+          <div id="result-hmm" class="hidden tr-disclosure-wrap"></div>
+          <div id="result-decompose" class="hidden tr-disclosure-wrap">
+            <button id="result-decompose-toggle" type="button" class="tr-disclosure"></button>
+            <div id="result-decompose-content" class="hidden tr-mt-8"></div>
+          </div>
+
           <div id="wrong-retype-area" class="hidden tr-retype">
             <div class="tr-label" data-i18n="result.retypeTitle">Type the correct answer once to continue</div>
             <label id="wrong-retype-zh-group" class="tr-check-field">
@@ -230,12 +236,13 @@
             </label>
           </div>
 
-          <div id="result-hmm" class="hidden tr-disclosure-wrap"></div>
-          <div id="result-decompose" class="hidden tr-disclosure-wrap">
-            <button id="result-decompose-toggle" type="button" class="tr-disclosure"></button>
-            <div id="result-decompose-content" class="hidden tr-mt-8"></div>
+          <div id="review-edit-row" class="tr-two-btns tr-two-equal">
+            <button id="edit-card-btn" type="button" class="ui-btn ui-btn-secondary tr-btn-sm">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg><span data-i18n="result.edit">Edit</span>
+            </button>
+            <button id="needs-review-btn" type="button" class="ui-btn ui-btn-secondary tr-btn-sm" data-i18n="result.flagReview">Flag for review</button>
           </div>
-
+          <button id="next-btn" type="button" class="ui-btn ui-btn-primary tr-block tr-btn-lg tr-mt-10" data-i18n="result.next">Next</button>
           <div class="tr-status-row">
             <div class="tr-status-left">
               <span id="bucket-info" class="hidden tier-chip"></span>
@@ -245,14 +252,6 @@
             </div>
             <span id="next-due-info" class="tr-next-due"></span>
           </div>
-
-          <div id="review-edit-row" class="tr-two-btns tr-two-equal">
-            <button id="edit-card-btn" type="button" class="ui-btn ui-btn-secondary tr-btn-sm">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg><span data-i18n="result.edit">Edit</span>
-            </button>
-            <button id="needs-review-btn" type="button" class="ui-btn ui-btn-secondary tr-btn-sm" data-i18n="result.flagReview">Flag for review</button>
-          </div>
-          <button id="next-btn" type="button" class="ui-btn ui-btn-primary tr-block tr-btn-lg tr-mt-10" data-i18n="result.next">Next</button>
         </div>
       </div>
 
