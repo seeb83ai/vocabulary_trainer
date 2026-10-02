@@ -407,15 +407,7 @@ function placeholderKeyForCard(cardType, mode) {
 function showCard() {
   show('card-area');
   $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type, currentCard.mode));
-  // Tier chip (word cards only) and prompt size: Hanzi prompts are larger,
-  // sentence prompts smaller.
-  const tierEl = $('card-tier');
-  if (currentCard.tier) {
-    renderTierChip(tierEl, currentCard.tier);
-    show('card-tier');
-  } else {
-    hide('card-tier');
-  }
+  // Prompt size: Hanzi prompts are larger, sentence prompts smaller.
   const promptEl = $('prompt-word');
   const zhPrompt = currentCard.card_type === 'component' ||
     (!currentCard.card_type && currentCard.mode !== 'transl_to_zh');
