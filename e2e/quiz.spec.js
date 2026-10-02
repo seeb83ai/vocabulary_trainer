@@ -1514,27 +1514,23 @@ test.describe('Quiz – celebrate bucket change setting', () => {
     });
   }
 
-  async function submitAnswerAndWait(page, answer, card = null) {
-    if (!card) {
-      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
-      card = await cardRes.json();
-    }
-
+  // /api/quiz/next picks among several due cards, so a card peeked via the API
+  // can differ from the one the page loads. Read the prompt from the page instead.
+  async function submitAnswerAndWait(page, answerFor) {
     await useZhToTranslMode(page);
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-    await expect(page.locator('#prompt-word')).toHaveText(card.prompt);
+    await expect(page.locator('#prompt-word')).not.toBeEmpty();
+    const prompt = (await page.locator('#prompt-word').textContent()).trim();
+    const answer = typeof answerFor === 'function' ? answerFor(prompt) : answerFor;
+    expect(answer).toBeTruthy();
 
     await page.locator('#answer-input').fill(answer);
     await page.locator('#answer-form button[type="submit"]').click();
   }
 
   async function submitCorrectAnswer(page) {
-    const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
-    const card = await cardRes.json();
-    const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
-    expect(correctAnswer).toBeTruthy();
-    await submitAnswerAndWait(page, correctAnswer, card);
+    await submitAnswerAndWait(page, (prompt) => SEED_TRANSLATIONS[prompt]?.[0]);
   }
 
   test('celebration screen appears before the result screen, then reveals it after Continue', async ({ page }) => {
@@ -2768,6 +2764,9 @@ test.describe('Quiz – accuracy baseline notice', () => {
     await page.setViewportSize({ width: 360, height: 640 });
     await expect(notice).toBeVisible();
     await captureForPR(page, 'train-accuracy-paused-mobile');
+    // A stats request can still be in the handler when the test ends; its
+    // route.fetch() response is then disposed and response.json() throws.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   });
 
   test('stats bar has no pause notice without the pause fields', async ({ page }) => {

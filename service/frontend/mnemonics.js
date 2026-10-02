@@ -262,13 +262,14 @@ function setupTabs() {
 async function init() {
   try {
     await Promise.all([loadActors(), loadLocations(), loadToneRooms(), loadProps()]);
-    setupAddProp();
   } catch (e) {
     console.error('Failed to load HMM library:', e);
   }
 }
 
 setupTabs();
+// Wire the Add button once; init() runs again on every language change.
+setupAddProp();
 init();
 
 // Re-render when UI language changes
