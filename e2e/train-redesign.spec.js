@@ -312,3 +312,32 @@ test.describe('Train redesign – phone', () => {
     await expect(page.locator('#session-chip-label .tr-chip-extra')).toBeVisible();
   });
 });
+
+// Issue #510: on a phone the session bar scrolls past the sticky top bar.
+// The top bar must stay above it instead of being painted over.
+test.describe('Train – top bar stacking', () => {
+  test.use({ viewport: { width: 360, height: 641 } });
+
+  test('top bar stays above the session bar while scrolling', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    // Scroll so the session bar overlaps the sticky top bar.
+    await page.evaluate(() => {
+      document.body.style.minHeight = '3000px';
+      const bar = document.getElementById('session-bar');
+      window.scrollTo(0, bar.getBoundingClientRect().top + window.scrollY + 10);
+    });
+    const topbar = await page.locator('#app-topbar').boundingBox();
+    const bar = await page.locator('#session-bar').boundingBox();
+    expect(bar.y, 'session bar must overlap the top bar for this test').toBeLessThan(topbar.y + topbar.height);
+    const topIsTopbar = await page.evaluate(() => {
+      const el = document.elementFromPoint(180, 32);
+      return !!el && !!el.closest('#app-topbar');
+    });
+    expect(topIsTopbar).toBe(true);
+    await captureForPR(page, 'train-topbar-above-session-bar');
+  });
+});
