@@ -50,7 +50,7 @@ test.describe('Train redesign – desktop', () => {
     await seed(page, '你好', 'nǐ hǎo', ['hello', 'hi'], ['greetings']);
     await seed(page, '再见', 'zài jiàn', ['bye', 'goodbye'], ['greetings']);
     await useMode(page, 'zh_to_transl');
-    // The tier chip is a gamification element.
+    // Gamification on: the question card still must not show a tier chip.
     await enableGamification(page);
     await page.goto('/train');
 
@@ -60,7 +60,8 @@ test.describe('Train redesign – desktop', () => {
     await expect(page.locator('#session-progress-label')).toHaveText(/^0 of \d+ today$/);
     await expect(bar.locator('#autoplay-toggle-btn')).toBeVisible();
     await expect(page.locator('#session-chip-label')).toContainText('Chinese');
-    await expect(page.locator('#card-tier')).toBeVisible();
+    // Issue #513: the question screen does not show the word's tier chip.
+    await expect(page.locator('#card-area .tier-chip')).toHaveCount(0);
     await captureForPR(page, 'train-question');
 
     await page.locator('#open-filter-overlay').click();
