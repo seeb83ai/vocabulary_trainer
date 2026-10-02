@@ -77,7 +77,7 @@ test.describe('Vocabulary → Import', () => {
     });
 
     await page.goto('/vocab');
-    await page.locator('#tab-import').click();
+    await page.locator('#open-import-btn').click();
     await page.locator('#import-tag-list button', { hasText: /^hsk3-2$/ }).click();
     await page.locator('#import-next-btn').click();
     await page.locator('#import-next2-btn').click();

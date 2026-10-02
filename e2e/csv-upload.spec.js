@@ -32,6 +32,7 @@ async function registerFreshUser(page) {
 async function uploadCsv(page, csv, tag, defaultSource) {
   await registerFreshUser(page);
   await page.goto('/vocab');
+  await page.locator('#vocab-menu-btn').click();
   await page.locator('#csv-upload-btn').click();
   await page.locator('#csv-upload-file').setInputFiles({
     name: 'words.csv',
