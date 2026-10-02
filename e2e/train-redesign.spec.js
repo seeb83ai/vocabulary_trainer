@@ -191,6 +191,27 @@ test.describe('Train redesign – new word and match game', () => {
     await captureForPR(page, 'train-new-word');
   });
 
+  // Issue #507: the match game shows the same first translation language as
+  // the quiz card (primary language first), not the alphabetically-first one.
+  test('the match game shows the primary-language translation first', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.evaluate(() => {
+      // @ts-ignore
+      window.showMatchGame([
+        { zh_word_id: 9611, zh_text: '塔', pinyin: 'tǎ', translations: { de: ['Turm'], en: ['tower'] } },
+        { zh_word_id: 9612, zh_text: '狗', pinyin: 'gǒu', translations: { de: ['Hund'], en: ['dog'] } },
+      ]);
+    });
+    const game = page.locator('#match-game-overlay');
+    await expect(game.locator('.mg-tile', { hasText: 'tower' })).toBeVisible();
+    await expect(game.locator('.mg-tile', { hasText: 'Turm' })).toHaveCount(0);
+    await captureForPR(page, 'train-match-game-primary-lang');
+  });
+
   test('the match game renders inline and shows a done view', async ({ page }) => {
     await registerUser(page);
     await seed(page, '你好', 'nǐ hǎo', ['hello']);
@@ -337,5 +358,92 @@ test.describe('Train – keyboard reveal', () => {
       expect(btn.y + btn.height).toBeLessThanOrEqual(keyboardTop);
     }).toPass({ timeout: 5_000 });
     await captureForPR(page, 'train-keyboard-reveal');
+  });
+});
+
+// Issue #510: on a phone the session bar scrolls past the sticky top bar.
+// The top bar must stay above it instead of being painted over.
+test.describe('Train – top bar stacking', () => {
+  test.use({ viewport: { width: 360, height: 641 } });
+
+  test('top bar stays above the session bar while scrolling', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    // Scroll so the session bar overlaps the sticky top bar.
+    await page.evaluate(() => {
+      document.body.style.minHeight = '3000px';
+      const bar = document.getElementById('session-bar');
+      window.scrollTo(0, bar.getBoundingClientRect().top + window.scrollY + 10);
+    });
+    const topbar = await page.locator('#app-topbar').boundingBox();
+    const bar = await page.locator('#session-bar').boundingBox();
+    expect(bar.y, 'session bar must overlap the top bar for this test').toBeLessThan(topbar.y + topbar.height);
+    const topIsTopbar = await page.evaluate(() => {
+      const el = document.elementFromPoint(180, 32);
+      return !!el && !!el.closest('#app-topbar');
+    });
+    expect(topIsTopbar).toBe(true);
+    await captureForPR(page, 'train-topbar-above-session-bar');
+  });
+});
+
+// Issue #506: the voice card hides the Chinese text, so its label must say
+// that the answer is the translation (not Chinese).
+test.describe('Train – voice card label', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('voice card label says the answer is the translation', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await page.route('**/api/quiz/next*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ word_id: 1, mode: 'voice_to_transl', prompt: '你好', pinyin: 'nǐ hǎo' }),
+    }));
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toBeHidden();
+    await expect(page.locator('#mode-label')).toHaveText('Voice → Translation');
+    await captureForPR(page, 'train-voice-label');
+  });
+});
+
+// Issue #509: result screen order after a wrong answer. Top to bottom:
+// mnemonic, character breakdown, retype inputs, edit/flag, Next, then the
+// level/stats label and the "comes back" line.
+test.describe('Train – result screen order', () => {
+  test.use({ viewport: { width: 360, height: 900 } });
+
+  test('wrong-answer result stacks mnemonic, breakdown, retype, edit/flag, Next, status', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    const st = await (await page.request.get('/api/settings')).json();
+    await page.request.patch('/api/settings', { data: { ...st, wrong_answer_retry_mode: 'both', gamification_enabled: true } });
+    await page.route('**/api/hanzi/decompose*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ character: '你', radical: '亻', definition: 'you', components: [] }]),
+    }));
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
+
+    const ids = ['result-hmm', 'result-decompose', 'wrong-retype-area', 'review-edit-row', 'next-btn', 'attempt-stats', 'next-due-info'];
+    const ys = [];
+    for (const id of ids) {
+      const el = page.locator('#' + id);
+      await expect(el).toBeVisible();
+      ys.push((await el.boundingBox()).y);
+    }
+    for (let i = 1; i < ys.length; i++) {
+      expect(ys[i], `${ids[i]} must be below ${ids[i - 1]}`).toBeGreaterThan(ys[i - 1]);
+    }
+    await captureForPR(page, 'train-result-order-phone');
   });
 });
