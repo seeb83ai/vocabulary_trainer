@@ -787,3 +787,22 @@ test.describe('Settings – Match game progress', () => {
     await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 });
+
+// Issue #511: on a phone a long label must sit above its dropdown instead of
+// being squeezed into a narrow column beside it.
+test.describe('Settings – long labels on a phone', () => {
+  test.use({ storageState: 'e2e/.auth/user.json', viewport: { width: 360, height: 641 } });
+
+  test('a long label is shown above its dropdown', async ({ page }) => {
+    await page.goto('/settings');
+    const select = page.locator('#match-game-pinyin-reveal');
+    await select.scrollIntoViewIfNeeded();
+    await expect(select).toBeVisible();
+    const label = page.locator('label[for="match-game-pinyin-reveal"]');
+    const l = await label.boundingBox();
+    const s = await select.boundingBox();
+    expect(s.y, 'dropdown must be below the label').toBeGreaterThanOrEqual(l.y + l.height - 1);
+    expect(l.width, 'label must use the full row width').toBeGreaterThan(250);
+    await captureForPR(page, 'settings-long-label-phone');
+  });
+});

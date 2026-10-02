@@ -302,7 +302,7 @@
           <label class="st-text" for="gamification-enabled"><span class="st-label" data-i18n="settings.enableMiniGame">Enable word-matching mini-game</span></label>
           <span class="ui-toggle"><input type="checkbox" id="gamification-enabled"><span></span></span>
         </div>
-        <div class="st-row ">
+        <div class="st-row st-row-stack-sm">
           <label class="st-text" for="gamification-frequency"><span class="st-label"><span data-i18n="settings.showGameAtMostEvery">Show game at most every</span> … <span data-i18n="settings.minutes">minutes</span></span></label>
           <span class="st-stepper"><button type="button" class="st-step" data-step-for="gamification-frequency" data-step="-1" aria-label="−">−</button><input type="number" id="gamification-frequency" min="1" max="1440" value="5" class="st-number"><button type="button" class="st-step" data-step-for="gamification-frequency" data-step="1" aria-label="+">+</button></span>
         </div>
@@ -343,9 +343,9 @@
       <section id="component-training-section" class="st-box" data-settings-autosave="component-threshold">
         <h2 class="st-title" data-i18n="settings.componentTraining">Component Training</h2>
         <p class="st-box-desc" data-i18n="settings.componentTrainingDesc">Words are broken into hanzi components (radicals and sub-parts) for the character breakdown and component quiz.</p>
-        <div class="st-row ">
+        <div class="st-row st-row-stack-sm">
           <label class="st-text" for="component-coverage-threshold"><span class="st-label" data-i18n="settings.targetWordCoverage">Target word coverage</span><span class="st-desc" data-i18n="settings.targetWordCoverageDesc">Learn as many components as needed to cover this share of all your Chinese words. Set to 0 to train every component (default).</span></label>
-          <span class="st-stepper"><button type="button" class="st-step" data-step-for="component-coverage-threshold" data-step="-1" aria-label="−">−</button><input type="number" id="component-coverage-threshold" min="0" max="100" step="0.5" value="0" class="st-number"><button type="button" class="st-step" data-step-for="component-coverage-threshold" data-step="1" aria-label="+">+</button></span><span class="st-muted">%</span>
+          <span style="display:inline-flex;align-items:center;gap:6px"><span class="st-stepper"><button type="button" class="st-step" data-step-for="component-coverage-threshold" data-step="-1" aria-label="−">−</button><input type="number" id="component-coverage-threshold" min="0" max="100" step="0.5" value="0" class="st-number"><button type="button" class="st-step" data-step-for="component-coverage-threshold" data-step="1" aria-label="+">+</button></span><span class="st-muted">%</span></span>
         </div>
         <p id="component-coverage-summary" class="st-note"></p>
       </section>
@@ -364,7 +364,7 @@
           <label class="st-text" for="auto-subwords"><span class="st-label" data-i18n="settings.autoCreateSubwords">Auto-create subwords when a word enters training</span></label>
           <span class="ui-toggle"><input type="checkbox" id="auto-subwords" checked><span></span></span>
         </div>
-        <div class="st-row " id="backfill-section">
+        <div class="st-row st-row-stack-sm" id="backfill-section">
           <div class="st-text"><span class="st-desc" data-i18n="settings.backfillDesc">Apply subword creation to all words already in training (runs once, skips existing entries).</span></div>
           <button id="backfill-subwords-btn" type="button" class="ui-btn ui-btn-secondary st-btn" data-i18n="settings.backfillButton">Add subwords for existing training words</button>
         </div>
