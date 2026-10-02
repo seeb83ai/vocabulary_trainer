@@ -248,3 +248,136 @@ func TestUploadCSV_RejectsTooManyRows(t *testing.T) {
 		t.Errorf("expected a 'too many rows' message, got %s", rec.Body.String())
 	}
 }
+
+// csvSources returns zh text → lang → translation sources for the words with tag.
+func csvSources(t *testing.T, r http.Handler, tag string) map[string]map[string][]string {
+	t.Helper()
+	rec := do(t, r, "GET", "/api/words/?per_page=50&tags="+tag, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list words: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp struct {
+		Words []struct {
+			ZhText             string              `json:"zh_text"`
+			TranslationSources map[string][]string `json:"translation_sources"`
+		} `json:"words"`
+	}
+	decodeJSON(t, rec, &resp)
+	out := map[string]map[string][]string{}
+	for _, w := range resp.Words {
+		out[w.ZhText] = w.TranslationSources
+	}
+	return out
+}
+
+func TestUploadCSV_DefaultSourceAppliesWithoutSourceColumn(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	csv := "chinese,pinyin,en\n茶,chá,tea\n酒,jiǔ,liquor; wine"
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "src", "start_training_count": "0", "default_source": "cedict"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	got := csvSources(t, r, "src")
+	if fmt.Sprint(got["茶"]) != "map[en:[cedict]]" || fmt.Sprint(got["酒"]) != "map[en:[cedict cedict]]" {
+		t.Errorf("sources = %v, want every translation cedict", got)
+	}
+}
+
+func TestUploadCSV_WithoutDefaultSourceTranslationsStayUser(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "src", "start_training_count": "0"}, "chinese,pinyin,en\n茶,chá,tea")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := csvSources(t, r, "src"); fmt.Sprint(got["茶"]) != "map[en:[user]]" {
+		t.Errorf("sources = %v, want user (today's behavior)", got)
+	}
+}
+
+func TestUploadCSV_SourceColumnSetsSourcePerRow(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	csv := "chinese,pinyin,en,source\n" +
+		"汤,tāng,soup,cedict\n" +
+		"饭,fàn,rice,USER\n" +
+		"面,miàn,noodles,\n" +
+		"肉,ròu,meat,bogus"
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "src", "start_training_count": "0", "default_source": "cedict"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 3 || resp["skipped"] != 1 {
+		t.Errorf("want imported=3 skipped=1 (bogus source skips the row), got %v", resp)
+	}
+
+	got := csvSources(t, r, "src")
+	want := map[string]string{"汤": "map[en:[cedict]]", "饭": "map[en:[user]]", "面": "map[en:[cedict]]"}
+	for zh, w := range want {
+		if fmt.Sprint(got[zh]) != w {
+			t.Errorf("%s sources = %v, want %s", zh, got[zh], w)
+		}
+	}
+	if _, ok := got["肉"]; ok {
+		t.Errorf("row with an invalid source must not be imported")
+	}
+	if _, ok := got["汤"]["source"]; ok {
+		t.Errorf("the source column must not become a language")
+	}
+}
+
+func TestUploadCSV_SourceColumnMayComeBeforeLanguageColumns(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	csv := "chinese,source,en,de\n茶,cedict,tea,Tee\n酒,user,wine,Wein"
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "src", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	got := csvSources(t, r, "src")
+	if fmt.Sprint(got["茶"]) != "map[de:[cedict] en:[cedict]]" || fmt.Sprint(got["酒"]) != "map[de:[user] en:[user]]" {
+		t.Errorf("sources = %v", got)
+	}
+}
+
+func TestUploadCSV_RejectsUnknownDefaultSource(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "src", "default_source": "bogus"}, "chinese,pinyin,en\n茶,chá,tea")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadCSV_SourceColumnWithoutLanguageColumnIsRejected(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	for _, csv := range []string{"chinese,source\n茶,cedict", "chinese,pinyin,source\n茶,chá,cedict"} {
+		rec := doMultipart(t, r, "/api/words/upload-csv", map[string]string{"tags": "src"}, csv)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%q: want 400, got %d: %s", csv, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestUploadCSV_ExistingWordGetsSourceOfTheRow(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 2, "茶", "chá", []string{"old"}, nil, []string{"src"})
+	r := newRouter(s)
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "src", "start_training_count": "0"}, "chinese,pinyin,en,source\n茶,chá,tea,cedict")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["updated"] != 1 {
+		t.Fatalf("want updated=1, got %v", resp)
+	}
+	if got := csvSources(t, r, "src"); fmt.Sprint(got["茶"]) != "map[en:[cedict]]" {
+		t.Errorf("sources = %v, want the updated translation marked cedict", got)
+	}
+}

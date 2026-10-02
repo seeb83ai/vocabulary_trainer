@@ -39,22 +39,71 @@ function buildListImportPayload(sourceTag, selected, applyTags, importEn, import
   return payload;
 }
 
-// importLists imports every selected list, one request per list, and returns
-// the summed counts. A word in two lists is created by the first request and
-// gets the second list's tag from the next one.
-async function importLists(selected, applyTags, importEn, importDe, mode) {
-  const total = { imported: 0, tagged: 0, skipped: 0 };
-  for (const tag of selected) {
-    const result = await apiFetch('/api/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildListImportPayload(tag, selected, applyTags, importEn, importDe, mode)),
-    });
-    total.imported += result.imported || 0;
-    total.tagged += result.tagged || 0;
-    total.skipped += result.skipped || 0;
+const IMPORT_POLL_MS = 1000;
+
+// summarizeImportJobs adds up the progress of several import jobs. finished
+// means every job is done or failed. canStart means there are words to train:
+// a job that adds trainable words (not import_mode "known") has imported its
+// first chunk, or nothing is left to wait for.
+function summarizeImportJobs(jobs) {
+  const sum = { total: 0, done: 0, imported: 0, tagged: 0, skipped: 0, failed: false, error: '' };
+  for (const job of jobs) {
+    sum.total += job.total || 0;
+    sum.done += job.done || 0;
+    sum.imported += job.imported || 0;
+    sum.tagged += job.tagged || 0;
+    sum.skipped += job.skipped || 0;
+    if (job.status === 'failed') {
+      sum.failed = true;
+      sum.error = sum.error || job.error || '';
+    }
   }
-  return total;
+  sum.finished = jobs.length > 0 && jobs.every(job => job.status === 'done' || job.status === 'failed');
+  sum.canStart = sum.finished || jobs.some(job => job.import_mode !== 'known' && (job.imported || 0) > 0);
+  return sum;
+}
+
+function importProgressText(summary) {
+  if (!summary.total) return t('vocab.importing');
+  return t('import.progress', { done: summary.done, total: summary.total });
+}
+
+async function queueImportJob(payload) {
+  return apiFetch('/api/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+// startListImports queues one background import job per selected list and
+// returns the jobs. A word in two lists is created by the first job and gets
+// the second list's tag from the next one (jobs run one after the other).
+async function startListImports(selected, applyTags, importEn, importDe, mode) {
+  const jobs = [];
+  for (const tag of selected) {
+    jobs.push(await queueImportJob(buildListImportPayload(tag, selected, applyTags, importEn, importDe, mode)));
+  }
+  return jobs;
+}
+
+// waitForImport polls the jobs until until(summary) is true and returns that
+// summary. It throws when a job failed.
+async function waitForImport(jobs, until, onProgress) {
+  for (;;) {
+    const summary = summarizeImportJobs(await Promise.all(jobs.map(job => apiFetch(`/api/import/jobs/${job.id}`))));
+    if (summary.failed) throw new Error(summary.error || t('empty.qsFailed'));
+    if (onProgress) onProgress(summary);
+    if (until(summary)) return summary;
+    await new Promise(resolve => setTimeout(resolve, IMPORT_POLL_MS));
+  }
+}
+
+// importLists imports every selected list and resolves with the summed counts
+// once all jobs are finished.
+async function importLists(selected, applyTags, importEn, importDe, mode, onProgress) {
+  const jobs = await startListImports(selected, applyTags, importEn, importDe, mode);
+  return waitForImport(jobs, summary => summary.finished, onProgress);
 }
 
 // buildMatchAllPayload builds the /api/import body that imports only words
@@ -71,14 +120,34 @@ function buildMatchAllPayload(selected, importEn, importDe, mode) {
   return payload;
 }
 
-// importListsMatchAll runs the single "all tags" import and returns the counts.
-async function importListsMatchAll(selected, importEn, importDe, mode) {
-  const result = await apiFetch('/api/import', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildMatchAllPayload(selected, importEn, importDe, mode)),
-  });
-  return { imported: result.imported || 0, tagged: result.tagged || 0, skipped: result.skipped || 0 };
+// startMatchAllImport queues the single "all tags" import job.
+async function startMatchAllImport(selected, importEn, importDe, mode) {
+  return [await queueImportJob(buildMatchAllPayload(selected, importEn, importDe, mode))];
+}
+
+let activeImportWatcher = false;
+
+// watchActiveImports polls the user's queued and running import jobs and
+// reports their summary, then null once none are left. Only one watcher runs
+// at a time.
+async function watchActiveImports(onUpdate) {
+  if (activeImportWatcher) return;
+  activeImportWatcher = true;
+  try {
+    for (;;) {
+      const jobs = await apiFetch('/api/import/jobs');
+      if (!jobs || !jobs.length) {
+        onUpdate(null);
+        return;
+      }
+      onUpdate(summarizeImportJobs(jobs));
+      await new Promise(resolve => setTimeout(resolve, IMPORT_POLL_MS));
+    }
+  } catch (e) {
+    onUpdate(null);
+  } finally {
+    activeImportWatcher = false;
+  }
 }
 
 function importResultText(result) {

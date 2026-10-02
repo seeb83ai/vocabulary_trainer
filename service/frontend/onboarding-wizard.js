@@ -258,9 +258,13 @@ async function wizardImport() {
     const en = s.langs.includes('en');
     const de = s.langs.includes('de');
     const topicTags = wizard.topics.filter(tp => s.topics.includes(tp.id)).map(tp => tp.tag);
+    // One job per list, queued in order. Training can start once the first
+    // trainable chunk is in; the rest keeps importing in the background.
+    const jobs = [];
     for (const group of wizardImportGroups(view.plan, s.below, topicTags)) {
-      await importLists(group.tags, group.tags, en, de, group.mode);
+      jobs.push(...await startListImports(group.tags, group.tags, en, de, group.mode));
     }
+    await waitForImport(jobs, summary => summary.canStart);
 
     const current = await apiFetch('/api/settings');
     await apiFetch('/api/settings', {
@@ -282,8 +286,10 @@ async function wizardLibraryImport() {
   try {
     const en = s.libLangs.includes('en');
     const de = s.libLangs.includes('de');
-    if (s.match === 'all') await importListsMatchAll(s.sel, en, de, 'include');
-    else await importLists(s.sel, s.sel, en, de, 'include');
+    const jobs = s.match === 'all'
+      ? await startMatchAllImport(s.sel, en, de, 'include')
+      : await startListImports(s.sel, s.sel, en, de, 'include');
+    await waitForImport(jobs, summary => summary.canStart);
     await wizardSaveFilters(await apiFetch('/api/settings'), s.libLangs);
     wizardSet({ busy: false, libDone: true });
   } catch (err) {

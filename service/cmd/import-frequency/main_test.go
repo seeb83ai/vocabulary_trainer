@@ -145,3 +145,37 @@ func TestImportEntries_WritesWordFrequencyLangTable(t *testing.T) {
 		t.Errorf("expected updated rank 99, got %d", rank)
 	}
 }
+
+func TestImportEntries_RefreshesGlossRankForEnAndDe(t *testing.T) {
+	os.Setenv("ADMIN_EMAIL", "admin@example.de")
+	os.Setenv("ADMIN_PASSWORD", "I am the admin")
+	os.Setenv("USER_EMAIL", "me@example.de")
+	os.Setenv("USER_PASSWORD", "I learn zh")
+	os.Setenv("BCRYPT_COST", "min")
+
+	path := t.TempDir() + "/test.db"
+	if err := vocabdb.OpenMigratedTemplate(path); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	if _, err := db.Exec(`INSERT INTO cedict_entries (simplified, lang, pinyin, definition) VALUES ('你好', 'en', '', 'zzzfoo bar')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := importEntries(db, []freqEntry{{word: "zzzfoo", rank: 123456}}, "en"); err != nil {
+		t.Fatal(err)
+	}
+
+	var rank sql.NullInt64
+	if err := db.QueryRow(`SELECT rank FROM gloss_rank WHERE lang = 'en' AND gloss = 'zzzfoo bar'`).Scan(&rank); err != nil {
+		t.Fatalf("gloss_rank row missing after en frequency import: %v", err)
+	}
+	if !rank.Valid || rank.Int64 != 123456 {
+		t.Errorf("gloss_rank = %+v, want 123456", rank)
+	}
+}

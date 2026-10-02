@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"vocabulary_trainer/models"
@@ -461,5 +462,57 @@ func TestLookupPinyin(t *testing.T) {
 		if got != want {
 			t.Errorf("LookupPinyin(%s) = %q, want %q", zh, got, want)
 		}
+	}
+}
+
+func TestLookupDictionaryBatch_MatchesSingleLookups(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seeds := []struct{ zh, lang, def string }{
+		{"足球", "en", "football; soccer"},
+		{"足球", "de", "Fußball, Fussball"},
+		{"你好", "en", "hello"},
+		{"银行", "en", "bank (finance, money); bank branch"},
+	}
+	for _, e := range seeds {
+		if err := s.SeedCedictEntryForTest(ctx, e.zh, e.lang, "", e.def); err != nil {
+			t.Fatal(err)
+		}
+	}
+	texts := []string{"足球", "你好", "银行", "不存在"}
+	// Enough texts to force more than one query chunk.
+	for i := 0; i < 1200; i++ {
+		texts = append(texts, fmt.Sprintf("无%d", i))
+	}
+	langs := []string{"en", "de"}
+
+	got, err := s.LookupDictionaryBatch(ctx, texts, langs)
+	if err != nil {
+		t.Fatalf("LookupDictionaryBatch: %v", err)
+	}
+	for _, text := range texts[:4] {
+		for _, lang := range langs {
+			want, err := s.LookupDictionary(ctx, text, lang)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fmt.Sprint(got[text][lang]) != fmt.Sprint(want) && !(len(want) == 0 && len(got[text][lang]) == 0) {
+				t.Errorf("%s/%s: batch = %q, single = %q", text, lang, got[text][lang], want)
+			}
+		}
+	}
+	if len(got["不存在"]) != 0 {
+		t.Errorf("text without entries should be absent, got %v", got["不存在"])
+	}
+}
+
+func TestLookupDictionaryBatch_EmptyInputs(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if got, err := s.LookupDictionaryBatch(ctx, nil, []string{"en"}); err != nil || len(got) != 0 {
+		t.Errorf("no texts: got %v, %v", got, err)
+	}
+	if got, err := s.LookupDictionaryBatch(ctx, []string{"你好"}, nil); err != nil || len(got) != 0 {
+		t.Errorf("no langs: got %v, %v", got, err)
 	}
 }

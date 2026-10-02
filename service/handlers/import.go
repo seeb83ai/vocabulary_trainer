@@ -11,7 +11,8 @@ import (
 
 // ImportHandler handles cross-user word import from the shared library user (user_id=1).
 type ImportHandler struct {
-	Store importStore
+	Store  importStore
+	Worker *ImportWorker
 }
 
 type importPreviewWord struct {
@@ -37,12 +38,6 @@ type importRequest struct {
 	// ImportMode says how new words start: "include" (default, unseen),
 	// "review" (skip the intro, due once) or "known" (never quizzed).
 	ImportMode string `json:"import_mode"`
-}
-
-type importResponse struct {
-	Imported int `json:"imported"`
-	Tagged   int `json:"tagged"`
-	Skipped  int `json:"skipped"`
 }
 
 const sourceUserID int64 = 1
@@ -162,8 +157,9 @@ func (h *ImportHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, importPreviewResponse{Tag: tag, Total: total, AvailableLangs: availableLangs, Examples: examples})
 }
 
-// Import fetches all words for the source user with the given tag and creates
-// them for the requesting user, skipping words the user already has.
+// Import queues a background job that copies all words of the source user's
+// tag to the requesting user, skipping words the user already has (see
+// ImportWorker). It returns the queued job with 202.
 func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 	var req importRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -204,103 +200,59 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 		cleanTags = []string{}
 	}
 
-	currentUserID := UserIDFromContext(r.Context())
+	var andTags []string
+	for _, tg := range req.AndTags {
+		if tg = strings.TrimSpace(tg); tg != "" {
+			andTags = append(andTags, tg)
+		}
+	}
+	if req.ImportMode == "" {
+		req.ImportMode = "include"
+	}
 
-	// Fetch all source words for the given tag.
-	sourceWords, _, err := h.Store.GetWords(r.Context(), sourceUserID, "", 1, 0, "", "", []string{req.Tag}, false, false, "", "", "")
+	job, err := h.Store.CreateImportJob(r.Context(), UserIDFromContext(r.Context()), models.ImportJob{
+		Tag:         req.Tag,
+		ImportLangs: req.ImportLangs,
+		ApplyTags:   cleanTags,
+		AndTags:     andTags,
+		ImportMode:  req.ImportMode,
+	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load source words")
+		writeError(w, http.StatusInternalServerError, "failed to queue import")
 		return
 	}
-	if len(req.AndTags) > 0 {
-		matching := sourceWords[:0]
-		for _, sw := range sourceWords {
-			if hasAllTags(sw.Tags, req.AndTags) {
-				matching = append(matching, sw)
-			}
-		}
-		sourceWords = matching
+	if h.Worker != nil {
+		h.Worker.Notify()
 	}
+	writeJSON(w, http.StatusAccepted, job)
+}
 
-	// Build a set of the current user's existing zh_texts.
-	existingWords, _, err := h.Store.GetWords(r.Context(), currentUserID, "", 1, 0, "", "", nil, false, false, "", "", "")
+// Job returns the status and progress of one of the user's import jobs.
+func (h *ImportHandler) Job(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to load existing words")
+		writeError(w, http.StatusBadRequest, "invalid job id")
 		return
 	}
-	existingZhTexts := make(map[string]int64, len(existingWords))
-	for _, ew := range existingWords {
-		existingZhTexts[ew.ZhText] = ew.ID
+	job, err := h.Store.GetImportJob(r.Context(), UserIDFromContext(r.Context()), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load import job")
+		return
 	}
-
-	imported := 0
-	tagged := 0
-	skipped := 0
-
-	for _, sw := range sourceWords {
-		// A word the user already has is never imported twice; it only gets
-		// the import's tags added, so it also shows up under the new list.
-		if existingID, exists := existingZhTexts[sw.ZhText]; exists {
-			if len(cleanTags) == 0 {
-				skipped++
-				continue
-			}
-			if err := h.Store.AddWordTags(r.Context(), currentUserID, existingID, cleanTags); err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to tag existing word")
-				return
-			}
-			tagged++
-			continue
-		}
-		pinyin := ""
-		if sw.Pinyin != nil {
-			pinyin = *sw.Pinyin
-		}
-
-		dictTranslations, err := dictionaryTranslations(r.Context(), h.Store, sw.ZhText)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to load dictionary translations")
-			return
-		}
-		importSet := map[string]bool{}
-		for _, l := range req.ImportLangs {
-			importSet[l] = true
-		}
-		translations := map[string][]string{}
-		for lang, texts := range dictTranslations {
-			if len(req.ImportLangs) == 0 || importSet[lang] {
-				translations[lang] = texts
-			}
-		}
-		if len(translations) == 0 {
-			skipped++
-			continue
-		}
-
-		createReq := models.CreateWordRequest{
-			ZhText:       sw.ZhText,
-			Pinyin:       pinyin,
-			Translations: translations,
-			Tags:         cleanTags,
-		}
-
-		newID, err := h.Store.CreateWord(r.Context(), currentUserID, createReq)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to create word")
-			return
-		}
-		switch req.ImportMode {
-		case "known":
-			err = h.Store.SetWordKnown(r.Context(), currentUserID, newID, true)
-		case "review":
-			err = h.Store.AcknowledgeWord(r.Context(), currentUserID, newID)
-		}
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to apply import mode")
-			return
-		}
-		imported++
+	if job == nil {
+		writeError(w, http.StatusNotFound, "import job not found")
+		return
 	}
+	writeJSON(w, http.StatusOK, job)
+}
 
-	writeJSON(w, http.StatusOK, importResponse{Imported: imported, Tagged: tagged, Skipped: skipped})
+// ActiveJobs returns the user's queued and running import jobs, so the page
+// can show the progress of an import that started before it was opened.
+func (h *ImportHandler) ActiveJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := h.Store.ListActiveImportJobs(r.Context(), UserIDFromContext(r.Context()))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load import jobs")
+		return
+	}
+	writeJSON(w, http.StatusOK, jobs)
 }

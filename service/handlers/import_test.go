@@ -2,10 +2,49 @@ package handlers_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
+	"vocabulary_trainer/db"
+	"vocabulary_trainer/handlers"
 	"vocabulary_trainer/models"
 )
+
+type importJobResp struct {
+	ID       int64  `json:"id"`
+	Status   string `json:"status"`
+	Total    int    `json:"total"`
+	Done     int    `json:"done"`
+	Imported int    `json:"imported"`
+	Tagged   int    `json:"tagged"`
+	Skipped  int    `json:"skipped"`
+	Error    string `json:"error"`
+}
+
+// runImport posts an import, lets the worker process the queued job to the
+// end (the background loop does not run in tests) and returns the finished job.
+func runImport(t *testing.T, s *db.Store, r http.Handler, body map[string]any) importJobResp {
+	t.Helper()
+	rec := do(t, r, "POST", "/api/import", body)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202, got %d: %s", rec.Code, rec.Body)
+	}
+	var queued importJobResp
+	decodeJSON(t, rec, &queued)
+	if err := handlers.NewImportWorker(s).RunPending(context.Background()); err != nil {
+		t.Fatalf("RunPending: %v", err)
+	}
+	jobRec := do(t, r, "GET", fmt.Sprintf("/api/import/jobs/%d", queued.ID), nil)
+	if jobRec.Code != http.StatusOK {
+		t.Fatalf("get job: want 200, got %d: %s", jobRec.Code, jobRec.Body)
+	}
+	var job importJobResp
+	decodeJSON(t, jobRec, &job)
+	if job.Status != "done" {
+		t.Fatalf("job status = %q (error %q), want done", job.Status, job.Error)
+	}
+	return job
+}
 
 func TestImportSourceTags_ReturnsTags(t *testing.T) {
 	s := openTestDB(t)
@@ -226,19 +265,11 @@ func TestImport_Basic(t *testing.T) {
 	seedCedictEntry(t, s, "再见", "en", "goodbye")
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	resp := runImport(t, s, r, map[string]any{
 		"tag":          "HSK1",
 		"import_langs": []string{"en"},
 		"apply_tags":   []string{"HSK1"},
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
-	var resp struct {
-		Imported int `json:"imported"`
-		Skipped  int `json:"skipped"`
-	}
-	decodeJSON(t, rec, &resp)
 	if resp.Imported != 3 {
 		t.Errorf("want imported=3, got %d", resp.Imported)
 	}
@@ -271,20 +302,11 @@ func TestImport_ExistingWordGetsImportTags(t *testing.T) {
 	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, []string{"hsk2-1"})
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	resp := runImport(t, s, r, map[string]any{
 		"tag":          "hsk3-1",
 		"import_langs": []string{"en"},
 		"apply_tags":   []string{"hsk3-1"},
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
-	var resp struct {
-		Imported int `json:"imported"`
-		Tagged   int `json:"tagged"`
-		Skipped  int `json:"skipped"`
-	}
-	decodeJSON(t, rec, &resp)
 	if resp.Imported != 1 || resp.Tagged != 1 || resp.Skipped != 0 {
 		t.Errorf("want imported=1 tagged=1 skipped=0, got %+v", resp)
 	}
@@ -319,16 +341,10 @@ func TestImport_ExistingWordWithoutApplyTagsIsSkipped(t *testing.T) {
 	seedWordFull(t, s, 2, "你好", "nǐ hǎo", []string{"hello"}, nil, nil)
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	resp := runImport(t, s, r, map[string]any{
 		"tag":        "hsk3-1",
 		"apply_tags": []string{},
 	})
-	var resp struct {
-		Imported int `json:"imported"`
-		Tagged   int `json:"tagged"`
-		Skipped  int `json:"skipped"`
-	}
-	decodeJSON(t, rec, &resp)
 	if resp.Imported != 0 || resp.Tagged != 0 || resp.Skipped != 1 {
 		t.Errorf("want imported=0 tagged=0 skipped=1, got %+v", resp)
 	}
@@ -342,18 +358,11 @@ func TestImport_DeFlag(t *testing.T) {
 
 	r := newRouter(s)
 	// Import with DE
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	resp := runImport(t, s, r, map[string]any{
 		"tag":          "HSK1",
 		"import_langs": []string{"en", "de"},
 		"apply_tags":   []string{"HSK1"},
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
-	var resp struct {
-		Imported int `json:"imported"`
-	}
-	decodeJSON(t, rec, &resp)
 	if resp.Imported != 1 {
 		t.Fatalf("want imported=1, got %d", resp.Imported)
 	}
@@ -381,14 +390,11 @@ func TestImport_DeFlagFalse(t *testing.T) {
 	seedCedictEntry(t, s, "你好", "de", "Hallo")
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	runImport(t, s, r, map[string]any{
 		"tag":          "HSK1",
 		"import_langs": []string{"en"},
 		"apply_tags":   []string{},
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
 
 	listRec := do(t, r, "GET", "/api/words/", nil)
 	var listResp struct {
@@ -411,14 +417,11 @@ func TestImport_ApplyCustomTags(t *testing.T) {
 	seedCedictEntry(t, s, "你好", "en", "hello")
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	runImport(t, s, r, map[string]any{
 		"tag":          "HSK1",
 		"import_langs": []string{"en"},
 		"apply_tags":   []string{"HSK1", "my-review"},
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
 
 	// Verify both tags are on the imported word
 	listRec := do(t, r, "GET", "/api/words/?tags=my-review", nil)
@@ -448,16 +451,9 @@ func TestImport_KnownModeHidesWordsFromQuiz(t *testing.T) {
 	seedCedictEntry(t, s, "你好", "en", "hello")
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	resp := runImport(t, s, r, map[string]any{
 		"tag": "HSK1", "import_langs": []string{"en"}, "apply_tags": []string{"HSK1"}, "import_mode": "known",
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
-	var resp struct {
-		Imported int `json:"imported"`
-	}
-	decodeJSON(t, rec, &resp)
 	if resp.Imported != 1 {
 		t.Fatalf("want imported=1, got %d", resp.Imported)
 	}
@@ -472,13 +468,10 @@ func TestImport_ReviewModeSkipsNewWordIntro(t *testing.T) {
 	seedCedictEntry(t, s, "你好", "en", "hello")
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	runImport(t, s, r, map[string]any{
 		"tag": "HSK1", "import_langs": []string{"en"}, "apply_tags": []string{"HSK1"}, "import_mode": "review",
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
-	rec = do(t, r, "GET", "/api/quiz/next", nil)
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("review word must be due, got %d: %s", rec.Code, rec.Body)
 	}
@@ -497,13 +490,10 @@ func TestImport_IncludeModeLeavesWordsUnseen(t *testing.T) {
 	seedCedictEntry(t, s, "你好", "en", "hello")
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	runImport(t, s, r, map[string]any{
 		"tag": "HSK1", "import_langs": []string{"en"}, "import_mode": "include",
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
-	rec = do(t, r, "GET", "/api/quiz/next", nil)
+	rec := do(t, r, "GET", "/api/quiz/next", nil)
 	var card struct {
 		Mode string `json:"mode"`
 	}
@@ -556,17 +546,10 @@ func TestImport_AndTagsImportsOnlyWordsWithEveryTag(t *testing.T) {
 	seedCedictEntry(t, s, "面包", "en", "bread")
 
 	r := newRouter(s)
-	rec := do(t, r, "POST", "/api/import", map[string]any{
+	resp := runImport(t, s, r, map[string]any{
 		"tag": "hsk3-1", "and_tags": []string{"topic-food"},
 		"import_langs": []string{"en"}, "apply_tags": []string{"hsk3-1", "topic-food"},
 	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
-	}
-	var resp struct {
-		Imported int `json:"imported"`
-	}
-	decodeJSON(t, rec, &resp)
 	if resp.Imported != 1 {
 		t.Errorf("want imported=1, got %d", resp.Imported)
 	}
@@ -580,5 +563,193 @@ func TestImport_AndTagsImportsOnlyWordsWithEveryTag(t *testing.T) {
 	decodeJSON(t, listRec, &list)
 	if len(list.Words) != 1 || list.Words[0].ZhText != "苹果" || len(list.Words[0].Tags) != 2 {
 		t.Errorf("want only 苹果 tagged with both lists, got %+v", list.Words)
+	}
+}
+
+func TestImport_ReturnsQueuedJobBeforeAnyWordIsImported(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/import", map[string]any{"tag": "HSK1", "import_langs": []string{"en"}})
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("want 202, got %d: %s", rec.Code, rec.Body)
+	}
+	var job importJobResp
+	decodeJSON(t, rec, &job)
+	if job.ID == 0 || job.Status != "queued" {
+		t.Errorf("job = %+v, want an id and status queued", job)
+	}
+
+	listRec := do(t, r, "GET", "/api/words/?tags=HSK1", nil)
+	var listResp struct {
+		Total int `json:"total"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if listResp.Total != 0 {
+		t.Errorf("no word may exist before the worker runs, got %d", listResp.Total)
+	}
+}
+
+func TestImport_SecondRequestForSameListReusesActiveJob(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	var first, second importJobResp
+	decodeJSON(t, do(t, r, "POST", "/api/import", map[string]any{"tag": "HSK1"}), &first)
+	decodeJSON(t, do(t, r, "POST", "/api/import", map[string]any{"tag": "HSK1"}), &second)
+	if first.ID == 0 || first.ID != second.ID {
+		t.Errorf("job ids = %d, %d, want the same active job", first.ID, second.ID)
+	}
+}
+
+func TestImportJob_ReportsProgressCounters(t *testing.T) {
+	s := openTestDB(t)
+	for _, w := range []string{"甲", "乙", "丙"} {
+		seedWordFull(t, s, 1, w, "", nil, nil, []string{"HSK1"})
+	}
+	seedCedictEntry(t, s, "甲", "en", "a")
+	seedCedictEntry(t, s, "乙", "en", "b")
+	// 丙 has no dictionary entry, so it is skipped.
+
+	job := runImport(t, s, newRouter(s), map[string]any{"tag": "HSK1", "import_langs": []string{"en"}})
+	if job.Total != 3 || job.Done != 3 || job.Imported != 2 || job.Skipped != 1 {
+		t.Errorf("job = %+v, want total=3 done=3 imported=2 skipped=1", job)
+	}
+}
+
+func TestImportJob_IsHiddenFromOtherUsers(t *testing.T) {
+	s := openTestDB(t)
+	var job importJobResp
+	decodeJSON(t, do(t, newRouter(s), "POST", "/api/import", map[string]any{"tag": "HSK1"}), &job)
+
+	rec := do(t, newRouterWithUserID(s, 1), "GET", fmt.Sprintf("/api/import/jobs/%d", job.ID), nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404 for another user's job, got %d", rec.Code)
+	}
+	rec = do(t, newRouter(s), "GET", "/api/import/jobs/999999", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404 for an unknown job, got %d", rec.Code)
+	}
+	rec = do(t, newRouter(s), "GET", "/api/import/jobs/abc", nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("want 400 for a malformed id, got %d", rec.Code)
+	}
+}
+
+func TestImportJobs_ListsOnlyActiveJobsOfTheUser(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+	r := newRouter(s)
+	runImport(t, s, r, map[string]any{"tag": "HSK1", "import_langs": []string{"en"}}) // finished
+	var pending importJobResp
+	decodeJSON(t, do(t, r, "POST", "/api/import", map[string]any{"tag": "HSK2"}), &pending)
+	if _, err := s.CreateImportJob(context.Background(), 1, models.ImportJob{Tag: "HSK3"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "GET", "/api/import/jobs", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var jobs []importJobResp
+	decodeJSON(t, rec, &jobs)
+	if len(jobs) != 1 || jobs[0].ID != pending.ID {
+		t.Errorf("active jobs = %+v, want only job %d", jobs, pending.ID)
+	}
+}
+
+func TestImportWorker_ResumesInterruptedJobWithoutDuplicates(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	for _, w := range []string{"甲", "乙"} {
+		seedWordFull(t, s, 1, w, "", nil, nil, []string{"HSK1"})
+		seedCedictEntry(t, s, w, "en", "gloss "+w)
+	}
+	// The server stopped after 甲 was imported; the job is still "running".
+	seedWordFull(t, s, 2, "甲", "", []string{"gloss 甲"}, nil, []string{"HSK1"})
+	job, err := s.CreateImportJob(ctx, 2, models.ImportJob{Tag: "HSK1", ImportLangs: []string{"en"}, ApplyTags: []string{"HSK1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StartImportJob(ctx, job.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := handlers.NewImportWorker(s).RunPending(ctx); err != nil {
+		t.Fatalf("RunPending: %v", err)
+	}
+
+	got, _ := s.GetImportJob(ctx, 2, job.ID)
+	if got.Status != "done" || got.Imported != 1 {
+		t.Errorf("job = %+v, want done with the one missing word imported", got)
+	}
+	words, total, err := s.GetWords(ctx, 2, "", 1, 0, "", "", []string{"HSK1"}, false, false, "", "", "")
+	if err != nil || total != 2 {
+		t.Fatalf("user words = %d (%v), want 2 without duplicates", len(words), err)
+	}
+}
+
+func TestImportWorker_ImportsWordsInSourceOrder(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	order := []string{"丙", "甲", "乙"}
+	for _, w := range order {
+		seedWordFull(t, s, 1, w, "", nil, nil, []string{"HSK1"})
+		seedCedictEntry(t, s, w, "en", "gloss "+w)
+	}
+	runImport(t, s, newRouter(s), map[string]any{"tag": "HSK1", "import_langs": []string{"en"}})
+
+	var prev int64
+	for _, w := range order {
+		id, err := s.GetWordIDByZhText(ctx, 2, w)
+		if err != nil {
+			t.Fatalf("GetWordIDByZhText %q: %v", w, err)
+		}
+		if id <= prev {
+			t.Errorf("%q was imported out of source order (id %d after %d)", w, id, prev)
+		}
+		prev = id
+	}
+}
+
+func TestImportJob_MarksDictionaryTranslationsAsCedict(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello; hi")
+	seedCedictEntry(t, s, "你好", "de", "hallo")
+
+	r := newRouter(s)
+	runImport(t, s, r, map[string]any{"tag": "HSK1", "import_langs": []string{"en", "de"}, "apply_tags": []string{"HSK1"}})
+
+	got := csvSources(t, r, "HSK1")
+	if fmt.Sprint(got["你好"]) != "map[de:[cedict] en:[cedict cedict]]" {
+		t.Errorf("sources = %v, want every imported translation marked cedict", got["你好"])
+	}
+}
+
+func TestImportJob_StoresFrequencyRankForDictionaryTranslations(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "zzzrareword")
+	if _, err := s.ExecForTest(`INSERT INTO word_frequency_lang (word, lang, rank) VALUES ('zzzrareword', 'en', 7777)
+		ON CONFLICT(word, lang) DO UPDATE SET rank = excluded.rank`); err != nil {
+		t.Fatal(err)
+	}
+
+	runImport(t, s, newRouter(s), map[string]any{"tag": "HSK1", "import_langs": []string{"en"}})
+
+	// Read the rank through the store's own listing of translation candidates.
+	id, err := s.GetWordIDByZhText(context.Background(), 2, "你好")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cands, err := s.GetTranslationCandidatesForWord(context.Background(), id, "en")
+	if err != nil || len(cands) != 1 {
+		t.Fatalf("candidates = %v, %v", cands, err)
+	}
+	if cands[0].Source != "cedict" || cands[0].Rank == nil || *cands[0].Rank != 7777 {
+		t.Errorf("candidate = %+v, want source cedict and rank 7777", cands[0])
 	}
 }

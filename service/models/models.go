@@ -842,3 +842,25 @@ type AdminOverview struct {
 	DeepLUsage    AdminAPIUsage       `json:"deepl_usage"`
 	LLMUsage      AdminAPIUsage       `json:"llm_usage"`
 }
+
+// ImportJob is one background import of a library list (tag) for a user.
+// Total and Done count source words; Imported, Tagged and Skipped are the
+// per-outcome counters. Status is queued, running, done or failed.
+type ImportJob struct {
+	ID          int64     `json:"id"`
+	UserID      int64     `json:"-"`
+	Tag         string    `json:"tag"`
+	ImportLangs []string  `json:"-"`
+	ApplyTags   []string  `json:"-"`
+	AndTags     []string  `json:"-"`
+	ImportMode  string    `json:"import_mode"`
+	Status      string    `json:"status"`
+	Total       int       `json:"total"`
+	Done        int       `json:"done"`
+	Imported    int       `json:"imported"`
+	Tagged      int       `json:"tagged"`
+	Skipped     int       `json:"skipped"`
+	Error       string    `json:"error,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}

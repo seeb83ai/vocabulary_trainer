@@ -43,13 +43,17 @@ func sourceAt(sources []string, i int) string {
 }
 
 // linkTranslation inserts (or reuses) the translations row connecting transID
-// to zhID, computing and storing a frequency rank when source is "cedict"
-// (see computeTranslationRank); a "user" translation is always rank 0/exempt.
+// to zhID, storing a frequency rank when source is "cedict": the cached one
+// from gloss_rank, or computeTranslationRank when the gloss is not cached. A
+// "user" translation is always rank 0/exempt.
 func linkTranslation(ctx context.Context, tx *sql.Tx, transID, zhID int64, lang, text, source string) error {
 	rank := sql.NullInt64{Int64: 0, Valid: true}
 	if source == "cedict" {
-		var err error
-		rank, err = computeTranslationRank(ctx, tx, lang, text)
+		err := tx.QueryRowContext(ctx,
+			`SELECT rank FROM gloss_rank WHERE lang = ? AND gloss = ?`, lang, text).Scan(&rank)
+		if err == sql.ErrNoRows {
+			rank, err = computeTranslationRank(ctx, tx, lang, text)
+		}
 		if err != nil {
 			return err
 		}

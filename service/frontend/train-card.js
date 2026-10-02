@@ -210,6 +210,19 @@ function revealAnswerForm() {
   if (delta > 0) window.scrollBy({ top: delta, behavior: 'smooth' });
 }
 
+// watchImports shows the progress of a background import above the card until
+// it is finished.
+function watchImports() {
+  watchActiveImports(summary => {
+    if (!summary) {
+      hide('import-progress');
+      return;
+    }
+    setText('import-progress', importProgressText(summary));
+    show('import-progress');
+  });
+}
+
 async function loadNextCard(trackCurrent = false) {
   _noCardsPaused = true;  // pause until we confirm a card is ready
   await _flushTime();
@@ -954,6 +967,7 @@ document.addEventListener('DOMContentLoaded', () => {
         applyAutoPlayButton();
         hide('empty-state');
         loadNextCard();
+        watchImports();
       });
       show('ob-quickstart');
     } catch (e) {
@@ -976,4 +990,5 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   loadTrainSettings().then(() => { applyAutoPlayButton(); loadNextCard(); });
+  watchImports();
 });

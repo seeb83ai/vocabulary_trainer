@@ -145,6 +145,55 @@ func (s *Store) LookupDictionary(ctx context.Context, simplified, lang string) (
 	return defs, rows.Err()
 }
 
+// lookupBatchChunk is how many texts LookupDictionaryBatch asks for per query,
+// well under SQLite's bound-variable limit.
+const lookupBatchChunk = 500
+
+// LookupDictionaryBatch is LookupDictionary for many texts at once: it returns
+// text → lang → senses for every text that has at least one entry in one of
+// langs, using one query per chunk of texts instead of one per text and lang.
+func (s *Store) LookupDictionaryBatch(ctx context.Context, texts, langs []string) (map[string]map[string][]string, error) {
+	out := map[string]map[string][]string{}
+	if len(langs) == 0 {
+		return out, nil
+	}
+	for start := 0; start < len(texts); start += lookupBatchChunk {
+		chunk := texts[start:min(start+lookupBatchChunk, len(texts))]
+		args := make([]any, 0, len(chunk)+len(langs))
+		for _, text := range chunk {
+			args = append(args, text)
+		}
+		for _, lang := range langs {
+			args = append(args, strings.ToLower(lang))
+		}
+		rows, err := s.db.QueryContext(ctx,
+			`SELECT simplified, lang, definition FROM cedict_entries
+			 WHERE simplified IN (?`+strings.Repeat(",?", len(chunk)-1)+`)
+			   AND lang IN (?`+strings.Repeat(",?", len(langs)-1)+`)
+			 ORDER BY id`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("lookup dictionary batch: %w", err)
+		}
+		for rows.Next() {
+			var text, lang, def string
+			if err := rows.Scan(&text, &lang, &def); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan dictionary row: %w", err)
+			}
+			if out[text] == nil {
+				out[text] = map[string][]string{}
+			}
+			out[text][lang] = append(out[text][lang], splitSenses(def)...)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 // splitSenses splits a stored dictionary definition into its individual
 // senses on ";" and "," (HanDeDict separates senses with commas). Commas
 // inside brackets, e.g. "(in the capacity of, as)", do not split.

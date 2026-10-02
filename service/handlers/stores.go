@@ -73,7 +73,10 @@ type componentStore interface {
 type importStore interface {
 	db.WordStore
 	AcknowledgeWord(ctx context.Context, userID, wordID int64) error
+	db.ImportJobStore
 	LookupDictionary(ctx context.Context, simplified, lang string) ([]string, error)
+	LookupDictionaryBatch(ctx context.Context, texts, langs []string) (map[string]map[string][]string, error)
+	CreateWordsBatch(ctx context.Context, userID int64, reqs []models.CreateWordRequest) ([]int64, error)
 }
 
 type llmStore interface {

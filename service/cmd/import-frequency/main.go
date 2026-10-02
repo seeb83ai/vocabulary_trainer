@@ -120,7 +120,8 @@ func parse(f *os.File) (entries []freqEntry, skipped int, err error) {
 }
 
 // importEntries upserts every entry into word_frequency_lang for lang and
-// returns the count written.
+// returns the count written. For en/de it also rebuilds the gloss_rank cache,
+// which is derived from word_frequency_lang.
 func importEntries(db *sql.DB, entries []freqEntry, lang string) (int, error) {
 	tx, err := db.Begin()
 	if err != nil {
@@ -136,5 +137,13 @@ func importEntries(db *sql.DB, entries []freqEntry, lang string) (int, error) {
 			return 0, fmt.Errorf("upsert %q: %w", e.word, err)
 		}
 	}
-	return len(entries), tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	if lang == "en" || lang == "de" {
+		if err := vocabdb.RebuildGlossRank(db); err != nil {
+			return 0, fmt.Errorf("rebuild gloss_rank: %w", err)
+		}
+	}
+	return len(entries), nil
 }

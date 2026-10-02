@@ -51,7 +51,7 @@ func buildTemplateDB(tb testing.TB) string {
 
 // openTestDB creates a SQLite store for tests by cloning the pre-migrated
 // template database rather than running all migrations from scratch.
-func openTestDB(t *testing.T) *Store {
+func openTestDB(t testing.TB) *Store {
 	t.Helper()
 	tmpl := buildTemplateDB(t)
 	data, err := os.ReadFile(tmpl)

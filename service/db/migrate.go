@@ -11,3 +11,9 @@ import (
 func Migrate(database *sql.DB) error {
 	return dbmigrate.Migrate(database)
 }
+
+// RebuildGlossRank recomputes the gloss_rank cache from cedict_entries and
+// word_frequency_lang. Call it after either table changes.
+func RebuildGlossRank(database *sql.DB) error {
+	return dbmigrate.RebuildGlossRank(database)
+}

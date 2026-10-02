@@ -93,6 +93,16 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 		startTrainingCount = n
 	}
 
+	defaultSource := r.FormValue("default_source")
+	switch defaultSource {
+	case "":
+		defaultSource = "user"
+	case "user", "cedict":
+	default:
+		writeError(w, http.StatusBadRequest, "default_source must be user or cedict")
+		return
+	}
+
 	f, _, err := r.FormFile("file")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "file is required")
@@ -125,9 +135,25 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	langCols := make([]string, len(header)-langStart)
-	for i, col := range header[langStart:] {
-		langCols[i] = strings.ToLower(strings.TrimSpace(col))
+	// Every column after chinese[/pinyin] is a language, except an optional
+	// "source" column that sets user or cedict per row.
+	type langCol struct {
+		idx  int
+		lang string
+	}
+	sourceIdx := -1
+	var langCols []langCol
+	for i := langStart; i < len(header); i++ {
+		name := strings.ToLower(strings.TrimSpace(header[i]))
+		if name == "source" && sourceIdx < 0 {
+			sourceIdx = i
+			continue
+		}
+		langCols = append(langCols, langCol{idx: i, lang: name})
+	}
+	if len(langCols) == 0 {
+		writeError(w, http.StatusBadRequest, "CSV needs at least one language column besides 'source'")
+		return
 	}
 
 	userID := UserIDFromContext(r.Context())
@@ -176,17 +202,28 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		rowSource := defaultSource
+		if sourceIdx >= 0 && sourceIdx < len(row) {
+			if v := strings.ToLower(strings.TrimSpace(row[sourceIdx])); v != "" {
+				if v != "user" && v != "cedict" {
+					skipped++
+					continue
+				}
+				rowSource = v
+			}
+		}
+
 		translations := map[string][]string{}
-		for i, lang := range langCols {
-			colIdx := i + langStart
-			if colIdx >= len(row) {
+		sources := map[string][]string{}
+		for _, col := range langCols {
+			if col.idx >= len(row) {
 				continue
 			}
-			cell := row[colIdx]
-			for _, seg := range strings.Split(cell, ";") {
+			for _, seg := range strings.Split(row[col.idx], ";") {
 				seg = strings.TrimSpace(seg)
 				if seg != "" {
-					translations[lang] = append(translations[lang], seg)
+					translations[col.lang] = append(translations[col.lang], seg)
+					sources[col.lang] = append(sources[col.lang], rowSource)
 				}
 			}
 		}
@@ -200,10 +237,11 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 		}
 
 		req := models.CreateWordRequest{
-			ZhText:       zhText,
-			Pinyin:       pinyin,
-			Translations: translations,
-			Tags:         tags,
+			ZhText:             zhText,
+			Pinyin:             pinyin,
+			Translations:       translations,
+			TranslationSources: sources,
+			Tags:               tags,
 		}
 
 		exists, err := h.Store.IsZhWordForUser(ctx, userID, zhText)
@@ -232,10 +270,11 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			updateReq := models.UpdateWordRequest{
-				ZhText:       req.ZhText,
-				Pinyin:       req.Pinyin,
-				Translations: req.Translations,
-				Tags:         req.Tags,
+				ZhText:             req.ZhText,
+				Pinyin:             req.Pinyin,
+				Translations:       req.Translations,
+				TranslationSources: req.TranslationSources,
+				Tags:               req.Tags,
 			}
 			if err := h.Store.UpdateWord(ctx, userID, id, updateReq); err != nil {
 				log.Printf("upload-csv UpdateWord %q: %v", zhText, err)

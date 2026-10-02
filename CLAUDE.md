@@ -202,7 +202,9 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/components_stats.go` | Component stats history and coverage |
 | `service/db/components_test_helpers.go` | Test-only seed/set helpers for component tests |
 | `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary`, `LookupPinyin` |
-| `service/db/translation_rank.go` | `computeTranslationRank` — scores an auto-derived translation gloss against `word_frequency_lang` |
+| `service/db/translation_rank.go` | `computeTranslationRank` — scores an auto-derived translation gloss against `word_frequency_lang`; `linkTranslation` reads the `gloss_rank` cache first (rebuilt by `RebuildGlossRank`) |
+| `service/db/words_batch.go` | `CreateWordsBatch` — writes many words in one transaction with prepared statements and word/tag ID caches (used by the import worker) |
+| `service/db/import_jobs.go` | Import job queue — `CreateImportJob`, `GetImportJob`, `ListActiveImportJobs`, `ListRunnableImportJobs`, progress and finish updates |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
 | `service/db/funnel.go` | Signup → activation → retention funnel (`GetFunnelReport`) |
@@ -225,7 +227,8 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/handlers/llm.go` | LLM-assisted features (scene generation, fill-translation) |
 | `service/handlers/translate.go` | DeepL translation proxy handler |
 | `service/handlers/mismatches.go` | Mismatch detection handler |
-| `service/handlers/import.go` | Word list import handler |
+| `service/handlers/import.go` | Word list import handler — `Import` queues a job (202), `Job` and `ActiveJobs` report progress |
+| `service/handlers/import_worker.go` | `ImportWorker` — runs queued import jobs in chunks, resumes interrupted jobs at startup |
 | `service/handlers/demo.go` | Public landing-page demo quiz (stateless `Cards`, `Answer`) |
 | `service/handlers/audio.go` | TTS audio serving handler |
 | `service/handlers/github_issues.go` | In-app GitHub issue reporting (`Create`, `ConfigFlag`); optional, gated on `GITHUB_TOKEN`/`GITHUB_ISSUE_REPO` |
@@ -248,7 +251,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/frontend/vocab-list.js` | Word table/pagination/filters, page init |
 | `service/frontend/vocab-form.js` | Add/edit/delete word form, translate/pinyin lookup |
 | `service/frontend/vocab-tags.js` | Tag autocomplete for the edit form |
-| `service/frontend/import-lists.js` | Shared library-list import helpers (multi-select, HSK version quick start) for onboarding and Vocabulary → Import |
+| `service/frontend/import-lists.js` | Shared library-list import helpers (multi-select, HSK version quick start, import job polling and progress) for onboarding, the train page banner and Vocabulary → Import |
 | `service/frontend/vocab-import.js` | CSV upload and tag-based import |
 | `service/frontend/vocab-download.js` | Vocabulary export/download |
 | `service/frontend/vocab-components.js` | Components tab (hanzi component list/edit) |
@@ -282,14 +285,18 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
-| `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags) |
-| `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has |
+| `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags), training starts while the import runs |
+| `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has, live import progress |
+<<<<<<< HEAD
 | `e2e/vocab-redesign.spec.js` | Browser tests: Vocabulary header/summary, filter chips, More filters + sort, row list, Add/Edit sheet (known/reset/delete), ⋯ menu, phone layout |
 | `e2e/library-redesign.spec.js` | Browser tests: Mismatches cards + client-side sort + count pill + empty state; Mnemonics tabs with filled counts, actor groups, auto-save (HMM API mocked) |
 | `e2e/pinyin-redesign.spec.js` | Browser tests: Pinyin sticky bar + group chips, 2×2 options, wrong-answer result with all tones, done/empty states, phone layout (pinyin API mocked) |
 | `e2e/stats-redesign.spec.js` | Browser tests: Stats summary tiles (streak vs training time), Levels bar + rows incl. Unseen, folded table, segmented tabs, phone layout |
 | `e2e/train-redesign.spec.js` | Browser tests: Train session bar + session sheet, tier chip, More info box, mix-up layout, new-word card, inline match game, all-done week grid, error card |
 | `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
+=======
+| `e2e/csv-upload.spec.js` | Browser tests: CSV upload dialog — default translation source, per-row `source` column, invalid rows skipped |
+>>>>>>> 7e04b89 (Mark library-list translations as dictionary translations)
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
 
