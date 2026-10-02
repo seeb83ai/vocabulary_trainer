@@ -354,3 +354,40 @@ test.describe('Train – voice card label', () => {
     await captureForPR(page, 'train-voice-label');
   });
 });
+
+// Issue #509: result screen order after a wrong answer. Top to bottom:
+// mnemonic, character breakdown, retype inputs, edit/flag, Next, then the
+// level/stats label and the "comes back" line.
+test.describe('Train – result screen order', () => {
+  test.use({ viewport: { width: 360, height: 900 } });
+
+  test('wrong-answer result stacks mnemonic, breakdown, retype, edit/flag, Next, status', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    const st = await (await page.request.get('/api/settings')).json();
+    await page.request.patch('/api/settings', { data: { ...st, wrong_answer_retry_mode: 'both', gamification_enabled: true } });
+    await page.route('**/api/hanzi/decompose*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ character: '你', radical: '亻', definition: 'you', components: [] }]),
+    }));
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
+
+    const ids = ['result-hmm', 'result-decompose', 'wrong-retype-area', 'review-edit-row', 'next-btn', 'attempt-stats', 'next-due-info'];
+    const ys = [];
+    for (const id of ids) {
+      const el = page.locator('#' + id);
+      await expect(el).toBeVisible();
+      ys.push((await el.boundingBox()).y);
+    }
+    for (let i = 1; i < ys.length; i++) {
+      expect(ys[i], `${ids[i]} must be below ${ids[i - 1]}`).toBeGreaterThan(ys[i - 1]);
+    }
+    await captureForPR(page, 'train-result-order-phone');
+  });
+});
