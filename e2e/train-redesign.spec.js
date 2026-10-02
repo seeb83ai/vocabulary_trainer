@@ -360,8 +360,9 @@ test.describe('Train – top bar stacking', () => {
     });
     expect(topIsTopbar).toBe(true);
     await captureForPR(page, 'train-topbar-above-session-bar');
+  });
 });
-  
+
 // Issue #506: the voice card hides the Chinese text, so its label must say
 // that the answer is the translation (not Chinese).
 test.describe('Train – voice card label', () => {
