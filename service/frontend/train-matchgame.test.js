@@ -59,15 +59,25 @@ describe('shortenMatchGameTranslation', () => {
 // ── Match-game noise-entry skipping (issue #429) ────────────────────────────
 // Mirrors pickMatchGameTranslationText in train-matchgame.js.
 
-function pickMatchGameTranslationText(translations, fallbackText) {
-  for (const texts of Object.values(translations || {})) {
-    const clean = (texts || []).filter(t => !isNoise(t));
+function pickMatchGameTranslationText(translations, fallbackText, langOrder = []) {
+  const keys = Object.keys(translations || {});
+  const order = [...langOrder.filter(l => keys.includes(l)), ...keys.filter(l => !langOrder.includes(l))];
+  for (const lang of order) {
+    const clean = (translations[lang] || []).filter(t => !isNoise(t));
     if (clean.length > 0) return shortenMatchGameTranslation(clean[0]);
   }
   return fallbackText;
 }
 
 describe('pickMatchGameTranslationText', () => {
+  it('prefers the language listed first in langOrder over key order (issue #507)', () => {
+    expect(pickMatchGameTranslationText({ de: ['Turm'], en: ['tower'] }, '塔', ['en', 'de'])).toBe('tower');
+  });
+
+  it('still uses a language missing from langOrder when nothing else has a translation', () => {
+    expect(pickMatchGameTranslationText({ de: ['Turm'] }, '塔', ['en'])).toBe('Turm');
+  });
+
   it('skips a leading Bsp. example-sentence entry and returns the next real meaning', () => {
     expect(pickMatchGameTranslationText({ de: ['Bsp.: 附近 -- in der Nähe befindlich', 'nah (Adj)'] }, '近'))
       .toBe('nah (Adj)');

@@ -48,7 +48,7 @@ const I18N = {
     'modeLabel.zh_to_transl': 'Chinese',
     'modeLabel.zh_to_transl_no_sound': 'Chinese (no sound)',
     'modeLabel.zh_pinyin_to_transl': 'Chinese + Pinyin',
-    'modeLabel.voice_to_transl': 'Voice',
+    'modeLabel.voice_to_transl': 'Voice → Translation',
     'modeLabel.new_word': 'New Word',
 
     // Tier/Level labels
@@ -1061,7 +1061,7 @@ const I18N = {
     'modeLabel.zh_to_transl': '中文',
     'modeLabel.zh_to_transl_no_sound': '中文（无声）',
     'modeLabel.zh_pinyin_to_transl': '中文＋拼音',
-    'modeLabel.voice_to_transl': '语音',
+    'modeLabel.voice_to_transl': '语音 → 翻译',
     'modeLabel.new_word': '新词',
 
     // Tier/Level labels
@@ -2074,7 +2074,7 @@ const I18N = {
     'modeLabel.zh_to_transl': 'Chinesisch',
     'modeLabel.zh_to_transl_no_sound': 'Chinesisch (ohne Ton)',
     'modeLabel.zh_pinyin_to_transl': 'Chinesisch + Pinyin',
-    'modeLabel.voice_to_transl': 'Hörverständnis',
+    'modeLabel.voice_to_transl': 'Hörverständnis → Übersetzung',
     'modeLabel.new_word': 'Neues Wort',
 
     // Tier/Level labels
