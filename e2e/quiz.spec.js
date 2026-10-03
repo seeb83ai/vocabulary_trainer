@@ -2756,14 +2756,21 @@ test.describe('Quiz – accuracy baseline notice', () => {
     });
     await page.goto('/train');
 
+    // Issue #522: the sentence is hidden to save space; a "!" next to the
+    // progress bar opens it in a small layover on tap.
     const notice = page.locator('#stats-new-paused');
+    const hint = page.locator('#stats-new-paused-btn');
+    await expect(hint).toBeVisible();
+    await expect(notice).toBeHidden();
+    await captureForPR(page, 'train-accuracy-paused');
+    await page.setViewportSize({ width: 360, height: 640 });
+    await hint.click();
     await expect(notice).toBeVisible();
     await expect(notice).toContainText('62%');
     await expect(notice).toContainText('70%');
-    await captureForPR(page, 'train-accuracy-paused');
-    await page.setViewportSize({ width: 360, height: 640 });
-    await expect(notice).toBeVisible();
     await captureForPR(page, 'train-accuracy-paused-mobile');
+    await page.locator('#train-container').click({ position: { x: 5, y: 5 } });
+    await expect(notice).toBeHidden();
     // A stats request can still be in the handler when the test ends; its
     // route.fetch() response is then disposed and response.json() throws.
     await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -2773,5 +2780,6 @@ test.describe('Quiz – accuracy baseline notice', () => {
     await page.goto('/train');
     await expect(page.locator('#stats-new')).not.toHaveText('—');
     await expect(page.locator('#stats-new-paused')).toBeHidden();
+    await expect(page.locator('#stats-new-paused-btn')).toBeHidden();
   });
 });

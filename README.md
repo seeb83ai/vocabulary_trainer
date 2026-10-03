@@ -197,7 +197,7 @@ In **Settings → Daily Learning**, each user can enable optional gates. These g
 | **Max Struggling words** | Your current Struggling bucket count is ≥ the threshold |
 | **Max Learning words** | Your current Learning bucket count is ≥ the threshold |
 | **Max New bucket words** | Your current New bucket count (already-introduced words that haven't graduated past the initial learning phase yet) is ≥ the threshold |
-| **Min. accuracy of the last 3 days** | Your accuracy over the 3 days before today (all answers of these days together) is below the threshold in %. Today is not included, so the gate does not change during a session. Days without answers are not counted. If these 3 days have no answers, the gate does not block. Default: off, 70%. When this gate blocks, the stats bar on the Train page shows "New words paused: accuracy X% < Y%". |
+| **Min. accuracy of the last 3 days** | Your accuracy over the 3 days before today (all answers of these days together) is below the threshold in %. Today is not included, so the gate does not change during a session. Days without answers are not counted. If these 3 days have no answers, the gate does not block. Default: off, 70%. When this gate blocks, the Train page shows a small "!" right of the progress bar. Tap it to read "New words paused: accuracy X% < Y%". |
 
 ### Cooldown between new words
 
