@@ -9,7 +9,11 @@
           <span id="session-progress-label" class="tr-progress-label">—</span>
           <span class="tr-progress-meta"><strong id="stats-due">—</strong> <span data-i18n="session.due">due</span> · <span id="stats-new">—</span></span>
         </div>
-        <div class="tr-progress-track"><div id="session-progress-bar" class="tr-progress-fill" style="width:0%"></div></div>
+        <div class="tr-progress-trackrow">
+          <div class="tr-progress-track"><div id="session-progress-bar" class="tr-progress-fill" style="width:0%"></div></div>
+          <button id="stats-new-paused-btn" type="button" class="hidden tr-pause-hint" aria-expanded="false" aria-controls="stats-new-paused" aria-label="New words paused" data-i18n-aria-label="statsBar.newPausedLabel">!</button>
+          <div id="stats-new-paused" class="hidden tr-pause-pop" role="status"></div>
+        </div>
       </div>
       <div class="tr-bar-actions">
         <span id="difficult-drill-bar" class="hidden">
@@ -31,7 +35,6 @@
         </button>
       </div>
     </div>
-    <div id="stats-new-paused" class="hidden tr-notice"></div>
   </div>
 
   <!-- Main content -->
