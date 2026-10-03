@@ -99,6 +99,8 @@ func init() {
 	})
 }
 
+// splitCedictSenses mirrors db.splitSenses: a comma does not split a "Bsp.:"
+// example sentence (issue #523), only ";" ends it.
 func splitCedictSenses(def string) []string {
 	var senses []string
 	depth := 0
@@ -117,7 +119,7 @@ func splitCedictSenses(def string) []string {
 				depth--
 			}
 		case ';', ',':
-			if depth == 0 {
+			if depth == 0 && (r == ';' || !strings.HasPrefix(strings.TrimSpace(def[start:i]), "Bsp.:")) {
 				flush(i)
 				start = i + 1
 			}
