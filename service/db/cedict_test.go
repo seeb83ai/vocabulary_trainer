@@ -368,6 +368,8 @@ func TestSplitSenses(t *testing.T) {
 		{"see 为[wei4, wei2], also", []string{"see 为[wei4, wei2]", "also"}},
 		{"Ding （a，b）, Sache", []string{"Ding （a，b）", "Sache"}},
 		{" , ;; ", nil},
+		{"helfen; Bsp.: 我帮助你学习汉语。 -- Ich helfe dir, Chinesisch zu lernen; Hilfe, Unterstützung",
+			[]string{"helfen", "Bsp.: 我帮助你学习汉语。 -- Ich helfe dir, Chinesisch zu lernen", "Hilfe", "Unterstützung"}},
 	}
 	for _, c := range cases {
 		got := splitSenses(c.in)
