@@ -57,7 +57,6 @@ body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', system-ui, sans-serif; 
 .app-fab { position: fixed; bottom: 20px; z-index: 60; }
 @media (max-width: 879px) {
   .app-sidebar { display: none; }
-  .app-topbar { position: sticky; top: 0; z-index: 30; }
   /* ponytail: inner-scroll keeps tabbar visible; fixed-only breaks on iOS keyboard/scroll */
   .app-content { display: block; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
   .app-fab { bottom: calc(80px + env(safe-area-inset-bottom)); }
