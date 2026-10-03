@@ -1691,6 +1691,42 @@ test.describe('Quiz – retype on wrong answer', () => {
     }
   });
 
+  // Issue #527: Enter in a retype field must continue once the gate is satisfied.
+  test('Enter in the retype field continues once the correct answer is typed', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'both' } });
+
+    try {
+      await useZhToTranslMode(page);
+      const cardRes = await page.request.get('/api/quiz/next?mode=zh_to_transl&langs=en');
+      const card = await cardRes.json();
+      const correctAnswer = SEED_TRANSLATIONS[card.prompt]?.[0];
+      expect(correctAnswer).toBeTruthy();
+
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await page.locator('#answer-input').fill('xxxxxxxxxxx');
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#wrong-retype-area')).toBeVisible({ timeout: 8_000 });
+
+      // Gate not satisfied yet: Enter must not continue.
+      await page.locator('#wrong-retype-zh-input').fill('xxx');
+      await page.locator('#wrong-retype-zh-input').press('Enter');
+      await expect(page.locator('#result-area')).toBeVisible();
+
+      await page.locator('#wrong-retype-zh-input').fill(card.prompt);
+      await page.locator('#wrong-retype-zh-input').dispatchEvent('input');
+      await page.locator('#wrong-retype-trans-input').fill(correctAnswer);
+      await page.locator('#wrong-retype-trans-input').dispatchEvent('input');
+      await expect(page.locator('#next-btn')).toBeEnabled({ timeout: 8_000 });
+      await page.locator('#wrong-retype-trans-input').press('Enter');
+      await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+
   // Regression test for issue #389: the "Accept as correct (typo)" button was
   // unconditionally hidden whenever the retype gate is active, even for a
   // 1-character-off typo that accept_correct_mode: 'typo' should still offer.
