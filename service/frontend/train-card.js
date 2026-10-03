@@ -863,6 +863,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   $('wrong-retype-zh-input').addEventListener('input', updateWrongRetypeState);
   $('wrong-retype-trans-input').addEventListener('input', updateWrongRetypeState);
+
+  // Enter in a gate input continues, as long as the gate button is enabled.
+  [['new-word-zh-input', 'new-word-got-it-btn'], ['new-word-trans-input', 'new-word-got-it-btn'],
+   ['wrong-retype-zh-input', 'next-btn'], ['wrong-retype-trans-input', 'next-btn']].forEach(([inputId, btnId]) => {
+    $(inputId).addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      if (!$(btnId).disabled) $(btnId).click();
+    });
+  });
   $('new-component-got-it-btn').addEventListener('click', async () => {
     if (!currentCard) return;
     try {
