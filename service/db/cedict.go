@@ -196,7 +196,8 @@ func (s *Store) LookupDictionaryBatch(ctx context.Context, texts, langs []string
 
 // splitSenses splits a stored dictionary definition into its individual
 // senses on ";" and "," (HanDeDict separates senses with commas). Commas
-// inside brackets, e.g. "(in the capacity of, as)", do not split.
+// inside brackets, e.g. "(in the capacity of, as)", do not split, and neither
+// do commas inside a "Bsp.:" example sentence (only ";" ends that sense).
 func splitSenses(def string) []string {
 	var senses []string
 	depth := 0
@@ -215,7 +216,7 @@ func splitSenses(def string) []string {
 				depth--
 			}
 		case ';', ',':
-			if depth == 0 {
+			if depth == 0 && (r == ';' || !strings.HasPrefix(strings.TrimSpace(def[start:i]), "Bsp.:")) {
 				flush(i)
 				start = i + 1
 			}
