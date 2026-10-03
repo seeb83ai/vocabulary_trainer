@@ -24,6 +24,7 @@ const I18N = {
     'statsBar.totalWords': 'Total words:',
     'statsBar.newToday': 'New today:',
     'statsBar.newPaused': 'New words paused: accuracy {pct}% < {min}%',
+    'statsBar.newPausedLabel': 'New words paused',
 
     // Quiz modes
     'mode.progressive': 'Progressive',
@@ -1038,6 +1039,7 @@ const I18N = {
     'statsBar.totalWords': '总词数：',
     'statsBar.newToday': '今日新词：',
     'statsBar.newPaused': '新词已暂停：正确率 {pct}% < {min}%',
+    'statsBar.newPausedLabel': '新词已暂停',
 
     // Quiz modes
     'mode.progressive': '渐进',
@@ -2052,6 +2054,7 @@ const I18N = {
     'statsBar.totalWords': 'Wörter gesamt:',
     'statsBar.newToday': 'Neu heute:',
     'statsBar.newPaused': 'Neue Wörter pausiert: Trefferquote {pct}% < {min}%',
+    'statsBar.newPausedLabel': 'Neue Wörter pausiert',
 
     // Quiz modes
     'mode.progressive': 'Fortschreitend',

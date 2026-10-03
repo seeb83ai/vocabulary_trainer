@@ -156,6 +156,26 @@ function renderSessionProgress(doneToday, dueLeft) {
   if (bar) bar.style.width = p.pct + '%';
 }
 
+// The "new words paused" sentence sits in a small layover behind a "!" button
+// next to the progress bar, so it takes no room on small screens (issue #522).
+function setNewPausedOpen(open) {
+  const pop = document.getElementById('stats-new-paused');
+  const btn = document.getElementById('stats-new-paused-btn');
+  if (!pop || !btn) return;
+  pop.classList.toggle('hidden', !open);
+  btn.setAttribute('aria-expanded', String(open));
+}
+
+document.addEventListener('click', (e) => {
+  const btn = document.getElementById('stats-new-paused-btn');
+  if (!btn) return;
+  if (btn.contains(e.target)) {
+    setNewPausedOpen(btn.getAttribute('aria-expanded') !== 'true');
+  } else {
+    setNewPausedOpen(false);
+  }
+});
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
@@ -174,9 +194,11 @@ async function loadStats() {
     renderSessionProgress(stats.today_attempts, dueLeft);
     const pause = accuracyPauseParams(stats);
     const pausedEl = document.getElementById('stats-new-paused');
-    if (pausedEl) {
+    const pausedBtn = document.getElementById('stats-new-paused-btn');
+    if (pausedEl && pausedBtn) {
       pausedEl.textContent = pause ? t('statsBar.newPaused', pause) : '';
-      pausedEl.classList.toggle('hidden', !pause);
+      pausedBtn.classList.toggle('hidden', !pause);
+      if (!pause) setNewPausedOpen(false);
     }
     renderDifficultDrill();
   } catch (_) {}
