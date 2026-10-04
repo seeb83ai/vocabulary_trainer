@@ -66,7 +66,7 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 
 ## Screenshots
 
-Regenerate with `make screenshots-readme` (drives a real browser via Playwright against a seeded local server).
+Regenerate with `make screenshots-readme` (drives a real browser via Playwright against a seeded local server). The demo data (words, 190 days of history, confusions) comes from `e2e-screenshots/seed.js`. The landing-page teaser images in `service/frontend/landing/teasers/` come from `make screenshots-landing`. That target keeps the GitHub and terminal images, which it cannot capture.
 
 Training — question
 ![Training question](images/chinese_train.png)

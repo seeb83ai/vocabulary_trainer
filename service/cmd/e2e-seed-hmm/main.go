@@ -49,6 +49,15 @@ func main() {
 	actors := []struct{ initial, category, name, hint string }{
 		{"b", "male", "Bruce Lee", "Name starts with 'B'"},
 		{"m", "male", "Michael Jordan", "Name starts with 'M'"},
+		{"d", "male", "David Beckham", "Name starts with 'D'"},
+		{"t", "male", "Tom Cruise", "Name starts with 'T'"},
+		{"l", "male", "Lionel Messi", "Name starts with 'L'"},
+		{"n", "female", "Nicole Kidman", "Name starts with 'N'"},
+		{"s", "female", "Serena Williams", "Name starts with 'S'"},
+		{"h", "female", "Halle Berry", "Name starts with 'H'"},
+		{"y", "female", "Yoko Ono", "Name starts with 'Y'"},
+		{"k", "fictional", "King Kong", "Name starts with 'K'"},
+		{"r", "fictional", "Robin Hood", "Name starts with 'R'"},
 	}
 	for _, a := range actors {
 		if _, err := store.ExecForTest(
@@ -61,6 +70,12 @@ func main() {
 	locations := []struct{ final, name string }{
 		{"a", "Airport"},
 		{"an", "Ancient temple"},
+		{"ang", "Amusement park"},
+		{"o", "Opera house"},
+		{"ong", "Zoo"},
+		{"i", "Igloo"},
+		{"u", "Underground station"},
+		{"ao", "Aquarium"},
 	}
 	for _, l := range locations {
 		if _, err := store.ExecForTest(
@@ -70,10 +85,12 @@ func main() {
 		}
 	}
 
-	if _, err := store.ExecForTest(
-		`INSERT OR REPLACE INTO hmm_tone_rooms (user_id, tone, room_name) VALUES (?, ?, ?)`,
-		user.ID, 1, "Sky-high tower"); err != nil {
-		log.Fatalf("seed tone room: %v", err)
+	for tone, room := range map[int]string{1: "Sky-high tower", 2: "Kitchen", 3: "Cellar", 4: "Garage", 5: "Garden"} {
+		if _, err := store.ExecForTest(
+			`INSERT OR REPLACE INTO hmm_tone_rooms (user_id, tone, room_name) VALUES (?, ?, ?)`,
+			user.ID, tone, room); err != nil {
+			log.Fatalf("seed tone room %d: %v", tone, err)
+		}
 	}
 
 	log.Printf("Seeded HMM library entries for user %s", *email)
