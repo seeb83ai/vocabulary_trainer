@@ -59,6 +59,11 @@ job fails (visible in the PR checks tab, not a merge gate). It also nudges — w
 page-specific file changed (`train-*.js`, `vocab-*.js`, `stats.js`, `pinyin.js`, `mnemonics.js`/`hmm-builder.js`,
 `mismatches.js`, `settings.js`) but no changed screenshot filename mentions that page.
 
+A second CI job (`standing-screenshot-check`, backed by `scripts/check-standing-screenshots.sh`, tested by
+`scripts/test-check-standing-screenshots.sh`) is also report-only. If a PR changes `service/frontend/*.css` or
+`*.html`, it fails unless both `images/*.png` and `service/frontend/landing/teasers/**/*.png` changed. Ignore it
+when the change does not alter how existing pages look.
+
 ## Testing rules
 
 **Mandatory:** Every code change that adds or modifies a function, DB query, or HTTP endpoint **must** include
@@ -311,6 +316,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
 | `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |
+| `scripts/check-standing-screenshots.sh` | CI check: restyled pages need updated README and landing screenshots |
 | `e2e-screenshots/seed.js` | Shared demo data and helpers for both screenshot specs |
 | `playwright.screenshots.config.js`, `playwright.landing.config.js` | Configs for the two screenshot specs |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
