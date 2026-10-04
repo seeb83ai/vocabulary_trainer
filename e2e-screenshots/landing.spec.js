@@ -128,11 +128,22 @@ test.describe.serial('landing teasers', () => {
   });
 
   test('030 mnemonics', async ({ page }) => {
-    await page.request.put('/api/hmm/props', { data: { radical: '氵', prop_name: 'Water bottle' } });
+    for (const [radical, prop_name] of [['氵', 'Water bottle'], ['木', 'Wooden chair'], ['火', 'Torch'],
+      ['口', 'Megaphone'], ['心', 'Heart balloon'], ['日', 'Sun lamp'], ['女', 'Ballet shoes'], ['手', 'Boxing glove']]) {
+      await page.request.put('/api/hmm/props', { data: { radical, prop_name } });
+    }
     await page.goto('/mnemonics');
     await expect(page.locator('#actors-container input').first()).toHaveValue('Bruce Lee', { timeout: 10_000 });
-    await shot(page, '030-mnemonics/01-builder.png',
-      [page.locator('h1').first(), page.locator('#mn-panel-actors')], 16);
+    // One shot per tab: title, tab bar and the whole open panel.
+    for (const [tab, panel, file] of [
+      ['actors', 'actors', '01-actors'], ['locations', 'locations', '02-locations'],
+      ['rooms', 'rooms', '03-tone_rooms'], ['props', 'props', '04-props'],
+    ]) {
+      await page.locator(`#mn-tab-${tab}`).click();
+      await expect(page.locator(`#mn-panel-${panel}`)).toBeVisible();
+      await shot(page, `030-mnemonics/${file}.png`,
+        [page.locator('h1').first(), page.locator(`#mn-panel-${panel}`)], 16);
+    }
 
     // Tall viewport up front: the edit sheet is capped at a share of the viewport height.
     await page.setViewportSize({ width: 1280, height: 2200 });
@@ -143,7 +154,7 @@ test.describe.serial('landing teasers', () => {
     await expect(page.locator('#hmm-builder-container')).not.toContainText('Loading', { timeout: 10_000 });
     await page.waitForTimeout(500);
     const builder = page.locator('#hmm-builder-container');
-    await shot(page, '030-mnemonics/02-mnemonic_scene_builder.png', [
+    await shot(page, '030-mnemonics/05-scene_builder.png', [
       builder.getByText('Mnemonic Scene Builder'),
       builder.getByText('How does this work?'),
       builder.getByRole('button', { name: 'Save Scene' }),
