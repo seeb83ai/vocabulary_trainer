@@ -121,7 +121,7 @@ user-owned, as today.
 ### Terms (new; add to CONTEXT.md)
 
 - **Library**: the zh vocabulary entries, list tags and glosses owned by the library user (user 1). Read-only in the UI.
-- **Library reference**: a learner's own zh word row with `library_word_id` set. It has no gloss links of its own; its glosses come from the library entry, adjusted by overrides. Its pinyin column is the pinyin override (empty = library pinyin).
+- **Library reference**: a learner's own zh word row with `library_word_id` set. It has no gloss links of its own; its glosses come from the library entry, adjusted by overrides. Its pinyin is copied from the library at creation and is the learner's to edit.
 - **Translation override**: a learner's `add` or `delete` of one gloss on one entry.
 - **Tombstone**: a record that a learner deleted a library entry, read only by the list sync.
 
@@ -133,11 +133,13 @@ user-owned, as today.
 
 - Decision (after code review of slice 1): the library reference is a **slim learner word row**, not the progress row. This keeps every per-user table (SM-2 progress, word tags, mnemonic scenes, confusion pairs, match-game history, usage events) and every word id unchanged. Cost: 2 rows per imported entry (word + progress) instead of about 7 today.
 - Learner zh words get a nullable `library_word_id`. A row with it set is a library reference; a row without it is an own entry.
-- The learner row's `pinyin` is the pinyin override. Reads use the learner pinyin if set, else the library pinyin.
-- New table **translation overrides**: (learner zh word, gloss word, op = add | delete, created at). Custom gloss texts are user-owned word rows.
+- The library pinyin is copied to the learner row when the reference is created; the learner edits it like any own pinyin. A dictionary refresh changes glosses only, so no pinyin reads change.
+- **Added glosses** are normal translation links on the learner's reference row (source `user`), like on an own entry.
+- **Deleted glosses**: new table `translation_deletions` (learner zh word, library gloss word).
+- `overrides_updated_at` on the learner row is set whenever the learner changes the glosses of a reference. A conflict is a reference with overrides whose `overrides_updated_at` is older than the library entry's `library_updated_at`.
 - New table **tombstones**: (user, library entry).
 - Library zh entries get `library_updated_at` and a `library_removed` flag.
-- One SQL view **user translations** (zh word, gloss word, source, rank) = for a reference: library links in the user's primary/secondary language − delete overrides + add overrides; for an own entry: its own links. Every translation read goes through this view. Overlay logic lives only in the view.
+- One SQL view **user translations** (zh word, gloss word, source, rank) = own links of the row + (for a reference) library links in the user's primary/secondary language − deleted glosses. It is a single SELECT without UNION: a UNION ALL view measured 62 s for one sort on production-sized data, the flat view 0.14 s (same as own copies). Every per-user gloss read goes through this view.
 
 ### Modules
 

@@ -451,7 +451,7 @@ func (s *Store) GetWordStats(ctx context.Context, userID int64, tags []string) (
 		}
 		enRows, err := s.db.QueryContext(ctx,
 			`SELECT t.zh_word_id, ew.language, ew.text FROM words ew
-			 JOIN translations t ON t.translation_word_id = ew.id
+			 JOIN user_translations t ON t.translation_word_id = ew.id
 			 WHERE t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
 			 ORDER BY ew.text`, args...)
 		if err != nil {

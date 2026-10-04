@@ -18,8 +18,8 @@ import (
 var validSortExprs = map[string]string{
 	"zh":          "w.text",
 	"pinyin":      "w.pinyin",
-	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'en')",
-	"de":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'de')",
+	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN user_translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'en')",
+	"de":          "(SELECT MIN(ew.text) FROM words ew JOIN user_translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'de')",
 	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
 	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
 	"accuracy":    "CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
@@ -86,7 +86,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 	var missingLangArgs []any
 	if missingLang == "en" || missingLang == "de" {
 		missingLangFilter = ` AND NOT EXISTS (
-			SELECT 1 FROM translations t
+			SELECT 1 FROM user_translations t
 			JOIN words tw ON t.translation_word_id = tw.id
 			WHERE t.zh_word_id = w.id AND tw.language = ?
 		)`
@@ -137,7 +137,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		           OR w.pinyin = ? COLLATE NOCASE
 		           OR EXISTS (
 		               SELECT 1 FROM words ew
-		               JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
+		               JOIN user_translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
 		               WHERE ew.text = ? COLLATE NOCASE
 		           )
 		       ) THEN 0 ELSE 1 END AS match_rank,
@@ -151,7 +151,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		       OR w.pinyin LIKE '%' || ? || '%'
 		       OR EXISTS (
 		           SELECT 1 FROM words ew
-		           JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
+		           JOIN user_translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
 		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + missingLangFilter + `
 		ORDER BY ` + orderClause + limitClause
@@ -246,7 +246,7 @@ func (s *Store) batchLoadTranslationTexts(ctx context.Context, ids []int64, lang
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT t.zh_word_id, w.text, t.source FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE w.language = ?
 		   AND t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
 		 ORDER BY w.text`, args...)
@@ -312,7 +312,7 @@ func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, id
 func (s *Store) getTranslationTextsAndSourcesForZhWord(ctx context.Context, zhID int64, lang string) (texts []string, sources []string, err error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text, t.source FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?
 		 ORDER BY w.text`, zhID, lang)
 	if err != nil {
@@ -337,7 +337,7 @@ func (s *Store) getTranslationTextsAndSourcesForZhWord(ctx context.Context, zhID
 func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, lang string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?
 		 ORDER BY w.text`, zhID, lang)
 	if err != nil {
@@ -776,7 +776,7 @@ func (s *Store) GetTranslationCandidatesForWord(ctx context.Context, wordID int6
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text, t.source, t.rank
 		 FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
 	if err != nil {
 		return nil, fmt.Errorf("get translation candidates: %w", err)
@@ -801,7 +801,7 @@ func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, target
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
 		 FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
 	if err != nil {
 		return nil, fmt.Errorf("get translations: %w", err)

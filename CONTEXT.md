@@ -43,6 +43,18 @@ A Hanzi Movie Method scene linking a character to an actor (pinyin initial), loc
 **Confusion pair**
 A recorded instance where a user's wrong answer is a valid translation of a *different* known vocabulary entry. Tracked to surface systematic mix-ups. Visible on `/mismatches`.
 
+**Library**
+The shared set of zh vocabulary entries, list tags and glosses owned by the library user (user 1), built from CC-CEDICT and HanDeDict. Read-only in the UI. See ADR-0005.
+
+**Library reference**
+A learner's own zh word row that points to a library entry (`library_word_id`). It has no copied glosses; the learner sees the library glosses in their native languages, adjusted by their translation overrides. Progress, tags and mnemonics hang off it like off any own entry.
+
+**Translation override**
+A learner's change to the glosses of a library reference: an added gloss (an own link on the reference) or a deleted library gloss. Private to the learner.
+
+**Tombstone**
+A record that a learner deleted a library reference, so that a list sync does not add the entry again.
+
 ## Architecture invariants
 
 - Chinese (`language = 'zh'`) is the fixed pivot language. All quiz prompts are zh vocabulary entries. Pinyin training, character components, and mnemonics are Chinese-specific features and will not be generalised to other languages.
