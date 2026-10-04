@@ -1,40 +1,30 @@
 // @ts-check
-// Separate, on-demand Playwright config for regenerating the README
-// screenshots (`make screenshots-landing`). Deliberately not merged into
+// Separate, on-demand Playwright config for regenerating the landing-page
+// teaser images (`make screenshots-landing`). Deliberately not merged into
 // playwright.config.js so the default `npx playwright test` / CI run never
 // picks up e2e-screenshots/landing.spec.js.
 //
-// When USE_LOCAL_SERVER=1: logs in to the already-running local server as the
-// user given by LOCAL_USER_EMAIL / LOCAL_USER_PASSWORD / LOCAL_SERVER_URL.
+// Always runs against a fresh temp server: the spec seeds demo data straight
+// into that server's SQLite file, so it must never target a real instance.
 import { defineConfig, devices } from '@playwright/test';
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync } from 'fs';
 
 const PREINSTALLED_CHROMIUM = '/opt/pw-browsers/chromium';
 const chromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
   (existsSync(PREINSTALLED_CHROMIUM) ? PREINSTALLED_CHROMIUM : undefined);
 
-const useLocal = process.env.USE_LOCAL_SERVER === '1';
-
-function resolveBaseURL() {
-  if (!useLocal) return 'http://localhost:18080';
-  const cached = join('e2e/.auth', 'local-base-url.txt');
-  if (existsSync(cached)) return readFileSync(cached, 'utf8').trim();
-  return process.env.LOCAL_SERVER_URL || 'http://localhost:8080';
-}
-
 export default defineConfig({
-  testDir: "./e2e-screenshots",
-  testMatch: "landing.spec.js",
-  globalSetup: useLocal ? './e2e/global-setup-local.js' : './e2e/global-setup.js',
-  globalTeardown: useLocal ? './e2e/global-teardown-local.js' : './e2e/global-teardown.js',
+  testDir: './e2e-screenshots',
+  testMatch: 'landing.spec.js',
+  globalSetup: './e2e/global-setup.js',
+  globalTeardown: './e2e/global-teardown.js',
 
   workers: 1,
   retries: 0,
   timeout: 30_000,
 
   use: {
-    baseURL: resolveBaseURL(),
+    baseURL: 'http://localhost:18080',
     headless: true,
     viewport: { width: 1280, height: 800 },
     deviceScaleFactor: 2,

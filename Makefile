@@ -170,22 +170,11 @@ test-e2e:
 test-all: test-go test-js test-e2e
 
 ## screenshots-readme: regenerate README screenshots with Playwright (on-demand only, not part of test-all/CI)
-##
-## To screenshot against seeded data (default, fresh temp server):
+## Seeds demo words and history into a fresh temp server through test-only Go tools, so it
+## cannot target a running local server.
 ##   make screenshots-readme
-##
-## To screenshot against the local running server as a real user:
-##   make screenshots-readme USER_EMAIL=me@example.com USER_PASSWORD=secret
-##   make screenshots-readme USER_EMAIL=me@example.com USER_PASSWORD=secret LOCAL_SERVER_URL=http://localhost:8080
 screenshots-readme:
-	@if [ -n "$(USER_EMAIL)" ]; then \
-		test -n "$(USER_PASSWORD)" || (echo "USER_PASSWORD is required when USER_EMAIL is set" && exit 1); \
-		USE_LOCAL_SERVER=1 LOCAL_USER_EMAIL="$(USER_EMAIL)" LOCAL_USER_PASSWORD="$(USER_PASSWORD)" \
-		  LOCAL_SERVER_URL="$(or $(LOCAL_SERVER_URL),http://localhost:8080)" \
-		  npx playwright test --config=playwright.screenshots.config.js; \
-	else \
-		npx playwright test --config=playwright.screenshots.config.js; \
-	fi
+	NODE_OPTIONS=--experimental-sqlite npx playwright test --config=playwright.screenshots.config.js
 
 ## screenshots-landing: regenerate the landing-page teaser images with Playwright (on-demand only, not part of test-all/CI)
 ## Seeds a demo vocabulary + 190 days of history into a fresh temp server, then crops each scene.
