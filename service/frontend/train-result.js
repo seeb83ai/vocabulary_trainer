@@ -377,7 +377,7 @@ function renderWordAnswerResult(result, answer) {
         // of an untouched field, not a mandate to fight with faster input.
         setTimeout(() => {
           const el = $(requireZh ? 'wrong-retype-zh-input' : 'wrong-retype-trans-input');
-          if (!el.value) el.focus();
+          if (autofocusInput && !el.value) el.focus();
         }, 50);
       } else {
         wrongRetypeTarget = null;
@@ -462,7 +462,7 @@ function renderWordAnswerResult(result, answer) {
 
       const disambigInput = document.getElementById('disambig-input');
       const disambigFeedback = document.getElementById('disambig-feedback');
-      disambigInput.focus();
+      if (autofocusInput) disambigInput.focus();
 
       document.getElementById('disambig-form').addEventListener('submit', async (ev) => {
         ev.preventDefault();
@@ -493,7 +493,7 @@ function renderWordAnswerResult(result, answer) {
           disambigInput.value = '';
           disambigFeedback.textContent = t('result.disambigNotQuite');
           disambigFeedback.classList.remove('hidden');
-          disambigInput.focus();
+          if (autofocusInput) disambigInput.focus();
         }
       });
     } else {

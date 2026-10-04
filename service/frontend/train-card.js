@@ -27,6 +27,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   celebrateBucketChange = !!st?.celebrate_bucket_change;
   _gamificationEnabled = !!st?.gamification_enabled;
   autoPlayEnabled = !!st?.autoplay_always;
+  autofocusInput = shouldAutofocus(st);
   _gamificationFrequencyMs = (st?.gamification_frequency ?? 5) * 60 * 1000;
   _matchGamePinyinReveal = st?.match_game_pinyin_reveal || 'always';
   _matchGameSm2Update = st?.match_game_sm2_update || 'always';
@@ -151,6 +152,7 @@ let latestStats = null;
 // Auto-play toggle: in-memory only, never persisted — always resets to off
 // on page load/reload so it doesn't surprise the user across sessions.
 let autoPlayEnabled = false;
+let autofocusInput = true;
 let currentAutoPlayAudio = null;
 // Tracks whether audio actually started playing for the current card via
 // autoPlayCard, so the result screen knows whether to play it there instead
@@ -391,7 +393,7 @@ async function loadNextCard(trackCurrent = false) {
       // don't steal focus back from a field someone already started typing in.
       setTimeout(() => {
         const el = requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input');
-        if (!el.value) el.focus({ preventScroll: true });
+        if (autofocusInput && !el.value) el.focus({ preventScroll: true });
       }, 50);
     } else {
       $('new-word-inputs').classList.add('hidden');
@@ -565,7 +567,7 @@ function showCard() {
   autoPlayCard(currentCard);
   // preventScroll: focus() otherwise scrolls just enough to reveal the input,
   // which can fight the explicit scrollCardIntoView below (issue #374).
-  $('answer-input').focus({ preventScroll: true });
+  if (autofocusInput) $('answer-input').focus({ preventScroll: true });
   scrollCardIntoView('card-area');
 }
 
