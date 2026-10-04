@@ -583,6 +583,10 @@ label.st-text { cursor: pointer; }
 .tr-sheet-groups { display: flex; flex-direction: column; gap: 20px; }
 .tr-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .tr-sheet-toggles { display: flex; flex-direction: column; }
+.tr-mistakes-link { color: #2563eb; }
+.wt-list { display: flex; flex-direction: column; }
+.wt-row { padding: 12px 0; border-bottom: 1px solid #f3f4f6; }
+.wt-row:last-child { border-bottom: 0; }
 @media (min-width: 880px) {
   .tr-sheet { justify-content: center; padding: 16px; }
   .tr-sheet-panel { border-radius: 24px; padding-top: 24px; padding-bottom: 22px; }

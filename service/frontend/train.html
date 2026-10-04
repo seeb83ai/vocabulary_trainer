@@ -56,6 +56,7 @@
           <div class="tr-tile tr-tile-green font-hanzi" aria-hidden="true">好</div>
           <h2 class="tr-h1" data-i18n="success.title">All done for today!</h2>
           <p id="success-stats" class="tr-sub"></p>
+          <button id="wrong-today-btn" type="button" class="hidden tr-text-btn tr-mistakes-link"></button>
         </div>
         <div id="success-comeback" class="hidden">
           <div id="success-streak-card" class="tr-streak-card">
@@ -327,6 +328,19 @@
         </div>
       </div>
       <button id="filter-overlay-close" type="button" class="ui-btn ui-btn-primary tr-block tr-mt-24" data-i18n="filter.done">Done</button>
+    </div>
+  </div>
+
+  <!-- Words answered wrong today (issue #537), opened from the all-done screen -->
+  <div id="wrong-today-overlay" class="hidden tr-sheet" role="dialog" aria-modal="true" aria-labelledby="wrong-today-title">
+    <div id="wrong-today-backdrop" class="tr-sheet-backdrop"></div>
+    <div class="tr-sheet-panel">
+      <div class="app-sheet-handle"></div>
+      <h2 id="wrong-today-title" class="tr-sheet-title" data-i18n="wrongToday.title">Today's mistakes</h2>
+      <p id="wrong-today-sub" class="tr-muted-sm tr-sheet-sub"></p>
+      <div id="wrong-today-list" class="wt-list"></div>
+      <button id="wrong-today-retrain-btn" type="button" class="ui-btn ui-btn-primary tr-block tr-mt-24" data-i18n="wrongToday.retrain">Train them again now</button>
+      <button id="wrong-today-close" type="button" class="tr-text-btn tr-block" data-i18n="wrongToday.close">Close</button>
     </div>
   </div>
 

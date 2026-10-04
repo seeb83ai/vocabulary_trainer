@@ -841,3 +841,89 @@ func TestRecordAnswerTimestamps_DoesNotOverwriteFirstSeenAt(t *testing.T) {
 		t.Errorf("expected first_seen_at to remain %q, got %q (valid=%v)", original, got.String, got.Valid)
 	}
 }
+
+// Issue #537: words answered wrong today, for the all-done screen.
+func TestGetWordsWrongToday(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	today := seedWord(t, s, "水", "shuǐ", []string{"water"})
+	yesterday := seedWord(t, s, "火", "huǒ", []string{"fire"})
+	right := seedWord(t, s, "山", "shān", []string{"mountain"})
+	known := seedWord(t, s, "人", "rén", []string{"person"})
+
+	for _, id := range []int64{today, yesterday, known} {
+		if err := s.RecordAnswerTimestamps(ctx, id, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.RecordAnswerTimestamps(ctx, right, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET last_wrong_at = datetime('now', '-1 day') WHERE word_id = ?`, yesterday); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sm2_progress SET is_known = 1 WHERE word_id = ?`, known); err != nil {
+		t.Fatal(err)
+	}
+
+	words, err := s.GetWordsWrongToday(ctx, int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetWordsWrongToday: %v", err)
+	}
+	if len(words) != 1 {
+		t.Fatalf("want 1 word wrong today, got %d: %+v", len(words), words)
+	}
+	w := words[0]
+	if w.WordID != today || w.ZhText != "水" || w.Pinyin != "shuǐ" {
+		t.Errorf("unexpected word: %+v", w)
+	}
+	if len(w.Translations["en"]) != 1 || w.Translations["en"][0] != "water" {
+		t.Errorf("translations: want en=[water], got %v", w.Translations)
+	}
+
+	other, err := s.GetWordsWrongToday(ctx, int64(3), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetWordsWrongToday other user: %v", err)
+	}
+	if len(other) != 0 {
+		t.Errorf("other user: want no words, got %d", len(other))
+	}
+}
+
+// Issue #537: "Train them again" makes today's wrong words due now.
+func TestMakeWordsWrongTodayDue(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	today := seedWord(t, s, "水", "shuǐ", []string{"water"})
+	other := seedWord(t, s, "火", "huǒ", []string{"fire"})
+	for _, id := range []int64{today, other} {
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE sm2_progress SET due_date = datetime('now', '+3 days') WHERE word_id = ?`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.RecordAnswerTimestamps(ctx, today, false); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := s.GetSM2Progress(ctx, today)
+
+	n, err := s.MakeWordsWrongTodayDue(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("MakeWordsWrongTodayDue: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("want 1 word made due, got %d", n)
+	}
+	p, _ := s.GetSM2Progress(ctx, today)
+	if p.DueDate.After(time.Now().Add(time.Minute)) {
+		t.Errorf("wrong word: want due now, got %v", p.DueDate)
+	}
+	if p.IntervalDays != before.IntervalDays || p.Easiness != before.Easiness || p.TotalAttempts != before.TotalAttempts {
+		t.Error("making a word due must not change its SM-2 values")
+	}
+	q, _ := s.GetSM2Progress(ctx, other)
+	if !q.DueDate.After(time.Now().Add(24 * time.Hour)) {
+		t.Errorf("other word: due date must not change, got %v", q.DueDate)
+	}
+}

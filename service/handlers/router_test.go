@@ -146,6 +146,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Post("/api/quiz/match-answer", quizH.MatchAnswer)
 	r.Post("/api/quiz/difficult", quizH.FlagDifficult)
 	r.Post("/api/quiz/difficult/clear", quizH.ClearDifficult)
+	r.Get("/api/quiz/wrong-today", quizH.WrongToday)
+	r.Post("/api/quiz/wrong-today/retrain", quizH.RetrainWrongToday)
 	r.Get("/api/quiz/stats", quizH.Stats)
 	r.Get("/api/quiz/langs", quizH.Langs)
 	r.Get("/api/quiz/daily-stats", quizH.DailyStats)

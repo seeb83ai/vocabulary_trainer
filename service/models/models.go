@@ -767,6 +767,14 @@ type MatchGameWord struct {
 	Translations map[string][]string `json:"translations"`
 }
 
+// WrongTodayWord is a zh word answered wrong today (issue #537).
+type WrongTodayWord struct {
+	WordID       int64               `json:"word_id"`
+	ZhText       string              `json:"zh_text"`
+	Pinyin       string              `json:"pinyin"`
+	Translations map[string][]string `json:"translations"`
+}
+
 type MatchGameResponse struct {
 	Words []MatchGameWord `json:"words"`
 }

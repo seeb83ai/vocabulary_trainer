@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 	"vocabulary_trainer/db"
@@ -1482,5 +1483,71 @@ func TestQuizNext_IncludesTier(t *testing.T) {
 	decodeJSON(t, rec, &card)
 	if card.Tier != "New" {
 		t.Errorf("want tier %q, got %q", "New", card.Tier)
+	}
+}
+
+// Issue #537: list today's wrong words and make them due again.
+func TestWrongToday_ListAndRetrain(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+	wrong := seedWord(t, s, "水", "shuǐ", []string{"water"})
+	right := seedWord(t, s, "山", "shān", []string{"mountain"})
+
+	for _, a := range []struct {
+		id     int64
+		answer string
+	}{{wrong, "fire"}, {right, "mountain"}} {
+		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{"word_id": a.id, "mode": "zh_to_transl", "answer": a.answer, "langs": []string{"en"}})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body)
+		}
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/wrong-today?langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("wrong-today: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var list struct {
+		Words []models.WrongTodayWord `json:"words"`
+	}
+	decodeJSON(t, rec, &list)
+	if len(list.Words) != 1 || list.Words[0].WordID != wrong || list.Words[0].ZhText != "水" {
+		t.Fatalf("wrong-today: want only 水, got %+v", list.Words)
+	}
+	if got := list.Words[0].Translations["en"]; len(got) != 1 || got[0] != "water" {
+		t.Errorf("wrong-today translations: want en=[water], got %v", list.Words[0].Translations)
+	}
+
+	p, _ := s.GetSM2Progress(ctx, wrong)
+	p.DueDate = time.Now().UTC().Add(48 * time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatal(err)
+	}
+	rec = do(t, r, "POST", "/api/quiz/wrong-today/retrain", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("retrain: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var retrain struct {
+		Count int `json:"count"`
+	}
+	decodeJSON(t, rec, &retrain)
+	if retrain.Count != 1 {
+		t.Errorf("retrain: want count 1, got %d", retrain.Count)
+	}
+	p, _ = s.GetSM2Progress(ctx, wrong)
+	if p.DueDate.After(time.Now().Add(time.Minute)) {
+		t.Errorf("retrain: want 水 due now, got %v", p.DueDate)
+	}
+}
+
+func TestWrongToday_EmptyList(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "GET", "/api/quiz/wrong-today", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	if body := strings.TrimSpace(rec.Body.String()); body != `{"words":[]}` {
+		t.Errorf("want empty words list, got %s", body)
 	}
 }

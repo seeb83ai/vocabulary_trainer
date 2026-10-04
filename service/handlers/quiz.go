@@ -964,6 +964,33 @@ func (h *QuizHandler) FlagDifficult(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int{"flagged": flagged})
 }
 
+// WrongToday handles GET /api/quiz/wrong-today. It lists the words answered
+// wrong today, with translations in the "langs" query languages (issue #537).
+func (h *QuizHandler) WrongToday(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromContext(r.Context())
+	primaryLang := "en"
+	if st, _ := h.Store.GetUserSettings(r.Context(), userID); st != nil && st.PrimaryLang != "" {
+		primaryLang = st.PrimaryLang
+	}
+	words, err := h.Store.GetWordsWrongToday(r.Context(), userID, parseLangs(r, primaryLang))
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"words": words})
+}
+
+// RetrainWrongToday handles POST /api/quiz/wrong-today/retrain. It makes the
+// words answered wrong today due now and returns how many (issue #537).
+func (h *QuizHandler) RetrainWrongToday(w http.ResponseWriter, r *http.Request) {
+	n, err := h.Store.MakeWordsWrongTodayDue(r.Context(), UserIDFromContext(r.Context()))
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"count": n})
+}
+
 // ClearDifficult handles POST /api/quiz/difficult/clear. It ends the
 // difficult-words drill by clearing all of the user's drill flags.
 func (h *QuizHandler) ClearDifficult(w http.ResponseWriter, r *http.Request) {

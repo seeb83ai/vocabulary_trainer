@@ -81,6 +81,8 @@ type QuizStore interface {
 	AdvanceDueDates(ctx context.Context, userID int64, n int) (int, error)
 	SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error)
 	FlagDifficultWords(ctx context.Context, userID int64, count int) (int, error)
+	GetWordsWrongToday(ctx context.Context, userID int64, langs []string) ([]models.WrongTodayWord, error)
+	MakeWordsWrongTodayDue(ctx context.Context, userID int64) (int, error)
 	ClearDrillFlag(ctx context.Context, wordID int64) error
 	ClearAllDrillFlags(ctx context.Context, userID int64) error
 	CountDrillFlags(ctx context.Context, userID int64) (int, error)
