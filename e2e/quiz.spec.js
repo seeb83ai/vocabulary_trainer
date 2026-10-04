@@ -2819,3 +2819,90 @@ test.describe('Quiz – accuracy baseline notice', () => {
     await expect(page.locator('#stats-new-paused-btn')).toBeHidden();
   });
 });
+
+// Issue #535: Enter continues on every train screen with a "continue" action,
+// even when the focus is not on that button any more.
+test.describe('Quiz – Enter continues (issue #535)', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  async function answerCard(page, answer = 'xxxxxxxxxxx') {
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await syncNewWordMode(page, 'zh_to_transl');
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'zh_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill(answer);
+    await page.locator('#answer-input').press('Enter');
+    await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
+  }
+
+  test('Enter on the result screen continues when nothing has focus', async ({ page }) => {
+    await answerCard(page);
+    await captureForPR(page, 'train-enter-result');
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+
+  test('Enter on the result screen continues when another button has focus', async ({ page }) => {
+    await answerCard(page);
+    const autoplay = page.locator('#autoplay-toggle-btn');
+    await autoplay.focus();
+    await expect(autoplay).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+    // Enter continued instead of pressing the focused button.
+    await expect(autoplay).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('Enter on the celebration screen continues', async ({ page }) => {
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, celebrate_bucket_change: true } });
+    try {
+      await page.route('**/api/quiz/answer', async (route) => {
+        const response = await route.fetch();
+        const json = await response.json();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...json, correct: true, tier: 'Practicing', prev_tier: 'Learning' }),
+        });
+      });
+      await page.request.patch('/api/training-filters', {
+        data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+      });
+      await syncNewWordMode(page, 'zh_to_transl');
+      await page.goto('/train');
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await page.locator('#answer-input').fill('xxxxxxxxxxx');
+      await page.locator('#answer-input').press('Enter');
+      await expect(page.locator('#celebration-screen')).toBeVisible({ timeout: 8_000 });
+
+      await page.evaluate(() => document.activeElement && document.activeElement.blur());
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#celebration-screen')).not.toBeVisible();
+      await expect(page.locator('#result-area')).toBeVisible();
+    } finally {
+      await page.request.patch('/api/settings', { data: originalSettings });
+    }
+  });
+
+  test('Enter on the error card retries', async ({ page }) => {
+    let fail = true;
+    await page.route('**/api/quiz/next*', route => fail
+      ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"boom"}' })
+      : route.continue());
+    await page.goto('/train');
+    await expect(page.locator('#error-state')).toBeVisible({ timeout: 12_000 });
+    fail = false;
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#error-state')).not.toBeVisible({ timeout: 8_000 });
+  });
+});
