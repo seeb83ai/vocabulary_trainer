@@ -491,7 +491,6 @@ const I18N = {
     'landing.password': 'Password',
     'landing.footer.impressum': 'Impressum',
 
-    'landing.hero.badge': 'SM-2 spaced repetition',
     'landing.hero.title': 'Learn Chinese vocabulary for free',
     'landing.hero.subtitle': 'A free spaced-repetition trainer: every word comes back for review right before you would forget it. A few minutes a day is enough.',
     'landing.hero.feature1.bold': 'SM-2 spaced repetition',
@@ -1506,7 +1505,6 @@ const I18N = {
     'landing.password': '密码',
     'landing.footer.impressum': '法律声明',
 
-    'landing.hero.badge': 'SM-2 间隔重复',
     'landing.hero.title': '免费学中文词汇',
     'landing.hero.subtitle': '免费的间隔重复训练工具：每个词都会在你即将遗忘之前被安排复习。每天几分钟就够了。',
     'landing.hero.feature1.bold': 'SM-2 间隔重复',
@@ -2521,7 +2519,6 @@ const I18N = {
     'landing.password': 'Passwort',
     'landing.footer.impressum': 'Impressum',
 
-    'landing.hero.badge': 'SM-2 Spaced Repetition',
     'landing.hero.title': 'Chinesische Vokabeln kostenlos lernen',
     'landing.hero.subtitle': 'Ein kostenloser Spaced-Repetition-Trainer: Jedes Wort kommt genau dann zur Wiederholung, bevor du es vergisst. Ein paar Minuten am Tag reichen.',
     'landing.hero.feature1.bold': 'SM-2 Spaced Repetition',

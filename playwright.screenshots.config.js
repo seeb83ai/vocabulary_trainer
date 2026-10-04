@@ -25,6 +25,7 @@ function resolveBaseURL() {
 
 export default defineConfig({
   testDir: './e2e-screenshots',
+  testMatch: 'capture.spec.js',
   globalSetup: useLocal ? './e2e/global-setup-local.js' : './e2e/global-setup.js',
   globalTeardown: useLocal ? './e2e/global-teardown-local.js' : './e2e/global-teardown.js',
 
