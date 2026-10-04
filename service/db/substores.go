@@ -177,7 +177,7 @@ type ComponentStore interface {
 	GetHanziDecompositionString(ctx context.Context, char string) (string, error)
 	UpsertHanziDecomposition(ctx context.Context, char, decomp string) error
 	GetTranslationsByZhTexts(ctx context.Context, zhTexts []string, lang string) (map[string]string, error)
-	StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, transText, lang string) error
+	StoreTranslationForZhChar(ctx context.Context, zhText, transText, lang string) error
 }
 
 // UserStore: user CRUD, auth, password, and settings.
