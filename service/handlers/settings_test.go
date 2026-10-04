@@ -1667,6 +1667,37 @@ func TestSettingsPatch_AutoplayAlways(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_Autofocus(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["autofocus_desktop"] != true {
+		t.Errorf("autofocus_desktop: want true by default, got %v", st["autofocus_desktop"])
+	}
+	if st["autofocus_mobile"] != false {
+		t.Errorf("autofocus_mobile: want false by default, got %v", st["autofocus_mobile"])
+	}
+
+	body := baseSettingsPatch()
+	body["autofocus_desktop"] = false
+	body["autofocus_mobile"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec = do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec, &st)
+	if st["autofocus_desktop"] != false {
+		t.Errorf("autofocus_desktop: want false after update, got %v", st["autofocus_desktop"])
+	}
+	if st["autofocus_mobile"] != true {
+		t.Errorf("autofocus_mobile: want true after update, got %v", st["autofocus_mobile"])
+	}
+}
+
 func TestPutUILang_Valid(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

@@ -806,3 +806,31 @@ test.describe('Settings – long labels on a phone', () => {
     await captureForPR(page, 'settings-long-label-phone');
   });
 });
+
+// Issue #529: auto-focus of the answer field is a setting, separate for
+// desktop and mobile, because focus opens the keyboard on a phone.
+test.describe('Settings – Keyboard auto-focus', () => {
+  test.use({ storageState: 'e2e/.auth/user.json', viewport: { width: 360, height: 641 } });
+
+  test('shows both switches and a change persists', async ({ page }) => {
+    // The defaults (desktop on, mobile off) are covered by the Go handler test;
+    // other specs PATCH this shared user, so set the state explicitly here.
+    const st = await (await page.request.get('/api/settings')).json();
+    await page.request.patch('/api/settings', { data: { ...st, autofocus_desktop: true, autofocus_mobile: false } });
+    await page.goto('/settings');
+    const desktop = page.locator('#autofocus-desktop');
+    const mobile = page.locator('#autofocus-mobile');
+    await mobile.scrollIntoViewIfNeeded();
+    await expect(desktop).toBeChecked();
+    await expect(mobile).not.toBeChecked();
+    await captureForPR(page, 'settings-keyboard-autofocus');
+
+    await page.locator('.ui-toggle:has(#autofocus-mobile)').click();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+    await page.reload();
+    await expect(page.locator('#autofocus-mobile')).toBeChecked();
+
+    await page.locator('.ui-toggle:has(#autofocus-mobile)').click();
+    await expect(page.locator('[data-testid="toast"]')).toBeVisible();
+  });
+});

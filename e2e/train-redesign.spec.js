@@ -35,6 +35,12 @@ async function enableGamification(page) {
   expect(res.ok()).toBe(true);
 }
 
+async function setAutofocus(page, patch) {
+  const st = await (await page.request.get('/api/settings')).json();
+  const res = await page.request.patch('/api/settings', { data: { ...st, ...patch } });
+  expect(res.ok()).toBe(true);
+}
+
 async function useMode(page, mode) {
   await page.request.patch('/api/training-filters', {
     data: { mode, langs: ['en'], bucket: '', mnemonics: true, components: false, tags: [] },
@@ -345,6 +351,7 @@ test.describe('Train – keyboard reveal', () => {
     await registerUser(page);
     await seed(page, '你好', 'nǐ hǎo', ['hello']);
     await useMode(page, 'zh_to_transl');
+    await setAutofocus(page, { autofocus_mobile: true });
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
     await expect(page.locator('#answer-input')).toBeFocused();
@@ -438,5 +445,51 @@ test.describe('Train – result screen order', () => {
       expect(ys[i], `${ids[i]} must be below ${ids[i - 1]}`).toBeGreaterThan(ys[i - 1]);
     }
     await captureForPR(page, 'train-result-order-phone');
+  });
+});
+
+// Issue #529: the keyboard opening on its own makes navigating hard on a
+// phone. Auto-focus is a setting, chosen separately for desktop and touch.
+test.describe('Train – auto-focus setting (touch device)', () => {
+  test.use({ viewport: { width: 360, height: 641 }, hasTouch: true, isMobile: true });
+
+  test('does not focus the answer input by default', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#answer-input')).not.toBeFocused();
+  });
+
+  test('focuses the answer input when the mobile setting is on', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await setAutofocus(page, { autofocus_mobile: true });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#answer-input')).toBeFocused();
+  });
+});
+
+test.describe('Train – auto-focus setting (desktop)', () => {
+  test('focuses the answer input by default', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#answer-input')).toBeFocused();
+  });
+
+  test('does not focus the answer input when the desktop setting is off', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await setAutofocus(page, { autofocus_desktop: false });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#answer-input')).not.toBeFocused();
   });
 });

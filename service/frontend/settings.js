@@ -236,6 +236,10 @@ async function loadSettings() {
     if (sentenceBlankRatioEl) sentenceBlankRatioEl.value = st.sentence_blank_ratio ?? 20;
     const autoSubwordsEl = document.getElementById('auto-subwords');
     if (autoSubwordsEl) autoSubwordsEl.checked = st.auto_subwords !== false;
+    const autofocusDesktopEl = document.getElementById('autofocus-desktop');
+    if (autofocusDesktopEl) autofocusDesktopEl.checked = st.autofocus_desktop !== false;
+    const autofocusMobileEl = document.getElementById('autofocus-mobile');
+    if (autofocusMobileEl) autofocusMobileEl.checked = !!st.autofocus_mobile;
     const autoplayAlwaysEl = document.getElementById('autoplay-always');
     if (autoplayAlwaysEl) autoplayAlwaysEl.checked = !!st.autoplay_always;
     const translationRankingEnabledEl = document.getElementById('translation-ranking-enabled');
@@ -424,6 +428,8 @@ function buildModePayload() {
     sentence_blank_ratio:   parseInt(document.getElementById('sentence-blank-ratio')?.value || '20', 10),
     auto_subwords:           !!(document.getElementById('auto-subwords')?.checked),
     autoplay_always:         !!(document.getElementById('autoplay-always')?.checked),
+    autofocus_desktop:       !!(document.getElementById('autofocus-desktop')?.checked),
+    autofocus_mobile:        !!(document.getElementById('autofocus-mobile')?.checked),
     translation_ranking_enabled: !!(document.getElementById('translation-ranking-enabled')?.checked),
     max_translations_shown:      parseInt(document.getElementById('max-translations-shown')?.value || '3', 10),
     translation_hide_unranked:   !!(document.getElementById('translation-hide-unranked')?.checked),
