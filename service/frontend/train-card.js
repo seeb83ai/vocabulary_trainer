@@ -393,7 +393,7 @@ async function loadNextCard(trackCurrent = false) {
       // don't steal focus back from a field someone already started typing in.
       setTimeout(() => {
         const el = requireNewWordZh ? $('new-word-zh-input') : $('new-word-trans-input');
-        if (!el.value) el.focus({ preventScroll: true });
+        if (autofocusInput && !el.value) el.focus({ preventScroll: true });
       }, 50);
     } else {
       $('new-word-inputs').classList.add('hidden');

@@ -780,7 +780,7 @@ const I18N = {
     'settings.audio': 'Audio',
     'settings.audioDesc': 'The sound button on the Train page starts switched off. Turn this on to start every session with auto-play on. You can still switch it off there.',
     'settings.keyboard': 'Keyboard',
-    'settings.keyboardDesc': 'Choose if the answer field gets focus on its own. On a phone, focus opens the on-screen keyboard. Touch devices use the mobile setting.',
+    'settings.keyboardDesc': 'Choose if answer fields get focus on their own. On a phone, focus opens the on-screen keyboard. Touch devices use the mobile setting.',
     'settings.autofocusDesktop': 'Focus the answer field automatically on desktop',
     'settings.autofocusMobile': 'Focus the answer field automatically on mobile',
     'settings.autoplayAlways': 'Always play audio automatically',

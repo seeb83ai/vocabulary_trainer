@@ -473,6 +473,81 @@ test.describe('Train – auto-focus setting (touch device)', () => {
   });
 });
 
+// The same switches cover the fields that must be filled in during training:
+// the retype gates and the disambiguation input.
+test.describe('Train – auto-focus setting for the other input fields (touch device)', () => {
+  test.use({ viewport: { width: 360, height: 641 }, hasTouch: true, isMobile: true });
+
+  test('retype gate after a wrong answer is not focused by default, but is with the mobile setting', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await useMode(page, 'zh_to_transl');
+    await setAutofocus(page, { wrong_answer_retry_mode: 'both', autofocus_mobile: false });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#wrong-retype-area')).toBeVisible({ timeout: 8_000 });
+    await page.waitForTimeout(300);
+    await expect(page.locator('#wrong-retype-zh-input')).not.toBeFocused();
+
+    await setAutofocus(page, { wrong_answer_retry_mode: 'both', autofocus_mobile: true });
+    await page.reload();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#wrong-retype-zh-input')).toBeFocused({ timeout: 2_000 });
+  });
+
+  test('new-word gate is not focused by default, but is with the mobile setting', async ({ page }) => {
+    await registerUser(page);
+    const res = await page.request.post('/api/words', {
+      data: { zh_text: '水', pinyin: 'shuǐ', translations: { en: ['water'] }, tags: [], start_training: false },
+    });
+    expect(res.ok()).toBe(true);
+    await useMode(page, 'zh_to_transl');
+    await page.goto('/train');
+    await expect(page.locator('#new-word-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#new-word-inputs')).toBeVisible();
+    await page.waitForTimeout(300);
+    await expect(page.locator('#new-word-zh-input')).not.toBeFocused();
+    await expect(page.locator('#new-word-trans-input')).not.toBeFocused();
+
+    await setAutofocus(page, { autofocus_mobile: true });
+    await page.reload();
+    await expect(page.locator('#new-word-inputs')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#new-word-zh-input')).toBeFocused({ timeout: 2_000 });
+  });
+
+  test('disambiguation input is not focused by default, but is with the mobile setting', async ({ page }) => {
+    await registerUser(page);
+    const id1 = await seed(page, '知道', 'zhīdào', ['know']);
+    await seed(page, '认识', 'rènshi', ['know']);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'transl_to_zh', langs: ['en'], bucket: '', mnemonics: true, components: false, tags: [] },
+    });
+    await syncNewWordMode(page, 'transl_to_zh');
+    // transl_to_zh shows the English prompt and the due word is random, so
+    // read which word the page got and answer with the other one.
+    const answerWrong = async (load) => {
+      const nextResp = page.waitForResponse(r => r.url().includes('/api/quiz/next') && r.ok());
+      await load();
+      const card = await (await nextResp).json();
+      const wrong = card.word_id === id1 ? '认识' : '知道';
+      await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+      await page.locator('#answer-input').fill(wrong);
+      await page.locator('#answer-form button[type="submit"]').click();
+      await expect(page.locator('#disambig-input')).toBeVisible({ timeout: 8_000 });
+    };
+    await answerWrong(() => page.goto('/train'));
+    await expect(page.locator('#disambig-input')).not.toBeFocused();
+
+    await setAutofocus(page, { autofocus_mobile: true });
+    await answerWrong(() => page.reload());
+    await expect(page.locator('#disambig-input')).toBeFocused();
+  });
+});
+
 test.describe('Train – auto-focus setting (desktop)', () => {
   test('focuses the answer input by default', async ({ page }) => {
     await registerUser(page);
