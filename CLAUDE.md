@@ -288,7 +288,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
 | `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags), training starts while the import runs |
-| `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has, live import progress |
+| `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has, live import progress, library references (languages from settings, private edits), Your lists (update, include removed, library changes); runs the CLI tools against the E2E DB (`E2E_DB_PATH`) |
 <<<<<<< HEAD
 | `e2e/vocab-redesign.spec.js` | Browser tests: Vocabulary header/summary, filter chips, More filters + sort, row list, Add/Edit sheet (known/reset/delete), ⋯ menu, phone layout |
 | `e2e/library-redesign.spec.js` | Browser tests: Mismatches cards + client-side sort + count pill + empty state; Mnemonics tabs with filled counts, actor groups, auto-save (HMM API mocked) |

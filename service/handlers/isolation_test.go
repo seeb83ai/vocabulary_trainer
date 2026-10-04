@@ -55,6 +55,7 @@ func newRouterForUser(s *db.Store, userID int64) http.Handler {
 			r.Get("/", wordsH.GetByID)
 			r.Put("/", wordsH.Update)
 			r.Delete("/", wordsH.Delete)
+			r.Post("/translations", wordsH.AddTranslation)
 			r.Post("/review", wordsH.MarkReview)
 			r.Post("/reset", wordsH.ResetProgress)
 			r.Put("/hmm", hmmH.SaveScene)
@@ -465,7 +466,8 @@ func TestIsolation_HMMToneRooms_UserSeesOnlyOwnRooms(t *testing.T) {
 
 func TestIsolation_CreateWord_WordOnlyVisibleToCreator(t *testing.T) {
 	s := openTestDB(t)
-	r1 := newRouterForUser(s, 1)
+	// User 1 is the read-only library (ADR-0005); learner a plays "user 1".
+	r1 := newRouterForUser(s, newLearner(t, s))
 	r2 := newRouterForUser(s, 2)
 
 	// User 1 creates a word via the HTTP API.

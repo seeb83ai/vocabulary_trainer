@@ -360,8 +360,17 @@ func deriveSubwordTags(parentTags []string) []string {
 
 // createSubword inserts one auto-created sub-word (zh word + EN/DE
 // translations + tags) in its own transaction, matching the shape of
-// CreateWord but always inert (never acknowledged/started training).
+// CreateWord but always inert (never acknowledged/started training). A
+// subword in the dictionaries becomes a library reference instead.
 func (s *Store) createSubword(ctx context.Context, userID int64, tok SegmentToken, tags []string) error {
+	// A subword in the dictionaries becomes a library reference (ADR-0005).
+	if libraryID, ok, err := s.ensureLibraryWord(ctx, tok.Text); err != nil {
+		return err
+	} else if ok {
+		_, err := s.CreateReferences(ctx, userID, []int64{libraryID}, tags)
+		return err
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin subword tx: %w", err)

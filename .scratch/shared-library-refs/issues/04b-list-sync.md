@@ -1,6 +1,6 @@
 # List sync with tombstones
 
-Status: needs-triage
+Status: done
 Type: AFK
 
 ## Parent
@@ -14,12 +14,14 @@ library entries it has since the import and offers "update". Update adds referen
 the new entries and skips tombstoned entries. The screen shows "N entries you removed
 earlier · include again" to add them back.
 
+Note (implementation): the sync is a normal `POST /api/import` for the same list and tags; `include_removed` adds deleted words again. The list overview is `GET /api/import/lists`.
+
 ## Acceptance criteria
 
-- [ ] API: imported lists with new-entry and tombstone counts
-- [ ] API: sync a list, optionally including tombstoned entries
-- [ ] Sync never adds a tombstoned entry unless asked
-- [ ] Handler tests and E2E (import, delete one entry, library adds an entry, sync)
+- [x] API: imported lists with new-entry and tombstone counts
+- [x] API: sync a list, optionally including tombstoned entries
+- [x] Sync never adds a tombstoned entry unless asked
+- [x] Handler tests and E2E (import, delete one entry, library adds an entry, sync)
 
 ## Blocked by
 

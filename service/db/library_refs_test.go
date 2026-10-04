@@ -200,3 +200,366 @@ func TestLibraryReference_ReadPathsUseOverlay(t *testing.T) {
 		t.Errorf("missing de = %d, %v; want 2", missing, err)
 	}
 }
+
+func TestCreateReferences_GivesLearnerLibraryWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	eat := seedLibraryWord(t, s, "吃", "chī", map[string][]string{"en": {"to eat"}})
+	drink := seedLibraryWord(t, s, "喝", "hē", map[string][]string{"en": {"to drink"}})
+
+	ids, err := s.CreateReferences(ctx, 2, []int64{eat, drink}, []string{"hsk3-1"})
+	if err != nil {
+		t.Fatalf("CreateReferences: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("ids = %v, want 2", ids)
+	}
+	wd, err := s.GetWordByID(ctx, 2, ids[1])
+	if err != nil || wd == nil {
+		t.Fatalf("GetWordByID: %v, %v", wd, err)
+	}
+	if wd.ZhText != "喝" || wd.Pinyin == nil || *wd.Pinyin != "hē" {
+		t.Errorf("word = %q / %v, want 喝 / hē", wd.ZhText, wd.Pinyin)
+	}
+	if !reflect.DeepEqual(wd.Translations["en"], []string{"to drink"}) {
+		t.Errorf("glosses = %v", wd.Translations)
+	}
+	if !reflect.DeepEqual(wd.Tags, []string{"hsk3-1"}) {
+		t.Errorf("tags = %v", wd.Tags)
+	}
+	if wd.TotalAttempts != 0 {
+		t.Errorf("new reference is not unseen: %d attempts", wd.TotalAttempts)
+	}
+	// The import copies no glosses.
+	var links int
+	s.db.QueryRow(`SELECT COUNT(*) FROM translations t JOIN words w ON w.id = t.zh_word_id WHERE w.user_id = 2`).Scan(&links)
+	if links != 0 {
+		t.Errorf("learner has %d copied gloss links, want 0", links)
+	}
+}
+
+func overridesUpdatedAt(t *testing.T, s *Store, id int64) string {
+	t.Helper()
+	var v *string
+	if err := s.db.QueryRow(`SELECT overrides_updated_at FROM words WHERE id = ?`, id).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func TestUpdateWord_ReferenceEditsBecomeOverrides(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	lib := seedLibraryWord(t, s, "吃", "chī", map[string][]string{"en": {"to eat", "to consume"}, "de": {"essen"}})
+	other := newTestUser(t, s, "other@example.de")
+	ids, err := s.CreateReferences(ctx, 2, []int64{lib}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := ids[0]
+	otherIDs, _ := s.CreateReferences(ctx, other, []int64{lib}, nil)
+
+	// The edit form sends what the learner sees, minus "to consume", plus "to munch".
+	err = s.UpdateWord(ctx, 2, ref, models.UpdateWordRequest{
+		ZhText: "吃", Pinyin: "chī1",
+		Translations:       map[string][]string{"en": {"to eat", "to munch"}, "de": {"essen"}},
+		TranslationSources: map[string][]string{"en": {"cedict", "user"}, "de": {"cedict"}},
+	})
+	if err != nil {
+		t.Fatalf("UpdateWord: %v", err)
+	}
+	wd, _ := s.GetWordByID(ctx, 2, ref)
+	if got := wd.Translations["en"]; !reflect.DeepEqual(got, []string{"to eat", "to munch"}) {
+		t.Errorf("learner en = %v", got)
+	}
+	if wd.Pinyin == nil || *wd.Pinyin != "chī1" {
+		t.Errorf("pinyin = %v, want chī1", wd.Pinyin)
+	}
+	if overridesUpdatedAt(t, s, ref) == "" {
+		t.Error("overrides_updated_at not set")
+	}
+	owd, _ := s.GetWordByID(ctx, other, otherIDs[0])
+	if got := owd.Translations["en"]; !reflect.DeepEqual(got, []string{"to consume", "to eat"}) {
+		t.Errorf("other learner en = %v (must not change)", got)
+	}
+	if got := libraryGlosses(t, s, lib)["en"]; !reflect.DeepEqual(got, []string{"to consume", "to eat"}) {
+		t.Errorf("library en = %v (must not change)", got)
+	}
+	var libraryLinksOnRef int
+	s.db.QueryRow(`SELECT COUNT(*) FROM translations WHERE zh_word_id = ? AND source = 'cedict'`, ref).Scan(&libraryLinksOnRef)
+	if libraryLinksOnRef != 0 {
+		t.Errorf("library glosses were copied onto the reference: %d", libraryLinksOnRef)
+	}
+}
+
+func TestUpdateWord_ReferenceUnchangedGlossesAreNoOverride(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	lib := seedLibraryWord(t, s, "吃", "chī", map[string][]string{"en": {"to eat"}})
+	ids, _ := s.CreateReferences(ctx, 2, []int64{lib}, nil)
+
+	err := s.UpdateWord(ctx, 2, ids[0], models.UpdateWordRequest{
+		ZhText: "吃", Pinyin: "chī", Tags: []string{"mine"},
+		Translations:       map[string][]string{"en": {"to eat"}},
+		TranslationSources: map[string][]string{"en": {"cedict"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := overridesUpdatedAt(t, s, ids[0]); got != "" {
+		t.Errorf("overrides_updated_at = %q after saving unchanged glosses", got)
+	}
+	wd, _ := s.GetWordByID(ctx, 2, ids[0])
+	if !reflect.DeepEqual(wd.Tags, []string{"mine"}) {
+		t.Errorf("tags = %v", wd.Tags)
+	}
+}
+
+func TestUpdateWord_ReferenceNewTextBecomesOwnEntry(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	lib := seedLibraryWord(t, s, "吃", "chī", map[string][]string{"en": {"to eat"}})
+	ids, _ := s.CreateReferences(ctx, 2, []int64{lib}, nil)
+
+	err := s.UpdateWord(ctx, 2, ids[0], models.UpdateWordRequest{
+		ZhText: "吃饭", Pinyin: "chīfàn",
+		Translations: map[string][]string{"en": {"to have a meal"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := s.GetWordByID(ctx, 2, ids[0])
+	if wd.ZhText != "吃饭" || !reflect.DeepEqual(wd.Translations["en"], []string{"to have a meal"}) {
+		t.Errorf("word = %q %v", wd.ZhText, wd.Translations)
+	}
+	var libID *int64
+	s.db.QueryRow(`SELECT library_word_id FROM words WHERE id = ?`, ids[0]).Scan(&libID)
+	if libID != nil {
+		t.Errorf("still a reference to %d", *libID)
+	}
+}
+
+func TestAddTranslation_Reference(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	lib := seedLibraryWord(t, s, "吃", "chī", map[string][]string{"en": {"to eat", "to consume"}})
+	ids, _ := s.CreateReferences(ctx, 2, []int64{lib}, nil)
+	ref := ids[0]
+	if err := s.UpdateWord(ctx, 2, ref, models.UpdateWordRequest{ZhText: "吃",
+		Translations:       map[string][]string{"en": {"to eat"}},
+		TranslationSources: map[string][]string{"en": {"cedict"}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-adding a deleted library gloss restores it as a library gloss.
+	if err := s.AddTranslation(ctx, 2, ref, "en", "to consume"); err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := s.GetWordByID(ctx, 2, ref)
+	if !reflect.DeepEqual(wd.TranslationSources["en"], []string{"cedict", "cedict"}) {
+		t.Errorf("sources = %v %v, want the two library glosses", wd.Translations["en"], wd.TranslationSources["en"])
+	}
+	if got := overridesUpdatedAt(t, s, ref); got != "" {
+		t.Errorf("overrides_updated_at = %q with no overrides left", got)
+	}
+
+	// A new gloss becomes the learner's own.
+	if err := s.AddTranslation(ctx, 2, ref, "en", "to munch"); err != nil {
+		t.Fatal(err)
+	}
+	wd, _ = s.GetWordByID(ctx, 2, ref)
+	if !reflect.DeepEqual(wd.Translations["en"], []string{"to consume", "to eat", "to munch"}) {
+		t.Errorf("en = %v", wd.Translations["en"])
+	}
+	if overridesUpdatedAt(t, s, ref) == "" {
+		t.Error("overrides_updated_at not set")
+	}
+}
+
+func TestDeleteWord_ReferenceLeavesTombstone(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	lib := seedLibraryWord(t, s, "吃", "chī", map[string][]string{"en": {"to eat"}})
+	ids, _ := s.CreateReferences(ctx, 2, []int64{lib}, nil)
+
+	if err := s.DeleteWord(ctx, 2, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	stones, err := s.TombstonedLibraryWords(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stones[lib] {
+		t.Errorf("tombstones = %v, want library word %d", stones, lib)
+	}
+	if libraryGlosses(t, s, lib)["en"] == nil {
+		t.Error("library word lost its glosses")
+	}
+
+	// Importing it again clears the tombstone.
+	if _, err := s.CreateReferences(ctx, 2, []int64{lib}, nil); err != nil {
+		t.Fatal(err)
+	}
+	stones, _ = s.TombstonedLibraryWords(ctx, 2)
+	if stones[lib] {
+		t.Error("tombstone kept after re-adding the word")
+	}
+}
+
+func seedLibraryListWord(t *testing.T, s *Store, zh, gloss string, tags ...string) int64 {
+	t.Helper()
+	id, err := s.CreateWord(context.Background(), testLibraryUserID, models.CreateWordRequest{
+		ZhText: zh, Tags: tags,
+		Translations:       map[string][]string{"en": {gloss}},
+		TranslationSources: map[string][]string{"en": {"cedict"}},
+	})
+	if err != nil {
+		t.Fatalf("seed library list word %q: %v", zh, err)
+	}
+	return id
+}
+
+func finishedImport(t *testing.T, s *Store, userID int64, spec models.ImportJob) {
+	t.Helper()
+	ctx := context.Background()
+	job, err := s.CreateImportJob(ctx, userID, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishImportJob(ctx, job.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestImportedLists_CountsNewAndRemovedWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedLibraryListWord(t, s, "一", "one", "hsk3-1")
+	b := seedLibraryListWord(t, s, "二", "two", "hsk3-1")
+	seedLibraryListWord(t, s, "三", "three", "hsk3-2")
+	finishedImport(t, s, 2, models.ImportJob{Tag: "hsk3-1", ApplyTags: []string{"hsk3-1"}})
+	ids, err := s.CreateReferences(ctx, 2, []int64{a, b}, []string{"hsk3-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The learner deletes 二; the library adds 四 to the list later.
+	if err := s.DeleteWord(ctx, 2, ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	seedLibraryListWord(t, s, "四", "four", "hsk3-1")
+
+	lists, err := s.ImportedLists(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []models.ImportedList{{Tag: "hsk3-1", AndTags: []string{}, ApplyTags: []string{"hsk3-1"}, New: 1, Removed: 1}}
+	if !reflect.DeepEqual(lists, want) {
+		t.Errorf("lists = %+v, want %+v", lists, want)
+	}
+}
+
+// conflictSetup gives learner 2 an edited reference to 吃 in list hsk3-1
+// (added "to munch"), edited before a dictionary update.
+func conflictSetup(t *testing.T) (*Store, int64) {
+	t.Helper()
+	s := openTestDB(t)
+	ctx := context.Background()
+	eat := seedBareLibraryWord(t, s, "吃", "chī")
+	if err := s.AddWordTags(ctx, testLibraryUserID, eat, []string{"hsk3-1"}); err != nil {
+		t.Fatal(err)
+	}
+	seedCedict(t, s, "吃", "en", "to eat")
+	if _, err := s.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := s.CreateReferences(ctx, 2, []int64{eat}, []string{"hsk3-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AddTranslation(ctx, 2, ids[0], "en", "to munch"); err != nil {
+		t.Fatal(err)
+	}
+	s.db.Exec(`UPDATE words SET overrides_updated_at = '2000-01-01 00:00:00' WHERE id = ?`, ids[0])
+	seedCedict(t, s, "吃", "en", "to dine")
+	if _, err := s.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return s, ids[0]
+}
+
+func TestLibraryConflicts_ListsEditedReferencesTheLibraryChanged(t *testing.T) {
+	s, ref := conflictSetup(t)
+	ctx := context.Background()
+
+	conflicts, err := s.LibraryConflicts(ctx, 2, "hsk3-1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []models.LibraryConflict{{
+		WordID: ref, ZhText: "吃",
+		Library: map[string][]string{"en": {"to dine", "to eat"}},
+		Mine:    map[string][]string{"en": {"to dine", "to eat", "to munch"}},
+	}}
+	if !reflect.DeepEqual(conflicts, want) {
+		t.Errorf("conflicts = %+v, want %+v", conflicts, want)
+	}
+}
+
+func TestResolveLibraryConflicts(t *testing.T) {
+	for _, keep := range []string{"mine", "library"} {
+		t.Run(keep, func(t *testing.T) {
+			s, ref := conflictSetup(t)
+			ctx := context.Background()
+			if err := s.ResolveLibraryConflicts(ctx, 2, []int64{ref}, keep); err != nil {
+				t.Fatal(err)
+			}
+			conflicts, _ := s.LibraryConflicts(ctx, 2, "hsk3-1", nil)
+			if len(conflicts) != 0 {
+				t.Errorf("conflicts after resolve = %+v", conflicts)
+			}
+			wd, _ := s.GetWordByID(ctx, 2, ref)
+			want := []string{"to dine", "to eat", "to munch"}
+			if keep == "library" {
+				want = []string{"to dine", "to eat"}
+			}
+			if !reflect.DeepEqual(wd.Translations["en"], want) {
+				t.Errorf("en = %v, want %v", wd.Translations["en"], want)
+			}
+		})
+	}
+}
+
+func TestImportedLists_CountsConflicts(t *testing.T) {
+	s, _ := conflictSetup(t)
+	finishedImport(t, s, 2, models.ImportJob{Tag: "hsk3-1", ApplyTags: []string{"hsk3-1"}})
+	lists, err := s.ImportedLists(context.Background(), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lists) != 1 || lists[0].Conflicts != 1 {
+		t.Errorf("lists = %+v, want 1 conflict", lists)
+	}
+}
+
+func TestUpdateWord_ReferenceTypedGlossStaysLearnersOwn(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	lib := seedLibraryWord(t, s, "年", "nián", map[string][]string{"en": {"year"}})
+	ids, _ := s.CreateReferences(ctx, 2, []int64{lib}, nil)
+
+	// The learner types "year" themselves (source user) next to "annual".
+	if err := s.UpdateWord(ctx, 2, ids[0], models.UpdateWordRequest{ZhText: "年",
+		Translations:       map[string][]string{"en": {"year", "annual"}},
+		TranslationSources: map[string][]string{"en": {"user", "user"}}}); err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := s.GetWordByID(ctx, 2, ids[0])
+	if !reflect.DeepEqual(wd.Translations["en"], []string{"annual", "year"}) ||
+		!reflect.DeepEqual(wd.TranslationSources["en"], []string{"user", "user"}) {
+		t.Errorf("en = %v %v, want both glosses as the learner's own", wd.Translations["en"], wd.TranslationSources["en"])
+	}
+}

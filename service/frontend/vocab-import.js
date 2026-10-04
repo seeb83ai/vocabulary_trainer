@@ -157,6 +157,9 @@ function switchTab(name) {
   if (name === 'import' && !importSourceTagsLoaded) {
     loadImportSourceTags();
   }
+  if (name === 'import') {
+    loadMyLists();
+  }
   if (name === 'tags' && !tagsLoaded) {
     loadTagDetails();
   }
@@ -301,6 +304,20 @@ function showImportStep(n) {
     const el = $('import-step' + i);
     if (el) el.classList.toggle('hidden', i !== n);
   });
+  if (n === 2) showImportLangsHint();
+}
+
+// showImportLangsHint names the languages the imported words show
+// translations in: the learner's primary and secondary language.
+async function showImportLangsHint() {
+  const label = $('import-langs-label');
+  if (!label) return;
+  try {
+    const st = await apiFetch('/api/settings');
+    label.textContent = t('vocab.importLangsHint', { langs: nativeLangsLabel(st.primary_lang || 'en', st.secondary_lang) });
+  } catch (e) {
+    label.textContent = '';
+  }
 }
 
 function renderImportApplyTags() {
@@ -359,8 +376,7 @@ async function executeImport() {
   show('import-status');
 
   try {
-    const result = await importLists(importSelectedTags, importApplyTags,
-      $('import-en').checked, $('import-de').checked, undefined,
+    const result = await importLists(importSelectedTags, importApplyTags, undefined,
       summary => { statusEl.textContent = importProgressText(summary); });
     statusEl.className = 'mt-3 text-sm text-green-600';
     statusEl.textContent = importResultText(result);
@@ -394,6 +410,124 @@ function resetImportPanel() {
   hide('import-preview');
   $('import-next-btn').disabled = true;
   hide('import-status');
-  if ($('import-en')) $('import-en').checked = true;
-  if ($('import-de')) $('import-de').checked = false;
+}
+
+// ── Imported lists: sync new words, removed words, library changes ─────────
+
+let myLists = [];
+let openConflicts = null; // { list, conflicts }
+
+function listLabel(list) {
+  return [list.tag, ...(list.and_tags || [])].join(' + ');
+}
+
+async function loadMyLists() {
+  try {
+    myLists = await apiFetch('/api/import/lists');
+  } catch (e) {
+    myLists = [];
+  }
+  renderMyLists();
+}
+
+function renderMyLists() {
+  const rows = $('import-my-lists-rows');
+  if (!rows) return;
+  $('import-my-lists').classList.toggle('hidden', myLists.length === 0);
+  rows.innerHTML = '';
+  myLists.forEach((list, i) => {
+    const li = document.createElement('li');
+    li.className = 'flex flex-wrap items-center gap-x-3 gap-y-1';
+    li.id = `import-my-list-${i}`;
+    const parts = [`<span class="font-medium text-gray-800">${escHtml(listLabel(list))}</span>`];
+    if (list.new > 0) {
+      parts.push(`<button type="button" class="text-blue-700 hover:underline" data-sync="${i}">${escHtml(t('import.newWords', { n: list.new }))} · ${escHtml(t('import.update'))}</button>`);
+    } else {
+      parts.push(`<span class="text-gray-500">${escHtml(t('import.upToDate'))}</span>`);
+    }
+    if (list.removed > 0) {
+      parts.push(`<button type="button" class="text-gray-600 hover:underline" data-include="${i}">${escHtml(t('import.removedEarlier', { n: list.removed }))} · ${escHtml(t('import.includeAgain'))}</button>`);
+    }
+    if (list.conflicts > 0) {
+      parts.push(`<button type="button" class="text-amber-700 hover:underline" data-review="${i}">${escHtml(t('import.conflicts', { n: list.conflicts }))} · ${escHtml(t('import.review'))}</button>`);
+    }
+    li.innerHTML = parts.join('');
+    rows.appendChild(li);
+  });
+  rows.querySelectorAll('[data-sync]').forEach(btn => btn.addEventListener('click', () => syncList(myLists[btn.dataset.sync], false, btn)));
+  rows.querySelectorAll('[data-include]').forEach(btn => btn.addEventListener('click', () => syncList(myLists[btn.dataset.include], true, btn)));
+  rows.querySelectorAll('[data-review]').forEach(btn => btn.addEventListener('click', () => openConflictPanel(myLists[btn.dataset.review])));
+}
+
+async function syncList(list, includeRemoved, btn) {
+  btn.disabled = true;
+  btn.textContent = t('vocab.importing');
+  try {
+    const jobs = [await queueImportJob(buildListSyncPayload(list, includeRemoved))];
+    await waitForImport(jobs, summary => summary.finished);
+    loadWords();
+  } catch (e) {
+    btn.textContent = e.message;
+  }
+  await loadMyLists();
+}
+
+async function openConflictPanel(list) {
+  const params = new URLSearchParams({ tag: list.tag });
+  for (const tg of list.and_tags || []) params.append('and_tag', tg);
+  const conflicts = await apiFetch('/api/import/conflicts?' + params);
+  openConflicts = { list, conflicts };
+  setText('import-conflicts-title', t('import.conflictsTitle', { list: listLabel(list), n: conflicts.length }));
+  renderConflictRows();
+  show('import-conflicts');
+}
+
+function renderConflictRows() {
+  const rows = $('import-conflicts-rows');
+  rows.innerHTML = '';
+  openConflicts.conflicts.forEach(c => {
+    const li = document.createElement('li');
+    li.className = 'rounded border border-amber-200 bg-white p-2';
+    li.id = `import-conflict-${c.word_id}`;
+    const diffs = Object.entries(conflictDiff(c)).map(([lang, d]) => {
+      const lib = d.onlyLibrary.length ? `${escHtml(t('import.libraryVersion'))}: ${d.onlyLibrary.map(escHtml).join(', ')}` : '';
+      const mine = d.onlyMine.length ? `${escHtml(t('import.myVersion'))}: ${d.onlyMine.map(escHtml).join(', ')}` : '';
+      return `<div class="text-gray-600"><span class="uppercase text-xs text-gray-400">${escHtml(lang)}</span> ${[lib, mine].filter(Boolean).join(' · ')}</div>`;
+    }).join('');
+    li.innerHTML = `<div class="flex flex-wrap items-center gap-2">
+        <span class="font-medium text-gray-800">${escHtml(c.zh_text)}</span>
+        <button type="button" class="ml-auto text-xs text-gray-600 hover:underline" data-keep="mine">${escHtml(t('import.keepMine'))}</button>
+        <button type="button" class="text-xs text-blue-700 hover:underline" data-keep="library">${escHtml(t('import.takeLibrary'))}</button>
+      </div>${diffs}`;
+    li.querySelectorAll('[data-keep]').forEach(btn => btn.addEventListener('click', () => resolveConflicts([c.word_id], btn.dataset.keep)));
+    rows.appendChild(li);
+  });
+}
+
+async function resolveConflicts(wordIDs, keep) {
+  await apiFetch('/api/import/conflicts/resolve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ word_ids: wordIDs, keep }),
+  });
+  openConflicts.conflicts = openConflicts.conflicts.filter(c => !wordIDs.includes(c.word_id));
+  if (openConflicts.conflicts.length === 0) {
+    closeConflictPanel();
+  } else {
+    setText('import-conflicts-title', t('import.conflictsTitle', { list: listLabel(openConflicts.list), n: openConflicts.conflicts.length }));
+    renderConflictRows();
+  }
+  loadWords();
+  await loadMyLists();
+}
+
+function closeConflictPanel() {
+  openConflicts = null;
+  hide('import-conflicts');
+}
+
+function initConflictPanel() {
+  $('import-conflicts-mine').addEventListener('click', () => resolveConflicts(openConflicts.conflicts.map(c => c.word_id), 'mine'));
+  $('import-conflicts-library').addEventListener('click', () => resolveConflicts(openConflicts.conflicts.map(c => c.word_id), 'library'));
+  $('import-conflicts-close').addEventListener('click', closeConflictPanel);
 }

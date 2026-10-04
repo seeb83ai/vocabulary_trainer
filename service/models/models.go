@@ -847,22 +847,25 @@ type AdminOverview struct {
 // Total and Done count source words; Imported, Tagged and Skipped are the
 // per-outcome counters. Status is queued, running, done or failed.
 type ImportJob struct {
-	ID          int64     `json:"id"`
-	UserID      int64     `json:"-"`
-	Tag         string    `json:"tag"`
-	ImportLangs []string  `json:"-"`
-	ApplyTags   []string  `json:"-"`
-	AndTags     []string  `json:"-"`
-	ImportMode  string    `json:"import_mode"`
-	Status      string    `json:"status"`
-	Total       int       `json:"total"`
-	Done        int       `json:"done"`
-	Imported    int       `json:"imported"`
-	Tagged      int       `json:"tagged"`
-	Skipped     int       `json:"skipped"`
-	Error       string    `json:"error,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          int64    `json:"id"`
+	UserID      int64    `json:"-"`
+	Tag         string   `json:"tag"`
+	ImportLangs []string `json:"-"`
+	ApplyTags   []string `json:"-"`
+	AndTags     []string `json:"-"`
+	ImportMode  string   `json:"import_mode"`
+	// IncludeRemoved adds library words the learner deleted earlier
+	// (tombstones); by default the import skips them.
+	IncludeRemoved bool      `json:"include_removed"`
+	Status         string    `json:"status"`
+	Total          int       `json:"total"`
+	Done           int       `json:"done"`
+	Imported       int       `json:"imported"`
+	Tagged         int       `json:"tagged"`
+	Skipped        int       `json:"skipped"`
+	Error          string    `json:"error,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // LibraryRefreshReport summarises one RefreshLibrary run. Words is the number
@@ -876,4 +879,29 @@ type LibraryRefreshReport struct {
 	Added   int `json:"added"`
 	Dropped int `json:"dropped"`
 	Missing int `json:"missing"`
+}
+
+// ImportedList is a library list (tag, optionally narrowed by AndTags) the
+// learner imported. ApplyTags are the tags of the last import. New counts
+// library words of the list the learner does not have yet (and did not
+// delete); Removed counts words of the list the learner deleted.
+type ImportedList struct {
+	Tag       string   `json:"tag"`
+	AndTags   []string `json:"and_tags"`
+	ApplyTags []string `json:"apply_tags"`
+	New       int      `json:"new"`
+	Removed   int      `json:"removed"`
+	// Conflicts counts references the learner changed before the library
+	// changed them (see LibraryConflict).
+	Conflicts int `json:"conflicts"`
+}
+
+// LibraryConflict is a library reference the learner changed before the
+// library word changed: Library holds the library glosses now (in the
+// learner's languages), Mine the glosses the learner sees.
+type LibraryConflict struct {
+	WordID  int64               `json:"word_id"`
+	ZhText  string              `json:"zh_text"`
+	Library map[string][]string `json:"library"`
+	Mine    map[string][]string `json:"mine"`
 }

@@ -491,6 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Header: Add word / Import / ⋯ menu, and the sheet
   $('open-add-btn').addEventListener('click', () => { resetForm(); openVocabSheet('add'); $('form-zh').focus(); });
   $('open-import-btn').addEventListener('click', () => openVocabSheet('import'));
+  initConflictPanel();
   $('vocab-menu-btn').addEventListener('click', e => { e.stopPropagation(); toggleVocabMenu(); });
   document.addEventListener('click', e => {
     if (!$('vocab-menu').classList.contains('hidden') && !e.target.closest('.vb-menu-wrap')) toggleVocabMenu(false);

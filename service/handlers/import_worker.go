@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"slices"
 	"sort"
 	"vocabulary_trainer/models"
 )
@@ -106,9 +105,11 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 	}
 
 	p := models.ImportJob{Total: len(sourceWords)}
-	importSet := map[string]bool{}
-	for _, l := range job.ImportLangs {
-		importSet[l] = true
+	removed := map[int64]bool{}
+	if !job.IncludeRemoved {
+		if removed, err = w.store.TombstonedLibraryWords(ctx, job.UserID); err != nil {
+			return fmt.Errorf("load deleted words: %w", err)
+		}
 	}
 
 	var toImport []models.WordDetail
@@ -116,6 +117,12 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 		// A word the user already has is never imported twice; it only gets
 		// the import's tags added, so it also shows up under the new list.
 		existingID, exists := existingZhTexts[sw.ZhText]
+		if !exists && removed[sw.ID] {
+			// The user deleted this word earlier: skip it unless asked.
+			p.Done++
+			p.Skipped++
+			continue
+		}
 		if !exists {
 			toImport = append(toImport, sw)
 			continue
@@ -136,45 +143,27 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 
 	for start := 0; start < len(toImport); start += importChunkSize {
 		chunk := toImport[start:min(start+importChunkSize, len(toImport))]
-		texts := make([]string, len(chunk))
+		libraryIDs := make([]int64, len(chunk))
 		for i, sw := range chunk {
-			texts[i] = sw.ZhText
+			libraryIDs[i] = sw.ID
 		}
-		dict, err := w.store.LookupDictionaryBatch(ctx, texts, dictLangs)
+		withGlosses, err := w.store.LibraryWordsWithGlosses(ctx, job.UserID, libraryIDs)
 		if err != nil {
-			return fmt.Errorf("load dictionary translations: %w", err)
+			return fmt.Errorf("check library glosses: %w", err)
 		}
-
-		reqs := make([]models.CreateWordRequest, 0, len(chunk))
-		for _, sw := range chunk {
-			translations := map[string][]string{}
-			sources := map[string][]string{}
-			for lang, defs := range dict[sw.ZhText] {
-				if len(job.ImportLangs) == 0 || importSet[lang] {
-					translations[lang] = defs
-					// The translations come verbatim from the dictionary.
-					sources[lang] = slices.Repeat([]string{"cedict"}, len(defs))
-				}
-			}
-			if len(translations) == 0 {
+		// The learner gets references to the library words (ADR-0005); a
+		// word with no gloss in the learner's languages is skipped.
+		refIDs := libraryIDs[:0:0]
+		for _, id := range libraryIDs {
+			if withGlosses[id] {
+				refIDs = append(refIDs, id)
+			} else {
 				p.Skipped++
-				continue
 			}
-			pinyin := ""
-			if sw.Pinyin != nil {
-				pinyin = *sw.Pinyin
-			}
-			reqs = append(reqs, models.CreateWordRequest{
-				ZhText:             sw.ZhText,
-				Pinyin:             pinyin,
-				Translations:       translations,
-				TranslationSources: sources,
-				Tags:               job.ApplyTags,
-			})
 		}
-		ids, err := w.store.CreateWordsBatch(ctx, job.UserID, reqs)
+		ids, err := w.store.CreateReferences(ctx, job.UserID, refIDs, job.ApplyTags)
 		if err != nil {
-			return fmt.Errorf("create words: %w", err)
+			return fmt.Errorf("create references: %w", err)
 		}
 		for _, id := range ids {
 			switch job.ImportMode {
@@ -187,7 +176,7 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 				return fmt.Errorf("apply import mode: %w", err)
 			}
 		}
-		p.Imported += len(reqs)
+		p.Imported += len(ids)
 		p.Done += len(chunk)
 		if err := w.store.UpdateImportJobProgress(ctx, job.ID, p); err != nil {
 			return err

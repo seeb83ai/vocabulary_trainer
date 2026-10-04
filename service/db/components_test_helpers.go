@@ -196,3 +196,11 @@ func (s *Store) SeedDailyStatBucketsForTest(ctx context.Context, userID int64, d
 		userID, bNew, bStruggling, bLearning, bPracticing, bMastered)
 	return err
 }
+
+// BackdateOverridesForTest marks a learner's changes on a library reference
+// as made long ago, so a following library refresh counts as newer.
+// Intended for use in tests only.
+func (s *Store) BackdateOverridesForTest(ctx context.Context, wordID int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE words SET overrides_updated_at = '2000-01-01 00:00:00' WHERE id = ?`, wordID)
+	return err
+}

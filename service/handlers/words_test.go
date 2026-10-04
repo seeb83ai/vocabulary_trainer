@@ -707,3 +707,24 @@ func TestSetKnown_UnknownWordIs404(t *testing.T) {
 		t.Errorf("want 404, got %d", rec.Code)
 	}
 }
+
+func TestWords_LibraryUserCannotChangeWords(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWordForUser(t, s, 1, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouterForUser(s, 1)
+
+	for _, c := range []struct {
+		method, path string
+		body         any
+	}{
+		{"POST", "/api/words/", map[string]any{"zh_text": "谢谢", "translations": map[string][]string{"en": {"thanks"}}}},
+		{"PUT", fmt.Sprintf("/api/words/%d", id), map[string]any{"zh_text": "你好", "translations": map[string][]string{"en": {"hi"}}}},
+		{"POST", fmt.Sprintf("/api/words/%d/translations", id), map[string]any{"text": "hi", "lang": "en"}},
+		{"DELETE", fmt.Sprintf("/api/words/%d", id), nil},
+	} {
+		rec := do(t, r, c.method, c.path, c.body)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s %s: want 403, got %d: %s", c.method, c.path, rec.Code, rec.Body)
+		}
+	}
+}

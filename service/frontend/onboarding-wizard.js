@@ -68,7 +68,16 @@ function wizardSettingsPatch(current, choices) {
     max_new_words_per_day: choices.pace,
     gamification_enabled: choices.game,
     autoplay_always: choices.audio,
+    ...wizardLangSettings(current, choices.langs),
   };
+}
+
+// wizardLangSettings turns the "Meaning in" choice into the primary and
+// secondary language, which decide the translations of library words.
+function wizardLangSettings(current, langs) {
+  if (!langs || !langs.length) return {};
+  const primary = langs.includes(current.primary_lang) ? current.primary_lang : langs[0];
+  return { primary_lang: primary, secondary_lang: langs.find(l => l !== primary) || '' };
 }
 
 // Topic lists in the shared library are tags named "topic-<id>". The labels
@@ -255,14 +264,12 @@ async function wizardImport() {
   const view = wizardView(s, wizard.tags);
   wizardSet({ busy: true, error: '' });
   try {
-    const en = s.langs.includes('en');
-    const de = s.langs.includes('de');
     const topicTags = wizard.topics.filter(tp => s.topics.includes(tp.id)).map(tp => tp.tag);
     // One job per list, queued in order. Training can start once the first
     // trainable chunk is in; the rest keeps importing in the background.
     const jobs = [];
     for (const group of wizardImportGroups(view.plan, s.below, topicTags)) {
-      jobs.push(...await startListImports(group.tags, group.tags, en, de, group.mode));
+      jobs.push(...await startListImports(group.tags, group.tags, group.mode));
     }
     await waitForImport(jobs, summary => summary.canStart);
 
@@ -284,13 +291,17 @@ async function wizardLibraryImport() {
   const s = wizard.state;
   wizardSet({ busy: true, error: '' });
   try {
-    const en = s.libLangs.includes('en');
-    const de = s.libLangs.includes('de');
+    const current = await apiFetch('/api/settings');
+    await apiFetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...current, ...wizardLangSettings(current, s.libLangs) }),
+    });
     const jobs = s.match === 'all'
-      ? await startMatchAllImport(s.sel, en, de, 'include')
-      : await startListImports(s.sel, s.sel, en, de, 'include');
+      ? await startMatchAllImport(s.sel, 'include')
+      : await startListImports(s.sel, s.sel, 'include');
     await waitForImport(jobs, summary => summary.canStart);
-    await wizardSaveFilters(await apiFetch('/api/settings'), s.libLangs);
+    await wizardSaveFilters(current, s.libLangs);
     wizardSet({ busy: false, libDone: true });
   } catch (err) {
     wizardSet({ busy: false, error: t('wz.failed') });

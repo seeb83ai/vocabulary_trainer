@@ -118,7 +118,7 @@ func linkRank(t *testing.T, s *Store, zhID int64, text string) sql.NullInt64 {
 	t.Helper()
 	var rank sql.NullInt64
 	if err := s.db.QueryRow(
-		`SELECT t.rank FROM translations t JOIN words w ON w.id = t.translation_word_id
+		`SELECT t.rank FROM user_translations t JOIN words w ON w.id = t.translation_word_id
 		 WHERE t.zh_word_id = ? AND w.text = ?`, zhID, text).Scan(&rank); err != nil {
 		t.Fatalf("select translation rank %q: %v", text, err)
 	}

@@ -1,6 +1,6 @@
 # Import as library references
 
-Status: needs-triage
+Status: done
 Type: AFK
 
 ## Parent
@@ -17,14 +17,16 @@ reference removes all per-user rows for the entry and writes a tombstone. Word w
 the library user are rejected. The import screen drops the language checkboxes and shows
 "Translations: EN + DE · change in Settings".
 
+Note (implementation): the E2E setup now builds the library with `import-hsk`/`import-topics` from fixtures, because the library user can no longer write words through the API. The wizard's *Meaning in* choice now also sets the primary/secondary language.
+
 ## Acceptance criteria
 
-- [ ] Import creates references; no gloss words or links are copied
-- [ ] Add/delete/change gloss on a reference = overrides; other learners unaffected
-- [ ] Pinyin override shown everywhere pinyin shows
-- [ ] Delete works as today (cascade) and writes a tombstone; manual add clears it
-- [ ] Library user word writes return an error
-- [ ] Handler and DB tests; E2E for import and edit of a reference
+- [x] Import creates references; no gloss words or links are copied
+- [x] Add/delete/change gloss on a reference = overrides; other learners unaffected
+- [x] Pinyin override shown everywhere pinyin shows
+- [x] Delete works as today (cascade) and writes a tombstone; manual add clears it
+- [x] Library user word writes return an error
+- [x] Handler and DB tests; E2E for import and edit of a reference
 
 ## Blocked by
 

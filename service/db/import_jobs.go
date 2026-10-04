@@ -8,12 +8,12 @@ import (
 	"vocabulary_trainer/models"
 )
 
-const importJobColumns = `id, user_id, tag, import_langs, apply_tags, and_tags, import_mode, status, total, done, imported, tagged, skipped, error, created_at, updated_at`
+const importJobColumns = `id, user_id, tag, import_langs, apply_tags, and_tags, import_mode, include_removed, status, total, done, imported, tagged, skipped, error, created_at, updated_at`
 
 func scanImportJob(row interface{ Scan(...any) error }) (*models.ImportJob, error) {
 	var j models.ImportJob
 	var langs, applyTags, andTags, createdAt, updatedAt string
-	if err := row.Scan(&j.ID, &j.UserID, &j.Tag, &langs, &applyTags, &andTags, &j.ImportMode, &j.Status,
+	if err := row.Scan(&j.ID, &j.UserID, &j.Tag, &langs, &applyTags, &andTags, &j.ImportMode, &j.IncludeRemoved, &j.Status,
 		&j.Total, &j.Done, &j.Imported, &j.Tagged, &j.Skipped, &j.Error, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
@@ -59,9 +59,9 @@ func (s *Store) CreateImportJob(ctx context.Context, userID int64, spec models.I
 		return nil, fmt.Errorf("find active import job: %w", err)
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO import_jobs (user_id, tag, import_langs, apply_tags, and_tags, import_mode)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		userID, spec.Tag, jsonList(spec.ImportLangs), jsonList(spec.ApplyTags), andTags, spec.ImportMode)
+		`INSERT INTO import_jobs (user_id, tag, import_langs, apply_tags, and_tags, import_mode, include_removed)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		userID, spec.Tag, jsonList(spec.ImportLangs), jsonList(spec.ApplyTags), andTags, spec.ImportMode, spec.IncludeRemoved)
 	if err != nil {
 		return nil, fmt.Errorf("create import job: %w", err)
 	}

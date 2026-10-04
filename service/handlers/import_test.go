@@ -31,6 +31,11 @@ func runImport(t *testing.T, s *db.Store, r http.Handler, body map[string]any) i
 	}
 	var queued importJobResp
 	decodeJSON(t, rec, &queued)
+	// The server fills the library from the dictionaries at startup (and
+	// cmd/refresh-library later); tests seed both, so refresh here.
+	if _, err := s.RefreshLibrary(context.Background()); err != nil {
+		t.Fatalf("RefreshLibrary: %v", err)
+	}
 	if err := handlers.NewImportWorker(s).RunPending(context.Background()); err != nil {
 		t.Fatalf("RunPending: %v", err)
 	}
@@ -383,17 +388,25 @@ func TestImport_DeFlag(t *testing.T) {
 	}
 }
 
-func TestImport_DeFlagFalse(t *testing.T) {
+func TestImport_LanguagesFollowLearnerSettings(t *testing.T) {
 	s := openTestDB(t)
+	ctx := context.Background()
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
 	seedCedictEntry(t, s, "你好", "en", "hello")
 	seedCedictEntry(t, s, "你好", "de", "Hallo")
+	st, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.SecondaryLang = ""
+	if err := s.UpdateUserSettings(ctx, 2, *st); err != nil {
+		t.Fatal(err)
+	}
 
 	r := newRouter(s)
 	runImport(t, s, r, map[string]any{
-		"tag":          "HSK1",
-		"import_langs": []string{"en"},
-		"apply_tags":   []string{},
+		"tag":        "HSK1",
+		"apply_tags": []string{},
 	})
 
 	listRec := do(t, r, "GET", "/api/words/", nil)
@@ -407,7 +420,7 @@ func TestImport_DeFlagFalse(t *testing.T) {
 		t.Fatal("no words returned")
 	}
 	if len(listResp.Words[0].Translations["de"]) != 0 {
-		t.Errorf("expected no DE translations, got %v", listResp.Words[0].Translations["de"])
+		t.Errorf("expected no DE translations without a secondary language, got %v", listResp.Words[0].Translations["de"])
 	}
 }
 
@@ -676,6 +689,9 @@ func TestImportWorker_ResumesInterruptedJobWithoutDuplicates(t *testing.T) {
 	if err := s.StartImportJob(ctx, job.ID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := handlers.NewImportWorker(s).RunPending(ctx); err != nil {
 		t.Fatalf("RunPending: %v", err)
@@ -751,5 +767,141 @@ func TestImportJob_StoresFrequencyRankForDictionaryTranslations(t *testing.T) {
 	}
 	if cands[0].Source != "cedict" || cands[0].Rank == nil || *cands[0].Rank != 7777 {
 		t.Errorf("candidate = %+v, want source cedict and rank 7777", cands[0])
+	}
+}
+
+func TestImport_DictionaryUpdateReachesImportedWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"HSK1"})
+	seedCedictEntry(t, s, "你好", "en", "hello")
+
+	r := newRouter(s)
+	runImport(t, s, r, map[string]any{"tag": "HSK1", "apply_tags": []string{"HSK1"}})
+
+	// A new dictionary version adds a sense; the library refresh must reach
+	// the learner without a new import.
+	seedCedictEntry(t, s, "你好", "en", "hi")
+	if _, err := s.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+	listRec := do(t, r, "GET", "/api/words/?tags=HSK1", nil)
+	var listResp struct {
+		Words []struct {
+			Translations map[string][]string `json:"translations"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if len(listResp.Words) != 1 {
+		t.Fatalf("want 1 word, got %d", len(listResp.Words))
+	}
+	if got := fmt.Sprint(listResp.Words[0].Translations["en"]); got != "[hello hi]" {
+		t.Errorf("en = %s, want [hello hi]", got)
+	}
+}
+
+func TestImport_SkipsDeletedWordsUnlessIncludeRemoved(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWordFull(t, s, 1, "一", "yī", nil, nil, []string{"hsk3-1"})
+	seedWordFull(t, s, 1, "二", "èr", nil, nil, []string{"hsk3-1"})
+	seedCedictEntry(t, s, "一", "en", "one")
+	seedCedictEntry(t, s, "二", "en", "two")
+	r := newRouter(s)
+	runImport(t, s, r, map[string]any{"tag": "hsk3-1", "apply_tags": []string{"hsk3-1"}})
+
+	id, err := s.GetWordIDByZhText(ctx, 2, "二")
+	if err != nil || id == 0 {
+		t.Fatalf("二 not imported: %d, %v", id, err)
+	}
+	if rec := do(t, r, "DELETE", fmt.Sprintf("/api/words/%d", id), nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+
+	// Importing the list again does not bring the deleted word back.
+	job := runImport(t, s, r, map[string]any{"tag": "hsk3-1", "apply_tags": []string{"hsk3-1"}})
+	if job.Imported != 0 {
+		t.Errorf("re-import imported %d words, want 0", job.Imported)
+	}
+	if id, _ := s.GetWordIDByZhText(ctx, 2, "二"); id != 0 {
+		t.Error("deleted word came back")
+	}
+
+	// include_removed adds it again.
+	job = runImport(t, s, r, map[string]any{"tag": "hsk3-1", "apply_tags": []string{"hsk3-1"}, "include_removed": true})
+	if job.Imported != 1 {
+		t.Errorf("include_removed imported %d words, want 1", job.Imported)
+	}
+	if id, _ := s.GetWordIDByZhText(ctx, 2, "二"); id == 0 {
+		t.Error("deleted word not added again")
+	}
+}
+
+func TestImportLists_ReportsNewWordsOfImportedLists(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "一", "yī", nil, nil, []string{"hsk3-1"})
+	seedCedictEntry(t, s, "一", "en", "one")
+	seedCedictEntry(t, s, "二", "en", "two")
+	r := newRouter(s)
+	runImport(t, s, r, map[string]any{"tag": "hsk3-1", "apply_tags": []string{"hsk3-1"}})
+
+	// The library adds 二 to the list after the import.
+	seedWordFull(t, s, 1, "二", "èr", nil, nil, []string{"hsk3-1"})
+	if _, err := s.RefreshLibrary(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "GET", "/api/import/lists", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var lists []models.ImportedList
+	decodeJSON(t, rec, &lists)
+	if len(lists) != 1 || lists[0].Tag != "hsk3-1" || lists[0].New != 1 || lists[0].Removed != 0 {
+		t.Errorf("lists = %+v, want hsk3-1 with 1 new word", lists)
+	}
+}
+
+func TestImportConflicts_ListAndResolve(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWordFull(t, s, 1, "吃", "chī", nil, nil, []string{"hsk3-1"})
+	seedCedictEntry(t, s, "吃", "en", "to eat")
+	r := newRouter(s)
+	runImport(t, s, r, map[string]any{"tag": "hsk3-1", "apply_tags": []string{"hsk3-1"}})
+	id, _ := s.GetWordIDByZhText(ctx, 2, "吃")
+	if rec := do(t, r, "POST", fmt.Sprintf("/api/words/%d/translations", id), map[string]string{"text": "to munch", "lang": "en"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add translation: %d %s", rec.Code, rec.Body)
+	}
+	// The learner's edit is older than the next dictionary update.
+	if err := s.BackdateOverridesForTest(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	seedCedictEntry(t, s, "吃", "en", "to dine")
+	if _, err := s.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, r, "GET", "/api/import/conflicts?tag=hsk3-1", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("conflicts: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var conflicts []models.LibraryConflict
+	decodeJSON(t, rec, &conflicts)
+	if len(conflicts) != 1 || conflicts[0].WordID != id {
+		t.Fatalf("conflicts = %+v", conflicts)
+	}
+
+	rec = do(t, r, "POST", "/api/import/conflicts/resolve", map[string]any{"word_ids": []int64{id}, "keep": "library"})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("resolve: want 204, got %d: %s", rec.Code, rec.Body)
+	}
+	wd, _ := s.GetWordByID(ctx, 2, id)
+	if fmt.Sprint(wd.Translations["en"]) != "[to dine to eat]" {
+		t.Errorf("en = %v, want the library glosses", wd.Translations["en"])
+	}
+
+	if rec := do(t, r, "POST", "/api/import/conflicts/resolve", map[string]any{"word_ids": []int64{id}, "keep": "both"}); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad keep: want 400, got %d", rec.Code)
 	}
 }

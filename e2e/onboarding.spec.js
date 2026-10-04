@@ -1,7 +1,5 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
-import { BASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD } from './global-setup.js';
-import { parseSetCookieHeaders, seedWord } from './helpers/api.js';
 import { captureForPR } from './helpers/screenshot.js';
 
 const PASSWORD = 'E2eOnboardingPass123!';
@@ -312,32 +310,9 @@ test.describe('First vocabulary setup wizard', () => {
   // asserts that only the normal daily new-word cap's worth show up as due,
   // with the rest introduced gradually across later sessions/days.
   test('bulk import respects the daily new-word pacing cap', async ({ page }) => {
-    const tag = `topic-e2epacing${Date.now()}`;
-    const chars = ['二', '三', '四', '五', '六', '七', '八', '九', '十', '月',
-      '日', '年', '水', '火', '山', '土', '木', '金', '风', '雨', '云', '雪', '星', '河', '湖'];
-
-    const adminLoginRes = await fetch(`${BASE_URL}/api/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
-    });
-    if (!adminLoginRes.ok) {
-      throw new Error(`Admin login failed (${adminLoginRes.status}): ${await adminLoginRes.text()}`);
-    }
-    const adminCookies = parseSetCookieHeaders(adminLoginRes.headers.getSetCookie?.() ?? []);
-    const adminCookieHeader = adminCookies.map(c => `${c.name}=${c.value}`).join('; ');
-
-    for (const zh of chars) {
-      await seedWord(BASE_URL, adminCookieHeader, { zh, pinyin: '', en: [`e2e-word-${zh}`], tags: [tag] }, false);
-    }
-    const tagRes = await fetch(`${BASE_URL}/api/tags/${tag}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Cookie: adminCookieHeader },
-      body: JSON.stringify({ description: 'pacing test library', importable: true }),
-    });
-    if (!tagRes.ok) {
-      throw new Error(`Marking ${tag} importable failed (${tagRes.status}): ${await tagRes.text()}`);
-    }
+    // 25 library words in topic-e2epacing, seeded by global-setup through
+    // cmd/import-topics (the library is read-only in the UI, ADR-0005).
+    const tag = 'topic-e2epacing';
 
     await registerFreshUser(page);
     await expect(page.locator('#ob-quickstart')).toBeVisible({ timeout: 10_000 });
