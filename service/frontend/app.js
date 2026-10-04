@@ -30,6 +30,14 @@ function tierIconHTML(tier, prevTier) {
   return `<span class="${cls}" title="${escHtml(tier)}">${entry.icon}</span>`;
 }
 
+// Whether the answer input may take focus on its own. Touch devices
+// (pointer: coarse) follow the mobile setting, all others the desktop one,
+// because focus opens the on-screen keyboard (issue #529).
+function shouldAutofocus(st) {
+  const touch = window.matchMedia('(pointer: coarse)').matches;
+  return touch ? !!st?.autofocus_mobile : st?.autofocus_desktop !== false;
+}
+
 // Renders the single current-tier icon into a container element. Caller is
 // responsible for show()/hide()'ing the element based on whether a tier is
 // present. Shared by train.js's vocab/HMM/component result screens so the

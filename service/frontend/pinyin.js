@@ -5,6 +5,7 @@ let isSubmitted = false;
 let selectedTags = JSON.parse(localStorage.getItem('pinyinTags') || '[]');
 let currentAudio = null;
 let answeredThisSession = 0;
+let autofocusInput = true;
 
 const STATUS_ICON = {
   correct: 'M5 12.5l4.5 4.5L19 7.5',
@@ -133,7 +134,7 @@ function showCard() {
     show('answer-form');
     const input = $('answer-input');
     input.value = '';
-    input.focus();
+    if (autofocusInput) input.focus();
   }
 
   show('card-area');
@@ -284,7 +285,10 @@ function formatDuration(ms) {
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
   loadTags();
-  loadNextCard();
+  apiFetch('/api/settings')
+    .then(st => { autofocusInput = shouldAutofocus(st); })
+    .catch(() => {})
+    .then(loadNextCard);
 
   // Tag button clicks
   $('tag-chips').addEventListener('click', (e) => {

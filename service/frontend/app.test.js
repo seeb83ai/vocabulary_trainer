@@ -13,6 +13,36 @@ function escHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+function shouldAutofocus(st) {
+  const touch = window.matchMedia('(pointer: coarse)').matches;
+  return touch ? !!st?.autofocus_mobile : st?.autofocus_desktop !== false;
+}
+
+describe('shouldAutofocus', () => {
+  const mockPointer = coarse => {
+    window.matchMedia = vi.fn().mockReturnValue({ matches: coarse });
+  };
+
+  it('uses the desktop setting on a fine pointer', () => {
+    mockPointer(false);
+    expect(shouldAutofocus({ autofocus_desktop: true, autofocus_mobile: false })).toBe(true);
+    expect(shouldAutofocus({ autofocus_desktop: false, autofocus_mobile: true })).toBe(false);
+  });
+
+  it('uses the mobile setting on a coarse pointer', () => {
+    mockPointer(true);
+    expect(shouldAutofocus({ autofocus_desktop: true, autofocus_mobile: false })).toBe(false);
+    expect(shouldAutofocus({ autofocus_desktop: false, autofocus_mobile: true })).toBe(true);
+  });
+
+  it('defaults to focus on desktop and none on mobile when settings are missing', () => {
+    mockPointer(false);
+    expect(shouldAutofocus(null)).toBe(true);
+    mockPointer(true);
+    expect(shouldAutofocus(null)).toBe(false);
+  });
+});
+
 describe('escHtml', () => {
   it('passes through plain text unchanged', () => {
     expect(escHtml('hello world')).toBe('hello world');

@@ -75,6 +75,26 @@ jobs:
         run: ./scripts/check-pr-screenshots.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
         continue-on-error: true
 
+  standing-screenshot-check:
+    name: README and landing screenshots for redesigns
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Test the check script
+        run: ./scripts/test-check-standing-screenshots.sh
+
+      # Report-only: nudges toward the "Redesigns update the standing
+      # screenshots" rule in CLAUDE.md — not a merge gate (a CSS tweak does not
+      # always change what a page looks like).
+      - name: Check restyled pages have updated README and landing screenshots
+        run: ./scripts/check-standing-screenshots.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+        continue-on-error: true
+
   test-go:
     name: Go tests
     runs-on: ubuntu-latest

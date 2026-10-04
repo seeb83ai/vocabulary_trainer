@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk classify-topics import-topics import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr generate-landing
+.PHONY: screenshots-landing build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk classify-topics import-topics import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr generate-landing
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -174,22 +174,18 @@ test-e2e:
 test-all: test-go test-js test-e2e
 
 ## screenshots-readme: regenerate README screenshots with Playwright (on-demand only, not part of test-all/CI)
-##
-## To screenshot against seeded data (default, fresh temp server):
+## Seeds demo words and history into a fresh temp server through test-only Go tools, so it
+## cannot target a running local server.
 ##   make screenshots-readme
-##
-## To screenshot against the local running server as a real user:
-##   make screenshots-readme USER_EMAIL=me@example.com USER_PASSWORD=secret
-##   make screenshots-readme USER_EMAIL=me@example.com USER_PASSWORD=secret LOCAL_SERVER_URL=http://localhost:8080
 screenshots-readme:
-	@if [ -n "$(USER_EMAIL)" ]; then \
-		test -n "$(USER_PASSWORD)" || (echo "USER_PASSWORD is required when USER_EMAIL is set" && exit 1); \
-		USE_LOCAL_SERVER=1 LOCAL_USER_EMAIL="$(USER_EMAIL)" LOCAL_USER_PASSWORD="$(USER_PASSWORD)" \
-		  LOCAL_SERVER_URL="$(or $(LOCAL_SERVER_URL),http://localhost:8080)" \
-		  npx playwright test --config=playwright.screenshots.config.js; \
-	else \
-		npx playwright test --config=playwright.screenshots.config.js; \
-	fi
+	NODE_OPTIONS=--experimental-sqlite npx playwright test --config=playwright.screenshots.config.js
+
+## screenshots-landing: regenerate the landing-page teaser images with Playwright (on-demand only, not part of test-all/CI)
+## Seeds a demo vocabulary + 190 days of history into a fresh temp server, then crops each scene.
+## Run `make generate-landing` afterwards if you added or removed teaser images.
+##   make screenshots-landing
+screenshots-landing:
+	NODE_OPTIONS=--experimental-sqlite npx playwright test --config=playwright.landing.config.js
 
 ## screenshots-pr: capture PR review screenshots from an e2e spec (FILE=e2e/vocab.spec.js required)
 ## Requires captureForPR() calls (e2e/helpers/screenshot.js) in the spec; writes PNGs to pr-screenshots/.

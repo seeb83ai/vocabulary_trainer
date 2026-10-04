@@ -41,11 +41,28 @@ test(s) from step 1 to capture reviewer-facing screenshots instead of a separate
    path there — it silently renders as a dead link instead of an image.
 5. Skip this for changes with no visual/rendered-output difference (pure logic, backend-only, refactors).
 
+**Redesigns update the standing screenshots:** If a change alters how existing pages look (a redesign, a new
+layout, a restyled component), you must also regenerate the standing screenshots in the same PR:
+1. Run `make screenshots-readme` to update the images in `images/` (used by `README.md`).
+2. Run `make screenshots-landing` to update the teaser images in `service/frontend/landing/teasers/` (used by the landing page).
+3. If a spec fails because a selector no longer exists, fix `e2e-screenshots/capture.spec.js` or
+   `e2e-screenshots/landing.spec.js`. Do not delete the image or leave the old one.
+4. Look at every changed image. Each image must show the same scene and input as before.
+5. If a scene no longer exists or looks different in a way that changes its meaning, update the matching
+   `teaser.json` text and alt text. If you add or remove a teaser image, run `make generate-landing`.
+6. The GitHub and terminal teaser images (`110-open-source`, `120-self-hosted`) are not app screens.
+   Keep them as they are.
+
 CI (`frontend-screenshot-check` in `.github/workflows/test.yml`, backed by `scripts/check-pr-screenshots.sh`)
 report-only-checks every PR: if it touches `service/frontend/` but adds/updates no `pr-screenshots/*.png`, the
 job fails (visible in the PR checks tab, not a merge gate). It also nudges — without failing — when a
 page-specific file changed (`train-*.js`, `vocab-*.js`, `stats.js`, `pinyin.js`, `mnemonics.js`/`hmm-builder.js`,
 `mismatches.js`, `settings.js`) but no changed screenshot filename mentions that page.
+
+A second CI job (`standing-screenshot-check`, backed by `scripts/check-standing-screenshots.sh`, tested by
+`scripts/test-check-standing-screenshots.sh`) is also report-only. If a PR changes `service/frontend/*.css` or
+`*.html`, it fails unless both `images/*.png` and `service/frontend/landing/teasers/**/*.png` changed. Ignore it
+when the change does not alter how existing pages look.
 
 ## Testing rules
 
@@ -89,6 +106,7 @@ Before marking any task done:
 6. No SQL outside `service/db/` package.
 7. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
 8. `service/frontend/` touched? PR screenshots captured and embedded in the PR description (see PR screenshots rule above).
+9. Redesign or visible restyle of existing pages? `make screenshots-readme` and `make screenshots-landing` re-run, and the new images are committed.
 
 ### What must be tested
 | Change type | Required test |
@@ -275,6 +293,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-cedict/main.go` | Import CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for sub-word segmentation + free dictionary lookup |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 | `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
+| `service/cmd/e2e-seed-history/main.go` | Test-only: writes back-dated SM-2 progress, due dates and daily stats for the screenshot specs |
 | `service/cmd/classify-topics/main.go` | Sort HSK + top-frequency words into `data/topics/<topic>.csv` lists with Claude (resumable) |
 | `service/cmd/refresh-library/main.go` | Update the shared library's glosses from `cedict_entries` after a dictionary import |
 | `service/cmd/import-topics/main.go` | Load `data/topics/<topic>.csv` into the shared library as importable `topic-<topic>` tags |
@@ -298,6 +317,11 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
 | `e2e/csv-upload.spec.js` | Browser tests: CSV upload dialog — default translation source, per-row `source` column, invalid rows skipped |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
+| `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
+| `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |
+| `scripts/check-standing-screenshots.sh` | CI check: restyled pages need updated README and landing screenshots |
+| `e2e-screenshots/seed.js` | Shared demo data and helpers for both screenshot specs |
+| `playwright.screenshots.config.js`, `playwright.landing.config.js` | Configs for the two screenshot specs |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
 
 ### Deployment

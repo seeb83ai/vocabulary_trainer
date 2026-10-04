@@ -93,6 +93,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		AutoSubwords                     bool     `json:"auto_subwords"`
 		TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
 		AutoplayAlways                   bool     `json:"autoplay_always"`
+		AutofocusDesktop                 bool     `json:"autofocus_desktop"`
+		AutofocusMobile                  bool     `json:"autofocus_mobile"`
 		MaxTranslationsShown             int      `json:"max_translations_shown"`
 		TranslationHideUnranked          bool     `json:"translation_hide_unranked"`
 		TranslationUserOrder             string   `json:"translation_user_order"`
@@ -372,6 +374,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		AutoSubwords:                     req.AutoSubwords,
 		TranslationRankingEnabled:        req.TranslationRankingEnabled,
 		AutoplayAlways:                   req.AutoplayAlways,
+		AutofocusDesktop:                 req.AutofocusDesktop,
+		AutofocusMobile:                  req.AutofocusMobile,
 		MaxTranslationsShown:             resolvedMaxTranslationsShown,
 		TranslationHideUnranked:          req.TranslationHideUnranked,
 		TranslationUserOrder:             req.TranslationUserOrder,
