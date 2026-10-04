@@ -1,4 +1,4 @@
-.PHONY: build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk classify-topics import-topics import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr generate-landing
+.PHONY: screenshots-landing build run start stop restart logs dev tidy clean import import-hanzi import-cedict import-handedict import-hsk classify-topics import-topics import-pinyin import-frequency fill-translations backup restore release test test-go test-js test-e2e test-all screenshots-readme screenshots-pr generate-landing
 
 # Load .env if present (for RSYNC_DEST)
 -include .env
@@ -186,6 +186,13 @@ screenshots-readme:
 	else \
 		npx playwright test --config=playwright.screenshots.config.js; \
 	fi
+
+## screenshots-landing: regenerate the landing-page teaser images with Playwright (on-demand only, not part of test-all/CI)
+## Seeds a demo vocabulary + 190 days of history into a fresh temp server, then crops each scene.
+## Run `make generate-landing` afterwards if you added or removed teaser images.
+##   make screenshots-landing
+screenshots-landing:
+	NODE_OPTIONS=--experimental-sqlite npx playwright test --config=playwright.landing.config.js
 
 ## screenshots-pr: capture PR review screenshots from an e2e spec (FILE=e2e/vocab.spec.js required)
 ## Requires captureForPR() calls (e2e/helpers/screenshot.js) in the spec; writes PNGs to pr-screenshots/.

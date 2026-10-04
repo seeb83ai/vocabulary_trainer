@@ -273,6 +273,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-cedict/main.go` | Import CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for sub-word segmentation + free dictionary lookup |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 | `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
+| `service/cmd/e2e-seed-history/main.go` | Test-only: writes back-dated SM-2 progress, due dates and daily stats for the screenshot specs |
 | `service/cmd/classify-topics/main.go` | Sort HSK + top-frequency words into `data/topics/<topic>.csv` lists with Claude (resumable) |
 | `service/cmd/import-topics/main.go` | Load `data/topics/<topic>.csv` into the shared library as importable `topic-<topic>` tags |
 
@@ -295,6 +296,10 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
 | `e2e/csv-upload.spec.js` | Browser tests: CSV upload dialog — default translation source, per-row `source` column, invalid rows skipped |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
+| `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
+| `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |
+| `e2e-screenshots/seed.js` | Shared demo data and helpers for both screenshot specs |
+| `playwright.screenshots.config.js`, `playwright.landing.config.js` | Configs for the two screenshot specs |
 | `playwright.config.js` | Playwright configuration (port 18080, Chromium only, 1 worker) |
 
 ### Deployment

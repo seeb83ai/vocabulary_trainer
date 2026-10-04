@@ -1,8 +1,8 @@
 // @ts-check
 // Separate, on-demand Playwright config for regenerating the README
-// screenshots (`make screenshots-readme`). Deliberately not merged into
+// screenshots (`make screenshots-landing`). Deliberately not merged into
 // playwright.config.js so the default `npx playwright test` / CI run never
-// picks up e2e-screenshots/capture.spec.js.
+// picks up e2e-screenshots/landing.spec.js.
 //
 // When USE_LOCAL_SERVER=1: logs in to the already-running local server as the
 // user given by LOCAL_USER_EMAIL / LOCAL_USER_PASSWORD / LOCAL_SERVER_URL.
@@ -24,8 +24,8 @@ function resolveBaseURL() {
 }
 
 export default defineConfig({
-  testDir: './e2e-screenshots',
-  testMatch: 'capture.spec.js',
+  testDir: "./e2e-screenshots",
+  testMatch: "landing.spec.js",
   globalSetup: useLocal ? './e2e/global-setup-local.js' : './e2e/global-setup.js',
   globalTeardown: useLocal ? './e2e/global-teardown-local.js' : './e2e/global-teardown.js',
 
