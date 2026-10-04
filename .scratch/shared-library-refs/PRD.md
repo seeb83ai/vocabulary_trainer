@@ -29,8 +29,9 @@ The main gain now is propagation.
 
 The library user (user 1) holds the full library: zh vocabulary entries, their list tags,
 and their native-language glosses, built from the dictionaries. A learner does not get a
-copy. The learner gets a **library reference**: the per-user SM-2 progress row for that
-library entry. All reads show the library data, adjusted by the learner's own
+copy. The learner gets a **library reference**: one slim zh word row of their own that
+points to the library entry and carries no glosses. Progress, tags, confusion pairs and
+mnemonics hang off that row as today. All reads show the library data, adjusted by the learner's own
 **translation overrides** (added glosses, deleted glosses) and an optional **pinyin
 override**.
 
@@ -102,7 +103,7 @@ user-owned, as today.
 
 34. As the active learner, I want the migration to show me exactly the same glosses, pinyin, tags and progress as before, so that my training does not change.
 35. As a dormant learner, I want my entries to switch to the clean library, so that I get the full and current dictionary data when I come back.
-36. As a learner, I want my progress, confusion pairs, match-game history, usage events, mnemonic scenes and tags to move to the library entry, so that nothing gets lost.
+36. As a learner, I want my progress, confusion pairs, match-game history, usage events, mnemonic scenes and tags to stay on my entries during the migration, so that nothing gets lost.
 
 ### Operator
 
@@ -120,34 +121,32 @@ user-owned, as today.
 ### Terms (new; add to CONTEXT.md)
 
 - **Library**: the zh vocabulary entries, list tags and glosses owned by the library user (user 1). Read-only in the UI.
-- **Library reference**: a learner's SM-2 progress row on a library entry. It is the only row that says "this learner has this entry".
+- **Library reference**: a learner's own zh word row with `library_word_id` set. It has no gloss links of its own; its glosses come from the library entry, adjusted by overrides. Its pinyin column is the pinyin override (empty = library pinyin).
 - **Translation override**: a learner's `add` or `delete` of one gloss on one entry.
 - **Tombstone**: a record that a learner deleted a library entry, read only by the list sync.
 
 ### ADR
 
-- This design changes ADR-0003 ("each user's vocabulary entries, translations … are scoped to their user_id"). Library entries and their glosses become shared. Per-user state (progress, overrides, tags, confusions, mnemonics) stays scoped to `user_id`. Write ADR-0005 "Shared library with per-user references" that amends ADR-0003.
+- This design changes ADR-0003 ("each user's vocabulary entries, translations … are scoped to their user_id"). Library glosses become shared. Every learner still owns one zh word row per entry, so per-user state (progress, overrides, tags, confusions, mnemonics) stays scoped to `user_id` as today. Write ADR-0005 "Shared library with per-user references" that amends ADR-0003.
 
 ### Data model
 
-- **SM-2 progress** primary key changes from the word id to (user, word). The row is the library reference. It gets `needs_review` (moved from the word) and a nullable `pinyin_override`.
-- **Mnemonic scenes** key changes from the word id to (user, word).
-- **Word tags** get a user column, so (user, word, tag). Tags stay global names.
-- **Confusion pairs, match-game history, usage events** already have a user column. No change, apart from moving ids during the migration.
-- SM-2 progress rows for gloss (EN/DE) words are no longer created. The quiz reads progress only for zh entries.
-- New table **translation overrides**: (user, zh entry, gloss word, op = add | delete, created at). Custom gloss texts are user-owned word rows.
+- Decision (after code review of slice 1): the library reference is a **slim learner word row**, not the progress row. This keeps every per-user table (SM-2 progress, word tags, mnemonic scenes, confusion pairs, match-game history, usage events) and every word id unchanged. Cost: 2 rows per imported entry (word + progress) instead of about 7 today.
+- Learner zh words get a nullable `library_word_id`. A row with it set is a library reference; a row without it is an own entry.
+- The learner row's `pinyin` is the pinyin override. Reads use the learner pinyin if set, else the library pinyin.
+- New table **translation overrides**: (learner zh word, gloss word, op = add | delete, created at). Custom gloss texts are user-owned word rows.
 - New table **tombstones**: (user, library entry).
 - Library zh entries get `library_updated_at` and a `library_removed` flag.
-- One SQL view **user translations** (user, zh entry, gloss word, source, rank) = library links in the user's primary/secondary language − delete overrides + add overrides, plus the links of user-owned entries. Every translation read goes through this view. Overlay logic lives only in the view.
+- One SQL view **user translations** (zh word, gloss word, source, rank) = for a reference: library links in the user's primary/secondary language − delete overrides + add overrides; for an own entry: its own links. Every translation read goes through this view. Overlay logic lives only in the view.
 
 ### Modules
 
 - **Library store** (deep module): upsert library entries and glosses from the dictionaries (split senses, same rule as today), keep IDs stable, set the change marker, mark removed entries, create on-demand entries. Interface: refresh all, ensure entry for a zh text.
-- **Reference store** (deep module): add references for many entries in one transaction (import, sync, on-demand), remove a reference with all per-user rows and write the tombstone, list tombstones for a list.
+- **Reference store** (deep module): add references for many entries in one transaction (import, sync, on-demand), delete a reference (normal word delete) and write the tombstone, list tombstones for a list.
 - **Override store** (deep module): add, delete, change gloss; set pinyin override; compute the effective gloss set; list conflicts (override older than `library_updated_at`) per list; resolve conflicts (keep mine / take library) per list or per entry.
-- **Migration to references** (one-time): for each user and each zh entry with a dictionary entry: ensure the library entry, compute the overrides with the same sense split as the import, move all per-user rows to the library id, delete the copy and orphan gloss words. Faithful (with delete overrides) for users active in the last 7 days. Add overrides only for all other users. Before/after check per user of effective glosses, pinyin, tags and progress; any difference rolls back.
+- **Migration to references** (one-time): for each user and each zh entry with a dictionary entry: ensure the library entry, set `library_word_id`, compute the overrides with the same sense split as the import, clear the pinyin if it equals the library pinyin, delete the copied links and orphan gloss words. Word ids do not change, so no per-user rows move. Faithful (with delete overrides) for users active in the last 7 days. Add overrides only for all other users. Before/after check per user of effective glosses, pinyin, tags and progress; any difference rolls back.
 - **Import worker**: creates references instead of copies. Sync = same job with the tombstones skipped. The `import_langs` input goes away.
-- **Read queries**: all queries that read glosses switch to the view. All queries that read progress, tags or mnemonics filter by user on the new keys instead of the word owner.
+- **Read queries**: all queries that read glosses switch to the view; all queries that read pinyin use the learner pinyin, else the library pinyin. Progress, tag and mnemonic queries do not change.
 - **Write handlers**: word create/update/delete branch on "library reference" vs. "own entry". Writes as the library user return an error.
 - **CLI**: new `refresh-library` command (run after `import-cedict`). `import-hsk` and `import-topics` keep writing list tags to the library.
 - **Frontend**: import screen shows imported lists, the update action, the tombstone hint, the language hint, the conflict dialog (bulk per list, expandable per entry with diff). The word edit sheet writes overrides.
@@ -159,11 +158,11 @@ user-owned, as today.
 - New: list imported lists with sync status (new entries count, tombstone count, conflict count).
 - New: start a sync for a list (optionally include tombstoned entries).
 - New: get conflicts for a list; resolve conflicts (bulk or per entry).
-- Existing word endpoints keep their shape. The word id in responses is the library entry id for references.
+- Existing word endpoints keep their shape and word ids.
 
 ### Rollout (one PR per slice, each green and deployable)
 
-1. Per-user keys (progress, mnemonic scenes, word tags), no behaviour change.
+1. ~~Per-user keys~~ (dropped: the slim learner word row makes it unnecessary).
 2. Overlay read path: overrides table + view, all gloss reads switched, no behaviour change.
 3. Library prefill + `refresh-library`, invisible to learners.
 4. Import as references + sync + tombstones + conflict dialog.
@@ -181,7 +180,7 @@ user-owned, as today.
 - **Handlers**: import, sync, conflicts endpoints, and write rejection for the library user. Prior art: the import handler and import worker tests.
 - **Quiz regression**: the quiz accepts every effective gloss and rejects a deleted one. Prior art: quiz handler tests.
 - **E2E**: import a list, sync it, delete an entry and sync again, resolve a conflict in bulk and per entry. Prior art: the onboarding and import E2E specs. Capture PR screenshots for the import screen and conflict dialog.
-- Slices 1 and 2 must pass the full existing suite with no test changes except new keys, which proves "no behaviour change".
+- Slice 2 must pass the full existing suite unchanged, which proves "no behaviour change".
 
 ## Out of Scope
 

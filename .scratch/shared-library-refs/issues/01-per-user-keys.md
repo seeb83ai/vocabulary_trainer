@@ -1,6 +1,10 @@
 # Per-user keys for SM-2 progress, mnemonic scenes and word tags
 
-Status: needs-triage
+Status: wontfix
+
+Dropped 2026-10-04: the library reference is a slim learner zh word row
+(`library_word_id`), so per-user tables keep their word-id keys. ADR-0005 and the
+CONTEXT.md terms move to slice 02.
 Type: AFK
 
 ## Parent

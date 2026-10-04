@@ -10,9 +10,9 @@ Type: HITL (run on the Pi with a backup)
 ## What to build
 
 A one-shot startup migration converts every user's own zh entries that have a dictionary
-entry into library references. It computes overrides with the import's sense split,
-moves all per-user rows to the library id, and deletes the copies and orphan gloss
-words. Users active in the last 7 days get a faithful migration (add and delete
+entry into library references: it sets `library_word_id`, computes overrides with the
+import's sense split, clears pinyin equal to the library pinyin, and deletes the copied
+links and orphan gloss words. Word ids do not change, so no per-user rows move. Users active in the last 7 days get a faithful migration (add and delete
 overrides). All other users get add overrides only. Users with no gloss in their
 secondary language get an empty secondary language. Before and after, it compares every
 user's effective glosses, pinyin, tags and progress, and rolls back on any difference
