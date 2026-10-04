@@ -1317,6 +1317,30 @@ func TestSettingsPatch_CelebrateBucketChange(t *testing.T) {
 	}
 }
 
+func TestSettingsPatch_SkipRevealAnswer(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["skip_reveal_answer"] != false {
+		t.Errorf("skip_reveal_answer: want false by default, got %v", st["skip_reveal_answer"])
+	}
+
+	body := baseSettingsPatch()
+	body["skip_reveal_answer"] = true
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["skip_reveal_answer"] != true {
+		t.Errorf("skip_reveal_answer: want true after update, got %v", st["skip_reveal_answer"])
+	}
+}
+
 func TestSettingsPatch_WrongAnswerRetryMode(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

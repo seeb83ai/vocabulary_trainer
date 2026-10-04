@@ -72,6 +72,7 @@ type UserSettings struct {
 	BlurPinyin                       bool     `json:"blur_pinyin"`
 	NoAutoVoiceOnBlur                bool     `json:"no_auto_voice_on_blur"`
 	CelebrateBucketChange            bool     `json:"celebrate_bucket_change"`
+	SkipRevealAnswer                 bool     `json:"skip_reveal_answer"`
 	VoiceUnavailable                 bool     `json:"voice_unavailable"`
 	RandomModeRangeTranslToZh        string   `json:"random_mode_range_transl_to_zh"`
 	RandomModeRangeZhToTransl        string   `json:"random_mode_range_zh_to_transl"`
@@ -529,6 +530,18 @@ type ComponentAnswerRequest struct {
 	Character string   `json:"character"`
 	Answer    string   `json:"answer"`
 	Langs     []string `json:"langs"`
+}
+
+// SkipRevealResponse is the answer of a card skipped with reveal=true
+// (issue #536). Word skips fill ZhText/Pinyin/Translations, component skips
+// fill CorrectAnswers, mnemonic (HMM) skips fill CorrectAnswer.
+type SkipRevealResponse struct {
+	ZhText            string              `json:"zh_text,omitempty"`
+	Pinyin            *string             `json:"pinyin,omitempty"`
+	Translations      map[string][]string `json:"translations,omitempty"`
+	TranslationsExtra map[string][]string `json:"translations_extra,omitempty"`
+	CorrectAnswers    map[string]string   `json:"correct_answers,omitempty"`
+	CorrectAnswer     string              `json:"correct_answer,omitempty"`
 }
 
 type ComponentAnswerResponse struct {

@@ -507,10 +507,12 @@ label.st-text { cursor: pointer; }
 .tr-status-icon.is-wrong { background: #dc2626; }
 .tr-status-icon.is-mixup { background: #d97706; }
 .tr-status-icon.is-ambiguous { background: #ea580c; }
+.tr-status-icon.is-skipped { background: #64748b; }
 .tr-result-title { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: #16a34a; }
 .tr-result-title.is-wrong { color: #dc2626; }
 .tr-result-title.is-mixup { color: #b45309; }
 .tr-result-title.is-ambiguous { color: #c2410c; }
+.tr-result-title.is-skipped { color: #475569; }
 .tr-question-recap { margin-bottom: 14px; padding: 12px 14px; border-radius: 16px; background: #fff7ed; border: 1px solid #fed7aa; }
 .tr-recap-word { font-size: 22px; font-weight: 800; letter-spacing: -0.01em; color: #111827; overflow-wrap: anywhere; }
 .tr-more { margin-top: 14px; border-radius: 14px; background: #f9fafb; border: 1px solid #f1f5f9; }

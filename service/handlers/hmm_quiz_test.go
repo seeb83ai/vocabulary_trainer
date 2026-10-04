@@ -304,6 +304,31 @@ func TestHMMQuizSkip_DaysOne(t *testing.T) {
 	}
 }
 
+// Issue #536: reveal=true returns the skipped mnemonic card's name.
+func TestHMMQuizSkip_RevealReturnsName(t *testing.T) {
+	s := openTestDB(t)
+	seedHMMCard(t, s)
+	ctx := context.Background()
+	actors, _ := s.GetHMMActors(ctx, int64(2))
+	key := actors[0].Initial
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{
+		"entity_type": models.HMMEntityActor,
+		"entity_key":  key,
+		"days":        1,
+		"reveal":      true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.SkipRevealResponse
+	decodeJSON(t, rec, &resp)
+	if resp.CorrectAnswer != "TestActor" {
+		t.Errorf("correct_answer: want TestActor, got %q", resp.CorrectAnswer)
+	}
+}
+
 func TestHMMQuizSkip_NotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodPost, "/api/hmm-quiz/skip", map[string]any{

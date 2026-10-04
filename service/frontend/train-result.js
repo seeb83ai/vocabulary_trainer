@@ -6,12 +6,14 @@ const STATUS_ICON_PATH = {
   wrong: 'M6 6l12 12M18 6 6 18',
   mixup: 'M4 7h14l-3-3M20 17H6l3 3',
   ambiguous: 'M12 8v5M12 16.5h.01',
+  skipped: 'M5 12h10M11 6l6 6-6 6M19 6v12',
 };
 const STATUS_TITLE_KEY = {
   correct: 'result.correct',
   wrong: 'result.wrong',
   mixup: 'result.mixup',
   ambiguous: 'result.disambigAmbiguous',
+  skipped: 'result.skipped',
 };
 
 function speakerButtonHTML(cls, small) {
@@ -622,6 +624,63 @@ function showCelebrationScreen({ prevTier, tier, zhText, pinyin, meanings }, onC
     onContinue();
   };
   $('celebration-continue-btn').focus();
+}
+
+// showSkipResult shows the answer of a card skipped for today, when the
+// skip_reveal_answer setting is on (issue #536). resp is the skip response.
+function showSkipResult(resp) {
+  hide('card-area');
+  show('result-area');
+  hide('result-subtitle');
+  setResultHead('skipped');
+
+  const breakdown = $('word-breakdown');
+  if (currentCard.card_type === 'hmm') {
+    breakdown.innerHTML = `
+      <div class="result-word">
+        <div class="tr-word-head"><span class="tr-hanzi-lg">${escHtml(currentCard.prompt)}</span></div>
+        <div class="tr-meanings">${escHtml(resp.correct_answer || '')}</div>
+      </div>`;
+  } else if (currentCard.card_type === 'component') {
+    const defsHtml = Object.entries(resp.correct_answers || {}).map(([lang, def]) =>
+      `<div class="tr-def"><span class="tr-def-lang">${escHtml(lang)}</span><span class="tr-def-text">${escHtml(def)}</span></div>`
+    ).join('');
+    breakdown.innerHTML = `
+      <div class="result-word">
+        <div class="tr-word-row">
+          <div class="tr-word-main">
+            <div class="tr-word-head"><span class="tr-hanzi-lg font-hanzi">${escHtml(currentCard.prompt)}</span>${currentCard.pinyin ? `<span class="tr-pinyin-lg">${escHtml(currentCard.pinyin)}</span>` : ''}</div>
+          </div>
+          ${speakerButtonHTML('result-inline-play')}
+        </div>
+        <div class="tr-defs" style="margin:10px 0 0">${defsHtml}</div>
+      </div>`;
+    breakdown.querySelector('.result-inline-play')?.addEventListener('click', () => playComponentAudio(currentCard.prompt));
+  } else {
+    const langs = orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang);
+    const { shown, collapsed } = groupTranslationsByLang(resp.translations, resp.translations_extra, langs);
+    breakdown.innerHTML = resultWordBlockHTML(resp.zh_text, resp.pinyin || '', shown) +
+      moreInfoBoxHTML(collapsed, 'result-more-info');
+    wireDisclosures(breakdown);
+    const wordId = currentCard.word_id;
+    breakdown.querySelector('.result-inline-play')?.addEventListener('click', () => playAudio(wordId, resp.zh_text));
+  }
+  show('word-breakdown');
+
+  hide('add-translation-row');
+  hide('add-translation-lang-select');
+  hide('accept-correct-btn');
+  hide('result-hmm');
+  hide('result-decompose');
+  hide('result-decompose-content');
+  hide('review-edit-row');
+  hide('bucket-info');
+  hide('streak-dots');
+  hide('streak-info');
+  setText('attempt-stats', '');
+  setText('next-due-info', t('result.dueTomorrow'));
+  $('next-btn').focus();
+  loadStats();
 }
 
 function showHMMResult(resp) {

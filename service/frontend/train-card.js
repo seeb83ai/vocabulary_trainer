@@ -10,6 +10,7 @@ let skipNewWordsVisible = true;
 let blurPinyin = false;
 let noAutoVoiceOnBlur = false;
 let celebrateBucketChange = false;
+let skipRevealAnswer = false;
 let voiceUnavailable = false; // session-only flag, set when user skips a voice card and opts out
 let _gamificationEnabled = false;
 let _gamificationFrequencyMs = 5 * 60 * 1000;
@@ -25,6 +26,7 @@ const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null
   blurPinyin = !!st?.blur_pinyin;
   noAutoVoiceOnBlur = !!st?.no_auto_voice_on_blur;
   celebrateBucketChange = !!st?.celebrate_bucket_change;
+  skipRevealAnswer = !!st?.skip_reveal_answer;
   _gamificationEnabled = !!st?.gamification_enabled;
   autoPlayEnabled = !!st?.autoplay_always;
   autofocusInput = shouldAutofocus(st);
@@ -777,15 +779,24 @@ document.addEventListener('DOMContentLoaded', () => {
       body = { entity_type: currentCard.entity_type, entity_key: currentCard.entity_key, days: 1 };
     } else if (currentCard.card_type === 'component') {
       url = '/api/component/skip';
-      body = { character: currentCard.prompt, days: 1 };
+      body = { character: currentCard.prompt, days: 1, langs: selectedLangs };
     } else {
       url = '/api/quiz/skip';
       body = { word_id: currentCard.word_id, days: 1 };
     }
+    // With skip_reveal_answer on, the skip response holds the answer and a
+    // "Skipped" screen shows it before the next card (issue #536).
+    if (skipRevealAnswer) body.reveal = true;
+    let resp;
     try {
-      await apiFetch(url, { method: 'POST', body: JSON.stringify(body) });
+      resp = await apiFetch(url, { method: 'POST', body: JSON.stringify(body) });
     } catch (err) {
       alert('Error: ' + err.message);
+      return;
+    }
+    if (skipRevealAnswer && resp) {
+      isSubmitted = true;
+      showSkipResult(resp);
       return;
     }
     loadNextCard();

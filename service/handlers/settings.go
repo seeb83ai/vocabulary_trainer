@@ -80,6 +80,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BlurPinyin                       bool     `json:"blur_pinyin"`
 		NoAutoVoiceOnBlur                bool     `json:"no_auto_voice_on_blur"`
 		CelebrateBucketChange            bool     `json:"celebrate_bucket_change"`
+		SkipRevealAnswer                 bool     `json:"skip_reveal_answer"`
 		VoiceUnavailable                 bool     `json:"voice_unavailable"`
 		RandomModeRangeTranslToZh        string   `json:"random_mode_range_transl_to_zh"`
 		RandomModeRangeZhToTransl        string   `json:"random_mode_range_zh_to_transl"`
@@ -361,6 +362,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BlurPinyin:                       req.BlurPinyin,
 		NoAutoVoiceOnBlur:                req.NoAutoVoiceOnBlur,
 		CelebrateBucketChange:            req.CelebrateBucketChange,
+		SkipRevealAnswer:                 req.SkipRevealAnswer,
 		VoiceUnavailable:                 req.VoiceUnavailable,
 		RandomModeRangeTranslToZh:        randCfg.TranslToZh,
 		RandomModeRangeZhToTransl:        randCfg.ZhToTransl,

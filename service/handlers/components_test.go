@@ -463,6 +463,36 @@ func TestComponentSkip_DaysOne(t *testing.T) {
 	}
 }
 
+// Issue #536: reveal=true returns the skipped component's definitions.
+func TestComponentSkip_RevealReturnsDefinitions(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	rec := do(t, r, http.MethodPost, "/api/component/skip", map[string]any{"character": "女", "days": 1, "reveal": true, "langs": []string{"en"}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.SkipRevealResponse
+	decodeJSON(t, rec, &resp)
+	if resp.CorrectAnswers["en"] != "woman" {
+		t.Errorf("correct_answers: want en=woman, got %v", resp.CorrectAnswers)
+	}
+
+	items, _, err := s.GetComponentList(ctx, int64(2), "", 1, 10, false)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("GetComponentList: %v (%d items)", err, len(items))
+	}
+	wantDate := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	if items[0].DueDate != wantDate {
+		t.Errorf("reveal skip: want due_date=%s, got %s", wantDate, items[0].DueDate)
+	}
+}
+
 func TestComponentSkip_NotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, http.MethodPost, "/api/component/skip", map[string]any{"character": "不存在", "days": 1})
