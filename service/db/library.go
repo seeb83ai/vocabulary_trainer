@@ -810,11 +810,9 @@ func (s *Store) ensureLibraryWords(ctx context.Context, texts []string) (map[str
 	if err != nil {
 		return nil, err
 	}
+	pinyins := map[string]string{}
 	for _, t := range missing {
 		if len(dict[t]) == 0 {
-			continue
-		}
-		if _, ok := existing[t]; ok {
 			continue
 		}
 		pinyin, err := s.LookupPinyin(ctx, t)
@@ -822,17 +820,33 @@ func (s *Store) ensureLibraryWords(ctx context.Context, texts []string) (map[str
 			return nil, err
 		}
 		// Library pinyin is written without spaces between syllables.
-		res, err := s.db.ExecContext(ctx,
-			`INSERT INTO words (text, language, pinyin, user_id) VALUES (?, 'zh', ?, ?)`,
-			t, strings.ReplaceAll(pinyin, " ", ""), LibraryUserID)
+		pinyins[t] = strings.ReplaceAll(pinyin, " ", "")
+	}
+	if len(pinyins) > 0 {
+		tx, err := s.db.BeginTx(ctx, nil)
 		if err != nil {
-			return nil, fmt.Errorf("add library word: %w", err)
+			return nil, fmt.Errorf("begin tx: %w", err)
 		}
-		id, err := res.LastInsertId()
-		if err != nil {
+		defer tx.Rollback()
+		for _, t := range missing {
+			pinyin, ok := pinyins[t]
+			if !ok {
+				continue
+			}
+			res, err := tx.ExecContext(ctx,
+				`INSERT INTO words (text, language, pinyin, user_id) VALUES (?, 'zh', ?, ?)`, t, pinyin, LibraryUserID)
+			if err != nil {
+				return nil, fmt.Errorf("add library word: %w", err)
+			}
+			id, err := res.LastInsertId()
+			if err != nil {
+				return nil, err
+			}
+			existing[t] = libraryWord{id: id, text: t}
+		}
+		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
-		existing[t] = libraryWord{id: id, text: t}
 	}
 
 	// Fill glosses of library words that have none yet.

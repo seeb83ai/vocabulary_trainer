@@ -579,6 +579,27 @@ cd service && go run ./cmd/import-cedict -db ../data/vocab.db -file ../handedict
 
 Like `import-hanzi`, this is a manual, one-time (or re-run-on-update) operational step against `data/vocab.db` — it is not run automatically at startup.
 
+### Upgrade to library references (one-time conversion)
+
+Until this version, a list import copied every word with its translations to the user. On the first start of this version, the server converts these copies once:
+
+1. It fills the shared library with the dictionary translations (log line `Library: filling glosses…`).
+2. It writes a backup next to the database: `vocab.db.pre-library-refs` (log line `Library conversion: writing backup …`).
+3. Every user word that CC-CEDICT/HanDeDict has becomes a library reference. Users who trained in the last 7 days keep exactly the translations they see now (their own translations stay their own). All other users see the library translations plus their own extra translations. Sentences without a dictionary entry stay unchanged. Progress, tags, mix-ups and mnemonics stay on the same words.
+4. The server compares every converted word with the state before. If one differs, it rolls the conversion back and stops with `Library conversion failed and was rolled back`.
+
+Steps on the server:
+
+```bash
+sudo systemctl stop vocab-trainer
+sqlite3 /opt/vocab-trainer/data/vocab.db ".backup /opt/vocab-trainer/data/vocab.db.before-upgrade"   # optional second backup
+# deploy the new binary to /opt/vocab-trainer/vocab-trainer
+sudo systemctl start vocab-trainer
+journalctl -u vocab-trainer -f    # wait for "Library conversion: N users …"
+```
+
+Paths are those of `deploy/vocab-trainer.service`. To restore after a failed start: stop the server, copy `vocab.db.pre-library-refs` back to `vocab.db`, delete `vocab.db-wal` and `vocab.db-shm`, and deploy the old binary.
+
 ### Library refresh (refresh-library)
 
 The shared library (user 1) keeps its own copy of the dictionary translations of its words. Users who imported a list see these translations directly, they do not get a copy (see ADR-0005). After you import a new CC-CEDICT or HanDeDict version, run:

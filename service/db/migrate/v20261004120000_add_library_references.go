@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS translation_deletions (
   translation_word_id INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
   PRIMARY KEY (user_word_id, translation_word_id)
 );
+CREATE INDEX IF NOT EXISTS idx_translation_deletions_gloss ON translation_deletions(translation_word_id);
 
 CREATE TABLE IF NOT EXISTS word_tombstones (
   user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"vocabulary_trainer/models"
 )
 
 type wordKey struct{ text, lang string }
@@ -25,22 +24,21 @@ type batchWriter struct {
 	noProgress bool
 
 	insWord, selWord, insSM2, insLink *sql.Stmt
-	selRank, delWordTags, insWordTag  *sql.Stmt
+	selRank, insWordTag               *sql.Stmt
 	selTag, insTag                    *sql.Stmt
 }
 
 func newBatchWriter(ctx context.Context, tx *sql.Tx, userID int64) (*batchWriter, error) {
 	w := &batchWriter{tx: tx, userID: userID, wordIDs: map[wordKey]int64{}, tagIDs: map[string]int64{}}
 	for dst, query := range map[**sql.Stmt]string{
-		&w.insWord:     `INSERT OR IGNORE INTO words (text, language, pinyin, user_id) VALUES (?, ?, ?, ?)`,
-		&w.selWord:     `SELECT id FROM words WHERE text = ? AND language = ? AND user_id = ?`,
-		&w.insSM2:      `INSERT OR IGNORE INTO sm2_progress (word_id) VALUES (?)`,
-		&w.insLink:     `INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id, source, rank) VALUES (?, ?, ?, ?)`,
-		&w.selRank:     `SELECT rank FROM gloss_rank WHERE lang = ? AND gloss = ?`,
-		&w.delWordTags: `DELETE FROM word_tags WHERE word_id = ?`,
-		&w.insWordTag:  `INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`,
-		&w.selTag:      `SELECT id FROM tags WHERE name = ?`,
-		&w.insTag:      `INSERT INTO tags (name) VALUES (?)`,
+		&w.insWord:    `INSERT OR IGNORE INTO words (text, language, pinyin, user_id) VALUES (?, ?, ?, ?)`,
+		&w.selWord:    `SELECT id FROM words WHERE text = ? AND language = ? AND user_id = ?`,
+		&w.insSM2:     `INSERT OR IGNORE INTO sm2_progress (word_id) VALUES (?)`,
+		&w.insLink:    `INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id, source, rank) VALUES (?, ?, ?, ?)`,
+		&w.selRank:    `SELECT rank FROM gloss_rank WHERE lang = ? AND gloss = ?`,
+		&w.insWordTag: `INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`,
+		&w.selTag:     `SELECT id FROM tags WHERE name = ?`,
+		&w.insTag:     `INSERT INTO tags (name) VALUES (?)`,
 	} {
 		stmt, err := tx.PrepareContext(ctx, query)
 		if err != nil {
@@ -116,79 +114,4 @@ func (w *batchWriter) rank(ctx context.Context, lang, text, source string) (sql.
 		return computeTranslationRank(ctx, w.tx, lang, text)
 	}
 	return rank, err
-}
-
-func (w *batchWriter) create(ctx context.Context, req models.CreateWordRequest) (int64, error) {
-	zhID, err := w.word(ctx, req.ZhText, "zh", &req.Pinyin)
-	if err != nil {
-		return 0, err
-	}
-	for lang, texts := range req.Translations {
-		for i, text := range texts {
-			text = strings.TrimSpace(text)
-			if text == "" {
-				continue
-			}
-			transID, err := w.word(ctx, text, lang, nil)
-			if err != nil {
-				return 0, err
-			}
-			source := sourceAt(req.TranslationSources[lang], i)
-			rank, err := w.rank(ctx, lang, text, source)
-			if err != nil {
-				return 0, fmt.Errorf("link %s translation: %w", lang, err)
-			}
-			if _, err := w.insLink.ExecContext(ctx, transID, zhID, source, rank); err != nil {
-				return 0, fmt.Errorf("link %s translation: %w", lang, err)
-			}
-		}
-	}
-	if _, err := w.delWordTags.ExecContext(ctx, zhID); err != nil {
-		return 0, fmt.Errorf("delete word tags: %w", err)
-	}
-	for _, name := range req.Tags {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
-		}
-		tagID, err := w.tag(ctx, name)
-		if err != nil {
-			return 0, err
-		}
-		if _, err := w.insWordTag.ExecContext(ctx, zhID, tagID); err != nil {
-			return 0, fmt.Errorf("link tag: %w", err)
-		}
-	}
-	return zhID, nil
-}
-
-// CreateWordsBatch creates every word in reqs inside one transaction and
-// returns the zh word IDs in request order. The stored result equals calling
-// CreateWord for each request, except that StartTraining is not supported and
-// that one failing word rolls back the whole batch.
-func (s *Store) CreateWordsBatch(ctx context.Context, userID int64, reqs []models.CreateWordRequest) ([]int64, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	w, err := newBatchWriter(ctx, tx, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer w.close()
-
-	ids := make([]int64, 0, len(reqs))
-	for _, req := range reqs {
-		id, err := w.create(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-	return ids, nil
 }

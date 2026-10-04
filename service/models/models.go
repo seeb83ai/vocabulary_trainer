@@ -905,3 +905,14 @@ type LibraryConflict struct {
 	Library map[string][]string `json:"library"`
 	Mine    map[string][]string `json:"mine"`
 }
+
+// LibraryConversionReport summarises the one-time conversion of copied
+// words to library references: Users and Words converted, of them
+// FaithfulUsers (active in the last 7 days, glosses kept exactly), and
+// GlossWordsDeleted copied gloss words removed.
+type LibraryConversionReport struct {
+	Users             int `json:"users"`
+	FaithfulUsers     int `json:"faithful_users"`
+	Words             int `json:"words"`
+	GlossWordsDeleted int `json:"gloss_words_deleted"`
+}

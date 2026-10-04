@@ -98,6 +98,24 @@ func main() {
 		}
 		log.Printf("Library: %d words, %d glosses added, %d without dictionary entry", report.Words, report.Added, report.Missing)
 	}
+	// One-time conversion of copied list imports to library references. A
+	// backup of the database is written next to it first; a failed check
+	// rolls the conversion back and stops the server.
+	if pending, err := store.LibraryConversionPending(context.Background()); err != nil {
+		log.Fatalf("Failed to check library conversion: %v", err)
+	} else if pending {
+		backup := dbPath + ".pre-library-refs"
+		log.Printf("Library conversion: writing backup %s…", backup)
+		if err := store.BackupTo(context.Background(), backup); err != nil {
+			log.Fatalf("Library conversion: backup failed, nothing converted: %v", err)
+		}
+		report, err := store.ConvertToLibraryReferences(context.Background())
+		if err != nil {
+			log.Fatalf("Library conversion failed and was rolled back (backup: %s): %v", backup, err)
+		}
+		log.Printf("Library conversion: %d users (%d kept exactly), %d words, %d copied glosses removed",
+			report.Users, report.FaithfulUsers, report.Words, report.GlossWordsDeleted)
+	}
 
 	// TTS audio handler — always enabled.
 	// AUDIO_DIR defaults to a sibling of the DB file.

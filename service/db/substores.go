@@ -109,7 +109,6 @@ type MnemonicStore interface {
 	GetHMMToneRoom(ctx context.Context, userID int64, tone int) (*models.HMMToneRoom, error)
 	GetHMMPropsByRadicals(ctx context.Context, userID int64, radicals []string) ([]models.HMMProp, error)
 	SaveHMMSceneWithLibrary(ctx context.Context, userID, wordID int64, initial, finalKey string, tone int, req models.HMMSaveSceneRequest) error
-	ImportTemplateWords(ctx context.Context, userID int64) error
 	EnsureHMMProgress(ctx context.Context, userID int64) error
 	GetNextDueHMMCard(ctx context.Context, userID int64, types []string) (*models.HMMQuizCard, *models.HMMProgress, error)
 	GetHMMProgress(ctx context.Context, userID int64, entityType, entityKey string) (*models.HMMProgress, error)
