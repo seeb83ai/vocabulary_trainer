@@ -20,6 +20,9 @@ type batchWriter struct {
 	stmts   []*sql.Stmt
 	wordIDs map[wordKey]int64
 	tagIDs  map[string]int64
+	// noProgress skips the sm2_progress row for new words (library words are
+	// never quizzed).
+	noProgress bool
 
 	insWord, selWord, insSM2, insLink *sql.Stmt
 	selRank, delWordTags, insWordTag  *sql.Stmt
@@ -71,8 +74,10 @@ func (w *batchWriter) word(ctx context.Context, text, lang string, pinyin *strin
 	if err := w.selWord.QueryRowContext(ctx, text, lang, w.userID).Scan(&id); err != nil {
 		return 0, fmt.Errorf("get word id: %w", err)
 	}
-	if _, err := w.insSM2.ExecContext(ctx, id); err != nil {
-		return 0, fmt.Errorf("init sm2: %w", err)
+	if !w.noProgress {
+		if _, err := w.insSM2.ExecContext(ctx, id); err != nil {
+			return 0, fmt.Errorf("init sm2: %w", err)
+		}
 	}
 	w.wordIDs[key] = id
 	return id, nil

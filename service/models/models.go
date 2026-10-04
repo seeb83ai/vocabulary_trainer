@@ -864,3 +864,16 @@ type ImportJob struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
+
+// LibraryRefreshReport summarises one RefreshLibrary run. Words is the number
+// of library zh words checked; Changed counts words whose existing gloss set
+// changed (they get library_updated_at); Added and Dropped count gloss links;
+// Missing counts words with no dictionary entry any more (flagged
+// library_removed, glosses kept).
+type LibraryRefreshReport struct {
+	Words   int `json:"words"`
+	Changed int `json:"changed"`
+	Added   int `json:"added"`
+	Dropped int `json:"dropped"`
+	Missing int `json:"missing"`
+}

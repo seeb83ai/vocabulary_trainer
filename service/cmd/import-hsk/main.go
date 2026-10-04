@@ -94,7 +94,14 @@ func main() {
 	fmt.Printf("\nDone. created=%d  tagged=%d\n", res.created, res.tagged)
 	if *dryRun {
 		fmt.Println("(dry-run: no changes were written)")
+		return
 	}
+	// New library words get their glosses from the dictionaries (ADR-0005).
+	report, err := store.RefreshLibrary(context.Background())
+	if err != nil {
+		log.Fatalf("refresh library: %v", err)
+	}
+	fmt.Printf("Library glosses: added=%d  missing=%d\n", report.Added, report.Missing)
 }
 
 func download(url string) ([]byte, error) {

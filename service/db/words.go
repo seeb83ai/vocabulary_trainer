@@ -504,12 +504,16 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 	}
 	defer tx.Rollback()
 
+	// Library words are never quizzed, so they get no progress rows.
+	library := userID == LibraryUserID
 	zhID, err := upsertWord(ctx, tx, req.ZhText, "zh", &req.Pinyin, userID)
 	if err != nil {
 		return 0, err
 	}
-	if err := initSM2(ctx, tx, zhID); err != nil {
-		return 0, err
+	if !library {
+		if err := initSM2(ctx, tx, zhID); err != nil {
+			return 0, err
+		}
 	}
 
 	for lang, texts := range req.Translations {
@@ -522,8 +526,10 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 			if err != nil {
 				return 0, err
 			}
-			if err := initSM2(ctx, tx, transID); err != nil {
-				return 0, err
+			if !library {
+				if err := initSM2(ctx, tx, transID); err != nil {
+					return 0, err
+				}
 			}
 			source := sourceAt(req.TranslationSources[lang], i)
 			if err := linkTranslation(ctx, tx, transID, zhID, lang, text, source); err != nil {

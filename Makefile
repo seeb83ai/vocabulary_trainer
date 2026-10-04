@@ -71,6 +71,10 @@ import-hsk:
 classify-topics:
 	cd service && go run ./cmd/classify-topics -db $(or $(DB),../data/vocab.db) -out $(or $(OUT),../data/topics) $(if $(DRY),-dry-run) $(if $(CLI),-claude-cli $(CLI)) $(if $(WORKERS),-workers $(WORKERS))
 
+## refresh-library: update the shared library's glosses from the imported dictionaries; run after import-cedict/import-handedict (DB=data/vocab.db)
+refresh-library:
+	cd service && go run ./cmd/refresh-library -db $(or $(DB),../data/vocab.db)
+
 ## import-topics: tag the shared library's words with the data/topics/<topic>.csv lists as importable topic-<topic> tags (DRY=1 previews; DB=data/vocab.db DIR=data/topics)
 import-topics:
 	cd service && go run ./cmd/import-topics -db $(or $(DB),../data/vocab.db) -dir $(or $(DIR),../data/topics) $(if $(DRY),-dry-run)

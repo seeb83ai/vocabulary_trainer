@@ -420,6 +420,7 @@ When you configure a local model, it takes precedence over any cloud API keys th
 | `make tidy` | Tidy Go module dependencies |
 | `make import` | Import vocabulary from a text file (see below) |
 | `make import-hsk` | Import an HSK word list into the shared library (`VERSION=3` or `VERSION=2`, see below) |
+| `make refresh-library` | Update the shared library's translations from CC-CEDICT/HanDeDict after a dictionary import (see below) |
 | `make import-pinyin` | Import pinyin audio files for listening training (see below) |
 | `make import-frequency` | Import an alternative/updated Chinese word-frequency list used to order new-word introduction — the bundled list is already auto-imported on startup (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
@@ -461,7 +462,7 @@ The source is `complete.json` from [drkameleon/complete-hsk-vocabulary](https://
 | `3` (default) | HSK 3.0, 2025 syllabus | `hsk3-1` … `hsk3-6`, `hsk3-7` (levels 7–9) |
 | `2` | HSK 2.0 | `hsk2-1` … `hsk2-6` |
 
-The library stores only the Chinese word, the pinyin and the tag. Translations come from CC-CEDICT/HanDeDict (see `make import-cedict`) when a user imports a list. If a word is already in the library, the tool does not add it again. It only adds the tag. The tool marks each tag as importable and gives it a description, for example "HSK 3.0 – Level 1". You can run the tool again safely.
+The tool adds the Chinese word, the pinyin and the tag. At the end, it fills the library translations of new words from CC-CEDICT/HanDeDict (see `make import-cedict` and `make refresh-library`). If a word is already in the library, the tool does not add it again. It only adds the tag. The tool marks each tag as importable and gives it a description, for example "HSK 3.0 – Level 1". You can run the tool again safely.
 
 ```bash
 # Import HSK 3.0 (2025 syllabus)
@@ -576,6 +577,24 @@ cd service && go run ./cmd/import-cedict -db ../data/vocab.db -file ../handedict
 | `-dry-run` | false | Parse and validate without writing |
 
 Like `import-hanzi`, this is a manual, one-time (or re-run-on-update) operational step against `data/vocab.db` — it is not run automatically at startup.
+
+### Library refresh (refresh-library)
+
+The shared library (user 1) keeps its own copy of the dictionary translations of its words. Users who imported a list see these translations directly, they do not get a copy (see ADR-0005). After you import a new CC-CEDICT or HanDeDict version, run:
+
+```bash
+make refresh-library
+make refresh-library DB=/path/to/vocab.db
+```
+
+The tool splits each dictionary definition into senses, as the import does, and compares them with the library:
+
+- A new sense is added. An unchanged sense keeps its row, so the users' changes stay valid.
+- A sense the dictionary dropped is removed from the word.
+- A word whose translations changed is marked. Users who changed that word themselves are asked on the import screen whether to keep their version.
+- A word that is no longer in the dictionary keeps its last translations and is marked as removed. It is never deleted.
+
+You can run the tool again safely. On the first start after the upgrade, the server fills the library once by itself (log line `Library: filling glosses…`). `import-hsk` and `import-topics` run the refresh at the end.
 
 ### Topic word lists (classify-topics)
 

@@ -79,6 +79,16 @@ func newRouterForUser(s *db.Store, userID int64) http.Handler {
 }
 
 // seedWordForUser creates a word directly in the DB owned by the given user.
+// newLearner creates a learner account besides the seeded users.
+func newLearner(t *testing.T, s *db.Store) int64 {
+	t.Helper()
+	id, err := s.CreateUser(context.Background(), fmt.Sprintf("learner%d@example.com", time.Now().UnixNano()), "hash", "", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("create learner: %v", err)
+	}
+	return id
+}
+
 func seedWordForUser(t *testing.T, s *db.Store, userID int64, zhText, pinyin string, enTexts []string) int64 {
 	t.Helper()
 	id, err := s.CreateWord(context.Background(), userID, models.CreateWordRequest{
@@ -232,23 +242,26 @@ func TestIsolation_ResetProgress_CannotResetOtherUsersWord(t *testing.T) {
 
 func TestIsolation_QuizNext_OnlyOwnWords(t *testing.T) {
 	s := openTestDB(t)
+	// User 1 is the shared library and is never quizzed (ADR-0005); learner
+	// a plays "user 1" here.
+	a := newLearner(t, s)
 
 	// User 1 has "再见"; user 2 has "你好".
-	seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
+	seedWordForUser(t, s, a, "再见", "zàijiàn", []string{"goodbye"})
 	seedWordForUser(t, s, 2, "你好", "nǐ hǎo", []string{"hello"})
 
 	// Acknowledge both words so they become quizzable.
 	ctx := context.Background()
-	words1, _, _ := s.GetWords(ctx, 1, "", 1, 100, "", "", nil, false, false, "", "", "")
+	words1, _, _ := s.GetWords(ctx, a, "", 1, 100, "", "", nil, false, false, "", "", "")
 	for _, w := range words1 {
-		_ = s.AcknowledgeWord(ctx, 1, w.ID)
+		_ = s.AcknowledgeWord(ctx, a, w.ID)
 	}
 	words2, _, _ := s.GetWords(ctx, 2, "", 1, 100, "", "", nil, false, false, "", "", "")
 	for _, w := range words2 {
 		_ = s.AcknowledgeWord(ctx, 2, w.ID)
 	}
 
-	r1 := newRouterForUser(s, 1)
+	r1 := newRouterForUser(s, a)
 	r2 := newRouterForUser(s, 2)
 
 	rec1 := do(t, r1, "GET", "/api/quiz/next", nil)
@@ -490,10 +503,13 @@ func TestIsolation_CreateWord_WordOnlyVisibleToCreator(t *testing.T) {
 
 func TestIsolation_QuizAnswer_CannotAnswerOtherUsersWord(t *testing.T) {
 	s := openTestDB(t)
+	// User 1 is the shared library and is never quizzed (ADR-0005); learner
+	// a plays "user 1" here.
+	a := newLearner(t, s)
 
 	// User 1 creates a word.
-	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
-	if err := s.AcknowledgeWord(context.Background(), 1, idA); err != nil {
+	idA := seedWordForUser(t, s, a, "再见", "zàijiàn", []string{"goodbye"})
+	if err := s.AcknowledgeWord(context.Background(), a, idA); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
 
@@ -515,16 +531,19 @@ func TestIsolation_QuizAnswer_CannotAnswerOtherUsersWord(t *testing.T) {
 
 func TestIsolation_DueDateDistribution_OnlyOwnWords(t *testing.T) {
 	s := openTestDB(t)
+	// User 1 is the shared library and is never quizzed (ADR-0005); learner
+	// a plays "user 1" here.
+	a := newLearner(t, s)
 	ctx := context.Background()
 
 	// User 1 has a word that is seen (has first_seen_date set by AcknowledgeWord).
-	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
-	if err := s.AcknowledgeWord(ctx, 1, idA); err != nil {
+	idA := seedWordForUser(t, s, a, "再见", "zàijiàn", []string{"goodbye"})
+	if err := s.AcknowledgeWord(ctx, a, idA); err != nil {
 		t.Fatalf("AcknowledgeWord: %v", err)
 	}
 
 	// User 1 sees exactly 1 entry; user 2 sees 0.
-	r1 := newRouterForUser(s, 1)
+	r1 := newRouterForUser(s, a)
 	r2 := newRouterForUser(s, 2)
 
 	rec := do(t, r1, "GET", "/api/quiz/due-date-distribution", nil)
@@ -585,14 +604,17 @@ func TestIsolation_Acknowledge_CannotAcknowledgeOtherUsersWord(t *testing.T) {
 
 func TestIsolation_Advance_OnlyOwnWords(t *testing.T) {
 	s := openTestDB(t)
+	// User 1 is the shared library and is never quizzed (ADR-0005); learner
+	// a plays "user 1" here.
+	a := newLearner(t, s)
 	ctx := context.Background()
 
 	// User 1 has a word with a future due date (acknowledged, then skipped forward).
-	idA := seedWordForUser(t, s, 1, "再见", "zàijiàn", []string{"goodbye"})
-	if err := s.AcknowledgeWord(ctx, 1, idA); err != nil {
+	idA := seedWordForUser(t, s, a, "再见", "zàijiàn", []string{"goodbye"})
+	if err := s.AcknowledgeWord(ctx, a, idA); err != nil {
 		t.Fatalf("AcknowledgeWord user1: %v", err)
 	}
-	if err := s.SkipWord(ctx, 1, idA, 7); err != nil {
+	if err := s.SkipWord(ctx, a, idA, 7); err != nil {
 		t.Fatalf("SkipWord user1: %v", err)
 	}
 
@@ -611,7 +633,7 @@ func TestIsolation_Advance_OnlyOwnWords(t *testing.T) {
 
 	// Verify user1's word still has a future due date via stats.
 	// If advance had wrongly affected user1, available_to_advance would be 0.
-	r1 := newRouterForUser(s, 1)
+	r1 := newRouterForUser(s, a)
 	rec = do(t, r1, "GET", "/api/quiz/stats", nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("user1 stats: %d", rec.Code)

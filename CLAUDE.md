@@ -204,6 +204,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary`, `LookupPinyin` |
 | `service/db/translation_rank.go` | `computeTranslationRank` — scores an auto-derived translation gloss against `word_frequency_lang`; `linkTranslation` reads the `gloss_rank` cache first (rebuilt by `RebuildGlossRank`) |
 | `service/db/words_batch.go` | `CreateWordsBatch` — writes many words in one transaction with prepared statements and word/tag ID caches (used by the import worker) |
+| `service/db/library.go` | Shared library (user 1): `RefreshLibrary` (upsert glosses from the dictionaries, change marker, removed flag), `LibraryNeedsPrefill` — see ADR-0005 |
 | `service/db/import_jobs.go` | Import job queue — `CreateImportJob`, `GetImportJob`, `ListActiveImportJobs`, `ListRunnableImportJobs`, progress and finish updates |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
@@ -274,6 +275,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 | `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
 | `service/cmd/classify-topics/main.go` | Sort HSK + top-frequency words into `data/topics/<topic>.csv` lists with Claude (resumable) |
+| `service/cmd/refresh-library/main.go` | Update the shared library's glosses from `cedict_entries` after a dictionary import |
 | `service/cmd/import-topics/main.go` | Load `data/topics/<topic>.csv` into the shared library as importable `topic-<topic>` tags |
 
 ### E2E tests (`e2e/`)

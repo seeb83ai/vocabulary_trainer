@@ -85,6 +85,20 @@ func main() {
 	}
 	defer store.Close()
 
+	// First start with library references (ADR-0005): fill the shared
+	// library's glosses from the dictionaries once. Later dictionary updates
+	// go through cmd/refresh-library.
+	if need, err := store.LibraryNeedsPrefill(context.Background()); err != nil {
+		log.Fatalf("Failed to check library: %v", err)
+	} else if need {
+		log.Printf("Library: filling glosses from the dictionaries (one-time)…")
+		report, err := store.RefreshLibrary(context.Background())
+		if err != nil {
+			log.Fatalf("Failed to fill library: %v", err)
+		}
+		log.Printf("Library: %d words, %d glosses added, %d without dictionary entry", report.Words, report.Added, report.Missing)
+	}
+
 	// TTS audio handler — always enabled.
 	// AUDIO_DIR defaults to a sibling of the DB file.
 	audioDir := os.Getenv("AUDIO_DIR")
