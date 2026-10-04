@@ -41,6 +41,18 @@ test(s) from step 1 to capture reviewer-facing screenshots instead of a separate
    path there — it silently renders as a dead link instead of an image.
 5. Skip this for changes with no visual/rendered-output difference (pure logic, backend-only, refactors).
 
+**Redesigns update the standing screenshots:** If a change alters how existing pages look (a redesign, a new
+layout, a restyled component), you must also regenerate the standing screenshots in the same PR:
+1. Run `make screenshots-readme` to update the images in `images/` (used by `README.md`).
+2. Run `make screenshots-landing` to update the teaser images in `service/frontend/landing/teasers/` (used by the landing page).
+3. If a spec fails because a selector no longer exists, fix `e2e-screenshots/capture.spec.js` or
+   `e2e-screenshots/landing.spec.js`. Do not delete the image or leave the old one.
+4. Look at every changed image. Each image must show the same scene and input as before.
+5. If a scene no longer exists or looks different in a way that changes its meaning, update the matching
+   `teaser.json` text and alt text. If you add or remove a teaser image, run `make generate-landing`.
+6. The GitHub and terminal teaser images (`110-open-source`, `120-self-hosted`) are not app screens.
+   Keep them as they are.
+
 CI (`frontend-screenshot-check` in `.github/workflows/test.yml`, backed by `scripts/check-pr-screenshots.sh`)
 report-only-checks every PR: if it touches `service/frontend/` but adds/updates no `pr-screenshots/*.png`, the
 job fails (visible in the PR checks tab, not a merge gate). It also nudges — without failing — when a
@@ -89,6 +101,7 @@ Before marking any task done:
 6. No SQL outside `service/db/` package.
 7. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
 8. `service/frontend/` touched? PR screenshots captured and embedded in the PR description (see PR screenshots rule above).
+9. Redesign or visible restyle of existing pages? `make screenshots-readme` and `make screenshots-landing` re-run, and the new images are committed.
 
 ### What must be tested
 | Change type | Required test |
