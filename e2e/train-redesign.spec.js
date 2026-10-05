@@ -568,3 +568,69 @@ test.describe('Train – auto-focus setting (desktop)', () => {
     await expect(page.locator('#answer-input')).not.toBeFocused();
   });
 });
+
+// Issue #542: the answer placeholder names the language to type — the
+// user's primary language if it is selected for training, else the first
+// selected language — on word and component cards.
+test.describe('Train – answer placeholder names the language', () => {
+  test.use({ viewport: { width: 360, height: 700 } });
+
+  async function setLangs(page, primary, secondary, langs) {
+    const st = await (await page.request.get('/api/settings')).json();
+    const res = await page.request.patch('/api/settings', {
+      data: { ...st, primary_lang: primary, secondary_lang: secondary },
+    });
+    expect(res.ok()).toBe(true);
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'zh_to_transl', langs, bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+  }
+
+  // Both languages need words, or the train page drops "de" from the selection.
+  async function seedEnDe(page) {
+    const res = await page.request.post('/api/words', {
+      data: { zh_text: '复习', pinyin: 'fùxí', translations: { en: ['review'], de: ['wiederholen'] }, tags: [], start_training: true },
+    });
+    expect(res.ok()).toBe(true);
+  }
+
+  function mockCard(page, card) {
+    return page.route('**/api/quiz/next*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(card),
+    }));
+  }
+
+  test('a word card asks for the primary-language translation', async ({ page }) => {
+    await registerUser(page);
+    await seedEnDe(page);
+    await setLangs(page, 'de', 'en', ['en', 'de']);
+    await mockCard(page, { word_id: 1, mode: 'zh_pinyin_to_transl', prompt: '复习', pinyin: 'fùxí' });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the German translation…');
+    await captureForPR(page, 'train-placeholder-german');
+  });
+
+  test('a word card names the selected language when the primary language is not selected', async ({ page }) => {
+    await registerUser(page);
+    await seedEnDe(page);
+    await setLangs(page, 'de', 'en', ['en']);
+    await mockCard(page, { word_id: 1, mode: 'zh_to_transl', prompt: '复习', pinyin: 'fùxí' });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the English translation…');
+  });
+
+  test('a component card asks for the primary-language translation', async ({ page }) => {
+    await registerUser(page);
+    await seedEnDe(page);
+    await setLangs(page, 'de', 'en', ['de', 'en']);
+    await mockCard(page, { card_type: 'component', prompt: '氵', pinyin: 'shuǐ', is_new: false, is_also_word: false, definitions: { de: 'Wasser', en: 'water' } });
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the German translation…');
+    await captureForPR(page, 'train-placeholder-component');
+  });
+});

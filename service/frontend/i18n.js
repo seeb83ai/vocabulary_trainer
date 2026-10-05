@@ -100,6 +100,8 @@ const I18N = {
     // Card area
     'card.placeholder': 'Type the meaning…',
     'card.placeholderSentence': 'Type the missing word…',
+    'card.placeholderTransl.en': 'Type the English translation…',
+    'card.placeholderTransl.de': 'Type the German translation…',
     'card.submit': 'Check',
     'card.skipToday': 'Skip for today',
     'card.readAloud': 'Read aloud',
@@ -1139,6 +1141,8 @@ const I18N = {
     // Card area
     'card.placeholder': '输入释义…',
     'card.placeholderSentence': '输入缺失的词…',
+    'card.placeholderTransl.en': '输入英文翻译…',
+    'card.placeholderTransl.de': '输入德文翻译…',
     'card.submit': '检查',
     'card.skipToday': '今天跳过',
     'card.readAloud': '朗读',
@@ -2178,6 +2182,8 @@ const I18N = {
     // Card area
     'card.placeholder': 'Bedeutung eingeben…',
     'card.placeholderSentence': 'Das fehlende Wort eingeben…',
+    'card.placeholderTransl.en': 'Englische Übersetzung eingeben…',
+    'card.placeholderTransl.de': 'Deutsche Übersetzung eingeben…',
     'card.submit': 'Prüfen',
     'card.skipToday': 'Heute überspringen',
     'card.readAloud': 'Vorlesen',
