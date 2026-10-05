@@ -274,7 +274,7 @@ The app calculates the bonus as the minimum value needed to reach the target acc
 - **Got it** marks the word as introduced, starts the learning phase, and makes the word available for quizzing right away (EN → ZH). This counts toward the daily new-word cap.
 - **Skip** defers the word by 7 days. This does *not* count as seen. The word remains "new," and the app shows it as an introduction again when it comes due.
 
-**Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day, without recording an attempt. Use this to clear a stuck card from today's queue and try again tomorrow.
+**Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day, without recording an attempt. Use this to clear a stuck card from today's queue and try again tomorrow. If you turn on **Settings → Training → Show the answer when I skip** (off by default), a *Skipped* screen shows the answer of the card (the word with pinyin and translations, the component definitions, or the mnemonic name) before the next card. The skip still counts as no attempt.
 
 ## Cycle mode
 
@@ -851,7 +851,7 @@ Stages: **registered** (accounts created) → **verified email** → **activated
 | `POST` | `/api/quiz/match-answer` | Submit a match-game result — `{zh_word_id, correct}` for a word tile, or `{kind: "component", character, correct}` for a component tile — updates SM-2 or component progress |
 | `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress |
 | `GET` | `/api/quiz/langs` | List the distinct translation languages available |
-| `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7) |
+| `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7). With `"reveal": true`, returns `200` with the word's `zh_text`, `pinyin` and `translations` instead of `204`. `/api/component/skip` (returns `correct_answers`) and `/api/hmm-quiz/skip` (returns `correct_answer`) accept `reveal` too. |
 | `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |
 | `POST` | `/api/quiz/acknowledge-random` | Acknowledge a random subset of new words as immediately due, capped at the caller's remaining daily new-word allowance (`max_new_words_per_day` minus words already introduced today) — never bypasses the daily new-word cap |
 | `POST` | `/api/quiz/advance` | Advance due dates / move past the current card |

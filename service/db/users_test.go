@@ -261,6 +261,9 @@ func TestGetUserSettings_Defaults(t *testing.T) {
 	if st.CelebrateBucketChange {
 		t.Error("want celebrate_bucket_change=false by default")
 	}
+	if st.SkipRevealAnswer {
+		t.Error("want skip_reveal_answer=false by default")
+	}
 	if st.VoiceUnavailable {
 		t.Error("want voice_unavailable=false by default")
 	}
@@ -319,6 +322,7 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 		BlurPinyin:                  true,
 		NoAutoVoiceOnBlur:           true,
 		CelebrateBucketChange:       true,
+		SkipRevealAnswer:            true,
 		VoiceUnavailable:            true,
 		WrongAnswerRetryMode:        "matched",
 		TranslationUserOrder:        "last",
@@ -356,6 +360,9 @@ func TestUpdateUserSettings_RoundTrip(t *testing.T) {
 	}
 	if !out.CelebrateBucketChange {
 		t.Error("celebrate_bucket_change: want true after update")
+	}
+	if !out.SkipRevealAnswer {
+		t.Error("skip_reveal_answer: want true after update")
 	}
 	if !out.VoiceUnavailable {
 		t.Error("voice_unavailable: want true after update")

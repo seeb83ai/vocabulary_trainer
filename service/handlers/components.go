@@ -137,6 +137,18 @@ func componentTier(p models.ComponentProgress) string {
 }
 
 // Answer processes a component quiz answer.
+// componentLangs returns the requested definition languages, or the user's
+// primary language when none were requested.
+func (h *ComponentHandler) componentLangs(r *http.Request, langs []string) []string {
+	if len(langs) > 0 {
+		return langs
+	}
+	if st, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); st != nil {
+		return []string{st.PrimaryLang}
+	}
+	return []string{"en"}
+}
+
 func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	var req models.ComponentAnswerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -150,14 +162,7 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	langs := req.Langs
-	if len(langs) == 0 {
-		if st, _ := h.Store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); st != nil {
-			langs = []string{st.PrimaryLang}
-		} else {
-			langs = []string{"en"}
-		}
-	}
+	langs := h.componentLangs(r, req.Langs)
 
 	defs, err := h.Store.GetComponentDefinitions(r.Context(), UserIDFromContext(r.Context()), req.Character, langs)
 	if err != nil {
@@ -324,8 +329,10 @@ func (h *ComponentHandler) Seen(w http.ResponseWriter, r *http.Request) {
 // (default 7) without recording an attempt.
 func (h *ComponentHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Character string `json:"character"`
-		Days      int    `json:"days"`
+		Character string   `json:"character"`
+		Days      int      `json:"days"`
+		Reveal    bool     `json:"reveal"`
+		Langs     []string `json:"langs"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -347,7 +354,19 @@ func (h *ComponentHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	if !req.Reveal {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Issue #536: return the skipped component's definitions.
+	langs := h.componentLangs(r, req.Langs)
+	defs, err := h.Store.GetComponentDefinitions(r.Context(), UserIDFromContext(r.Context()), req.Character, langs)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, models.SkipRevealResponse{CorrectAnswers: defs})
 }
 
 // List returns a paginated list of component_progress rows for the authenticated user.

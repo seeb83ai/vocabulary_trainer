@@ -777,6 +777,7 @@ func (h *QuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		WordID int64 `json:"word_id"`
 		Days   int   `json:"days"`
+		Reveal bool  `json:"reveal"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -811,7 +812,32 @@ func (h *QuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	if !req.Reveal {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Issue #536: return the skipped word's answer for the "skipped" screen.
+	zhWord, err := h.Store.GetWordByID(r.Context(), userID, req.WordID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if zhWord == nil {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+	translations, extra, err := loadTranslationsForResult(r.Context(), h.Store, req.WordID, derefPinyin(zhWord.Pinyin), zhWord.Translations, st)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, models.SkipRevealResponse{
+		ZhText:            zhWord.ZhText,
+		Pinyin:            zhWord.Pinyin,
+		Translations:      translations,
+		TranslationsExtra: extra,
+	})
 }
 
 // Acknowledge marks a new word as "introduced" so it becomes available for quizzing.

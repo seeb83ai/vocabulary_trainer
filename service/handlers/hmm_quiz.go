@@ -52,6 +52,55 @@ func sm2ToHMM(src models.SM2Progress, userID int64, entityType, entityKey string
 	}
 }
 
+// hmmCorrectName looks up the library name a mnemonic card asks for. On
+// failure it returns the HTTP status to answer with.
+func (h *HMMQuizHandler) hmmCorrectName(r *http.Request, entityType, entityKey string) (string, int, error) {
+	userID := UserIDFromContext(r.Context())
+	switch entityType {
+	case models.HMMEntityActor:
+		actor, err := h.Store.GetHMMActorByInitial(r.Context(), userID, entityKey)
+		if err != nil {
+			return "", http.StatusInternalServerError, err
+		}
+		if actor == nil {
+			return "", http.StatusNotFound, errors.New("actor not found")
+		}
+		return actor.ActorName, 0, nil
+	case models.HMMEntityLocation:
+		loc, err := h.Store.GetHMMLocationByFinal(r.Context(), userID, entityKey)
+		if err != nil {
+			return "", http.StatusInternalServerError, err
+		}
+		if loc == nil {
+			return "", http.StatusNotFound, errors.New("location not found")
+		}
+		return loc.LocationName, 0, nil
+	case models.HMMEntityToneRoom:
+		tone, err := strconv.Atoi(entityKey)
+		if err != nil {
+			return "", http.StatusBadRequest, errors.New("entity_key must be a tone number for tone_room")
+		}
+		room, err := h.Store.GetHMMToneRoom(r.Context(), userID, tone)
+		if err != nil {
+			return "", http.StatusInternalServerError, err
+		}
+		if room == nil {
+			return "", http.StatusNotFound, errors.New("tone room not found")
+		}
+		return room.RoomName, 0, nil
+	case models.HMMEntityProp:
+		props, err := h.Store.GetHMMPropsByRadicals(r.Context(), userID, []string{entityKey})
+		if err != nil {
+			return "", http.StatusInternalServerError, err
+		}
+		if len(props) == 0 {
+			return "", http.StatusNotFound, errors.New("prop not found")
+		}
+		return props[0].PropName, 0, nil
+	}
+	return "", http.StatusBadRequest, errors.New("invalid entity_type")
+}
+
 func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	var req models.HMMAnswerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -71,58 +120,10 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the correct name from the library.
-	var correctName string
-	switch req.EntityType {
-	case models.HMMEntityActor:
-		actor, err := h.Store.GetHMMActorByInitial(r.Context(), UserIDFromContext(r.Context()), req.EntityKey)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if actor == nil {
-			writeError(w, http.StatusNotFound, "actor not found")
-			return
-		}
-		correctName = actor.ActorName
-	case models.HMMEntityLocation:
-		loc, err := h.Store.GetHMMLocationByFinal(r.Context(), UserIDFromContext(r.Context()), req.EntityKey)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if loc == nil {
-			writeError(w, http.StatusNotFound, "location not found")
-			return
-		}
-		correctName = loc.LocationName
-	case models.HMMEntityToneRoom:
-		tone, err := strconv.Atoi(req.EntityKey)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "entity_key must be a tone number for tone_room")
-			return
-		}
-		room, err := h.Store.GetHMMToneRoom(r.Context(), UserIDFromContext(r.Context()), tone)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if room == nil {
-			writeError(w, http.StatusNotFound, "tone room not found")
-			return
-		}
-		correctName = room.RoomName
-	case models.HMMEntityProp:
-		props, err := h.Store.GetHMMPropsByRadicals(r.Context(), UserIDFromContext(r.Context()), []string{req.EntityKey})
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if len(props) == 0 {
-			writeError(w, http.StatusNotFound, "prop not found")
-			return
-		}
-		correctName = props[0].PropName
+	correctName, status, err := h.hmmCorrectName(r, req.EntityType, req.EntityKey)
+	if err != nil {
+		writeError(w, status, err.Error())
+		return
 	}
 
 	correct := sm2.CheckHMMAnswer(req.Answer, correctName)
@@ -204,6 +205,7 @@ func (h *HMMQuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		EntityType string `json:"entity_type"`
 		EntityKey  string `json:"entity_key"`
 		Days       int    `json:"days"`
+		Reveal     bool   `json:"reveal"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -230,5 +232,16 @@ func (h *HMMQuizHandler) Skip(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	if !req.Reveal {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	// Issue #536: return the skipped card's name.
+	correctName, status, err := h.hmmCorrectName(r, req.EntityType, req.EntityKey)
+	if err != nil {
+		writeError(w, status, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, models.SkipRevealResponse{CorrectAnswer: correctName})
 }

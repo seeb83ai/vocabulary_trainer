@@ -113,6 +113,40 @@ func TestQuizSkip_DaysOne(t *testing.T) {
 	}
 }
 
+// Issue #536: reveal=true returns the skipped word's answer and still skips.
+func TestQuizSkip_RevealReturnsAnswer(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	ctx := context.Background()
+
+	beforeP, _ := s.GetSM2Progress(ctx, id)
+
+	rec := do(t, r, "POST", "/api/quiz/skip", map[string]any{"word_id": id, "days": 1, "reveal": true})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.SkipRevealResponse
+	decodeJSON(t, rec, &resp)
+	if resp.ZhText != "你好" {
+		t.Errorf("zh_text: want 你好, got %q", resp.ZhText)
+	}
+	if resp.Pinyin == nil || *resp.Pinyin != "nǐ hǎo" {
+		t.Errorf("pinyin: want nǐ hǎo, got %v", resp.Pinyin)
+	}
+	if len(resp.Translations["en"]) != 1 || resp.Translations["en"][0] != "hello" {
+		t.Errorf("translations: want en=[hello], got %v", resp.Translations)
+	}
+
+	afterP, _ := s.GetSM2Progress(ctx, id)
+	if afterP.TotalAttempts != beforeP.TotalAttempts {
+		t.Error("skip with reveal should not change total_attempts")
+	}
+	if !afterP.DueDate.After(beforeP.DueDate) {
+		t.Error("skip with reveal should move due_date forward")
+	}
+}
+
 func TestQuizSkip_NotFound(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/quiz/skip", map[string]int64{"word_id": 9999})
