@@ -224,19 +224,6 @@ function buildListSyncPayload(list, includeRemoved) {
   return payload;
 }
 
-function conflictDiff(conflict) {
-  const out = {};
-  const langs = new Set([...Object.keys(conflict.library || {}), ...Object.keys(conflict.mine || {})]);
-  for (const lang of [...langs].sort()) {
-    const lib = conflict.library?.[lang] || [];
-    const mine = conflict.mine?.[lang] || [];
-    const onlyMine = mine.filter(g => !lib.includes(g));
-    const onlyLibrary = lib.filter(g => !mine.includes(g));
-    if (onlyMine.length || onlyLibrary.length) out[lang] = { onlyMine, onlyLibrary };
-  }
-  return out;
-}
-
 describe('buildListSyncPayload', () => {
   const list = { tag: 'hsk3-1', and_tags: ['topic-food'], apply_tags: ['hsk3-1', 'mine'], new: 2, removed: 1 };
 
@@ -246,17 +233,5 @@ describe('buildListSyncPayload', () => {
 
   it('adds the removed words again only when asked', () => {
     expect(buildListSyncPayload(list, true).include_removed).toBe(true);
-  });
-});
-
-describe('conflictDiff', () => {
-  it('lists per language what only the learner and only the library has', () => {
-    const c = { library: { en: ['to dine', 'to eat'] }, mine: { en: ['to eat', 'to munch'] } };
-    expect(conflictDiff(c)).toEqual({ en: { onlyMine: ['to munch'], onlyLibrary: ['to dine'] } });
-  });
-
-  it('leaves out languages without a difference', () => {
-    const c = { library: { en: ['to eat'], de: ['essen'] }, mine: { en: ['to eat'], de: ['futtern'] } };
-    expect(Object.keys(conflictDiff(c))).toEqual(['de']);
   });
 });

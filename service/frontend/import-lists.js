@@ -175,19 +175,3 @@ function buildListSyncPayload(list, includeRemoved) {
   if (includeRemoved) payload.include_removed = true;
   return payload;
 }
-
-// conflictDiff compares the library version of a word with the learner's
-// version per language: glosses only the learner has, and glosses only the
-// library has. Languages without a difference are left out.
-function conflictDiff(conflict) {
-  const out = {};
-  const langs = new Set([...Object.keys(conflict.library || {}), ...Object.keys(conflict.mine || {})]);
-  for (const lang of [...langs].sort()) {
-    const lib = conflict.library?.[lang] || [];
-    const mine = conflict.mine?.[lang] || [];
-    const onlyMine = mine.filter(g => !lib.includes(g));
-    const onlyLibrary = lib.filter(g => !mine.includes(g));
-    if (onlyMine.length || onlyLibrary.length) out[lang] = { onlyMine, onlyLibrary };
-  }
-  return out;
-}

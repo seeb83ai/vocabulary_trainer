@@ -117,6 +117,7 @@ function openEditForm(word) {
   } else {
     hide('form-known-btn');
   }
+  loadLibraryDiff(word.id);
 
   // HMM scene builder and component definitions, folded under the form.
   const hmmContainer = $('hmm-builder-container');
@@ -220,6 +221,8 @@ function resetForm() {
   hide('form-delete-btn');
   hide('form-reset-btn');
   hide('form-known-btn');
+  hide('form-library-reset-btn');
+  hide('library-reset-confirm');
   hide('hanziway-link');
   const compSection = $('components-edit-section');
   if (compSection) { compSection.innerHTML = ''; compSection.classList.add('hidden'); }
@@ -358,6 +361,53 @@ async function resetWordProgress() {
   if (!confirm(t('vocab.resetWordConfirm'))) return;
   try {
     const word = await apiFetch(`/api/words/${editingWordId}/reset`, { method: 'POST' });
+    openEditForm(word);
+    loadWords();
+  } catch (e) {
+    alert('Failed to reset: ' + e.message);
+  }
+}
+
+// libraryDiffLines turns a library diff (GET /api/words/{id}/library-diff)
+// into the lines of the reset confirmation: removed glosses, glosses that
+// come back, then the pinyin change. It is empty when a reset changes nothing.
+function libraryDiffLines(diff) {
+  const lines = [];
+  for (const kind of ['remove', 'restore']) {
+    for (const lang of Object.keys(diff?.[kind] || {}).sort()) {
+      const texts = diff[kind][lang] || [];
+      if (texts.length) lines.push({ kind, lang, texts });
+    }
+  }
+  if (diff?.pinyin) lines.push({ kind: 'pinyin', mine: diff.pinyin.mine, library: diff.pinyin.library });
+  return lines;
+}
+
+// loadLibraryDiff shows "Reset to library" when the word differs from its
+// library word, with the changes a reset makes in the confirmation box.
+async function loadLibraryDiff(wordId) {
+  hide('form-library-reset-btn');
+  hide('library-reset-confirm');
+  if (!wordId) return;
+  let lines = [];
+  try {
+    lines = libraryDiffLines(await apiFetch(`/api/words/${wordId}/library-diff`));
+  } catch { /* no reset offered */ }
+  if (editingWordId !== wordId || lines.length === 0) return;
+  $('library-reset-lines').innerHTML = lines.map(line => {
+    const text = line.kind === 'pinyin'
+      ? t('vocab.resetLibraryPinyin', { mine: line.mine || '—', library: line.library || '—' })
+      : t(line.kind === 'remove' ? 'vocab.resetLibraryRemoves' : 'vocab.resetLibraryRestores',
+        { lang: line.lang.toUpperCase(), texts: line.texts.join(', ') });
+    return `<li>${escHtml(text)}</li>`;
+  }).join('');
+  show('form-library-reset-btn');
+}
+
+async function resetToLibrary() {
+  if (!editingWordId) return;
+  try {
+    const word = await apiFetch(`/api/words/${editingWordId}/reset-library`, { method: 'POST' });
     openEditForm(word);
     loadWords();
   } catch (e) {

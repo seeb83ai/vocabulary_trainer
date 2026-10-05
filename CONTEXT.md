@@ -50,7 +50,7 @@ The shared set of zh vocabulary entries, list tags and glosses owned by the libr
 A learner's own zh word row that points to a library entry (`library_word_id`). It has no copied glosses; the learner sees the library glosses in their native languages, adjusted by their translation overrides. Progress, tags and mnemonics hang off it like off any own entry.
 
 **Translation override**
-A learner's change to the glosses of a library reference: an added gloss (an own link on the reference) or a deleted library gloss. Private to the learner.
+A learner's change to the glosses of a library reference: an added gloss (an own link on the reference) or a deleted library gloss. Private to the learner. Library updates do not remove it; "reset to library" does.
 
 **Tombstone**
 A record that a learner deleted a library reference, so that a list sync does not add the entry again.

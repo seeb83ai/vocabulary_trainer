@@ -80,6 +80,8 @@ user-owned, as today.
 
 ### Library updates and conflicts
 
+> Update: conflicts were replaced by a per-entry "reset to library" with a preview of the changes. See issue 04c.
+
 22. As a learner, I want to know when the library changed an entry that I customized, so that I can decide which version to keep.
 23. As a learner, I want one choice per list ("keep all mine" or "take all library"), so that a big dictionary update does not need hundreds of clicks.
 24. As a learner, I want to expand the list and choose per entry, with a diff of library vs. mine, so that I can keep the edits that matter.

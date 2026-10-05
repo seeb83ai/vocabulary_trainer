@@ -361,6 +361,51 @@ func (h *WordsHandler) ResetProgress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, wd)
 }
 
+// LibraryDiff returns what a reset to the library would change on the word
+// (GET /api/words/{id}/library-diff). It is empty for an own entry.
+func (h *WordsHandler) LibraryDiff(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	diff, err := h.Store.LibraryDiff(r.Context(), UserIDFromContext(r.Context()), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, diff)
+}
+
+// ResetToLibrary makes a library reference look like the library word again
+// and returns the word (POST /api/words/{id}/reset-library).
+func (h *WordsHandler) ResetToLibrary(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	userID := UserIDFromContext(r.Context())
+	if err := h.Store.ResetToLibrary(r.Context(), userID, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "library word not found")
+			return
+		}
+		internalError(w, err)
+		return
+	}
+	wd, err := h.Store.GetWordByID(r.Context(), userID, id)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, wd)
+}
+
 func (h *WordsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if rejectLibraryWrite(w, r) {
 		return

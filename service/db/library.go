@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"vocabulary_trainer/models"
@@ -672,11 +671,6 @@ func (s *Store) ImportedLists(ctx context.Context, userID int64) ([]models.Impor
 			return nil, err
 		}
 		lists[i].New = len(withGlosses)
-		conflicts, err := s.LibraryConflicts(ctx, userID, lists[i].Tag, lists[i].AndTags)
-		if err != nil {
-			return nil, err
-		}
-		lists[i].Conflicts = len(conflicts)
 	}
 	if lists == nil {
 		lists = []models.ImportedList{}
@@ -684,114 +678,84 @@ func (s *Store) ImportedLists(ctx context.Context, userID int64) ([]models.Impor
 	return lists, nil
 }
 
-// LibraryConflicts returns the learner's references in a library list (tag
-// and every one of andTags) that still have the learner's own changes, made
-// before the library word last changed: the library glosses now next to the
-// glosses the learner sees. A reference whose glosses have the same texts as
-// the library's (for example a gloss kept with source "user" by the
-// conversion) is no conflict.
-func (s *Store) LibraryConflicts(ctx context.Context, userID int64, tag string, andTags []string) ([]models.LibraryConflict, error) {
-	words, err := s.listLibraryWords(ctx, tag, andTags)
+// LibraryDiff returns what a reset to the library would change on the
+// learner's word: glosses only the learner has, library glosses the learner
+// does not see and a different pinyin, compared by text. It is empty for an
+// own entry and for a reference that looks like the library word.
+func (s *Store) LibraryDiff(ctx context.Context, userID, wordID int64) (models.LibraryDiff, error) {
+	diff := models.LibraryDiff{Remove: map[string][]string{}, Restore: map[string][]string{}}
+	var libraryID sql.NullInt64
+	var pinyin string
+	var libraryPinyin sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT w.library_word_id, COALESCE(w.pinyin, ''), l.pinyin FROM words w
+		 LEFT JOIN words l ON l.id = w.library_word_id
+		 WHERE w.id = ? AND w.user_id = ?`, wordID, userID).Scan(&libraryID, &pinyin, &libraryPinyin)
 	if err != nil {
-		return nil, err
+		return diff, err
 	}
-	inList := map[int64]bool{}
-	for _, w := range words {
-		inList[w.id] = true
+	if !libraryID.Valid {
+		return diff, nil
 	}
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT w.id, w.text, w.library_word_id FROM words w
-		 JOIN words l ON l.id = w.library_word_id
-		 WHERE w.user_id = ? AND w.overrides_updated_at IS NOT NULL
-		   AND l.library_updated_at > w.overrides_updated_at
-		   AND (EXISTS (SELECT 1 FROM translation_deletions d WHERE d.user_word_id = w.id)
-		        OR EXISTS (SELECT 1 FROM translations t WHERE t.zh_word_id = w.id))
-		 ORDER BY w.id`, userID)
+	library, err := visibleLibraryGlosses(ctx, s.db, userID, libraryID.Int64)
 	if err != nil {
-		return nil, fmt.Errorf("load conflicts: %w", err)
+		return diff, err
 	}
-	type ref struct {
-		id, libraryID int64
-		text          string
+	mine, _, err := referenceGlosses(ctx, s.db, wordID)
+	if err != nil {
+		return diff, err
 	}
-	var refs []ref
-	for rows.Next() {
-		var r ref
-		if err := rows.Scan(&r.id, &r.text, &r.libraryID); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		if inList[r.libraryID] {
-			refs = append(refs, r)
+	seen := map[wordKey]bool{}
+	for lang, texts := range mine {
+		for _, text := range texts {
+			key := wordKey{text: text, lang: lang}
+			if !seen[key] && library[key] == 0 {
+				diff.Remove[lang] = append(diff.Remove[lang], text)
+			}
+			seen[key] = true
 		}
 	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, err
+	for key := range library {
+		if !seen[key] {
+			diff.Restore[key.lang] = append(diff.Restore[key.lang], key.text)
+		}
 	}
-	rows.Close()
-
-	out := []models.LibraryConflict{}
-	for _, r := range refs {
-		library, err := visibleLibraryGlosses(ctx, s.db, userID, r.libraryID)
-		if err != nil {
-			return nil, err
+	for _, m := range []map[string][]string{diff.Remove, diff.Restore} {
+		for lang := range m {
+			sort.Strings(m[lang])
 		}
-		c := models.LibraryConflict{WordID: r.id, ZhText: r.text, Library: map[string][]string{}}
-		for key := range library {
-			c.Library[key.lang] = append(c.Library[key.lang], key.text)
-		}
-		for lang := range c.Library {
-			sort.Strings(c.Library[lang])
-		}
-		if c.Mine, _, err = referenceGlosses(ctx, s.db, r.id); err != nil {
-			return nil, err
-		}
-		for lang := range c.Mine {
-			sort.Strings(c.Mine[lang])
-		}
-		if reflect.DeepEqual(c.Mine, c.Library) {
-			continue
-		}
-		out = append(out, c)
 	}
-	return out, nil
+	if libraryPinyin.String != pinyin {
+		diff.Pinyin = &models.PinyinChange{Mine: pinyin, Library: libraryPinyin.String}
+	}
+	return diff, nil
 }
 
-// ResolveLibraryConflicts settles conflicts on the learner's references:
-// keep "mine" marks the learner's changes as seen, so the conflict goes away;
-// keep "library" removes the learner's changes. Progress stays in both cases.
-func (s *Store) ResolveLibraryConflicts(ctx context.Context, userID int64, wordIDs []int64, keep string) error {
+// ResetToLibrary makes the learner's library reference look like the library
+// word again: it removes the learner's added and deleted glosses and takes the
+// library pinyin. Progress and tags stay. It returns sql.ErrNoRows when the
+// word is not one of the learner's references.
+func (s *Store) ResetToLibrary(ctx context.Context, userID, wordID int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
-	for _, id := range wordIDs {
-		var isRef bool
-		err := tx.QueryRowContext(ctx,
-			`SELECT library_word_id IS NOT NULL FROM words WHERE id = ? AND user_id = ? AND language = 'zh'`, id, userID).Scan(&isRef)
-		if err == sql.ErrNoRows || (err == nil && !isRef) {
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("check reference: %w", err)
-		}
-		switch keep {
-		case "mine":
-			_, err = tx.ExecContext(ctx, `UPDATE words SET overrides_updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
-		case "library":
-			if _, err = tx.ExecContext(ctx, `DELETE FROM translation_deletions WHERE user_word_id = ?`, id); err == nil {
-				if _, err = tx.ExecContext(ctx, `DELETE FROM translations WHERE zh_word_id = ?`, id); err == nil {
-					_, err = tx.ExecContext(ctx, `UPDATE words SET overrides_updated_at = NULL WHERE id = ?`, id)
-				}
-			}
-		default:
-			return fmt.Errorf("keep must be mine or library, got %q", keep)
-		}
-		if err != nil {
-			return fmt.Errorf("resolve conflict: %w", err)
-		}
+	res, err := tx.ExecContext(ctx,
+		`UPDATE words SET overrides_updated_at = NULL,
+		   pinyin = (SELECT l.pinyin FROM words l WHERE l.id = words.library_word_id)
+		 WHERE id = ? AND user_id = ? AND library_word_id IS NOT NULL`, wordID, userID)
+	if err != nil {
+		return fmt.Errorf("reset to library: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM translation_deletions WHERE user_word_id = ?`, wordID); err != nil {
+		return fmt.Errorf("reset to library: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM translations WHERE zh_word_id = ?`, wordID); err != nil {
+		return fmt.Errorf("reset to library: %w", err)
 	}
 	return tx.Commit()
 }

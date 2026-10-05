@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"reflect"
 	"sort"
 	"testing"
@@ -462,132 +463,112 @@ func TestImportedLists_CountsNewAndRemovedWords(t *testing.T) {
 	}
 }
 
-// conflictSetup gives learner 2 an edited reference to 吃 in list hsk3-1
-// (added "to munch"), edited before a dictionary update.
-func conflictSetup(t *testing.T) (*Store, int64) {
+// editedReference gives learner 2 a reference to 吃 (library: chī, "to eat",
+// "to consume") that the learner changed: "to consume" deleted, "to munch"
+// added, pinyin "chi".
+func editedReference(t *testing.T) (*Store, int64) {
 	t.Helper()
 	s := openTestDB(t)
 	ctx := context.Background()
 	eat := seedBareLibraryWord(t, s, "吃", "chī")
-	if err := s.AddWordTags(ctx, testLibraryUserID, eat, []string{"hsk3-1"}); err != nil {
-		t.Fatal(err)
-	}
-	seedCedict(t, s, "吃", "en", "to eat")
+	seedCedict(t, s, "吃", "en", "to eat; to consume")
 	if _, err := s.RefreshLibrary(ctx); err != nil {
 		t.Fatal(err)
 	}
-	ids, err := s.CreateReferences(ctx, 2, []int64{eat}, []string{"hsk3-1"})
+	ids, err := s.CreateReferences(ctx, 2, []int64{eat}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AddTranslation(ctx, 2, ids[0], "en", "to munch"); err != nil {
-		t.Fatal(err)
-	}
-	s.db.Exec(`UPDATE words SET overrides_updated_at = '2000-01-01 00:00:00' WHERE id = ?`, ids[0])
-	seedCedict(t, s, "吃", "en", "to dine")
-	if _, err := s.RefreshLibrary(ctx); err != nil {
+	if err := s.UpdateWord(ctx, 2, ids[0], models.UpdateWordRequest{ZhText: "吃", Pinyin: "chi",
+		Translations:       map[string][]string{"en": {"to eat", "to munch"}},
+		TranslationSources: map[string][]string{"en": {"cedict", "user"}}}); err != nil {
 		t.Fatal(err)
 	}
 	return s, ids[0]
 }
 
-func TestLibraryConflicts_ListsEditedReferencesTheLibraryChanged(t *testing.T) {
-	s, ref := conflictSetup(t)
-	ctx := context.Background()
-
-	conflicts, err := s.LibraryConflicts(ctx, 2, "hsk3-1", nil)
+func TestLibraryDiff_ListsWhatAResetChanges(t *testing.T) {
+	s, ref := editedReference(t)
+	diff, err := s.LibraryDiff(context.Background(), 2, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []models.LibraryConflict{{
-		WordID: ref, ZhText: "吃",
-		Library: map[string][]string{"en": {"to dine", "to eat"}},
-		Mine:    map[string][]string{"en": {"to dine", "to eat", "to munch"}},
-	}}
-	if !reflect.DeepEqual(conflicts, want) {
-		t.Errorf("conflicts = %+v, want %+v", conflicts, want)
+	want := models.LibraryDiff{
+		Remove:  map[string][]string{"en": {"to munch"}},
+		Restore: map[string][]string{"en": {"to consume"}},
+		Pinyin:  &models.PinyinChange{Mine: "chi", Library: "chī"},
+	}
+	if !reflect.DeepEqual(diff, want) {
+		t.Errorf("diff = %+v, want %+v", diff, want)
 	}
 }
 
-// The faithful conversion keeps a learner's "user" source on a gloss the
-// library also has. That is an override with the same text, so a later
-// library change must not show it as a conflict with nothing to choose.
-func TestLibraryConflicts_IgnoresSourceOnlyOverrides(t *testing.T) {
+func TestLibraryDiff_EmptyWithoutVisibleChanges(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	eat := seedBareLibraryWord(t, s, "吃", "chī")
-	if err := s.AddWordTags(ctx, testLibraryUserID, eat, []string{"hsk3-1"}); err != nil {
-		t.Fatal(err)
-	}
 	seedCedict(t, s, "吃", "en", "to eat")
 	if _, err := s.RefreshLibrary(ctx); err != nil {
 		t.Fatal(err)
 	}
-	ids, err := s.CreateReferences(ctx, 2, []int64{eat}, []string{"hsk3-1"})
+	ids, err := s.CreateReferences(ctx, 2, []int64{eat}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateWord(ctx, 2, ids[0], models.UpdateWordRequest{ZhText: "吃",
+	empty := models.LibraryDiff{Remove: map[string][]string{}, Restore: map[string][]string{}}
+	check := func(name string, id int64) {
+		t.Helper()
+		diff, err := s.LibraryDiff(ctx, 2, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(diff, empty) {
+			t.Errorf("%s: diff = %+v, want empty", name, diff)
+		}
+	}
+	check("unchanged reference", ids[0])
+
+	// The faithful conversion keeps a "user" source on a gloss the library
+	// also has: same text, so a reset changes nothing the learner sees.
+	if err := s.UpdateWord(ctx, 2, ids[0], models.UpdateWordRequest{ZhText: "吃", Pinyin: "chī",
 		Translations:       map[string][]string{"en": {"to eat"}},
 		TranslationSources: map[string][]string{"en": {"user"}}}); err != nil {
 		t.Fatal(err)
 	}
-	s.db.Exec(`UPDATE words SET overrides_updated_at = '2000-01-01 00:00:00' WHERE id = ?`, ids[0])
-	seedCedict(t, s, "吃", "en", "to dine")
-	if _, err := s.RefreshLibrary(ctx); err != nil {
-		t.Fatal(err)
-	}
+	check("source-only override", ids[0])
 
-	conflicts, err := s.LibraryConflicts(ctx, 2, "hsk3-1", nil)
+	own, err := s.CreateWord(ctx, 2, models.CreateWordRequest{ZhText: "我们去吧", Translations: map[string][]string{"en": {"let's go"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(conflicts) != 0 {
-		t.Errorf("conflicts = %+v, want none", conflicts)
-	}
-	finishedImport(t, s, 2, models.ImportJob{Tag: "hsk3-1", ApplyTags: []string{"hsk3-1"}})
-	lists, err := s.ImportedLists(ctx, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lists) != 1 || lists[0].Conflicts != 0 {
-		t.Errorf("lists = %+v, want 0 conflicts", lists)
-	}
+	check("own entry", own)
 }
 
-func TestResolveLibraryConflicts(t *testing.T) {
-	for _, keep := range []string{"mine", "library"} {
-		t.Run(keep, func(t *testing.T) {
-			s, ref := conflictSetup(t)
-			ctx := context.Background()
-			if err := s.ResolveLibraryConflicts(ctx, 2, []int64{ref}, keep); err != nil {
-				t.Fatal(err)
-			}
-			conflicts, _ := s.LibraryConflicts(ctx, 2, "hsk3-1", nil)
-			if len(conflicts) != 0 {
-				t.Errorf("conflicts after resolve = %+v", conflicts)
-			}
-			wd, _ := s.GetWordByID(ctx, 2, ref)
-			want := []string{"to dine", "to eat", "to munch"}
-			if keep == "library" {
-				want = []string{"to dine", "to eat"}
-			}
-			if !reflect.DeepEqual(wd.Translations["en"], want) {
-				t.Errorf("en = %v, want %v", wd.Translations["en"], want)
-			}
-		})
-	}
-}
-
-func TestImportedLists_CountsConflicts(t *testing.T) {
-	s, _ := conflictSetup(t)
-	finishedImport(t, s, 2, models.ImportJob{Tag: "hsk3-1", ApplyTags: []string{"hsk3-1"}})
-	lists, err := s.ImportedLists(context.Background(), 2)
-	if err != nil {
+func TestResetToLibrary(t *testing.T) {
+	s, ref := editedReference(t)
+	ctx := context.Background()
+	if err := s.ResetToLibrary(ctx, 2, ref); err != nil {
 		t.Fatal(err)
 	}
-	if len(lists) != 1 || lists[0].Conflicts != 1 {
-		t.Errorf("lists = %+v, want 1 conflict", lists)
+	wd, _ := s.GetWordByID(ctx, 2, ref)
+	if !reflect.DeepEqual(wd.Translations["en"], []string{"to consume", "to eat"}) {
+		t.Errorf("en = %v, want the library glosses", wd.Translations["en"])
+	}
+	if wd.Pinyin == nil || *wd.Pinyin != "chī" {
+		t.Errorf("pinyin = %v, want chī", wd.Pinyin)
+	}
+	diff, _ := s.LibraryDiff(ctx, 2, ref)
+	if len(diff.Remove)+len(diff.Restore) != 0 || diff.Pinyin != nil {
+		t.Errorf("diff after reset = %+v, want empty", diff)
+	}
+
+	// Another learner cannot reset it; an own entry has nothing to reset to.
+	if err := s.ResetToLibrary(ctx, 3, ref); err != sql.ErrNoRows {
+		t.Errorf("other learner: err = %v, want sql.ErrNoRows", err)
+	}
+	own, _ := s.CreateWord(ctx, 2, models.CreateWordRequest{ZhText: "我们去吧", Translations: map[string][]string{"en": {"let's go"}}})
+	if err := s.ResetToLibrary(ctx, 2, own); err != sql.ErrNoRows {
+		t.Errorf("own entry: err = %v, want sql.ErrNoRows", err)
 	}
 }
 

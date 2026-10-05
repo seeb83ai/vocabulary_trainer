@@ -223,7 +223,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/translation_rank.go` | `computeTranslationRank` — scores an auto-derived translation gloss against `word_frequency_lang`; `linkTranslation` reads the `gloss_rank` cache first (rebuilt by `RebuildGlossRank`) |
 | `service/db/words_batch.go` | `batchWriter` — prepared statements and word/tag ID caches for bulk writes (library refresh, references) |
 | `service/db/library_conversion.go` | One-time startup conversion of copied words to library references (`LibraryConversionPending`, `BackupTo`, `ConvertToLibraryReferences` with before/after check) |
-| `service/db/library.go` | Shared library (user 1) and library references: `RefreshLibrary`, `LibraryNeedsPrefill`, `ensureLibraryWords` (on-demand), `CreateReferences`, `setReferenceGlosses` (overrides), `ImportedLists`, `LibraryConflicts`/`ResolveLibraryConflicts` — see ADR-0005 |
+| `service/db/library.go` | Shared library (user 1) and library references: `RefreshLibrary`, `LibraryNeedsPrefill`, `ensureLibraryWords` (on-demand), `CreateReferences`, `setReferenceGlosses` (overrides), `ImportedLists`, `LibraryDiff`/`ResetToLibrary` — see ADR-0005 |
 | `service/db/import_jobs.go` | Import job queue — `CreateImportJob`, `GetImportJob`, `ListActiveImportJobs`, `ListRunnableImportJobs`, progress and finish updates |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |

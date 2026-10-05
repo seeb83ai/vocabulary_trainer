@@ -44,8 +44,12 @@ Entries without a dictionary entry (for example sentence cards) stay user-owned 
 - ADR-0003 still holds for all per-user state. Only library glosses are shared.
 - A dictionary refresh must upsert library rows by text, so ids stay stable. It must
   never delete a library entry that learners reference; it flags it `library_removed`.
-- A reference edited by the learner before the library changed is a conflict. The
-  learner chooses "keep mine" or "take library" per list or per entry.
+- Library changes reach every reference, also an edited one: the learner's
+  overrides stay on top of the new library glosses. There are no conflicts to
+  resolve. A learner who wants the library version back uses "reset to library"
+  on the entry; the edit sheet first shows what the reset removes and brings
+  back (glosses and pinyin). `library_updated_at` and `overrides_updated_at`
+  stay as change markers, but no logic depends on them.
 - Code that writes glosses must branch on "reference" vs. "own entry".
 - Global lookups that are not per learner (for example the list of translation
   languages) may still read the `translations` table directly.

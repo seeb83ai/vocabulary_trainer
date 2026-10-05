@@ -145,9 +145,70 @@ test.describe('Vocabulary → Import', () => {
     await other.close();
   });
 
+  test('resets an edited library word after showing what changes', async ({ page }) => {
+    await page.route('https://api.pwnedpasswords.com/**', route => {
+      route.fulfill({ status: 200, body: '' });
+    });
+    const email = `e2e-reset-library-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
+    await page.goto('/#register');
+    await page.locator('#reg-email').fill(email);
+    await page.locator('#reg-password').fill(PASSWORD);
+    await page.locator('#reg-confirm').fill(PASSWORD);
+    await page.locator('#register-btn').click();
+    await expect(page).toHaveURL('/train', { timeout: 10_000 });
+    const res = await page.request.post('/api/import', { data: { tag: 'hsk3-1', apply_tags: ['hsk3-1'] } });
+    expect(res.status()).toBe(202);
+    const { id: jobId } = await res.json();
+    await expect.poll(async () => (await (await page.request.get(`/api/import/jobs/${jobId}`)).json()).status,
+      { timeout: 15_000 }).toBe('done');
+    const wordsOf = async () => {
+      const r = await page.evaluate(() => fetch('/api/words/?per_page=50').then(x => x.json()));
+      return Object.fromEntries(r.words.map(w => [w.zh_text, w]));
+    };
+
+    // The learner deletes "people", adds "human" and changes the pinyin of 人.
+    const person = (await wordsOf())['人'];
+    const put = await page.request.put(`/api/words/${person.id}`, {
+      data: {
+        zh_text: '人', pinyin: 'ren2',
+        translations: { ...person.translations, en: ['person', 'human'] },
+        translation_sources: { ...person.translation_sources, en: ['cedict', 'user'] },
+        tags: person.tags,
+      },
+    });
+    expect(put.status()).toBe(200);
+
+    await page.goto('/vocab');
+    // Imported words are unseen, and the list hides those by default.
+    await page.locator('#hide-unseen-btn').click();
+    await expect(page.locator('#hide-unseen-btn')).toHaveAttribute('aria-pressed', 'false');
+    // A library word the learner did not change has no reset.
+    const other = Object.keys(await wordsOf()).find(zh => zh !== '人');
+    await page.locator('#words-tbody .vb-row', { hasText: other }).click();
+    await expect(page.locator('#form-library-reset-btn')).toBeHidden();
+    await page.locator('#form-cancel-btn').click();
+
+    await page.locator('#words-tbody .vb-row', { hasText: '人' }).click();
+    await page.locator('#form-library-reset-btn').click();
+    const box = page.locator('#library-reset-confirm');
+    await expect(box).toBeVisible();
+    await expect(box).toContainText('Removes (EN): human');
+    await expect(box).toContainText('Brings back (EN): people');
+    await expect(box).toContainText('Pinyin: ren2 → rén');
+    await captureForPR(page, 'vocab-edit-reset-to-library');
+    await page.locator('#library-reset-apply').click();
+
+    await expect(box).toBeHidden();
+    await expect(page.locator('#form-pinyin')).toHaveValue('rén');
+    await expect(page.locator('#form-library-reset-btn')).toBeHidden();
+    const after = (await wordsOf())['人'];
+    expect([...after.translations.en].sort()).toEqual(['people', 'person']);
+    expect(after.pinyin).toBe('rén');
+  });
+
   // The library changes only through the CLI tools (ADR-0005), so this test
   // runs them against the E2E database, on its own list topic-e2esync.
-  test('updates an imported list, adds removed words again and resolves library changes', async ({ page }) => {
+  test('updates an imported list and adds removed words again', async ({ page }) => {
     await page.route('https://api.pwnedpasswords.com/**', route => {
       route.fulfill({ status: 200, body: '' });
     });
@@ -186,18 +247,11 @@ test.describe('Vocabulary → Import', () => {
     const row = page.locator('#import-my-lists-rows li', { hasText: 'topic-e2esync' });
     await expect(row).toContainText('1 new · Update');
     await expect(row).toContainText('1 removed earlier · Include again');
-    await expect(row).toContainText('1 changed in the library · Review');
+    await expect(row).not.toContainText('changed in the library');
     await captureForPR(page, 'vocab-import-my-lists');
 
-    await row.getByText('1 changed in the library · Review').click();
-    await expect(page.locator('#import-conflicts-title')).toHaveText('Library changes in topic-e2esync (1)');
-    await page.locator('#import-conflicts-details summary').click();
-    await expect(page.locator('#import-conflicts-rows li')).toContainText('椅子');
-    await expect(page.locator('#import-conflicts-rows li')).toContainText('Mine: seat');
-    await captureForPR(page, 'vocab-import-conflicts');
-    await page.locator('#import-conflicts-library').click();
-    await expect(page.locator('#import-conflicts')).toBeHidden();
-    expect([...(await wordsOf())['椅子'].translations.en].sort()).toEqual(['chair', 'stool']);
+    // The library's new sense reaches 椅子 by itself, next to the learner's own.
+    expect([...(await wordsOf())['椅子'].translations.en].sort()).toEqual(['chair', 'seat', 'stool']);
 
     await row.getByText('1 new · Update').click();
     await expect(row).toContainText('Up to date', { timeout: 15_000 });

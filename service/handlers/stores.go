@@ -21,6 +21,8 @@ type wordsStore interface {
 	db.QuizStore
 	db.ComponentStore
 	db.UserStore
+	LibraryDiff(ctx context.Context, userID, wordID int64) (models.LibraryDiff, error)
+	ResetToLibrary(ctx context.Context, userID, wordID int64) error
 }
 
 type uploadCSVStore interface {
@@ -79,8 +81,6 @@ type importStore interface {
 	CreateReferences(ctx context.Context, userID int64, libraryIDs []int64, tags []string) ([]int64, error)
 	TombstonedLibraryWords(ctx context.Context, userID int64) (map[int64]bool, error)
 	ImportedLists(ctx context.Context, userID int64) ([]models.ImportedList, error)
-	LibraryConflicts(ctx context.Context, userID int64, tag string, andTags []string) ([]models.LibraryConflict, error)
-	ResolveLibraryConflicts(ctx context.Context, userID int64, wordIDs []int64, keep string) error
 }
 
 type llmStore interface {

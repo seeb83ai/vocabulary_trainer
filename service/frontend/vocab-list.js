@@ -491,7 +491,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Header: Add word / Import / ⋯ menu, and the sheet
   $('open-add-btn').addEventListener('click', () => { resetForm(); openVocabSheet('add'); $('form-zh').focus(); });
   $('open-import-btn').addEventListener('click', () => openVocabSheet('import'));
-  initConflictPanel();
   $('vocab-menu-btn').addEventListener('click', e => { e.stopPropagation(); toggleVocabMenu(); });
   document.addEventListener('click', e => {
     if (!$('vocab-menu').classList.contains('hidden') && !e.target.closest('.vb-menu-wrap')) toggleVocabMenu(false);
@@ -574,6 +573,13 @@ document.addEventListener('DOMContentLoaded', () => {
   $('form-known-btn').addEventListener('click', () => {
     toggleWordKnown();
   });
+
+  $('form-library-reset-btn').addEventListener('click', () => {
+    show('library-reset-confirm');
+    $('library-reset-confirm').scrollIntoView({ block: 'nearest' });
+  });
+  $('library-reset-cancel').addEventListener('click', () => hide('library-reset-confirm'));
+  $('library-reset-apply').addEventListener('click', () => resetToLibrary());
 
   $('view-words-btn').addEventListener('click', () => { if (currentView !== 'words') switchView('words'); });
   $('view-components-btn').addEventListener('click', () => { if (currentView !== 'components') switchView('components'); });

@@ -1,6 +1,6 @@
 # Conflict detection and dialog
 
-Status: done
+Status: done, then replaced by "reset to library" (see the update below)
 Type: HITL (UI review)
 
 ## Parent
@@ -27,3 +27,16 @@ Note (implementation): the dialog is an inline panel in Vocabulary → Import. T
 ## Blocked by
 
 - 04a-import-as-library-references
+
+## Update: replaced by "reset to library"
+
+A UI review found that the conflict dialog adds little. Library changes reach
+every reference, also an edited one, so "keep mine" only hid the notice and
+"take library" only removed the learner's overrides. Decision:
+
+- No conflicts, no Review link in Your lists, no conflict endpoints.
+- The edit sheet of a library reference shows **Reset to library** when the
+  reference differs from the library (glosses by text, or pinyin).
+- The button opens a confirmation box that lists what the reset removes,
+  what it brings back and the pinyin change. **Reset** applies it.
+- API: `GET /api/words/{id}/library-diff`, `POST /api/words/{id}/reset-library`.

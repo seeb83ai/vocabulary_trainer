@@ -893,19 +893,22 @@ type ImportedList struct {
 	ApplyTags []string `json:"apply_tags"`
 	New       int      `json:"new"`
 	Removed   int      `json:"removed"`
-	// Conflicts counts references the learner changed before the library
-	// changed them (see LibraryConflict).
-	Conflicts int `json:"conflicts"`
 }
 
-// LibraryConflict is a library reference the learner changed before the
-// library word changed: Library holds the library glosses now (in the
-// learner's languages), Mine the glosses the learner sees.
-type LibraryConflict struct {
-	WordID  int64               `json:"word_id"`
-	ZhText  string              `json:"zh_text"`
-	Library map[string][]string `json:"library"`
-	Mine    map[string][]string `json:"mine"`
+// LibraryDiff is what "reset to library" changes on a library reference:
+// Remove holds the glosses only the learner has, Restore the library glosses
+// the learner does not see (both by language), Pinyin the pinyin change when
+// the learner's pinyin differs from the library's.
+type LibraryDiff struct {
+	Remove  map[string][]string `json:"remove"`
+	Restore map[string][]string `json:"restore"`
+	Pinyin  *PinyinChange       `json:"pinyin,omitempty"`
+}
+
+// PinyinChange is the learner's pinyin next to the library's.
+type PinyinChange struct {
+	Mine    string `json:"mine"`
+	Library string `json:"library"`
 }
 
 // LibraryConversionReport summarises the one-time conversion of copied
