@@ -44,6 +44,9 @@ func (h *UploadCSVHandler) maxRows() int {
 }
 
 func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
+	if rejectLibraryWrite(w, r) {
+		return
+	}
 	// Cap the request body so an oversized upload can't exhaust memory/disk.
 	r.Body = http.MaxBytesReader(w, r.Body, h.maxBytes())
 	if err := r.ParseMultipartForm(32 << 20); err != nil {

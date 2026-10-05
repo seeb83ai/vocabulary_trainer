@@ -58,7 +58,7 @@ func (s *Store) DetectComponentConfusion(ctx context.Context, userID int64, char
 	normalized := sm2.NormalizeAnswer(answer)
 	wRows, qErr := s.db.QueryContext(ctx, `
 		SELECT t.zh_word_id, w.text FROM words w
-		JOIN translations t ON t.translation_word_id = w.id
+		JOIN user_translations t ON t.translation_word_id = w.id
 		JOIN words wz ON wz.id = t.zh_word_id
 		WHERE wz.user_id = ? AND wz.text != ?`, userID, character)
 	if qErr != nil {

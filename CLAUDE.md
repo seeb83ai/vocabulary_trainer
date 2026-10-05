@@ -219,11 +219,13 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/components_confusion.go` | Component confusion detection |
 | `service/db/components_stats.go` | Component stats history and coverage |
 | `service/db/components_test_helpers.go` | Test-only seed/set helpers for component tests |
-| `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary`, `LookupPinyin` |
+| `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary`, `LookupPinyin`, `ImportDictionaryEntries` (replace/append a dictionary version) |
 | `service/db/translation_rank.go` | `computeTranslationRank` — scores an auto-derived translation gloss against `word_frequency_lang`; `linkTranslation` reads the `gloss_rank` cache first (rebuilt by `RebuildGlossRank`) |
-| `service/db/words_batch.go` | `CreateWordsBatch` — writes many words in one transaction with prepared statements and word/tag ID caches (used by the import worker) |
+| `service/db/words_batch.go` | `batchWriter` — prepared statements and word/tag ID caches for bulk writes (library refresh, references) |
+| `service/db/library_conversion.go` | One-time startup conversion of copied words to library references (`LibraryConversionPending`, `BackupTo`, `ConvertToLibraryReferences` with before/after check) |
+| `service/db/library.go` | Shared library (user 1) and library references: `RefreshLibrary`, `LibraryNeedsPrefill`, `ensureLibraryWords` (on-demand), `CreateReferences`, `setReferenceGlosses` (overrides), `ImportedLists`, `LibraryDiff`/`ResetToLibrary` — see ADR-0005 |
 | `service/db/import_jobs.go` | Import job queue — `CreateImportJob`, `GetImportJob`, `ListActiveImportJobs`, `ListRunnableImportJobs`, progress and finish updates |
-| `service/db/hmm.go` | HMM actors/locations/scenes/props, `ImportTemplateWords`, `SaveHMMSceneWithLibrary` |
+| `service/db/hmm.go` | HMM actors/locations/scenes/props, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
 | `service/db/funnel.go` | Signup → activation → retention funnel (`GetFunnelReport`) |
 
@@ -288,11 +290,12 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-hsk/main.go` | Import HSK 2.0 (`hsk2-N`) / HSK 3.0 (`hsk3-N`) word lists into the shared library user |
 | `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
 | `service/cmd/import-hanzi/main.go` | Import hanzi decomposition dataset |
-| `service/cmd/import-cedict/main.go` | Import CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for sub-word segmentation + free dictionary lookup |
+| `service/cmd/import-cedict/main.go` | Import (replace, or `-append`) CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for segmentation, dictionary lookup and the shared library; refreshes the library at the end |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 | `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
 | `service/cmd/e2e-seed-history/main.go` | Test-only: writes back-dated SM-2 progress, due dates and daily stats for the screenshot specs |
 | `service/cmd/classify-topics/main.go` | Sort HSK + top-frequency words into `data/topics/<topic>.csv` lists with Claude (resumable) |
+| `service/cmd/refresh-library/main.go` | Update the shared library's glosses from `cedict_entries` after a dictionary import |
 | `service/cmd/import-topics/main.go` | Load `data/topics/<topic>.csv` into the shared library as importable `topic-<topic>` tags |
 
 ### E2E tests (`e2e/`)
@@ -305,7 +308,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
 | `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags), training starts while the import runs |
-| `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has, live import progress |
+| `e2e/import.spec.js` | Browser tests: Vocabulary → Import multi-select, tagging words the user already has, live import progress, library references (languages from settings, private edits), Your lists (update, include removed, library changes); runs the CLI tools against the E2E DB (`E2E_DB_PATH`) |
 | `e2e/vocab-redesign.spec.js` | Browser tests: Vocabulary header/summary, filter chips, More filters + sort, row list, Add/Edit sheet (known/reset/delete), ⋯ menu, phone layout |
 | `e2e/library-redesign.spec.js` | Browser tests: Mismatches cards + client-side sort + count pill + empty state; Mnemonics tabs with filled counts, actor groups, auto-save (HMM API mocked) |
 | `e2e/pinyin-redesign.spec.js` | Browser tests: Pinyin sticky bar + group chips, 2×2 options, wrong-answer result with all tones, done/empty states, phone layout (pinyin API mocked) |

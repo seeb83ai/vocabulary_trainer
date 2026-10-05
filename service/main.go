@@ -85,6 +85,38 @@ func main() {
 	}
 	defer store.Close()
 
+	// First start with library references (ADR-0005): fill the shared
+	// library's glosses from the dictionaries once. Later dictionary updates
+	// go through cmd/refresh-library.
+	if need, err := store.LibraryNeedsPrefill(context.Background()); err != nil {
+		log.Fatalf("Failed to check library: %v", err)
+	} else if need {
+		log.Printf("Library: filling glosses from the dictionaries (one-time)…")
+		report, err := store.RefreshLibrary(context.Background())
+		if err != nil {
+			log.Fatalf("Failed to fill library: %v", err)
+		}
+		log.Printf("Library: %d words, %d glosses added, %d without dictionary entry", report.Words, report.Added, report.Missing)
+	}
+	// One-time conversion of copied list imports to library references. A
+	// backup of the database is written next to it first; a failed check
+	// rolls the conversion back and stops the server.
+	if pending, err := store.LibraryConversionPending(context.Background()); err != nil {
+		log.Fatalf("Failed to check library conversion: %v", err)
+	} else if pending {
+		backup := dbPath + ".pre-library-refs"
+		log.Printf("Library conversion: writing backup %s…", backup)
+		if err := store.BackupTo(context.Background(), backup); err != nil {
+			log.Fatalf("Library conversion: backup failed, nothing converted: %v", err)
+		}
+		report, err := store.ConvertToLibraryReferences(context.Background())
+		if err != nil {
+			log.Fatalf("Library conversion failed and was rolled back (backup: %s): %v", backup, err)
+		}
+		log.Printf("Library conversion: %d users (%d kept exactly), %d words, %d copied glosses removed",
+			report.Users, report.FaithfulUsers, report.Words, report.GlossWordsDeleted)
+	}
+
 	// TTS audio handler — always enabled.
 	// AUDIO_DIR defaults to a sibling of the DB file.
 	audioDir := os.Getenv("AUDIO_DIR")
@@ -314,6 +346,8 @@ func main() {
 				r.Post("/review", wordsH.MarkReview)
 				r.Post("/known", wordsH.SetKnown)
 				r.Post("/reset", wordsH.ResetProgress)
+				r.Get("/library-diff", wordsH.LibraryDiff)
+				r.Post("/reset-library", wordsH.ResetToLibrary)
 				r.Get("/hmm/context", hmmH.GetSceneContext)
 				r.Put("/hmm", hmmH.SaveScene)
 				r.Delete("/hmm", hmmH.DeleteScene)
@@ -325,6 +359,7 @@ func main() {
 		r.Get("/import/preview", importH.Preview)
 		r.Post("/import", importH.Import)
 		r.Get("/import/jobs", importH.ActiveJobs)
+		r.Get("/import/lists", importH.Lists)
 		r.Get("/import/jobs/{id}", importH.Job)
 		r.Get("/tags/details", tagsH.Details)
 		r.Put("/tags/{name}", tagsH.Update)

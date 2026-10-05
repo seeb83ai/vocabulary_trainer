@@ -10,6 +10,7 @@ fill-translations
 fill-hanzi-translations
 /classify-topics
 /import-topics
+/refresh-library
 
 # Database
 data/

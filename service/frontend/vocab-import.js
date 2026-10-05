@@ -157,6 +157,9 @@ function switchTab(name) {
   if (name === 'import' && !importSourceTagsLoaded) {
     loadImportSourceTags();
   }
+  if (name === 'import') {
+    loadMyLists();
+  }
   if (name === 'tags' && !tagsLoaded) {
     loadTagDetails();
   }
@@ -301,6 +304,20 @@ function showImportStep(n) {
     const el = $('import-step' + i);
     if (el) el.classList.toggle('hidden', i !== n);
   });
+  if (n === 2) showImportLangsHint();
+}
+
+// showImportLangsHint names the languages the imported words show
+// translations in: the learner's primary and secondary language.
+async function showImportLangsHint() {
+  const label = $('import-langs-label');
+  if (!label) return;
+  try {
+    const st = await apiFetch('/api/settings');
+    label.textContent = t('vocab.importLangsHint', { langs: nativeLangsLabel(st.primary_lang || 'en', st.secondary_lang) });
+  } catch (e) {
+    label.textContent = '';
+  }
 }
 
 function renderImportApplyTags() {
@@ -359,8 +376,7 @@ async function executeImport() {
   show('import-status');
 
   try {
-    const result = await importLists(importSelectedTags, importApplyTags,
-      $('import-en').checked, $('import-de').checked, undefined,
+    const result = await importLists(importSelectedTags, importApplyTags, undefined,
       summary => { statusEl.textContent = importProgressText(summary); });
     statusEl.className = 'mt-3 text-sm text-green-600';
     statusEl.textContent = importResultText(result);
@@ -394,6 +410,59 @@ function resetImportPanel() {
   hide('import-preview');
   $('import-next-btn').disabled = true;
   hide('import-status');
-  if ($('import-en')) $('import-en').checked = true;
-  if ($('import-de')) $('import-de').checked = false;
+}
+
+// ── Imported lists: sync new words and removed words ───────────────────────
+
+let myLists = [];
+
+function listLabel(list) {
+  return [list.tag, ...(list.and_tags || [])].join(' + ');
+}
+
+async function loadMyLists() {
+  try {
+    myLists = await apiFetch('/api/import/lists');
+  } catch (e) {
+    myLists = [];
+  }
+  renderMyLists();
+}
+
+function renderMyLists() {
+  const rows = $('import-my-lists-rows');
+  if (!rows) return;
+  $('import-my-lists').classList.toggle('hidden', myLists.length === 0);
+  rows.innerHTML = '';
+  myLists.forEach((list, i) => {
+    const li = document.createElement('li');
+    li.className = 'flex flex-wrap items-center gap-x-3 gap-y-1';
+    li.id = `import-my-list-${i}`;
+    const parts = [`<span class="font-medium text-gray-800">${escHtml(listLabel(list))}</span>`];
+    if (list.new > 0) {
+      parts.push(`<button type="button" class="text-blue-700 hover:underline" data-sync="${i}">${escHtml(t('import.newWords', { n: list.new }))} · ${escHtml(t('import.update'))}</button>`);
+    } else {
+      parts.push(`<span class="text-gray-500">${escHtml(t('import.upToDate'))}</span>`);
+    }
+    if (list.removed > 0) {
+      parts.push(`<button type="button" class="text-gray-600 hover:underline" data-include="${i}">${escHtml(t('import.removedEarlier', { n: list.removed }))} · ${escHtml(t('import.includeAgain'))}</button>`);
+    }
+    li.innerHTML = parts.join('');
+    rows.appendChild(li);
+  });
+  rows.querySelectorAll('[data-sync]').forEach(btn => btn.addEventListener('click', () => syncList(myLists[btn.dataset.sync], false, btn)));
+  rows.querySelectorAll('[data-include]').forEach(btn => btn.addEventListener('click', () => syncList(myLists[btn.dataset.include], true, btn)));
+}
+
+async function syncList(list, includeRemoved, btn) {
+  btn.disabled = true;
+  btn.textContent = t('vocab.importing');
+  try {
+    const jobs = [await queueImportJob(buildListSyncPayload(list, includeRemoved))];
+    await waitForImport(jobs, summary => summary.finished);
+    loadWords();
+  } catch (e) {
+    btn.textContent = e.message;
+  }
+  await loadMyLists();
 }

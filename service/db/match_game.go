@@ -66,7 +66,7 @@ func (s *Store) wordToMatchGameWord(ctx context.Context, userID, wordID int64, l
 func (s *Store) getRankedTranslationTextsForZhWord(ctx context.Context, zhID int64, lang string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?
 		 ORDER BY
 		   CASE WHEN t.source = 'cedict' THEN 1 ELSE 0 END,

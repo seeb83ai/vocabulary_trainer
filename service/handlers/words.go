@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 
 	"github.com/go-chi/chi/v5"
@@ -81,6 +82,9 @@ func cleanTranslations(translations, sources map[string][]string) (map[string][]
 }
 
 func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
+	if rejectLibraryWrite(w, r) {
+		return
+	}
 	var req models.CreateWordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -166,6 +170,9 @@ func (h *WordsHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
+	if rejectLibraryWrite(w, r) {
+		return
+	}
 	id, err := parseID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -251,6 +258,9 @@ func (h *WordsHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WordsHandler) AddTranslation(w http.ResponseWriter, r *http.Request) {
+	if rejectLibraryWrite(w, r) {
+		return
+	}
 	id, err := parseID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -351,7 +361,55 @@ func (h *WordsHandler) ResetProgress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, wd)
 }
 
+// LibraryDiff returns what a reset to the library would change on the word
+// (GET /api/words/{id}/library-diff). It is empty for an own entry.
+func (h *WordsHandler) LibraryDiff(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	diff, err := h.Store.LibraryDiff(r.Context(), UserIDFromContext(r.Context()), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "word not found")
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, diff)
+}
+
+// ResetToLibrary makes a library reference look like the library word again
+// and returns the word (POST /api/words/{id}/reset-library).
+func (h *WordsHandler) ResetToLibrary(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	userID := UserIDFromContext(r.Context())
+	if err := h.Store.ResetToLibrary(r.Context(), userID, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "library word not found")
+			return
+		}
+		internalError(w, err)
+		return
+	}
+	wd, err := h.Store.GetWordByID(r.Context(), userID, id)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, wd)
+}
+
 func (h *WordsHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	if rejectLibraryWrite(w, r) {
+		return
+	}
 	id, err := parseID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -465,4 +523,15 @@ func initComponentsAsync(s componentIniter, userID, wordID int64, zhText string)
 // its side effects deterministically.
 func WaitForComponentInit() {
 	componentInitWG.Wait()
+}
+
+// rejectLibraryWrite answers 403 when the caller is the shared library user:
+// the library is read-only in the UI and changes only through the dictionary
+// refresh and the CLI tools (ADR-0005). It reports whether it answered.
+func rejectLibraryWrite(w http.ResponseWriter, r *http.Request) bool {
+	if UserIDFromContext(r.Context()) != db.LibraryUserID {
+		return false
+	}
+	writeError(w, http.StatusForbidden, "the shared library is read-only")
+	return true
 }

@@ -52,15 +52,15 @@ import-hanzi:
 	mkdir -p data
 	cd service && go run ./cmd/import-hanzi -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../dictionary.txt)
 
-## import-cedict: import CC-CEDICT for zh word segmentation + free EN dictionary lookups (FILE=cedict_ts.u8 DB=data/vocab.db)
+## import-cedict: import (replace) CC-CEDICT for segmentation, EN lookups and the shared library; refreshes the library (FILE=cedict_ts.u8 DB=data/vocab.db APPEND=1 adds a partial file, FORCE=1 skips the size check)
 import-cedict:
 	mkdir -p data
-	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../cedict_ts.u8) -lang en
+	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../cedict_ts.u8) -lang en $(if $(APPEND),-append) $(if $(FORCE),-force)
 
-## import-handedict: import HanDeDict for free DE dictionary lookups (FILE=handedict.u8 DB=data/vocab.db)
+## import-handedict: import (replace) HanDeDict for DE lookups and the shared library; refreshes the library (FILE=handedict.u8 DB=data/vocab.db APPEND=1 FORCE=1)
 import-handedict:
 	mkdir -p data
-	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../handedict.u8) -lang de
+	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../handedict.u8) -lang de $(if $(APPEND),-append) $(if $(FORCE),-force)
 
 ## import-hsk: import an HSK word list into the shared library (VERSION=3 for HSK 3.0, 2 for HSK 2.0; DB=data/vocab.db)
 import-hsk:
@@ -70,6 +70,10 @@ import-hsk:
 ## classify-topics: sort HSK + top-frequency words into data/topics/<topic>.csv with Claude (needs ANTHROPIC_API_KEY, or CLI=claude to use the Claude Code subscription login; WORKERS=4 parallel requests; DRY=1 only counts; DB=data/vocab.db OUT=data/topics)
 classify-topics:
 	cd service && go run ./cmd/classify-topics -db $(or $(DB),../data/vocab.db) -out $(or $(OUT),../data/topics) $(if $(DRY),-dry-run) $(if $(CLI),-claude-cli $(CLI)) $(if $(WORKERS),-workers $(WORKERS))
+
+## refresh-library: update the shared library's glosses from the imported dictionaries; import-cedict/import-handedict run it already (DB=data/vocab.db)
+refresh-library:
+	cd service && go run ./cmd/refresh-library -db $(or $(DB),../data/vocab.db)
 
 ## import-topics: tag the shared library's words with the data/topics/<topic>.csv lists as importable topic-<topic> tags (DRY=1 previews; DB=data/vocab.db DIR=data/topics)
 import-topics:
@@ -126,6 +130,7 @@ release: generate-landing
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-cedict ./cmd/import-cedict
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../classify-topics ./cmd/classify-topics
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-topics ./cmd/import-topics
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../refresh-library ./cmd/refresh-library
 	rsync -avz --progress \
 	    Makefile \
 	    dictionary.txt \
@@ -137,6 +142,7 @@ release: generate-landing
 		import-cedict \
 		classify-topics \
 		import-topics \
+		refresh-library \
 		service/cmd/import-frequency/frequency_data.txt \
 		fill-translations \
 		.env.example \
@@ -144,6 +150,8 @@ release: generate-landing
 		deploy/vocab-trainer-watcher.service \
 		deploy/vocab-trainer-watcher.path \
 		deploy/nginx.conf \
+		data/cedict_ts.u8 \
+		data/handedict.u8 \
 		$(RSYNC_DEST)/
 	@if [ -d data/topics ]; then \
 		rsync -avz --progress data/topics $(RSYNC_DEST)/data/; \

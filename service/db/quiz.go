@@ -512,7 +512,7 @@ func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, l
 	fetchVariants := func(wordID int64) (map[string]struct{}, error) {
 		rows, err := s.db.QueryContext(ctx, `
 			SELECT w.text FROM words w
-			JOIN translations t ON t.translation_word_id = w.id
+			JOIN user_translations t ON t.translation_word_id = w.id
 			WHERE t.zh_word_id = ? AND w.language IN (`+langList+`)`,
 			append([]any{wordID}, args...)...)
 		if err != nil {

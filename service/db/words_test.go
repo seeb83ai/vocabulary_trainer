@@ -2311,7 +2311,7 @@ func enTranslationForText(t *testing.T, s *Store, userID int64, text string) str
 	var en string
 	err := s.db.QueryRow(`
 		SELECT ew.text FROM words w
-		JOIN translations t ON t.zh_word_id = w.id
+		JOIN user_translations t ON t.zh_word_id = w.id
 		JOIN words ew ON ew.id = t.translation_word_id AND ew.language = 'en'
 		WHERE w.user_id = ? AND w.text = ? AND w.language = 'zh'`, userID, text).Scan(&en)
 	if err != nil && err != sql.ErrNoRows {

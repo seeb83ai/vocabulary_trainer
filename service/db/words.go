@@ -18,8 +18,8 @@ import (
 var validSortExprs = map[string]string{
 	"zh":          "w.text",
 	"pinyin":      "w.pinyin",
-	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'en')",
-	"de":          "(SELECT MIN(ew.text) FROM words ew JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'de')",
+	"en":          "(SELECT MIN(ew.text) FROM words ew JOIN user_translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'en')",
+	"de":          "(SELECT MIN(ew.text) FROM words ew JOIN user_translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id WHERE ew.language = 'de')",
 	"repetitions": "COALESCE(p.repetitions, 0)|CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)",
 	"due_date":    "COALESCE(p.due_date, CURRENT_TIMESTAMP)",
 	"accuracy":    "CAST(COALESCE(p.total_correct + p.streak_bonus, 0) AS REAL) / NULLIF(COALESCE(p.total_attempts, 0), 0)|COALESCE(p.total_attempts, 0)",
@@ -86,7 +86,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 	var missingLangArgs []any
 	if missingLang == "en" || missingLang == "de" {
 		missingLangFilter = ` AND NOT EXISTS (
-			SELECT 1 FROM translations t
+			SELECT 1 FROM user_translations t
 			JOIN words tw ON t.translation_word_id = tw.id
 			WHERE t.zh_word_id = w.id AND tw.language = ?
 		)`
@@ -137,7 +137,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		           OR w.pinyin = ? COLLATE NOCASE
 		           OR EXISTS (
 		               SELECT 1 FROM words ew
-		               JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
+		               JOIN user_translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
 		               WHERE ew.text = ? COLLATE NOCASE
 		           )
 		       ) THEN 0 ELSE 1 END AS match_rank,
@@ -151,7 +151,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		       OR w.pinyin LIKE '%' || ? || '%'
 		       OR EXISTS (
 		           SELECT 1 FROM words ew
-		           JOIN translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
+		           JOIN user_translations t ON t.translation_word_id = ew.id AND t.zh_word_id = w.id
 		           WHERE ew.text LIKE '%' || ? || '%'
 		       ))` + tagFilter + reviewFilter + hideUnseenFilter + bucketFilter + dueFilterSQL + missingLangFilter + `
 		ORDER BY ` + orderClause + limitClause
@@ -246,7 +246,7 @@ func (s *Store) batchLoadTranslationTexts(ctx context.Context, ids []int64, lang
 	}
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT t.zh_word_id, w.text, t.source FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE w.language = ?
 		   AND t.zh_word_id IN (`+strings.Join(placeholders, ",")+`)
 		 ORDER BY w.text`, args...)
@@ -312,7 +312,7 @@ func (s *Store) batchLoadTags(ctx context.Context, words []models.WordDetail, id
 func (s *Store) getTranslationTextsAndSourcesForZhWord(ctx context.Context, zhID int64, lang string) (texts []string, sources []string, err error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text, t.source FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?
 		 ORDER BY w.text`, zhID, lang)
 	if err != nil {
@@ -337,7 +337,7 @@ func (s *Store) getTranslationTextsAndSourcesForZhWord(ctx context.Context, zhID
 func (s *Store) getTranslationTextsForZhWord(ctx context.Context, zhID int64, lang string) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?
 		 ORDER BY w.text`, zhID, lang)
 	if err != nil {
@@ -498,21 +498,46 @@ func (s *Store) GetWordByID(ctx context.Context, userID, id int64) (*models.Word
 // CreateWord creates (or reuses) the zh word + en words and links them.
 // Returns the zh word ID.
 func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateWordRequest) (int64, error) {
+	// A learner's word that is in the dictionaries becomes a library
+	// reference (ADR-0005). This runs before the transaction: with one
+	// connection, a second transaction would deadlock.
+	var libraryID int64
+	if userID != LibraryUserID {
+		id, ok, err := s.ensureLibraryWord(ctx, strings.TrimSpace(req.ZhText))
+		if err != nil {
+			return 0, err
+		}
+		if ok {
+			libraryID = id
+		}
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
+	// Library words are never quizzed, so they get no progress rows.
+	library := userID == LibraryUserID
 	zhID, err := upsertWord(ctx, tx, req.ZhText, "zh", &req.Pinyin, userID)
 	if err != nil {
 		return 0, err
 	}
-	if err := initSM2(ctx, tx, zhID); err != nil {
-		return 0, err
+	if !library {
+		if err := initSM2(ctx, tx, zhID); err != nil {
+			return 0, err
+		}
 	}
 
+	refLibraryID, err := s.linkReference(ctx, tx, userID, zhID, libraryID)
+	if err != nil {
+		return 0, err
+	}
 	for lang, texts := range req.Translations {
+		if refLibraryID != 0 {
+			break
+		}
 		for i, text := range texts {
 			text = strings.TrimSpace(text)
 			if text == "" {
@@ -522,13 +547,21 @@ func (s *Store) CreateWord(ctx context.Context, userID int64, req models.CreateW
 			if err != nil {
 				return 0, err
 			}
-			if err := initSM2(ctx, tx, transID); err != nil {
-				return 0, err
+			if !library {
+				if err := initSM2(ctx, tx, transID); err != nil {
+					return 0, err
+				}
 			}
 			source := sourceAt(req.TranslationSources[lang], i)
 			if err := linkTranslation(ctx, tx, transID, zhID, lang, text, source); err != nil {
 				return 0, fmt.Errorf("link %s translation: %w", lang, err)
 			}
+		}
+	}
+
+	if refLibraryID != 0 {
+		if err := setReferenceGlosses(ctx, tx, userID, zhID, refLibraryID, req.Translations, req.TranslationSources); err != nil {
+			return 0, err
 		}
 	}
 
@@ -594,12 +627,25 @@ func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req mode
 	// a spurious UNIQUE constraint violation caused by duplicate zh rows in
 	// the database (e.g. after manual migrations) or by the form's trim().
 	var currentText string
+	var libraryID sql.NullInt64
 	err = tx.QueryRowContext(ctx,
-		`SELECT text FROM words WHERE id = ? AND language = 'zh' AND user_id = ?`, id, userID).Scan(&currentText)
+		`SELECT text, library_word_id FROM words WHERE id = ? AND language = 'zh' AND user_id = ?`, id, userID).Scan(&currentText, &libraryID)
 	if err == sql.ErrNoRows {
 		return sql.ErrNoRows
 	} else if err != nil {
 		return fmt.Errorf("get current word: %w", err)
+	}
+	// A library reference whose text changes is a different word now: it
+	// becomes an own entry with exactly the requested glosses.
+	if libraryID.Valid && currentText != newText {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE words SET library_word_id = NULL, overrides_updated_at = NULL WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("detach reference: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM translation_deletions WHERE user_word_id = ?`, id); err != nil {
+			return fmt.Errorf("detach reference: %w", err)
+		}
+		libraryID.Valid = false
 	}
 
 	var res sql.Result
@@ -618,6 +664,19 @@ func (s *Store) UpdateWord(ctx context.Context, userID int64, id int64, req mode
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return sql.ErrNoRows
+	}
+
+	if libraryID.Valid {
+		if err := setReferenceGlosses(ctx, tx, userID, id, libraryID.Int64, req.Translations, req.TranslationSources); err != nil {
+			return err
+		}
+		if err := setWordTags(ctx, tx, id, req.Tags); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return s.cleanOrphanTags(ctx)
 	}
 
 	// Remove old translation links (not the en word rows themselves)
@@ -664,13 +723,35 @@ func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, la
 	}
 	defer tx.Rollback()
 
-	var exists int
-	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM words WHERE id = ? AND user_id = ? AND language = 'zh'`, zhID, userID).Scan(&exists); err != nil {
+	var libraryID sql.NullInt64
+	err = tx.QueryRowContext(ctx,
+		`SELECT library_word_id FROM words WHERE id = ? AND user_id = ? AND language = 'zh'`, zhID, userID).Scan(&libraryID)
+	if err == sql.ErrNoRows {
+		return sql.ErrNoRows
+	}
+	if err != nil {
 		return fmt.Errorf("check word: %w", err)
 	}
-	if exists == 0 {
-		return sql.ErrNoRows
+	if libraryID.Valid {
+		texts, sources, err := referenceGlosses(ctx, tx, zhID)
+		if err != nil {
+			return err
+		}
+		// Adding a library gloss the learner had deleted restores it.
+		library, err := visibleLibraryGlosses(ctx, tx, userID, libraryID.Int64)
+		if err != nil {
+			return err
+		}
+		source := "user"
+		if _, ok := library[wordKey{strings.TrimSpace(text), lang}]; ok {
+			source = "cedict"
+		}
+		texts[lang] = append(texts[lang], text)
+		sources[lang] = append(sources[lang], source)
+		if err := setReferenceGlosses(ctx, tx, userID, zhID, libraryID.Int64, texts, sources); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
 
 	transID, err := upsertWord(ctx, tx, text, lang, nil, userID)
@@ -693,6 +774,14 @@ func (s *Store) AddTranslation(ctx context.Context, userID int64, zhID int64, la
 // columns dropped their FK when components joined the table, see the
 // generalize_confusion_pairs migration).
 func (s *Store) DeleteWord(ctx context.Context, userID, id int64) error {
+	// A deleted library reference leaves a tombstone, so a list sync does
+	// not add the word again.
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO word_tombstones (user_id, library_word_id)
+		 SELECT user_id, library_word_id FROM words
+		 WHERE id = ? AND user_id = ? AND library_word_id IS NOT NULL`, id, userID); err != nil {
+		return fmt.Errorf("delete word: tombstone: %w", err)
+	}
 	res, err := s.db.ExecContext(ctx, `DELETE FROM words WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {
 		return fmt.Errorf("delete word: %w", err)
@@ -776,7 +865,7 @@ func (s *Store) GetTranslationCandidatesForWord(ctx context.Context, wordID int6
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.text, t.source, t.rank
 		 FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
 	if err != nil {
 		return nil, fmt.Errorf("get translation candidates: %w", err)
@@ -801,7 +890,7 @@ func (s *Store) GetTranslationsForWord(ctx context.Context, wordID int64, target
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT w.id, w.text, w.language, w.pinyin, w.created_at
 		 FROM words w
-		 JOIN translations t ON t.translation_word_id = w.id
+		 JOIN user_translations t ON t.translation_word_id = w.id
 		 WHERE t.zh_word_id = ? AND w.language = ?`, wordID, targetLang)
 	if err != nil {
 		return nil, fmt.Errorf("get translations: %w", err)

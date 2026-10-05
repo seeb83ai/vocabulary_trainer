@@ -707,3 +707,64 @@ func TestSetKnown_UnknownWordIs404(t *testing.T) {
 		t.Errorf("want 404, got %d", rec.Code)
 	}
 }
+
+func TestWords_LibraryUserCannotChangeWords(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWordForUser(t, s, 1, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouterForUser(s, 1)
+
+	for _, c := range []struct {
+		method, path string
+		body         any
+	}{
+		{"POST", "/api/words/", map[string]any{"zh_text": "谢谢", "translations": map[string][]string{"en": {"thanks"}}}},
+		{"PUT", fmt.Sprintf("/api/words/%d", id), map[string]any{"zh_text": "你好", "translations": map[string][]string{"en": {"hi"}}}},
+		{"POST", fmt.Sprintf("/api/words/%d/translations", id), map[string]any{"text": "hi", "lang": "en"}},
+		{"DELETE", fmt.Sprintf("/api/words/%d", id), nil},
+	} {
+		rec := do(t, r, c.method, c.path, c.body)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s %s: want 403, got %d: %s", c.method, c.path, rec.Code, rec.Body)
+		}
+	}
+}
+
+func TestLibraryDiffAndResetToLibrary(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWordFull(t, s, 1, "吃", "chī", nil, nil, []string{"hsk3-1"})
+	seedCedictEntry(t, s, "吃", "en", "to eat")
+	r := newRouter(s)
+	runImport(t, s, r, map[string]any{"tag": "hsk3-1", "apply_tags": []string{"hsk3-1"}})
+	id, _ := s.GetWordIDByZhText(ctx, 2, "吃")
+	if rec := do(t, r, "POST", fmt.Sprintf("/api/words/%d/translations", id), map[string]string{"text": "to munch", "lang": "en"}); rec.Code != http.StatusNoContent {
+		t.Fatalf("add translation: %d %s", rec.Code, rec.Body)
+	}
+
+	rec := do(t, r, "GET", fmt.Sprintf("/api/words/%d/library-diff", id), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("library-diff: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var diff models.LibraryDiff
+	decodeJSON(t, rec, &diff)
+	if fmt.Sprint(diff.Remove) != "map[en:[to munch]]" || len(diff.Restore) != 0 || diff.Pinyin != nil {
+		t.Errorf("diff = %+v, want to munch removed", diff)
+	}
+
+	rec = do(t, r, "POST", fmt.Sprintf("/api/words/%d/reset-library", id), nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reset-library: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var wd models.WordDetail
+	decodeJSON(t, rec, &wd)
+	if fmt.Sprint(wd.Translations["en"]) != "[to eat]" {
+		t.Errorf("en = %v, want the library glosses", wd.Translations["en"])
+	}
+
+	if rec := do(t, r, "GET", "/api/words/999999/library-diff", nil); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown word diff: want 404, got %d", rec.Code)
+	}
+	if rec := do(t, r, "POST", "/api/words/999999/reset-library", nil); rec.Code != http.StatusNotFound {
+		t.Errorf("unknown word reset: want 404, got %d", rec.Code)
+	}
+}

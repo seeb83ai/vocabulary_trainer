@@ -65,8 +65,9 @@ export default async function globalTeardown() {
     }
   }
 
-  // Clean up WAL and SHM files if they exist
-  for (const ext of ['-wal', '-shm']) {
+  // Clean up WAL and SHM files and the backup the server writes before the
+  // one-time library conversion, if they exist
+  for (const ext of ['-wal', '-shm', '.pre-library-refs']) {
     const walPath = dbPath + ext;
     if (walPath && existsSync(walPath)) {
       try { unlinkSync(walPath); } catch { /* ignore */ }

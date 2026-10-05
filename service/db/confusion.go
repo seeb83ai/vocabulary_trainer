@@ -22,7 +22,7 @@ import (
 const zhToTranslConfusionQuery = `
 	SELECT t.zh_word_id, w.text FROM words wz
 	JOIN sm2_progress p ON p.word_id = wz.id
-	JOIN translations t ON t.zh_word_id = wz.id
+	JOIN user_translations t ON t.zh_word_id = wz.id
 	JOIN words w ON w.id = t.translation_word_id
 	WHERE wz.user_id = ? AND wz.language = 'zh' AND wz.id != ? AND p.first_seen_at IS NOT NULL`
 
@@ -35,7 +35,7 @@ func translToZhConfusionQuery(langPlaceholders string) string {
 	return `
 	SELECT t.zh_word_id, w.text FROM words wz
 	JOIN sm2_progress p ON p.word_id = wz.id
-	JOIN translations t ON t.zh_word_id = wz.id
+	JOIN user_translations t ON t.zh_word_id = wz.id
 	JOIN words w ON w.id = t.translation_word_id
 	WHERE wz.user_id = ? AND wz.language = 'zh' AND w.language IN (` + langPlaceholders + `) AND wz.id != ? AND p.first_seen_at IS NOT NULL`
 }

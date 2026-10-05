@@ -170,6 +170,8 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 			r.Post("/review", wordsH.MarkReview)
 			r.Post("/known", wordsH.SetKnown)
 			r.Post("/reset", wordsH.ResetProgress)
+			r.Get("/library-diff", wordsH.LibraryDiff)
+			r.Post("/reset-library", wordsH.ResetToLibrary)
 		})
 	})
 	uploadCSVH := &handlers.UploadCSVHandler{Store: s}
@@ -178,6 +180,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/import/preview", importH.Preview)
 	r.Post("/api/import", importH.Import)
 	r.Get("/api/import/jobs", importH.ActiveJobs)
+	r.Get("/api/import/lists", importH.Lists)
 	r.Get("/api/import/jobs/{id}", importH.Job)
 	r.Get("/api/tags/details", tagsH.Details)
 	r.Put("/api/tags/{name}", tagsH.Update)

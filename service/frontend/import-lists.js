@@ -27,12 +27,13 @@ function toggleListSelection(selected, name) {
 }
 
 // buildListImportPayload builds the /api/import body for one selected list.
+// It sends no languages: imported words are library references, and the
+// learner's primary/secondary language decide which translations show.
 // A selected list's own tag is applied only to that list's words; other tags
 // in applyTags (typed by the user) go on every word.
-function buildListImportPayload(sourceTag, selected, applyTags, importEn, importDe, mode) {
+function buildListImportPayload(sourceTag, selected, applyTags, mode) {
   const payload = {
     tag: sourceTag,
-    import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
     apply_tags: applyTags.filter(tg => tg === sourceTag || !selected.includes(tg)),
   };
   if (mode) payload.import_mode = mode;
@@ -79,10 +80,10 @@ async function queueImportJob(payload) {
 // startListImports queues one background import job per selected list and
 // returns the jobs. A word in two lists is created by the first job and gets
 // the second list's tag from the next one (jobs run one after the other).
-async function startListImports(selected, applyTags, importEn, importDe, mode) {
+async function startListImports(selected, applyTags, mode) {
   const jobs = [];
   for (const tag of selected) {
-    jobs.push(await queueImportJob(buildListImportPayload(tag, selected, applyTags, importEn, importDe, mode)));
+    jobs.push(await queueImportJob(buildListImportPayload(tag, selected, applyTags, mode)));
   }
   return jobs;
 }
@@ -101,28 +102,33 @@ async function waitForImport(jobs, until, onProgress) {
 
 // importLists imports every selected list and resolves with the summed counts
 // once all jobs are finished.
-async function importLists(selected, applyTags, importEn, importDe, mode, onProgress) {
-  const jobs = await startListImports(selected, applyTags, importEn, importDe, mode);
+async function importLists(selected, applyTags, mode, onProgress) {
+  const jobs = await startListImports(selected, applyTags, mode);
   return waitForImport(jobs, summary => summary.finished, onProgress);
 }
 
 // buildMatchAllPayload builds the /api/import body that imports only words
 // carrying every selected tag (e.g. HSK 1 + Food). All selected tags are
 // applied to the imported words.
-function buildMatchAllPayload(selected, importEn, importDe, mode) {
+function buildMatchAllPayload(selected, mode) {
   const payload = {
     tag: selected[0],
     and_tags: selected.slice(1),
-    import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
     apply_tags: [...selected],
   };
   if (mode) payload.import_mode = mode;
   return payload;
 }
 
+// nativeLangsLabel names the languages a learner sees library translations in
+// (primary + secondary language), e.g. "EN + DE".
+function nativeLangsLabel(primary, secondary) {
+  return [primary, secondary].filter(Boolean).map(l => l.toUpperCase()).join(' + ');
+}
+
 // startMatchAllImport queues the single "all tags" import job.
-async function startMatchAllImport(selected, importEn, importDe, mode) {
-  return [await queueImportJob(buildMatchAllPayload(selected, importEn, importDe, mode))];
+async function startMatchAllImport(selected, mode) {
+  return [await queueImportJob(buildMatchAllPayload(selected, mode))];
 }
 
 let activeImportWatcher = false;
@@ -159,4 +165,13 @@ function importResultText(result) {
 
 function importPreviewURL(selected) {
   return '/api/import/preview?' + selected.map(tg => 'tag=' + encodeURIComponent(tg)).join('&');
+}
+
+// buildListSyncPayload builds the /api/import body that brings an imported
+// list up to date: the same list and tags as the last import. Words the
+// learner deleted are added again only with includeRemoved.
+function buildListSyncPayload(list, includeRemoved) {
+  const payload = { tag: list.tag, and_tags: [...(list.and_tags || [])], apply_tags: [...(list.apply_tags || [])] };
+  if (includeRemoved) payload.include_removed = true;
+  return payload;
 }

@@ -55,7 +55,14 @@ func main() {
 	fmt.Printf("\nDone. topics=%d  tagged=%d  created=%d\n", res.topics, res.tagged, res.created)
 	if *dryRun {
 		fmt.Println("(dry-run: no changes were written)")
+		return
 	}
+	// New library words get their glosses from the dictionaries (ADR-0005).
+	report, err := store.RefreshLibrary(context.Background())
+	if err != nil {
+		log.Fatalf("refresh library: %v", err)
+	}
+	fmt.Printf("Library glosses: added=%d  missing=%d\n", report.Added, report.Missing)
 }
 
 func importTopics(ctx context.Context, store *vocabdb.Store, dir string, dryRun bool) (result, error) {

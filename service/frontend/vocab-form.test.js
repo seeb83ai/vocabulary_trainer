@@ -63,3 +63,38 @@ describe('buildFormPayload', () => {
     expect(p.start_training).toBe(true);
   });
 });
+
+// ── libraryDiffLines ─────────────────────────────────────────────────────────
+
+function libraryDiffLines(diff) {
+  const lines = [];
+  for (const kind of ['remove', 'restore']) {
+    for (const lang of Object.keys(diff?.[kind] || {}).sort()) {
+      const texts = diff[kind][lang] || [];
+      if (texts.length) lines.push({ kind, lang, texts });
+    }
+  }
+  if (diff?.pinyin) lines.push({ kind: 'pinyin', mine: diff.pinyin.mine, library: diff.pinyin.library });
+  return lines;
+}
+
+describe('libraryDiffLines', () => {
+  it('lists removed glosses, then glosses that come back, then the pinyin', () => {
+    const diff = {
+      remove: { en: ['human'], de: ['Mensch!'] },
+      restore: { en: ['people'] },
+      pinyin: { mine: 'ren2', library: 'rén' },
+    };
+    expect(libraryDiffLines(diff)).toEqual([
+      { kind: 'remove', lang: 'de', texts: ['Mensch!'] },
+      { kind: 'remove', lang: 'en', texts: ['human'] },
+      { kind: 'restore', lang: 'en', texts: ['people'] },
+      { kind: 'pinyin', mine: 'ren2', library: 'rén' },
+    ]);
+  });
+
+  it('is empty when a reset would change nothing', () => {
+    expect(libraryDiffLines({ remove: {}, restore: { en: [] } })).toEqual([]);
+    expect(libraryDiffLines(null)).toEqual([]);
+  });
+});

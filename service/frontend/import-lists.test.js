@@ -23,25 +23,27 @@ function toggleListSelection(selected, name) {
   return selected.includes(name) ? selected.filter(n => n !== name) : [...selected, name];
 }
 
-function buildListImportPayload(sourceTag, selected, applyTags, importEn, importDe, mode) {
+function buildListImportPayload(sourceTag, selected, applyTags, mode) {
   const payload = {
     tag: sourceTag,
-    import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
     apply_tags: applyTags.filter(tg => tg === sourceTag || !selected.includes(tg)),
   };
   if (mode) payload.import_mode = mode;
   return payload;
 }
 
-function buildMatchAllPayload(selected, importEn, importDe, mode) {
+function buildMatchAllPayload(selected, mode) {
   const payload = {
     tag: selected[0],
     and_tags: selected.slice(1),
-    import_langs: [...(importEn ? ['en'] : []), ...(importDe ? ['de'] : [])],
     apply_tags: [...selected],
   };
   if (mode) payload.import_mode = mode;
   return payload;
+}
+
+function nativeLangsLabel(primary, secondary) {
+  return [primary, secondary].filter(Boolean).map(l => l.toUpperCase()).join(' + ');
 }
 
 function summarizeImportJobs(jobs) {
@@ -168,43 +170,68 @@ describe('buildListImportPayload', () => {
   const selected = ['hsk3-1', 'hsk3-2'];
 
   it('gives each list only its own tag plus the extra tags', () => {
-    const p = buildListImportPayload('hsk3-1', selected, ['hsk3-1', 'hsk3-2', 'mine'], true, false);
-    expect(p).toEqual({ tag: 'hsk3-1', import_langs: ['en'], apply_tags: ['hsk3-1', 'mine'] });
+    const p = buildListImportPayload('hsk3-1', selected, ['hsk3-1', 'hsk3-2', 'mine']);
+    expect(p).toEqual({ tag: 'hsk3-1', apply_tags: ['hsk3-1', 'mine'] });
   });
 
   it('leaves out a list tag the user removed', () => {
-    const p = buildListImportPayload('hsk3-2', selected, ['hsk3-1'], true, true);
-    expect(p).toEqual({ tag: 'hsk3-2', import_langs: ['en', 'de'], apply_tags: [] });
+    const p = buildListImportPayload('hsk3-2', selected, ['hsk3-1']);
+    expect(p).toEqual({ tag: 'hsk3-2', apply_tags: [] });
   });
 
-  it('sends the chosen languages as import_langs', () => {
-    expect(buildListImportPayload('hsk3-1', selected, [], false, true).import_langs).toEqual(['de']);
+  it('sends no languages: the learner settings decide which translations show', () => {
+    expect(buildListImportPayload('hsk3-1', selected, [])).not.toHaveProperty('import_langs');
   });
 });
 
 describe('buildListImportPayload import mode', () => {
   it('leaves import_mode out when no mode is given', () => {
-    expect(buildListImportPayload('hsk3-1', ['hsk3-1'], ['hsk3-1'], true, false)).not.toHaveProperty('import_mode');
+    expect(buildListImportPayload('hsk3-1', ['hsk3-1'], ['hsk3-1'])).not.toHaveProperty('import_mode');
   });
 
   it('passes the mode through', () => {
-    const payload = buildListImportPayload('hsk3-1', ['hsk3-1'], ['hsk3-1'], true, true, 'known');
-    expect(payload.import_mode).toBe('known');
-    expect(payload.import_langs).toEqual(['en', 'de']);
+    expect(buildListImportPayload('hsk3-1', ['hsk3-1'], ['hsk3-1'], 'known').import_mode).toBe('known');
   });
 });
 
 describe('buildMatchAllPayload', () => {
   it('imports the first tag narrowed by the others and applies all of them', () => {
-    expect(buildMatchAllPayload(['hsk3-1', 'topic-food'], true, false)).toEqual({
-      tag: 'hsk3-1', and_tags: ['topic-food'], import_langs: ['en'], apply_tags: ['hsk3-1', 'topic-food'],
+    expect(buildMatchAllPayload(['hsk3-1', 'topic-food'])).toEqual({
+      tag: 'hsk3-1', and_tags: ['topic-food'], apply_tags: ['hsk3-1', 'topic-food'],
     });
   });
 
-  it('passes the languages and the import mode through', () => {
-    const payload = buildMatchAllPayload(['a', 'b', 'c'], true, true, 'include');
+  it('passes the import mode through', () => {
+    const payload = buildMatchAllPayload(['a', 'b', 'c'], 'include');
     expect(payload.and_tags).toEqual(['b', 'c']);
-    expect(payload.import_langs).toEqual(['en', 'de']);
     expect(payload.import_mode).toBe('include');
+  });
+});
+
+describe('nativeLangsLabel', () => {
+  it('joins primary and secondary language', () => {
+    expect(nativeLangsLabel('en', 'de')).toBe('EN + DE');
+  });
+
+  it('shows only the primary language without a secondary one', () => {
+    expect(nativeLangsLabel('de', '')).toBe('DE');
+  });
+});
+
+function buildListSyncPayload(list, includeRemoved) {
+  const payload = { tag: list.tag, and_tags: [...(list.and_tags || [])], apply_tags: [...(list.apply_tags || [])] };
+  if (includeRemoved) payload.include_removed = true;
+  return payload;
+}
+
+describe('buildListSyncPayload', () => {
+  const list = { tag: 'hsk3-1', and_tags: ['topic-food'], apply_tags: ['hsk3-1', 'mine'], new: 2, removed: 1 };
+
+  it('imports the same list with the tags of the last import', () => {
+    expect(buildListSyncPayload(list, false)).toEqual({ tag: 'hsk3-1', and_tags: ['topic-food'], apply_tags: ['hsk3-1', 'mine'] });
+  });
+
+  it('adds the removed words again only when asked', () => {
+    expect(buildListSyncPayload(list, true).include_removed).toBe(true);
   });
 });

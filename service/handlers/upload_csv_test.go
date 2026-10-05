@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -379,5 +380,43 @@ func TestUploadCSV_ExistingWordGetsSourceOfTheRow(t *testing.T) {
 	}
 	if got := csvSources(t, r, "src"); fmt.Sprint(got["茶"]) != "map[en:[cedict]]" {
 		t.Errorf("sources = %v, want the updated translation marked cedict", got)
+	}
+}
+
+func TestUploadCSV_LibraryUserIsRejected(t *testing.T) {
+	s := openTestDB(t)
+	h := &handlers.UploadCSVHandler{Store: s, MaxBytes: 1 << 20, MaxRows: 100}
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(db.LibraryUserID))
+	r.Post("/api/words/upload-csv", h.UploadCSV)
+	rec := doMultipart(t, r, "/api/words/upload-csv", map[string]string{"tags": "test"}, "chinese,pinyin,en\n我,wǒ,I")
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("want 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUploadCSV_DictionaryWordGetsLibraryUpdates(t *testing.T) {
+	s := openTestDB(t)
+	seedCedictEntry(t, s, "墙", "en", "wall")
+	r := newRouter(s)
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "csv", "start_training_count": "0"}, "chinese,pinyin,en\n墙,qiáng,wall")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	seedCedictEntry(t, s, "墙", "en", "partition")
+	if _, err := s.RefreshLibrary(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	listRec := do(t, r, "GET", "/api/words/?tags=csv", nil)
+	var list struct {
+		Words []struct {
+			Translations map[string][]string `json:"translations"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &list)
+	if len(list.Words) != 1 || fmt.Sprint(list.Words[0].Translations["en"]) != "[partition wall]" {
+		t.Errorf("words = %+v, want 墙 with the dictionary update", list.Words)
 	}
 }

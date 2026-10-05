@@ -234,28 +234,17 @@ func TestCreateSubwordsForWord_SplitsSemicolonDefinitions(t *testing.T) {
 	if !exists {
 		t.Fatal("want 炒 auto-created as subword")
 	}
-	// Check that "to sauté; to stir-fry; to fire (sb)" was NOT stored as one word.
-	var rawCount int
-	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM words WHERE text = ? AND user_id = ?`,
-		"to sauté; to stir-fry; to fire (sb)", int64(2),
-	).Scan(&rawCount); err != nil {
+	// The subword shows the split senses, not the raw definition.
+	id, err := s.GetWordIDByZhText(ctx, 2, "炒")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if rawCount > 0 {
-		t.Error("raw semicolon-joined definition was stored as a word — want it split into parts")
+	wd, err := s.GetWordByID(ctx, 2, id)
+	if err != nil || wd == nil {
+		t.Fatalf("GetWordByID: %v, %v", wd, err)
 	}
-	// At least "to sauté" and "to stir-fry" should exist as individual translation words.
-	for _, sense := range []string{"to sauté", "to stir-fry", "to fire (sb)"} {
-		var cnt int
-		if err := s.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM words WHERE text = ? AND user_id = ?`, sense, int64(2),
-		).Scan(&cnt); err != nil {
-			t.Fatal(err)
-		}
-		if cnt == 0 {
-			t.Errorf("want sense %q stored as individual translation word", sense)
-		}
+	if got := fmt.Sprint(wd.Translations["en"]); got != "[to fire (sb) to sauté to stir-fry]" {
+		t.Errorf("en = %s, want the three senses split", got)
 	}
 }
 
@@ -279,7 +268,7 @@ func TestCreateSubwordsForWord_MarksTranslationsAsCedictSourced(t *testing.T) {
 
 	var source string
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT t.source FROM translations t
+		`SELECT t.source FROM user_translations t
 		 JOIN words en ON en.id = t.translation_word_id
 		 JOIN words zh ON zh.id = t.zh_word_id
 		 WHERE zh.text = '炒' AND en.text = 'to stir-fry' AND zh.user_id = 2`,
@@ -425,25 +414,16 @@ func TestCreateSubwordsForWord_SplitsCommaDefinitions(t *testing.T) {
 		t.Fatalf("CreateWord: %v", err)
 	}
 
-	for _, text := range []string{"braten", "schmoren (V)"} {
-		var cnt int
-		if err := s.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM words WHERE text = ? AND language = 'de' AND user_id = 2`, text,
-		).Scan(&cnt); err != nil {
-			t.Fatal(err)
-		}
-		if cnt != 1 {
-			t.Errorf("want sense %q stored as its own translation word, got %d", text, cnt)
-		}
-	}
-	var rawCount int
-	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM words WHERE text = 'braten, schmoren (V)' AND user_id = 2`,
-	).Scan(&rawCount); err != nil {
+	id, err := s.GetWordIDByZhText(ctx, 2, "炒")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if rawCount != 0 {
-		t.Error("comma-joined definition was stored as one word — want it split")
+	wd, err := s.GetWordByID(ctx, 2, id)
+	if err != nil || wd == nil {
+		t.Fatalf("GetWordByID: %v, %v", wd, err)
+	}
+	if got := fmt.Sprint(wd.Translations["de"]); got != "[braten schmoren (V)]" {
+		t.Errorf("de = %s, want the comma-separated senses split", got)
 	}
 }
 

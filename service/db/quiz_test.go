@@ -379,13 +379,15 @@ func TestResetWordProgress_NotFound(t *testing.T) {
 func TestResetWordProgress_OtherUsersWordNotFound(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	id, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
+	// User 1 is the shared library and has no progress (ADR-0005).
+	owner := newTestUser(t, s, "owner@example.de")
+	id, err := s.CreateWord(ctx, owner, models.CreateWordRequest{
 		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.AcknowledgeWord(ctx, int64(1), id); err != nil {
+	if err := s.AcknowledgeWord(ctx, owner, id); err != nil {
 		t.Fatal(err)
 	}
 

@@ -870,20 +870,90 @@ type AdminOverview struct {
 // Total and Done count source words; Imported, Tagged and Skipped are the
 // per-outcome counters. Status is queued, running, done or failed.
 type ImportJob struct {
-	ID          int64     `json:"id"`
-	UserID      int64     `json:"-"`
-	Tag         string    `json:"tag"`
-	ImportLangs []string  `json:"-"`
-	ApplyTags   []string  `json:"-"`
-	AndTags     []string  `json:"-"`
-	ImportMode  string    `json:"import_mode"`
-	Status      string    `json:"status"`
-	Total       int       `json:"total"`
-	Done        int       `json:"done"`
-	Imported    int       `json:"imported"`
-	Tagged      int       `json:"tagged"`
-	Skipped     int       `json:"skipped"`
-	Error       string    `json:"error,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          int64    `json:"id"`
+	UserID      int64    `json:"-"`
+	Tag         string   `json:"tag"`
+	ImportLangs []string `json:"-"`
+	ApplyTags   []string `json:"-"`
+	AndTags     []string `json:"-"`
+	ImportMode  string   `json:"import_mode"`
+	// IncludeRemoved adds library words the learner deleted earlier
+	// (tombstones); by default the import skips them.
+	IncludeRemoved bool      `json:"include_removed"`
+	Status         string    `json:"status"`
+	Total          int       `json:"total"`
+	Done           int       `json:"done"`
+	Imported       int       `json:"imported"`
+	Tagged         int       `json:"tagged"`
+	Skipped        int       `json:"skipped"`
+	Error          string    `json:"error,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// LibraryRefreshReport summarises one RefreshLibrary run. Words is the number
+// of library zh words checked; Changed counts words whose existing gloss set
+// changed (they get library_updated_at); Added and Dropped count gloss links;
+// Missing counts words with no dictionary entry any more (flagged
+// library_removed, glosses kept).
+type LibraryRefreshReport struct {
+	Words   int `json:"words"`
+	Changed int `json:"changed"`
+	Added   int `json:"added"`
+	Dropped int `json:"dropped"`
+	Missing int `json:"missing"`
+}
+
+// ImportedList is a library list (tag, optionally narrowed by AndTags) the
+// learner imported. ApplyTags are the tags of the last import. New counts
+// library words of the list the learner does not have yet (and did not
+// delete); Removed counts words of the list the learner deleted.
+type ImportedList struct {
+	Tag       string   `json:"tag"`
+	AndTags   []string `json:"and_tags"`
+	ApplyTags []string `json:"apply_tags"`
+	New       int      `json:"new"`
+	Removed   int      `json:"removed"`
+}
+
+// LibraryDiff is what "reset to library" changes on a library reference:
+// Remove holds the glosses only the learner has, Restore the library glosses
+// the learner does not see (both by language), Pinyin the pinyin change when
+// the learner's pinyin differs from the library's.
+type LibraryDiff struct {
+	Remove  map[string][]string `json:"remove"`
+	Restore map[string][]string `json:"restore"`
+	Pinyin  *PinyinChange       `json:"pinyin,omitempty"`
+}
+
+// PinyinChange is the learner's pinyin next to the library's.
+type PinyinChange struct {
+	Mine    string `json:"mine"`
+	Library string `json:"library"`
+}
+
+// LibraryConversionReport summarises the one-time conversion of copied
+// words to library references: Users and Words converted, of them
+// FaithfulUsers (active in the last 7 days, glosses kept exactly), and
+// GlossWordsDeleted copied gloss words removed.
+type LibraryConversionReport struct {
+	Users             int `json:"users"`
+	FaithfulUsers     int `json:"faithful_users"`
+	Words             int `json:"words"`
+	GlossWordsDeleted int `json:"gloss_words_deleted"`
+}
+
+// DictionaryEntry is one parsed CC-CEDICT/HanDeDict line: simplified text,
+// tone-mark pinyin and the definitions joined with "; ".
+type DictionaryEntry struct {
+	Simplified string
+	Pinyin     string
+	Definition string
+}
+
+// DictionaryImportReport counts what ImportDictionaryEntries did: Inserted
+// new entries, Removed entries of the previous dictionary version.
+type DictionaryImportReport struct {
+	Inserted int
+	Removed  int
 }

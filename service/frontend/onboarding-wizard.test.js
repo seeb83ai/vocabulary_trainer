@@ -67,7 +67,14 @@ function wizardSettingsPatch(current, choices) {
     max_new_words_per_day: choices.pace,
     gamification_enabled: choices.game,
     autoplay_always: choices.audio,
+    ...wizardLangSettings(current, choices.langs),
   };
+}
+
+function wizardLangSettings(current, langs) {
+  if (!langs || !langs.length) return {};
+  const primary = langs.includes(current.primary_lang) ? current.primary_lang : langs[0];
+  return { primary_lang: primary, secondary_lang: langs.find(l => l !== primary) || '' };
 }
 
 // Topic lists in the shared library are tags named "topic-<id>". The labels
@@ -229,7 +236,29 @@ describe('wizardToggleLang', () => {
   });
 });
 
+describe('wizardLangSettings', () => {
+  it('uses one chosen language as primary with no secondary', () => {
+    expect(wizardLangSettings({ primary_lang: 'en', secondary_lang: 'de' }, ['de']))
+      .toEqual({ primary_lang: 'de', secondary_lang: '' });
+  });
+
+  it('keeps the current primary language when both are chosen', () => {
+    expect(wizardLangSettings({ primary_lang: 'de', secondary_lang: '' }, ['en', 'de']))
+      .toEqual({ primary_lang: 'de', secondary_lang: 'en' });
+  });
+
+  it('changes nothing without a choice', () => {
+    expect(wizardLangSettings({ primary_lang: 'en' }, undefined)).toEqual({});
+  });
+});
+
 describe('wizardSettingsPatch', () => {
+  it('sets the meaning languages as primary/secondary language', () => {
+    const patch = wizardSettingsPatch({ primary_lang: 'en', secondary_lang: 'de' }, { pace: 5, game: true, audio: true, langs: ['en'] });
+    expect(patch.primary_lang).toBe('en');
+    expect(patch.secondary_lang).toBe('');
+  });
+
   it('keeps every other setting and applies pace, gamification and audio', () => {
     const current = { max_new_words_per_day: 5, gamification_enabled: true, autoplay_always: false, blur_pinyin: true };
     expect(wizardSettingsPatch(current, { pace: 20, game: false, audio: true })).toEqual({

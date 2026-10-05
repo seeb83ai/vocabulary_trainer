@@ -155,6 +155,8 @@ export default async function globalSetup() {
   // ── 2. Create a fresh temp SQLite DB ────────────────────────────────────────
   const dbPath = join(tmpdir(), `vocab-e2e-${Date.now()}.db`);
   console.log(`[E2E] Using DB: ${dbPath}`);
+  // Specs that change the shared library run the CLI tools against this DB.
+  process.env.E2E_DB_PATH = dbPath;
 
   // ── 2b. Seed cedict_entries with a tiny fixture dictionary ─────────────────
   // Mirrors the real deployment order (run the import tool once, then start
@@ -180,6 +182,32 @@ export default async function globalSetup() {
       },
     },
   );
+
+  // ── 2c. Build the shared library (user 1) with the real tools ────────────
+  // The library is read-only in the UI (ADR-0005), so it is seeded like in
+  // production: cmd/import-hsk (HSK 3.0 + 2.0 tags from a complete.json
+  // fixture) and cmd/import-topics (topic-<name> tags from CSV fixtures).
+  // Both fill the library translations from the cedict fixture at the end.
+  // Words shared by both HSK versions carry both tags.
+  console.log('[E2E] Seeding the shared library…');
+  for (const cmd of [
+    'go run ./cmd/import-hsk -db DB -version 3 -file ../e2e/fixtures/hsk-complete-sample.json',
+    'go run ./cmd/import-hsk -db DB -version 2 -file ../e2e/fixtures/hsk-complete-sample.json',
+    'go run ./cmd/import-topics -db DB -dir ../e2e/fixtures/topics',
+  ]) {
+    execSync(`cd service && ${cmd.replace('DB', dbPath)}`, {
+      stdio: 'inherit',
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        ADMIN_EMAIL: 'admin@e2e.local',
+        ADMIN_PASSWORD: 'AdminE2ePassword1!',
+        USER_EMAIL: 'seed@e2e.local',
+        USER_PASSWORD: 'SeedE2ePassword1!',
+        BCRYPT_COST: 'min',
+      },
+    });
+  }
 
   // ── 3. Spawn the server ─────────────────────────────────────────────────────
   const server = spawn('./bin/e2e-server', [], {
@@ -316,48 +344,6 @@ export default async function globalSetup() {
   const nwStorageState = { cookies: nwCookies, origins: [] };
   writeFileSync(join(AUTH_DIR, 'new-word-user.json'), JSON.stringify(nwStorageState, null, 2));
   console.log('[E2E] Auth state saved to e2e/.auth/new-word-user.json');
-
-  // ── 9. Seed the shared library user (id=1) with importable HSK tags ─────────
-  // The one-button onboarding on the empty training page offers "start with
-  // HSK 1 / HSK 2–3" quick-start imports from this library, for HSK 3.0
-  // (hsk3-N, default) or HSK 2.0 (hsk2-N). Words shared by both lists carry
-  // both tags, like the real library built by cmd/import-hsk.
-  const adminLoginRes = await fetch(`${BASE_URL}/api/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@e2e.local', password: 'AdminE2ePassword1!' }),
-  });
-  if (!adminLoginRes.ok) {
-    throw new Error(`Admin login failed (${adminLoginRes.status}): ${await adminLoginRes.text()}`);
-  }
-  const adminCookies = parseSetCookieHeaders(adminLoginRes.headers.getSetCookie?.() ?? []);
-  const adminCookieHeader = adminCookies.map(c => `${c.name}=${c.value}`).join('; ');
-
-  const libraryWords = [
-    { zh: '一', pinyin: 'yī', en: ['one'], tags: ['hsk2-1', 'hsk3-1'] },
-    { zh: '人', pinyin: 'rén', en: ['person', 'people'], tags: ['hsk2-1', 'hsk3-1', 'topic-family'] },
-    { zh: '大', pinyin: 'dà', en: ['big', 'large'], tags: ['hsk2-1', 'hsk3-2'] },
-    { zh: '时间', pinyin: 'shí jiān', en: ['time'], tags: ['hsk2-2', 'hsk3-2', 'topic-time'] },
-    { zh: '已经', pinyin: 'yǐ jīng', en: ['already'], tags: ['hsk2-2', 'hsk3-3'] },
-    // Topic-only words (no HSK list), like cmd/import-topics creates.
-    { zh: '苹果', pinyin: 'píng guǒ', en: ['apple'], tags: ['topic-food'] },
-    { zh: '面包', pinyin: 'miàn bāo', en: ['bread'], tags: ['topic-food'] },
-    { zh: '飞机', pinyin: 'fēi jī', en: ['airplane'], tags: ['topic-travel'] },
-  ];
-  for (const word of libraryWords) {
-    await seedWord(BASE_URL, adminCookieHeader, word, false);
-  }
-  for (const tag of ['hsk2-1', 'hsk2-2', 'hsk3-1', 'hsk3-2', 'hsk3-3', 'topic-family', 'topic-time', 'topic-food', 'topic-travel']) {
-    const tagRes = await fetch(`${BASE_URL}/api/tags/${tag}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Cookie: adminCookieHeader },
-      body: JSON.stringify({ description: `${tag} test library`, importable: true }),
-    });
-    if (!tagRes.ok) {
-      throw new Error(`Marking ${tag} importable failed (${tagRes.status}): ${await tagRes.text()}`);
-    }
-  }
-  console.log('[E2E] Seeded importable library words (hsk2-1..2, hsk3-1..3, topic-family/time/food/travel) for user 1');
 
   console.log('[E2E] Global setup complete ✓');
 }

@@ -467,18 +467,26 @@ func (s *Store) getTranslationsByZhTexts(ctx context.Context, zhTexts []string, 
 		return nil, nil
 	}
 	placeholders := make([]string, len(zhTexts))
-	args := make([]any, len(zhTexts)+1)
-	args[0] = lang
+	texts := make([]any, len(zhTexts))
 	for i, t := range zhTexts {
 		placeholders[i] = "?"
-		args[i+1] = t
+		texts[i] = t
 	}
+	// The cached translation wins; otherwise the shared library's first
+	// gloss. Learners' own words are never read, so one learner's glosses
+	// do not show up for another.
+	args := append([]any{lang}, texts...)
+	args = append(args, lang, LibraryUserID)
+	args = append(args, texts...)
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT w.text, MIN(e.text)
+		`SELECT text, translation FROM zh_char_translations
+		 WHERE lang = ? AND text IN (`+strings.Join(placeholders, ",")+`)
+		 UNION ALL
+		 SELECT w.text, MIN(e.text)
 		 FROM words w
 		 JOIN translations t ON t.zh_word_id = w.id
 		 JOIN words e ON e.id = t.translation_word_id AND e.language = ?
-		 WHERE w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
+		 WHERE w.user_id = ? AND w.language = 'zh' AND w.text IN (`+strings.Join(placeholders, ",")+`)
 		 GROUP BY w.text`,
 		args...)
 	if err != nil {
@@ -491,7 +499,9 @@ func (s *Store) getTranslationsByZhTexts(ctx context.Context, zhTexts []string, 
 			rows.Close()
 			return nil, fmt.Errorf("scan %s translation: %w", lang, err)
 		}
-		result[zh] = trans
+		if _, ok := result[zh]; !ok {
+			result[zh] = trans
+		}
 	}
 	rows.Close()
 	return result, rows.Err()
@@ -503,64 +513,15 @@ func (s *Store) GetTranslationsByZhTexts(ctx context.Context, zhTexts []string, 
 	return s.getTranslationsByZhTexts(ctx, zhTexts, lang)
 }
 
-// StoreTranslationForZhChar stores an EN or DE translation for a Chinese character.
-// Both languages use the translations table; words.language distinguishes them.
-// If the zh character does not yet exist in the words table it is created with the
-// supplied pinyin (which may be empty). No SM-2 progress row is initialised because
-// the character is stored only as a reference, not as a quiz word.
-func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, transText, lang string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+// StoreTranslationForZhChar caches an EN or DE translation for a Chinese
+// character (e.g. a radical translated by DeepL) in zh_char_translations,
+// where GetTranslationsByZhTexts finds it. It never touches a learner's words.
+func (s *Store) StoreTranslationForZhChar(ctx context.Context, zhText, transText, lang string) error {
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO zh_char_translations (text, lang, translation) VALUES (?, ?, ?)
+		 ON CONFLICT(text, lang) DO UPDATE SET translation = excluded.translation`,
+		zhText, lang, transText); err != nil {
+		return fmt.Errorf("store %s translation for %q: %w", lang, zhText, err)
 	}
-	defer tx.Rollback()
-
-	var zhID int64
-	if err := tx.QueryRowContext(ctx,
-		`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
-	).Scan(&zhID); err != nil {
-		if err != sql.ErrNoRows {
-			return fmt.Errorf("find zh word: %w", err)
-		}
-		// zh word doesn't exist yet — create it so the translation can be linked.
-		var py *string
-		if pinyin != "" {
-			py = &pinyin
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO words (text, language, pinyin) VALUES (?, 'zh', ?)`, zhText, py,
-		); err != nil {
-			return fmt.Errorf("insert zh word: %w", err)
-		}
-		if err := tx.QueryRowContext(ctx,
-			`SELECT id FROM words WHERE text = ? AND language = 'zh'`, zhText,
-		).Scan(&zhID); err != nil {
-			return fmt.Errorf("get new zh word id: %w", err)
-		}
-	}
-
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO words (text, language) VALUES (?, ?)`, transText, lang,
-	); err != nil {
-		return fmt.Errorf("upsert %s word: %w", lang, err)
-	}
-	var transID int64
-	if err := tx.QueryRowContext(ctx,
-		`SELECT id FROM words WHERE text = ? AND language = ?`, transText, lang,
-	).Scan(&transID); err != nil {
-		return fmt.Errorf("get %s word id: %w", lang, err)
-	}
-
-	rank, err := computeTranslationRank(ctx, tx, lang, transText)
-	if err != nil {
-		return fmt.Errorf("rank %s translation: %w", lang, err)
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id, source, rank) VALUES (?, ?, 'cedict', ?)`,
-		transID, zhID, rank,
-	); err != nil {
-		return fmt.Errorf("link %s translation: %w", lang, err)
-	}
-
-	return tx.Commit()
+	return nil
 }

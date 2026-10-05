@@ -574,6 +574,13 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleWordKnown();
   });
 
+  $('form-library-reset-btn').addEventListener('click', () => {
+    show('library-reset-confirm');
+    $('library-reset-confirm').scrollIntoView({ block: 'nearest' });
+  });
+  $('library-reset-cancel').addEventListener('click', () => hide('library-reset-confirm'));
+  $('library-reset-apply').addEventListener('click', () => resetToLibrary());
+
   $('view-words-btn').addEventListener('click', () => { if (currentView !== 'words') switchView('words'); });
   $('view-components-btn').addEventListener('click', () => { if (currentView !== 'components') switchView('components'); });
 

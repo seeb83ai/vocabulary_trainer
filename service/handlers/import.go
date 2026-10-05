@@ -29,15 +29,16 @@ type importPreviewResponse struct {
 }
 
 type importRequest struct {
-	Tag         string   `json:"tag"`
-	ImportLangs []string `json:"import_langs"`
-	ApplyTags   []string `json:"apply_tags"`
+	Tag       string   `json:"tag"`
+	ApplyTags []string `json:"apply_tags"`
 	// AndTags narrows the import to words that also carry every one of
 	// these tags (Tag AND AndTags), e.g. HSK 1 + Food.
 	AndTags []string `json:"and_tags"`
 	// ImportMode says how new words start: "include" (default, unseen),
 	// "review" (skip the intro, due once) or "known" (never quizzed).
 	ImportMode string `json:"import_mode"`
+	// IncludeRemoved also adds library words the user deleted earlier.
+	IncludeRemoved bool `json:"include_removed"`
 }
 
 const sourceUserID int64 = 1
@@ -157,9 +158,9 @@ func (h *ImportHandler) Preview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, importPreviewResponse{Tag: tag, Total: total, AvailableLangs: availableLangs, Examples: examples})
 }
 
-// Import queues a background job that copies all words of the source user's
-// tag to the requesting user, skipping words the user already has (see
-// ImportWorker). It returns the queued job with 202.
+// Import queues a background job that gives the requesting user a library
+// reference to every word of the source user's tag, skipping words the user
+// already has (see ImportWorker). It returns the queued job with 202.
 func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 	var req importRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -211,11 +212,11 @@ func (h *ImportHandler) Import(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := h.Store.CreateImportJob(r.Context(), UserIDFromContext(r.Context()), models.ImportJob{
-		Tag:         req.Tag,
-		ImportLangs: req.ImportLangs,
-		ApplyTags:   cleanTags,
-		AndTags:     andTags,
-		ImportMode:  req.ImportMode,
+		Tag:            req.Tag,
+		ApplyTags:      cleanTags,
+		AndTags:        andTags,
+		ImportMode:     req.ImportMode,
+		IncludeRemoved: req.IncludeRemoved,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to queue import")
@@ -255,4 +256,15 @@ func (h *ImportHandler) ActiveJobs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, jobs)
+}
+
+// Lists returns the library lists the user imported, with the number of new
+// words since the import and of words the user deleted (GET /api/import/lists).
+func (h *ImportHandler) Lists(w http.ResponseWriter, r *http.Request) {
+	lists, err := h.Store.ImportedLists(r.Context(), UserIDFromContext(r.Context()))
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, lists)
 }

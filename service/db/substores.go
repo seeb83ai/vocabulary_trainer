@@ -111,7 +111,6 @@ type MnemonicStore interface {
 	GetHMMToneRoom(ctx context.Context, userID int64, tone int) (*models.HMMToneRoom, error)
 	GetHMMPropsByRadicals(ctx context.Context, userID int64, radicals []string) ([]models.HMMProp, error)
 	SaveHMMSceneWithLibrary(ctx context.Context, userID, wordID int64, initial, finalKey string, tone int, req models.HMMSaveSceneRequest) error
-	ImportTemplateWords(ctx context.Context, userID int64) error
 	EnsureHMMProgress(ctx context.Context, userID int64) error
 	GetNextDueHMMCard(ctx context.Context, userID int64, types []string) (*models.HMMQuizCard, *models.HMMProgress, error)
 	GetHMMProgress(ctx context.Context, userID int64, entityType, entityKey string) (*models.HMMProgress, error)
@@ -180,7 +179,7 @@ type ComponentStore interface {
 	GetHanziDecompositionString(ctx context.Context, char string) (string, error)
 	UpsertHanziDecomposition(ctx context.Context, char, decomp string) error
 	GetTranslationsByZhTexts(ctx context.Context, zhTexts []string, lang string) (map[string]string, error)
-	StoreTranslationForZhChar(ctx context.Context, zhText, pinyin, transText, lang string) error
+	StoreTranslationForZhChar(ctx context.Context, zhText, transText, lang string) error
 }
 
 // UserStore: user CRUD, auth, password, and settings.

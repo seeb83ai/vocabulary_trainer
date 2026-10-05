@@ -2,8 +2,10 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
+	"vocabulary_trainer/models"
 )
 
 // TestGetHanziDecomposition_IsSemantic_Pictophonetic verifies that for a
@@ -267,5 +269,52 @@ func TestAnnotateNewComponents_MarksNewAndExisting(t *testing.T) {
 	}
 	if v := byChar["子"]; v == nil || !*v {
 		t.Errorf("component 子: want is_new_component=true (no progress row), got %v", v)
+	}
+}
+
+func TestStoreTranslationForZhChar_IsFoundByLaterLookups(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.StoreTranslationForZhChar(ctx, "彳", "step", "en"); err != nil {
+		t.Fatalf("StoreTranslationForZhChar: %v", err)
+	}
+	got, err := s.GetTranslationsByZhTexts(ctx, []string{"彳"}, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["彳"] != "step" {
+		t.Errorf("lookup = %v, want 彳 → step", got)
+	}
+}
+
+func TestStoreTranslationForZhChar_LeavesLearnerWordsAlone(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id, err := s.CreateWord(ctx, 2, models.CreateWordRequest{ZhText: "木", Translations: map[string][]string{"en": {"wood"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.StoreTranslationForZhChar(ctx, "木", "tree", "en"); err != nil {
+		t.Fatalf("StoreTranslationForZhChar: %v", err)
+	}
+	wd, _ := s.GetWordByID(ctx, 2, id)
+	if fmt.Sprint(wd.Translations["en"]) != "[wood]" {
+		t.Errorf("learner glosses = %v, want [wood] unchanged", wd.Translations["en"])
+	}
+}
+
+func TestGetTranslationsByZhTexts_DoesNotShowOtherLearnersGlosses(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if _, err := s.CreateWord(ctx, 2, models.CreateWordRequest{ZhText: "木", Translations: map[string][]string{"en": {"my private note"}}}); err != nil {
+		t.Fatal(err)
+	}
+	seedLibraryWord(t, s, "木", "mù", map[string][]string{"en": {"wood"}})
+	got, err := s.GetTranslationsByZhTexts(ctx, []string{"木"}, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["木"] != "wood" {
+		t.Errorf("lookup = %v, want the library gloss wood", got)
 	}
 }
