@@ -74,3 +74,49 @@ describe('scrollDeltaToReveal', () => {
     expect(scrollDeltaToReveal(-50, 700, 330)).toBe(0);
   });
 });
+
+// ── Enter key continues (issue #535) ─────────────────────────────────────────
+// Mirrors enterActionButtonId in train-card.js.
+
+function enterActionButtonId(screens, focusedTag) {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(focusedTag)) return null;
+  if (screens.celebration) return 'celebration-continue-btn';
+  if (screens.result) return 'next-btn';
+  if (screens.newComponent) return 'new-component-got-it-btn';
+  if (screens.newWord) return 'new-word-got-it-btn';
+  if (screens.error) return 'error-retry-btn';
+  return null;
+}
+
+describe('enterActionButtonId', () => {
+  it('continues from the result screen', () => {
+    expect(enterActionButtonId({ result: true }, 'BODY')).toBe('next-btn');
+  });
+
+  it('continues from the result screen when another button has focus', () => {
+    expect(enterActionButtonId({ result: true }, 'BUTTON')).toBe('next-btn');
+  });
+
+  it('leaves Enter to a focused text field', () => {
+    expect(enterActionButtonId({ result: true }, 'INPUT')).toBeNull();
+    expect(enterActionButtonId({ result: true }, 'TEXTAREA')).toBeNull();
+    expect(enterActionButtonId({ result: true }, 'SELECT')).toBeNull();
+  });
+
+  it('prefers the celebration screen over the result screen', () => {
+    expect(enterActionButtonId({ celebration: true, result: true }, 'BODY')).toBe('celebration-continue-btn');
+  });
+
+  it('acknowledges a new word or a new component', () => {
+    expect(enterActionButtonId({ newWord: true }, 'BODY')).toBe('new-word-got-it-btn');
+    expect(enterActionButtonId({ newComponent: true }, 'BODY')).toBe('new-component-got-it-btn');
+  });
+
+  it('retries from the error card', () => {
+    expect(enterActionButtonId({ error: true }, 'BODY')).toBe('error-retry-btn');
+  });
+
+  it('does nothing on the question card or the all-done screen', () => {
+    expect(enterActionButtonId({}, 'BODY')).toBeNull();
+  });
+});

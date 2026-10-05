@@ -637,6 +637,18 @@ function maybeCelebrateThenShow(result, showFn) {
   }
 }
 
+// Picks the button Enter presses on the visible train screen (issue #535), or
+// null when a focused text field owns Enter or the screen has no such action.
+function enterActionButtonId(screens, focusedTag) {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(focusedTag)) return null;
+  if (screens.celebration) return 'celebration-continue-btn';
+  if (screens.result) return 'next-btn';
+  if (screens.newComponent) return 'new-component-got-it-btn';
+  if (screens.newWord) return 'new-word-got-it-btn';
+  if (screens.error) return 'error-retry-btn';
+  return null;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   applyModeButtons();
   applyTierPills();
@@ -874,6 +886,23 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       if (!$(btnId).disabled) $(btnId).click();
     });
+  });
+  // Enter continues on every screen with a continue action, also when the
+  // focus is on another button or on nothing (issue #535).
+  const isShown = id => $(id) && !$(id).classList.contains('hidden');
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.isComposing || e.repeat || e.defaultPrevented) return;
+    if (isShown('issue-modal') || isShown('filter-overlay') || isShown('more-sheet') || $('match-game-overlay')) return;
+    const btnId = enterActionButtonId({
+      celebration: isShown('celebration-screen'),
+      result: isShown('result-area'),
+      newComponent: isShown('new-component-area'),
+      newWord: isShown('new-word-area'),
+      error: isShown('error-state'),
+    }, document.activeElement ? document.activeElement.tagName : '');
+    if (!btnId || $(btnId).disabled) return;
+    e.preventDefault();
+    $(btnId).click();
   });
   $('new-component-got-it-btn').addEventListener('click', async () => {
     if (!currentCard) return;
