@@ -53,13 +53,13 @@ layout, a restyled component), you must also regenerate the standing screenshots
 6. The GitHub and terminal teaser images (`110-open-source`, `120-self-hosted`) are not app screens.
    Keep them as they are.
 
-CI (`frontend-screenshot-check` in `.github/workflows/test.yml`, backed by `scripts/check-pr-screenshots.sh`)
+CI (a step in the `Lint` job in `.github/workflows/test.yml`, backed by `scripts/check-pr-screenshots.sh`)
 report-only-checks every PR: if it touches `service/frontend/` but adds/updates no `pr-screenshots/*.png`, the
-job fails (visible in the PR checks tab, not a merge gate). It also nudges — without failing — when a
+step fails (visible in the `Lint` job log, not a merge gate). It also nudges — without failing — when a
 page-specific file changed (`train-*.js`, `vocab-*.js`, `stats.js`, `pinyin.js`, `mnemonics.js`/`hmm-builder.js`,
 `mismatches.js`, `settings.js`) but no changed screenshot filename mentions that page.
 
-A second CI job (`standing-screenshot-check`, backed by `scripts/check-standing-screenshots.sh`, tested by
+A second step in the `Lint` job (backed by `scripts/check-standing-screenshots.sh`, tested by
 `scripts/test-check-standing-screenshots.sh`) is also report-only. If a PR changes `service/frontend/*.css` or
 `*.html`, it fails unless both `images/*.png` and `service/frontend/landing/teasers/**/*.png` changed. Ignore it
 when the change does not alter how existing pages look.
