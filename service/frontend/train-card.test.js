@@ -3,27 +3,46 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // ── Answer input placeholder ───────────────────────────────────────────────
 // Mirrors the i18n key selection in showCard(): sentence fill-in-the-blank
 // cards get a placeholder telling the user to type the missing word;
-// every other card type keeps the generic answer placeholder.
+// transl_to_zh word cards ask for the Chinese; other word cards and component
+// cards name the answer language (issue #542); hmm cards keep the generic
+// answer placeholder.
 
-function placeholderKeyForCard(cardType) {
-  return cardType === 'sentence' ? 'card.placeholderSentence' : 'card.placeholder';
+const ANSWER_LANG_PLACEHOLDERS = ['en', 'de'];
+
+function placeholderKeyForCard(cardType, mode, answerLang) {
+  if (cardType === 'sentence') return 'card.placeholderSentence';
+  if (!cardType && mode === 'transl_to_zh') return 'card.placeholderZh';
+  if ((!cardType || cardType === 'component') && ANSWER_LANG_PLACEHOLDERS.includes(answerLang)) {
+    return `card.placeholderTransl.${answerLang}`;
+  }
+  return 'card.placeholder';
 }
 
 describe('placeholderKeyForCard', () => {
   it('uses the sentence-specific placeholder key for sentence cards', () => {
-    expect(placeholderKeyForCard('sentence')).toBe('card.placeholderSentence');
+    expect(placeholderKeyForCard('sentence', 'zh_to_transl', 'de')).toBe('card.placeholderSentence');
   });
 
-  it('uses the generic placeholder key for component cards', () => {
-    expect(placeholderKeyForCard('component')).toBe('card.placeholder');
+  it('asks for the Chinese on transl_to_zh word cards', () => {
+    expect(placeholderKeyForCard(undefined, 'transl_to_zh', 'de')).toBe('card.placeholderZh');
+  });
+
+  it('names the answer language on word cards', () => {
+    expect(placeholderKeyForCard(undefined, 'zh_pinyin_to_transl', 'de')).toBe('card.placeholderTransl.de');
+    expect(placeholderKeyForCard(undefined, 'voice_to_transl', 'en')).toBe('card.placeholderTransl.en');
+  });
+
+  it('names the answer language on component cards', () => {
+    expect(placeholderKeyForCard('component', undefined, 'de')).toBe('card.placeholderTransl.de');
+  });
+
+  it('uses the generic placeholder key for an unknown answer language', () => {
+    expect(placeholderKeyForCard(undefined, 'zh_to_transl', 'fr')).toBe('card.placeholder');
+    expect(placeholderKeyForCard('component', undefined, undefined)).toBe('card.placeholder');
   });
 
   it('uses the generic placeholder key for hmm cards', () => {
-    expect(placeholderKeyForCard('hmm')).toBe('card.placeholder');
-  });
-
-  it('uses the generic placeholder key for word cards', () => {
-    expect(placeholderKeyForCard('word')).toBe('card.placeholder');
+    expect(placeholderKeyForCard('hmm', undefined, 'de')).toBe('card.placeholder');
   });
 });
 
