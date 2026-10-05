@@ -1288,3 +1288,29 @@ func TestCheckAnswer_SlashPartsAnyOrder_DuplicatePartRejected(t *testing.T) {
 		t.Error("repeating one part must not count as giving all parts")
 	}
 }
+
+// A mnemonic name with slash-separated parts may be typed in any order
+// (issue #543), like word answers already can.
+func TestCheckHMMAnswer_SlashPartsAnyOrder(t *testing.T) {
+	if !CheckHMMAnswer("Wohnzimmer / Schlafzimmer", "Schlafzimmer / Wohnzimmer") {
+		t.Error("slash parts in swapped order should match")
+	}
+	if !CheckHMMAnswer("wohnzimmer/schlafzimmer", "Schlafzimmer / Wohnzimmer") {
+		t.Error("swapped parts without spaces around the slash should match")
+	}
+	if !CheckHMMAnswer("Bad / (oben) Küche", "Küche / Bad") {
+		t.Error("parenthesised segments inside a part should stay optional")
+	}
+}
+
+func TestCheckHMMAnswer_SlashPartsMustAllMatch(t *testing.T) {
+	if CheckHMMAnswer("Wohnzimmer", "Schlafzimmer / Wohnzimmer") {
+		t.Error("a single part should not match a two-part name")
+	}
+	if CheckHMMAnswer("Wohnzimmer / Küche", "Schlafzimmer / Wohnzimmer") {
+		t.Error("a wrong part should not match")
+	}
+	if CheckHMMAnswer("Wohnzimmer / Schlafzimmer / Küche", "Schlafzimmer / Wohnzimmer") {
+		t.Error("an extra part should not match")
+	}
+}
