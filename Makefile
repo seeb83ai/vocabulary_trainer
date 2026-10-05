@@ -150,6 +150,8 @@ release: generate-landing
 		deploy/vocab-trainer-watcher.service \
 		deploy/vocab-trainer-watcher.path \
 		deploy/nginx.conf \
+		data/cedict_ts.u8 \
+		data/handedict.u8 \
 		$(RSYNC_DEST)/
 	@if [ -d data/topics ]; then \
 		rsync -avz --progress data/topics $(RSYNC_DEST)/data/; \
