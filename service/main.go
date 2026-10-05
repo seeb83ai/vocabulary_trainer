@@ -294,6 +294,8 @@ func main() {
 		r.Post("/quiz/match-answer", quizH.MatchAnswer)
 		r.Post("/quiz/difficult", quizH.FlagDifficult)
 		r.Post("/quiz/difficult/clear", quizH.ClearDifficult)
+		r.Get("/quiz/wrong-today", quizH.WrongToday)
+		r.Post("/quiz/wrong-today/retrain", quizH.RetrainWrongToday)
 		r.Get("/quiz/stats", quizH.Stats)
 		r.Get("/quiz/daily-stats", quizH.DailyStats)
 		r.Get("/quiz/word-stats", quizH.WordStats)

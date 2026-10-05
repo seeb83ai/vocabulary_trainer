@@ -295,6 +295,7 @@ async function loadNextCard(trackCurrent = false) {
       showIntroduceNew ? show('introduce-new-btn') : hide('introduce-new-btn');
       show('success-state');
       loadComebackInfo(latestStats.words_improved_today);
+      loadWrongToday();
       return;
     }
   }
@@ -349,6 +350,7 @@ async function loadNextCard(trackCurrent = false) {
         showIntroduceNew ? show('introduce-new-btn') : hide('introduce-new-btn');
         show('success-state');
         loadComebackInfo(stats.words_improved_today);
+        loadWrongToday();
       }
     } else {
       show('error-state');
@@ -985,6 +987,29 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // "Review today's mistakes" sheet on the all-done screen (issue #537).
+  $('wrong-today-btn').addEventListener('click', openWrongToday);
+  $('wrong-today-close').addEventListener('click', closeWrongToday);
+  $('wrong-today-backdrop').addEventListener('click', closeWrongToday);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('wrong-today-overlay').classList.contains('hidden')) closeWrongToday();
+  });
+  $('wrong-today-retrain-btn').addEventListener('click', async () => {
+    const btn = $('wrong-today-retrain-btn');
+    btn.disabled = true;
+    try {
+      await apiFetch('/api/quiz/wrong-today/retrain', { method: 'POST' });
+    } catch (err) {
+      alert('Error: ' + err.message);
+      return;
+    } finally {
+      btn.disabled = false;
+    }
+    closeWrongToday();
+    hide('success-state');
+    loadNextCard();
+  });
+
   $('introduce-new-btn').addEventListener('click', async () => {
     try {
       await apiFetch('/api/quiz/advance', {
@@ -1004,6 +1029,7 @@ document.addEventListener('DOMContentLoaded', () => {
     applyModeButtons();
     applyTierPills();
     updateAdvanceButtonsForDifficult();
+    renderWrongTodayButton();
   });
 
   // Onboarding (shown when user has zero words): the setup wizard, fed with

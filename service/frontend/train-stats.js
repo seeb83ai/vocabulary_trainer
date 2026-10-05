@@ -83,6 +83,47 @@ function localDateStr(offsetDays) {
 // screen: current day streak, how many reviews come due tomorrow, and (when
 // wordsImproved is a positive number) how many words moved up a proficiency
 // bucket today.
+// Words answered wrong today (issue #537). loadWrongToday fetches them when
+// the all-done screen shows and offers the "Review today's mistakes" link.
+let wrongTodayWords = [];
+
+async function loadWrongToday() {
+  if (!$('wrong-today-btn')) return;
+  hide('wrong-today-btn');
+  try {
+    const resp = await apiFetch('/api/quiz/wrong-today?langs=' + encodeURIComponent(selectedLangs.join(',')));
+    wrongTodayWords = (resp && resp.words) || [];
+  } catch (_) {
+    wrongTodayWords = [];
+  }
+  renderWrongTodayButton();
+}
+
+function renderWrongTodayButton() {
+  if (!wrongTodayWords.length) return;
+  setText('wrong-today-btn', t('success.reviewMistakes', { n: wrongTodayWords.length }));
+  show('wrong-today-btn');
+}
+
+function openWrongToday() {
+  const langs = orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang);
+  setText('wrong-today-sub', t('wrongToday.sub', { n: wrongTodayWords.length }));
+  $('wrong-today-list').innerHTML = wrongTodayWords.map(w => {
+    const { shown } = groupTranslationsByLang(w.translations, null, langs);
+    return `<div class="wt-row">
+        <div class="tr-word-head"><span class="tr-hanzi-md font-hanzi">${escHtml(w.zh_text)}</span>${w.pinyin ? `<span class="tr-pinyin-sm">${escHtml(w.pinyin)}</span>` : ''}</div>
+        <div class="tr-meanings">${shown.map(escHtml).join(' · ')}</div>
+      </div>`;
+  }).join('');
+  show('wrong-today-overlay');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeWrongToday() {
+  hide('wrong-today-overlay');
+  document.body.style.overflow = '';
+}
+
 async function loadComebackInfo(wordsImproved) {
   if (!$('success-comeback')) return;
   try {

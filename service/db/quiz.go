@@ -62,7 +62,8 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 // last_wrong_at (only when correct=false) for the given word. These drive the
 // "hardest words" and "last mistakes" match-game modes' repeat-avoidance
 // rules (issue #288) and are independent bookkeeping, not part of the SM-2
-// algorithm itself.
+// algorithm itself. A wrong answer also clears wrong_retrained, so the word
+// is in "today's mistakes" again (issue #537).
 func (s *Store) RecordAnswerTimestamps(ctx context.Context, wordID int64, correct bool) error {
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
 	if correct {
@@ -74,7 +75,7 @@ func (s *Store) RecordAnswerTimestamps(ctx context.Context, wordID int64, correc
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE sm2_progress SET last_attempt_at = ?, last_wrong_at = ?, first_seen_at = COALESCE(first_seen_at, ?) WHERE word_id = ?`, now, now, now, wordID)
+		`UPDATE sm2_progress SET last_attempt_at = ?, last_wrong_at = ?, wrong_retrained = 0, first_seen_at = COALESCE(first_seen_at, ?) WHERE word_id = ?`, now, now, now, wordID)
 	if err != nil {
 		return fmt.Errorf("record answer timestamps: %w", err)
 	}
@@ -545,4 +546,69 @@ func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, l
 		}
 	}
 	return false, nil
+}
+
+// wrongTodayFilter selects the user's zh words that are not known and have a
+// wrong answer on the current (UTC) day, the same day daily_stats uses.
+// Words already retrained ("Train them again now") are left out until their
+// next wrong answer clears wrong_retrained.
+const wrongTodayFilter = `
+	FROM sm2_progress p
+	JOIN words w ON w.id = p.word_id
+	WHERE w.language = 'zh' AND w.user_id = ?
+	  AND p.is_known = 0
+	  AND p.wrong_retrained = 0
+	  AND p.last_wrong_at >= date('now')`
+
+// GetWordsWrongToday returns the words answered wrong today, most recent
+// mistake first, with their translations in langs (issue #537).
+func (s *Store) GetWordsWrongToday(ctx context.Context, userID int64, langs []string) ([]models.WrongTodayWord, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT w.id, w.text, COALESCE(w.pinyin, '')`+wrongTodayFilter+`
+		ORDER BY p.last_wrong_at DESC, w.id ASC`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get words wrong today: %w", err)
+	}
+	words := []models.WrongTodayWord{}
+	for rows.Next() {
+		var wd models.WrongTodayWord
+		if err := rows.Scan(&wd.WordID, &wd.ZhText, &wd.Pinyin); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan word wrong today: %w", err)
+		}
+		words = append(words, wd)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	for i := range words {
+		words[i].Translations = map[string][]string{}
+		for _, lang := range langs {
+			texts, err := s.getRankedTranslationTextsForZhWord(ctx, words[i].WordID, lang)
+			if err != nil {
+				return nil, err
+			}
+			if len(texts) > 0 {
+				words[i].Translations[lang] = texts
+			}
+		}
+	}
+	return words, nil
+}
+
+// MakeWordsWrongTodayDue sets the due date of today's wrong words to now, so
+// they come back in the training queue at once, and flags them as retrained.
+// SM-2 values stay as they are. It returns how many words it changed (issue #537).
+func (s *Store) MakeWordsWrongTodayDue(ctx context.Context, userID int64) (int, error) {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE sm2_progress SET due_date = CURRENT_TIMESTAMP, wrong_retrained = 1
+		WHERE word_id IN (SELECT p.word_id`+wrongTodayFilter+`)`, userID)
+	if err != nil {
+		return 0, fmt.Errorf("make words wrong today due: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
 }
