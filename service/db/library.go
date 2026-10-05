@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"vocabulary_trainer/models"
@@ -686,7 +687,9 @@ func (s *Store) ImportedLists(ctx context.Context, userID int64) ([]models.Impor
 // LibraryConflicts returns the learner's references in a library list (tag
 // and every one of andTags) that still have the learner's own changes, made
 // before the library word last changed: the library glosses now next to the
-// glosses the learner sees.
+// glosses the learner sees. A reference whose glosses have the same texts as
+// the library's (for example a gloss kept with source "user" by the
+// conversion) is no conflict.
 func (s *Store) LibraryConflicts(ctx context.Context, userID int64, tag string, andTags []string) ([]models.LibraryConflict, error) {
 	words, err := s.listLibraryWords(ctx, tag, andTags)
 	if err != nil {
@@ -746,6 +749,9 @@ func (s *Store) LibraryConflicts(ctx context.Context, userID int64, tag string, 
 		}
 		for lang := range c.Mine {
 			sort.Strings(c.Mine[lang])
+		}
+		if reflect.DeepEqual(c.Mine, c.Library) {
+			continue
 		}
 		out = append(out, c)
 	}

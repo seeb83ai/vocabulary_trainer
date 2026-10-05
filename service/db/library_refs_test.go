@@ -509,6 +509,52 @@ func TestLibraryConflicts_ListsEditedReferencesTheLibraryChanged(t *testing.T) {
 	}
 }
 
+// The faithful conversion keeps a learner's "user" source on a gloss the
+// library also has. That is an override with the same text, so a later
+// library change must not show it as a conflict with nothing to choose.
+func TestLibraryConflicts_IgnoresSourceOnlyOverrides(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	eat := seedBareLibraryWord(t, s, "吃", "chī")
+	if err := s.AddWordTags(ctx, testLibraryUserID, eat, []string{"hsk3-1"}); err != nil {
+		t.Fatal(err)
+	}
+	seedCedict(t, s, "吃", "en", "to eat")
+	if _, err := s.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := s.CreateReferences(ctx, 2, []int64{eat}, []string{"hsk3-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateWord(ctx, 2, ids[0], models.UpdateWordRequest{ZhText: "吃",
+		Translations:       map[string][]string{"en": {"to eat"}},
+		TranslationSources: map[string][]string{"en": {"user"}}}); err != nil {
+		t.Fatal(err)
+	}
+	s.db.Exec(`UPDATE words SET overrides_updated_at = '2000-01-01 00:00:00' WHERE id = ?`, ids[0])
+	seedCedict(t, s, "吃", "en", "to dine")
+	if _, err := s.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	conflicts, err := s.LibraryConflicts(ctx, 2, "hsk3-1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conflicts) != 0 {
+		t.Errorf("conflicts = %+v, want none", conflicts)
+	}
+	finishedImport(t, s, 2, models.ImportJob{Tag: "hsk3-1", ApplyTags: []string{"hsk3-1"}})
+	lists, err := s.ImportedLists(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lists) != 1 || lists[0].Conflicts != 0 {
+		t.Errorf("lists = %+v, want 0 conflicts", lists)
+	}
+}
+
 func TestResolveLibraryConflicts(t *testing.T) {
 	for _, keep := range []string{"mine", "library"} {
 		t.Run(keep, func(t *testing.T) {
