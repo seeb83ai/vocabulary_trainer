@@ -178,8 +178,8 @@ test.describe('Vocabulary → Import', () => {
     const cli = cmd => execSync(`cd service && go run ${cmd}`, { stdio: 'inherit', cwd: process.cwd() });
     const db = process.env.E2E_DB_PATH;
     cli(`./cmd/import-topics -db ${db} -dir ../e2e/fixtures/library-update/topics`);
-    cli(`./cmd/import-cedict -db ${db} -file ../e2e/fixtures/library-update/cedict-update.u8 -lang en`);
-    cli(`./cmd/refresh-library -db ${db}`);
+    // -append: the fixture is a partial file. import-cedict refreshes the library.
+    cli(`./cmd/import-cedict -db ${db} -file ../e2e/fixtures/library-update/cedict-update.u8 -lang en -append`);
 
     await page.goto('/vocab');
     await page.locator('#open-import-btn').click();
@@ -233,11 +233,36 @@ test.describe('Vocabulary → Import', () => {
     expect(csv.status()).toBe(200);
 
     const db = process.env.E2E_DB_PATH;
-    execSync(`cd service && go run ./cmd/import-cedict -db ${db} -file ../e2e/fixtures/library-update/cedict-update-ondemand.u8 -lang en`, { stdio: 'inherit' });
-    execSync(`cd service && go run ./cmd/refresh-library -db ${db}`, { stdio: 'inherit' });
+    execSync(`cd service && go run ./cmd/import-cedict -db ${db} -file ../e2e/fixtures/library-update/cedict-update-ondemand.u8 -lang en -append`, { stdio: 'inherit' });
 
     const res = await page.evaluate(() => fetch('/api/words/?per_page=50').then(r => r.json()));
     const en = Object.fromEntries(res.words.map(w => [w.zh_text, [...w.translations.en].sort()]));
     expect(en).toEqual({ '窗': ['casement', 'window'], '墙': ['partition', 'wall'] });
+  });
+
+  test('lists imported before import jobs existed show up in Your lists', async ({ page }) => {
+    await page.route('https://api.pwnedpasswords.com/**', route => {
+      route.fulfill({ status: 200, body: '' });
+    });
+    const email = `e2e-old-list-${Date.now()}-${Math.floor(Math.random() * 1e6)}@test.local`;
+    await page.goto('/#register');
+    await page.locator('#reg-email').fill(email);
+    await page.locator('#reg-password').fill(PASSWORD);
+    await page.locator('#reg-confirm').fill(PASSWORD);
+    await page.locator('#register-btn').click();
+    await expect(page).toHaveURL('/train', { timeout: 10_000 });
+
+    // A word carrying the list tag, without any import job (as older imports left it).
+    const add = await page.request.post('/api/words/', {
+      data: { zh_text: '一', pinyin: 'yī', translations: { en: ['one'] }, translation_sources: { en: ['cedict'] }, tags: ['hsk3-1'] },
+    });
+    expect(add.status()).toBe(201);
+
+    await page.goto('/vocab');
+    await page.locator('#open-import-btn').click();
+    const row = page.locator('#import-my-lists-rows li', { hasText: 'hsk3-1' });
+    await expect(row).toContainText('1 new · Update');
+    await row.getByText('1 new · Update').click();
+    await expect(row).toContainText('Up to date', { timeout: 15_000 });
   });
 });

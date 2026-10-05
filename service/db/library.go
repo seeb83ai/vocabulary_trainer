@@ -29,7 +29,7 @@ type libraryWord struct {
 // references and deletions stay valid. A word whose existing gloss set changes
 // gets library_updated_at; a word with no dictionary entry any more keeps its
 // glosses and is flagged library_removed. Gloss words left without any link
-// are deleted.
+// are deleted, unless a learner's deletion refers to them.
 func (s *Store) RefreshLibrary(ctx context.Context) (models.LibraryRefreshReport, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, text, library_removed FROM words WHERE user_id = ? AND language = 'zh' ORDER BY id`, LibraryUserID)
@@ -151,9 +151,13 @@ func (s *Store) refreshLibraryWords(ctx context.Context, words []libraryWord) (m
 		}
 	}
 
+	// A gloss word a learner deleted stays, even without a link: if a later
+	// dictionary version brings the sense back, it gets the same id and the
+	// learner's deletion still hides it.
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM words WHERE user_id = ? AND language != 'zh'
-		   AND NOT EXISTS (SELECT 1 FROM translations t WHERE t.translation_word_id = words.id)`, LibraryUserID); err != nil {
+		   AND NOT EXISTS (SELECT 1 FROM translations t WHERE t.translation_word_id = words.id)
+		   AND NOT EXISTS (SELECT 1 FROM translation_deletions d WHERE d.translation_word_id = words.id)`, LibraryUserID); err != nil {
 		return report, fmt.Errorf("delete orphan library glosses: %w", err)
 	}
 	return report, tx.Commit()
@@ -562,7 +566,9 @@ func (s *Store) listLibraryWords(ctx context.Context, tag string, andTags []stri
 
 // ImportedLists returns the library lists the learner imported (one entry
 // per tag + and_tags, with the tags of the last finished import), each with
-// the number of new and of removed words (see models.ImportedList).
+// the number of new and of removed words (see models.ImportedList). A list
+// imported before import jobs existed is found by its tag on the learner's
+// words.
 func (s *Store) ImportedLists(ctx context.Context, userID int64) ([]models.ImportedList, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT tag, and_tags, apply_tags FROM import_jobs
@@ -589,6 +595,36 @@ func (s *Store) ImportedLists(ctx context.Context, userID int64) ([]models.Impor
 		}
 		index[key] = len(lists)
 		lists = append(lists, l)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	// Lists imported before import jobs existed: an importable library tag
+	// on the learner's words.
+	rows, err = s.db.QueryContext(ctx,
+		`SELECT DISTINCT tg.name FROM word_tags wt
+		 JOIN tags tg ON tg.id = wt.tag_id AND tg.importable = 1
+		 JOIN words w ON w.id = wt.word_id AND w.user_id = ? AND w.language = 'zh'
+		 WHERE EXISTS (SELECT 1 FROM word_tags lt JOIN words l ON l.id = lt.word_id
+		               WHERE lt.tag_id = tg.id AND l.user_id = ? AND l.language = 'zh')`,
+		userID, LibraryUserID)
+	if err != nil {
+		return nil, fmt.Errorf("load tagged lists: %w", err)
+	}
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if _, ok := index[tag+"\x00[]"]; ok {
+			continue
+		}
+		index[tag+"\x00[]"] = len(lists)
+		lists = append(lists, models.ImportedList{Tag: tag, AndTags: []string{}, ApplyTags: []string{tag}})
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()

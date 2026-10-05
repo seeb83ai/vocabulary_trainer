@@ -7,6 +7,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"vocabulary_trainer/models"
 )
 
 // SegmentToken is one piece of a segmented zh string: either a single Han
@@ -418,4 +419,48 @@ func (s *Store) createSubword(ctx context.Context, userID int64, tok SegmentToke
 	}
 
 	return tx.Commit()
+}
+
+// CountDictionaryEntries returns how many entries the imported dictionary
+// for lang has (entries kept from the old curated library not counted).
+func (s *Store) CountDictionaryEntries(ctx context.Context, lang string) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM cedict_entries WHERE lang = ? AND source = 'dict'`, lang).Scan(&n)
+	return n, err
+}
+
+// ImportDictionaryEntries stores a dictionary file's entries for lang in one
+// transaction. With replace, the entries of the previous version of that
+// dictionary are deleted first, so senses upstream removed go away; entries
+// with source 'user' (translations kept from the old curated library) and
+// the other language stay. Without replace, the entries are added.
+func (s *Store) ImportDictionaryEntries(ctx context.Context, lang string, entries []models.DictionaryEntry, replace bool) (models.DictionaryImportReport, error) {
+	var report models.DictionaryImportReport
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return report, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	if replace {
+		res, err := tx.ExecContext(ctx, `DELETE FROM cedict_entries WHERE lang = ? AND source = 'dict'`, lang)
+		if err != nil {
+			return report, fmt.Errorf("remove previous dictionary: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		report.Removed = int(n)
+	}
+	stmt, err := tx.PrepareContext(ctx,
+		`INSERT INTO cedict_entries (simplified, lang, pinyin, definition) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return report, fmt.Errorf("prepare: %w", err)
+	}
+	defer stmt.Close()
+	for _, e := range entries {
+		if _, err := stmt.ExecContext(ctx, e.Simplified, lang, e.Pinyin, e.Definition); err != nil {
+			return report, fmt.Errorf("insert %q: %w", e.Simplified, err)
+		}
+		report.Inserted++
+	}
+	return report, tx.Commit()
 }

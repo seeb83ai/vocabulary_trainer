@@ -10,15 +10,21 @@
 // convention used everywhere else in the app), and all /-delimited
 // definitions joined into one display string.
 //
+// A run replaces the previous version of that dictionary (entries with
+// source 'user', kept from the old curated library, stay), then refreshes
+// the shared library so learners see the new translations (ADR-0005). Use
+// -append to add a partial file instead.
+//
 // Usage:
 //
 //	go run ./cmd/import-cedict -db data/vocab.db -file cedict_ts.u8 -lang en [-dry-run]
 //	go run ./cmd/import-cedict -db data/vocab.db -file handedict.u8 -lang de [-dry-run]
+//	go run ./cmd/import-cedict -db data/vocab.db -file extra.u8 -lang en -append
 package main
 
 import (
 	"bufio"
-	"database/sql"
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -27,9 +33,8 @@ import (
 	"strconv"
 	"strings"
 	vocabdb "vocabulary_trainer/db"
+	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
-
-	_ "modernc.org/sqlite"
 )
 
 var cedictLineRE = regexp.MustCompile(`^(\S+)\s+(\S+)\s+\[([^\]]*)\]\s+/(.+)/$`)
@@ -39,6 +44,8 @@ func main() {
 	filePath := flag.String("file", "", "path to a CEDICT-format dictionary file (required)")
 	lang := flag.String("lang", "", `dictionary language: "en" (CC-CEDICT) or "de" (HanDeDict) (required)`)
 	dryRun := flag.Bool("dry-run", false, "parse and validate but do not insert")
+	appendOnly := flag.Bool("append", false, "add the entries instead of replacing the previous dictionary version")
+	force := flag.Bool("force", false, "replace even when the file is much smaller than the stored dictionary")
 	flag.Parse()
 
 	if *filePath == "" {
@@ -47,18 +54,6 @@ func main() {
 	*lang = strings.ToLower(*lang)
 	if *lang != "en" && *lang != "de" {
 		log.Fatal(`flag -lang is required and must be "en" or "de"`)
-	}
-
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)", *dbPath)
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		log.Fatalf("open db: %v", err)
-	}
-	defer db.Close()
-	db.SetMaxOpenConns(1)
-
-	if err := vocabdb.Migrate(db); err != nil {
-		log.Fatalf("migrate: %v", err)
 	}
 
 	f, err := os.Open(*filePath)
@@ -70,73 +65,80 @@ func main() {
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 256*1024), 256*1024)
 
-	var inserted, skipped, failed int
-
-	tx, err := db.Begin()
-	if err != nil {
-		log.Fatalf("begin tx: %v", err)
-	}
-
-	stmt, err := tx.Prepare(`INSERT INTO cedict_entries (simplified, lang, pinyin, definition) VALUES (?, ?, ?, ?)`)
-	if err != nil {
-		log.Fatalf("prepare: %v", err)
-	}
-	defer stmt.Close()
-
+	var entries []models.DictionaryEntry
+	var skipped int
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-
 		m := cedictLineRE.FindStringSubmatch(line)
 		if m == nil {
 			skipped++
 			continue
 		}
-		simplified := m[2]
-		pinyin := toneMarkPinyin(m[3])
-		definition := strings.Join(splitDefs(m[4]), "; ")
-
-		if simplified == "" || definition == "" {
+		e := models.DictionaryEntry{
+			Simplified: m[2],
+			Pinyin:     toneMarkPinyin(m[3]),
+			Definition: strings.Join(splitDefs(m[4]), "; "),
+		}
+		if e.Simplified == "" || e.Definition == "" {
 			skipped++
 			continue
 		}
-
-		if *dryRun {
-			inserted++
-			continue
-		}
-
-		if _, err := stmt.Exec(simplified, *lang, pinyin, definition); err != nil {
-			log.Printf("WARN: insert %q: %v", simplified, err)
-			failed++
-			continue
-		}
-		inserted++
+		entries = append(entries, e)
 	}
-
 	if err := scanner.Err(); err != nil {
 		log.Fatalf("scan error: %v", err)
 	}
-
-	if !*dryRun {
-		if err := tx.Commit(); err != nil {
-			log.Fatalf("commit: %v", err)
-		}
-	}
-
-	if !*dryRun {
-		if err := vocabdb.RebuildGlossRank(db); err != nil {
-			log.Fatalf("rebuild gloss_rank: %v", err)
-		}
-	}
-
-	action := "inserted"
 	if *dryRun {
-		action = "would insert"
+		log.Printf("Done: would insert %d, skipped %d (lang=%s)", len(entries), skipped, *lang)
+		return
 	}
-	log.Printf("Done: %s %d, skipped %d, failed %d (lang=%s)", action, inserted, skipped, failed, *lang)
+
+	store, err := vocabdb.Open(*dbPath)
+	if err != nil {
+		log.Fatalf("open db: %v", err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	if !*appendOnly {
+		existing, err := store.CountDictionaryEntries(ctx, *lang)
+		if err != nil {
+			log.Fatalf("count entries: %v", err)
+		}
+		if err := checkReplaceSize(existing, len(entries), *force); err != nil {
+			log.Fatal(err)
+		}
+	}
+	report, err := store.ImportDictionaryEntries(ctx, *lang, entries, !*appendOnly)
+	if err != nil {
+		log.Fatalf("import: %v", err)
+	}
+	if err := store.RebuildGlossRank(ctx); err != nil {
+		log.Fatalf("rebuild gloss_rank: %v", err)
+	}
+	log.Printf("Done: inserted %d, removed %d old, skipped %d (lang=%s)", report.Inserted, report.Removed, skipped, *lang)
+
+	// Learners see the new translations through the shared library.
+	lib, err := store.RefreshLibrary(ctx)
+	if err != nil {
+		log.Fatalf("refresh library: %v", err)
+	}
+	log.Printf("Library: %d words, %d changed, %d glosses added, %d dropped, %d without dictionary entry",
+		lib.Words, lib.Changed, lib.Added, lib.Dropped, lib.Missing)
+}
+
+// checkReplaceSize refuses to replace a stored dictionary of existing
+// entries with a file of incoming entries that is less than half its size:
+// that is a partial file, which would wipe the dictionary. force skips the
+// check; -append adds a partial file without replacing.
+func checkReplaceSize(existing, incoming int, force bool) error {
+	if force || existing == 0 || incoming*2 >= existing {
+		return nil
+	}
+	return fmt.Errorf("the file has %d entries, the database has %d: use -append to add a partial file, or -force to replace anyway", incoming, existing)
 }
 
 // splitDefs splits a CEDICT "/def1/def2/.../" body (already stripped of the

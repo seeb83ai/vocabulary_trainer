@@ -422,7 +422,7 @@ When you configure a local model, it takes precedence over any cloud API keys th
 | `make tidy` | Tidy Go module dependencies |
 | `make import` | Import vocabulary from a text file (see below) |
 | `make import-hsk` | Import an HSK word list into the shared library (`VERSION=3` or `VERSION=2`, see below) |
-| `make refresh-library` | Update the shared library's translations from CC-CEDICT/HanDeDict after a dictionary import (see below) |
+| `make refresh-library` | Update the shared library's translations from CC-CEDICT/HanDeDict (`import-cedict` already does it, see below) |
 | `make import-pinyin` | Import pinyin audio files for listening training (see below) |
 | `make import-frequency` | Import an alternative/updated Chinese word-frequency list used to order new-word introduction — the bundled list is already auto-imported on startup (see below) |
 | `make release` | Cross-compile for Raspberry Pi and rsync to `RSYNC_DEST` |
@@ -562,7 +562,13 @@ make import-handedict                            # DE, uses handedict.u8 in proj
 make import-handedict FILE=/path/to/handedict.u8 # custom path
 ```
 
-After each run, the tool rebuilds the `gloss_rank` table. This table stores the frequency rank of every dictionary gloss, so adding a dictionary translation does not look up each word of the gloss again.
+After each run, the tool rebuilds the `gloss_rank` table. This table stores the frequency rank of every dictionary gloss, so adding a dictionary translation does not look up each word of the gloss again. Then it refreshes the shared library (see "Library refresh" below), so users see the new translations at once.
+
+A run **replaces** the stored version of that dictionary: entries that upstream removed go away. Entries kept from the old curated library (`source = 'user'`) and the other language stay. A translation a user deleted stays deleted, also when a later version removes and then brings back that sense. If the file has less than half the entries of the stored dictionary, the tool stops, because a partial file would remove most of the dictionary. To add a partial file, use `APPEND=1` (`-append`); to replace anyway, use `FORCE=1` (`-force`):
+
+```bash
+make import-cedict FILE=/path/to/extra.u8 APPEND=1
+```
 
 Or directly:
 
@@ -577,6 +583,8 @@ cd service && go run ./cmd/import-cedict -db ../data/vocab.db -file ../handedict
 | `-file` | *(required)* | Path to a CEDICT-format dictionary file |
 | `-lang` | *(required)* | `en` (CC-CEDICT) or `de` (HanDeDict) |
 | `-dry-run` | false | Parse and validate without writing |
+| `-append` | false | Add the entries instead of replacing the stored dictionary |
+| `-force` | false | Replace even when the file has less than half the stored entries |
 
 Like `import-hanzi`, this is a manual, one-time (or re-run-on-update) operational step against `data/vocab.db` — it is not run automatically at startup.
 
@@ -615,7 +623,7 @@ The script lists per user how many translations were lost or added. Users who tr
 
 ### Library refresh (refresh-library)
 
-The shared library (user 1) keeps its own copy of the dictionary translations of its words. Users who imported a list see these translations directly, they do not get a copy (see ADR-0005). After you import a new CC-CEDICT or HanDeDict version, run:
+The shared library (user 1) keeps its own copy of the dictionary translations of its words. Users who imported a list see these translations directly, they do not get a copy (see ADR-0005). You do not need to run the refresh by hand: the server fills the library on the first start after the upgrade, and `import-cedict`, `import-hsk` and `import-topics` run the refresh at the end. To run it alone (for example after changing `cedict_entries` by hand):
 
 ```bash
 make refresh-library
@@ -629,7 +637,7 @@ The tool splits each dictionary definition into senses, as the import does, and 
 - A word whose translations changed is marked. Users who changed that word themselves are asked on the import screen whether to keep their version.
 - A word that is no longer in the dictionary keeps its last translations and is marked as removed. It is never deleted.
 
-You can run the tool again safely. On the first start after the upgrade, the server fills the library once by itself (log line `Library: filling glosses…`). `import-hsk` and `import-topics` run the refresh at the end.
+You can run the tool again safely. A translation that a user deleted stays deleted, also when the dictionary drops the sense and a later version brings it back.
 
 ### Topic word lists (classify-topics)
 

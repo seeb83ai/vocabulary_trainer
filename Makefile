@@ -52,15 +52,15 @@ import-hanzi:
 	mkdir -p data
 	cd service && go run ./cmd/import-hanzi -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../dictionary.txt)
 
-## import-cedict: import CC-CEDICT for zh word segmentation + free EN dictionary lookups (FILE=cedict_ts.u8 DB=data/vocab.db)
+## import-cedict: import (replace) CC-CEDICT for segmentation, EN lookups and the shared library; refreshes the library (FILE=cedict_ts.u8 DB=data/vocab.db APPEND=1 adds a partial file, FORCE=1 skips the size check)
 import-cedict:
 	mkdir -p data
-	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../cedict_ts.u8) -lang en
+	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../cedict_ts.u8) -lang en $(if $(APPEND),-append) $(if $(FORCE),-force)
 
-## import-handedict: import HanDeDict for free DE dictionary lookups (FILE=handedict.u8 DB=data/vocab.db)
+## import-handedict: import (replace) HanDeDict for DE lookups and the shared library; refreshes the library (FILE=handedict.u8 DB=data/vocab.db APPEND=1 FORCE=1)
 import-handedict:
 	mkdir -p data
-	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../handedict.u8) -lang de
+	cd service && go run ./cmd/import-cedict -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../handedict.u8) -lang de $(if $(APPEND),-append) $(if $(FORCE),-force)
 
 ## import-hsk: import an HSK word list into the shared library (VERSION=3 for HSK 3.0, 2 for HSK 2.0; DB=data/vocab.db)
 import-hsk:
@@ -71,7 +71,7 @@ import-hsk:
 classify-topics:
 	cd service && go run ./cmd/classify-topics -db $(or $(DB),../data/vocab.db) -out $(or $(OUT),../data/topics) $(if $(DRY),-dry-run) $(if $(CLI),-claude-cli $(CLI)) $(if $(WORKERS),-workers $(WORKERS))
 
-## refresh-library: update the shared library's glosses from the imported dictionaries; run after import-cedict/import-handedict (DB=data/vocab.db)
+## refresh-library: update the shared library's glosses from the imported dictionaries; import-cedict/import-handedict run it already (DB=data/vocab.db)
 refresh-library:
 	cd service && go run ./cmd/refresh-library -db $(or $(DB),../data/vocab.db)
 

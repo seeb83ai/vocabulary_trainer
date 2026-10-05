@@ -230,3 +230,41 @@ func TestLibraryWordsHaveNoProgress(t *testing.T) {
 		t.Errorf("library has %d progress rows (words %d, %d), want 0", n, eat, drink)
 	}
 }
+
+func TestRefreshLibrary_LearnerDeletionSurvivesSenseLeavingAndReturning(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	eat := seedBareLibraryWord(t, s, "吃", "chī")
+	seedCedict(t, s, "吃", "en", "to eat; to consume")
+	if _, err := s.RefreshLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := s.CreateReferences(ctx, 2, []int64{eat}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The learner deletes "to consume".
+	if err := s.UpdateWord(ctx, 2, ids[0], models.UpdateWordRequest{ZhText: "吃",
+		Translations:       map[string][]string{"en": {"to eat"}},
+		TranslationSources: map[string][]string{"en": {"cedict"}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// One dictionary version drops the sense, the next one has it again.
+	for _, def := range []string{"to eat", "to eat; to consume"} {
+		if _, err := s.ImportDictionaryEntries(ctx, "en", []models.DictionaryEntry{{Simplified: "吃", Pinyin: "chī", Definition: def}}, true); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.RefreshLibrary(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := libraryGlosses(t, s, eat)["en"]; !reflect.DeepEqual(got, []string{"to consume", "to eat"}) {
+		t.Fatalf("library en = %v, want the sense back", got)
+	}
+	wd, _ := s.GetWordByID(ctx, 2, ids[0])
+	if got := wd.Translations["en"]; !reflect.DeepEqual(got, []string{"to eat"}) {
+		t.Errorf("learner en = %v, want the deleted sense to stay deleted", got)
+	}
+}

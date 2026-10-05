@@ -563,3 +563,23 @@ func TestUpdateWord_ReferenceTypedGlossStaysLearnersOwn(t *testing.T) {
 		t.Errorf("en = %v %v, want both glosses as the learner's own", wd.Translations["en"], wd.TranslationSources["en"])
 	}
 }
+
+func TestImportedLists_IncludesListsImportedBeforeImportJobs(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedLibraryListWord(t, s, "一", "one", "hsk3-1")
+	seedLibraryListWord(t, s, "二", "two", "hsk3-1")
+	// Imported long ago: no import job, only the list tag on the word.
+	if _, err := s.CreateReferences(ctx, 2, []int64{a}, []string{"hsk3-1", "mine"}); err != nil {
+		t.Fatal(err)
+	}
+
+	lists, err := s.ImportedLists(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []models.ImportedList{{Tag: "hsk3-1", AndTags: []string{}, ApplyTags: []string{"hsk3-1"}, New: 1}}
+	if !reflect.DeepEqual(lists, want) {
+		t.Errorf("lists = %+v, want %+v", lists, want)
+	}
+}

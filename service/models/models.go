@@ -918,3 +918,18 @@ type LibraryConversionReport struct {
 	Words             int `json:"words"`
 	GlossWordsDeleted int `json:"gloss_words_deleted"`
 }
+
+// DictionaryEntry is one parsed CC-CEDICT/HanDeDict line: simplified text,
+// tone-mark pinyin and the definitions joined with "; ".
+type DictionaryEntry struct {
+	Simplified string
+	Pinyin     string
+	Definition string
+}
+
+// DictionaryImportReport counts what ImportDictionaryEntries did: Inserted
+// new entries, Removed entries of the previous dictionary version.
+type DictionaryImportReport struct {
+	Inserted int
+	Removed  int
+}

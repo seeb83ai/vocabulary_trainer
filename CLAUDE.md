@@ -219,7 +219,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/components_confusion.go` | Component confusion detection |
 | `service/db/components_stats.go` | Component stats history and coverage |
 | `service/db/components_test_helpers.go` | Test-only seed/set helpers for component tests |
-| `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary`, `LookupPinyin` |
+| `service/db/cedict.go` | CC-CEDICT/HanDeDict segmentation (`segmentZhText`), `CreateSubwordsForWord`, `LookupDictionary`, `LookupPinyin`, `ImportDictionaryEntries` (replace/append a dictionary version) |
 | `service/db/translation_rank.go` | `computeTranslationRank` — scores an auto-derived translation gloss against `word_frequency_lang`; `linkTranslation` reads the `gloss_rank` cache first (rebuilt by `RebuildGlossRank`) |
 | `service/db/words_batch.go` | `batchWriter` — prepared statements and word/tag ID caches for bulk writes (library refresh, references) |
 | `service/db/library_conversion.go` | One-time startup conversion of copied words to library references (`LibraryConversionPending`, `BackupTo`, `ConvertToLibraryReferences` with before/after check) |
@@ -290,7 +290,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/cmd/import-hsk/main.go` | Import HSK 2.0 (`hsk2-N`) / HSK 3.0 (`hsk3-N`) word lists into the shared library user |
 | `service/cmd/import-pinyin/main.go` | Import pinyin MP3 files + seed `pinyin_sounds` table |
 | `service/cmd/import-hanzi/main.go` | Import hanzi decomposition dataset |
-| `service/cmd/import-cedict/main.go` | Import CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for sub-word segmentation + free dictionary lookup |
+| `service/cmd/import-cedict/main.go` | Import (replace, or `-append`) CC-CEDICT (`-lang en`) / HanDeDict (`-lang de`) for segmentation, dictionary lookup and the shared library; refreshes the library at the end |
 | `service/cmd/fill-translations/main.go` | Backfill missing translations via LLM |
 | `service/cmd/funnel/main.go` | Print the signup → activation → retention funnel |
 | `service/cmd/e2e-seed-history/main.go` | Test-only: writes back-dated SM-2 progress, due dates and daily stats for the screenshot specs |
