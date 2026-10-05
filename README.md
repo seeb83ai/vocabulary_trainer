@@ -599,7 +599,19 @@ sudo systemctl start vocab-trainer
 journalctl -u vocab-trainer -f    # wait for "Library conversion: N users …"
 ```
 
-Paths are those of `deploy/vocab-trainer.service`. To restore after a failed start: stop the server, copy `vocab.db.pre-library-refs` back to `vocab.db`, delete `vocab.db-wal` and `vocab.db-shm`, and deploy the old binary.
+Paths are those of `deploy/vocab-trainer.service`. `make release` copies the new binary into the live directory, and the watcher restarts the service at once, so the conversion starts with the release.
+
+To try the conversion first on a copy (recommended), run the new version against a copy of the database on another port, then compare the result with the backup it wrote:
+
+```bash
+sqlite3 /opt/vocab-trainer/data/vocab.db ".backup data/verify.db"   # copy the live DB
+cd service && DB_PATH=../data/verify.db PORT=8090 go run .           # log: "Library conversion: N users …"
+cd .. && sqlite3 -readonly data/verify.db \
+  "ATTACH 'data/verify.db.pre-library-refs' AS old" \
+  ".read scripts/verify-library-conversion.sql"
+```
+
+The script lists per user how many translations were lost or added. Users who trained in the last 7 days must show `words_changed = 0`, nobody may lose a translation, and the checks for deleted words, changed progress and changed tags must return no rows. To restore after a failed start: stop the server, copy `vocab.db.pre-library-refs` back to `vocab.db`, delete `vocab.db-wal` and `vocab.db-shm`, and deploy the old binary.
 
 ### Library refresh (refresh-library)
 

@@ -130,6 +130,7 @@ release: generate-landing
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-cedict ./cmd/import-cedict
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../classify-topics ./cmd/classify-topics
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../import-topics ./cmd/import-topics
+	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../refresh-library ./cmd/refresh-library
 	rsync -avz --progress \
 	    Makefile \
 	    dictionary.txt \
@@ -141,6 +142,7 @@ release: generate-landing
 		import-cedict \
 		classify-topics \
 		import-topics \
+		refresh-library \
 		service/cmd/import-frequency/frequency_data.txt \
 		fill-translations \
 		.env.example \
