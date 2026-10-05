@@ -69,6 +69,58 @@ test.describe("All done – review today's mistakes (issue #537)", () => {
     await expect(page.locator('#prompt-word')).toHaveText('水');
   });
 
+  // After "Train them again now", only words that are wrong again count.
+  async function retrainFromAllDone(page) {
+    // No extra not-yet-due word at the end of the session (session extension),
+    // so the all-done screen shows right after the retrained word.
+    const current = await (await page.request.get('/api/settings')).json();
+    const patch = await page.request.patch('/api/settings', { data: { ...current, extend_session_with_extra_words: false } });
+    expect(patch.ok()).toBeTruthy();
+    await page.goto('/train');
+    await expect(page.locator('#wrong-today-btn')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#wrong-today-btn').click();
+    await page.locator('#wrong-today-retrain-btn').click();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('水');
+  }
+
+  test('a word answered correctly during the retrain leaves the list', async ({ page }) => {
+    await setupAllDoneWithMistake(page);
+    await retrainFromAllDone(page);
+
+    // A word in its learning phase needs a few correct answers in a row
+    // before it leaves today's queue.
+    for (let i = 0; i < 5 && await page.locator('#card-area').isVisible(); i++) {
+      await expect(page.locator('#prompt-word')).toHaveText('水');
+      await page.locator('#answer-input').fill('water');
+      await page.locator('#answer-input').press('Enter');
+      await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
+      await page.locator('#next-btn').click();
+      await expect(page.locator('#card-area:visible, #success-state:visible')).toHaveCount(1, { timeout: 8_000 });
+    }
+
+    await expect(page.locator('#success-state')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#success-comeback')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#wrong-today-btn')).not.toBeVisible();
+  });
+
+  test('a word answered wrong again during the retrain stays in the list', async ({ page }) => {
+    await setupAllDoneWithMistake(page);
+    await retrainFromAllDone(page);
+
+    await page.locator('#answer-input').fill('fire');
+    await page.locator('#answer-input').press('Enter');
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
+    await page.locator('#next-btn').click();
+    // The wrong word comes back later today; move it to tomorrow to reach "all done".
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#skip-today-btn').click();
+
+    await expect(page.locator('#success-state')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#wrong-today-btn')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#wrong-today-btn')).toContainText('1');
+  });
+
   test('the sheet closes without changes', async ({ page }) => {
     await setupAllDoneWithMistake(page);
     await page.goto('/train');

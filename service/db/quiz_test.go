@@ -927,3 +927,51 @@ func TestMakeWordsWrongTodayDue(t *testing.T) {
 		t.Errorf("other word: due date must not change, got %v", q.DueDate)
 	}
 }
+
+// Issue #537 follow-up: after "Train them again", a word leaves the list
+// until it is answered wrong again.
+func TestGetWordsWrongToday_AfterRetrain(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "水", "shuǐ", []string{"water"})
+	b := seedWord(t, s, "火", "huǒ", []string{"fire"})
+	for _, id := range []int64{a, b} {
+		if err := s.RecordAnswerTimestamps(ctx, id, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := func() []int64 {
+		t.Helper()
+		words, err := s.GetWordsWrongToday(ctx, int64(2), []string{"en"})
+		if err != nil {
+			t.Fatalf("GetWordsWrongToday: %v", err)
+		}
+		var out []int64
+		for _, w := range words {
+			out = append(out, w.WordID)
+		}
+		return out
+	}
+
+	if n, err := s.MakeWordsWrongTodayDue(ctx, int64(2)); err != nil || n != 2 {
+		t.Fatalf("MakeWordsWrongTodayDue: n=%d err=%v", n, err)
+	}
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("right after the retrain: want empty list, got %v", got)
+	}
+
+	if err := s.RecordAnswerTimestamps(ctx, a, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordAnswerTimestamps(ctx, b, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 1 || got[0] != b {
+		t.Fatalf("after the retrain: want only the word wrong again (%d), got %v", b, got)
+	}
+
+	// A second retrain only covers the word that is in the list now.
+	if n, err := s.MakeWordsWrongTodayDue(ctx, int64(2)); err != nil || n != 1 {
+		t.Fatalf("second MakeWordsWrongTodayDue: n=%d err=%v", n, err)
+	}
+}
