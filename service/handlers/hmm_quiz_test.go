@@ -256,6 +256,34 @@ func TestHMMQuizAnswer_OptionalParensInline(t *testing.T) {
 	}
 }
 
+// Tone room names often list two areas separated by a slash; the user may
+// type them in either order (issue #543).
+func TestHMMQuizAnswer_ToneRoomSlashPartsAnyOrder(t *testing.T) {
+	router, h := hmmQuizRouter(t)
+	ctx := context.Background()
+	clearAllHMMNames(t, h)
+	if err := h.Store.UpdateHMMToneRoom(ctx, int64(2), 3, "Schlafzimmer / Wohnzimmer"); err != nil {
+		t.Fatalf("UpdateHMMToneRoom: %v", err)
+	}
+	if err := h.Store.EnsureHMMProgress(ctx, int64(2)); err != nil {
+		t.Fatalf("EnsureHMMProgress: %v", err)
+	}
+
+	rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+		EntityType: models.HMMEntityToneRoom,
+		EntityKey:  "3",
+		Answer:     "Wohnzimmer / Schlafzimmer",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var resp models.HMMAnswerResponse
+	decodeJSON(t, rec, &resp)
+	if !resp.Correct {
+		t.Error("expected slash parts in swapped order to be correct")
+	}
+}
+
 func TestHMMQuizSkip_DaysOne(t *testing.T) {
 	s := openTestDB(t)
 	seedHMMCard(t, s)

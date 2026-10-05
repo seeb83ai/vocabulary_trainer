@@ -316,9 +316,25 @@ func CheckComponentAnswer(userAnswer, definition string) bool {
 // CheckHMMAnswer checks whether userAnswer matches correctName after stripping
 // optional parenthesised segments from both sides (case-insensitive, no
 // trailing-punctuation stripping — matching current HMM quiz behaviour).
+// A slash-separated name may list all parts in any order:
+// "Schlafzimmer / Wohnzimmer" also accepts "Wohnzimmer / Schlafzimmer".
 func CheckHMMAnswer(userAnswer, correctName string) bool {
 	norm := func(s string) string { return strings.Join(strings.Fields(stripParens(s)), " ") }
-	return strings.EqualFold(norm(userAnswer), norm(correctName))
+	if strings.EqualFold(norm(userAnswer), norm(correctName)) {
+		return true
+	}
+	parts := func(s string) []string {
+		var out []string
+		for _, part := range strings.Split(s, "/") {
+			if p := strings.ToLower(norm(part)); p != "" {
+				out = append(out, p)
+			}
+		}
+		slices.Sort(out)
+		return out
+	}
+	uaParts := parts(userAnswer)
+	return len(uaParts) > 1 && slices.Equal(uaParts, parts(correctName))
 }
 
 // MaskPinyin returns a masked pinyin hint for learning-phase transl_to_zh cards.
