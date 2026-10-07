@@ -620,6 +620,7 @@ async function submitAnswer(e) {
         mode: currentCard.mode,
         answer: answer,
         langs: selectedLangs,
+        drill: difficultDrill,
       }),
     });
     maybeCelebrateThenShow(result, (r) => renderWordAnswerResult(r, answer));

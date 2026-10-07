@@ -977,3 +977,93 @@ func TestGetWordsWrongToday_AfterRetrain(t *testing.T) {
 		t.Fatalf("second MakeWordsWrongTodayDue: n=%d err=%v", n, err)
 	}
 }
+
+func TestSM2Progress_LapsesRoundTrip(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "记住", "jì zhu", []string{"remember"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v", err)
+	}
+	if !p.LastAttemptAt.IsZero() {
+		t.Errorf("LastAttemptAt of a new word: want zero, got %v", p.LastAttemptAt)
+	}
+	p.Lapses = 7
+	p.ConsecutiveLapses = 3
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+	if err := s.RecordAnswerTimestamps(ctx, id, false); err != nil {
+		t.Fatalf("RecordAnswerTimestamps: %v", err)
+	}
+
+	got, err := s.GetSM2Progress(ctx, id)
+	if err != nil {
+		t.Fatalf("GetSM2Progress: %v", err)
+	}
+	if got.Lapses != 7 || got.ConsecutiveLapses != 3 {
+		t.Errorf("lapses: want 7/3, got %d/%d", got.Lapses, got.ConsecutiveLapses)
+	}
+	if time.Since(got.LastAttemptAt) > time.Minute {
+		t.Errorf("LastAttemptAt: want about now, got %v", got.LastAttemptAt)
+	}
+}
+
+func TestSM2PrevState_KeepsLapses(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "记住", "jì zhu", []string{"remember"})
+
+	if err := s.SaveSM2PrevState(ctx, id, models.SM2Progress{WordID: id, Easiness: 2.5, Lapses: 4, ConsecutiveLapses: 2}); err != nil {
+		t.Fatalf("SaveSM2PrevState: %v", err)
+	}
+	prev, err := s.GetSM2PrevState(ctx, id)
+	if err != nil || prev == nil {
+		t.Fatalf("GetSM2PrevState: %v", err)
+	}
+	if prev.Lapses != 4 || prev.ConsecutiveLapses != 2 {
+		t.Errorf("prev lapses: want 4/2, got %d/%d", prev.Lapses, prev.ConsecutiveLapses)
+	}
+}
+
+func TestResetWordProgress_ClearsLapsesAndTodaysMistake(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "记住", "jì zhu", []string{"remember"})
+	markWordTrained(t, s, id)
+	p, _ := s.GetSM2Progress(ctx, id)
+	p.Lapses, p.ConsecutiveLapses = 6, 5
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+	if err := s.RecordAnswerTimestamps(ctx, id, false); err != nil {
+		t.Fatalf("RecordAnswerTimestamps: %v", err)
+	}
+	if err := s.SaveSM2PrevState(ctx, id, *p); err != nil {
+		t.Fatalf("SaveSM2PrevState: %v", err)
+	}
+
+	if err := s.ResetWordProgress(ctx, int64(2), id); err != nil {
+		t.Fatalf("ResetWordProgress: %v", err)
+	}
+
+	got, _ := s.GetSM2Progress(ctx, id)
+	if got.Lapses != 0 || got.ConsecutiveLapses != 0 {
+		t.Errorf("lapses: want 0/0, got %d/%d", got.Lapses, got.ConsecutiveLapses)
+	}
+	if !got.LastAttemptAt.IsZero() {
+		t.Errorf("LastAttemptAt: want zero, got %v", got.LastAttemptAt)
+	}
+	if prev, _ := s.GetSM2PrevState(ctx, id); prev != nil {
+		t.Errorf("prev state: want nil, got %+v", prev)
+	}
+	wrong, err := s.GetWordsWrongToday(ctx, int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetWordsWrongToday: %v", err)
+	}
+	if len(wrong) != 0 {
+		t.Errorf("today's mistakes: want none, got %+v", wrong)
+	}
+}

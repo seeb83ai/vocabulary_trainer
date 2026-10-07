@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
@@ -870,5 +871,70 @@ func TestQuizAnswer_VoiceToTransl_GradesLikeZhToTransl(t *testing.T) {
 	decodeJSON(t, rec, &resp)
 	if !resp.Correct {
 		t.Error("want correct=true for a matching translation")
+	}
+}
+
+// seedReviewWord seeds a word that left the New bucket, is due now and was
+// last answered yesterday, so its next answer is a review that can lapse.
+func seedReviewWord(t *testing.T, s *db.Store, zhText, en string, consecutiveLapses int) int64 {
+	t.Helper()
+	id := seedWord(t, s, zhText, "", []string{en})
+	if _, err := s.ExecForTest(`UPDATE sm2_progress SET learning_new_word = 0, repetitions = 2, interval_days = 3,
+		first_seen_at = datetime('now', '-10 days'), last_attempt_at = datetime('now', '-1 day'),
+		due_date = datetime('now', '-1 hour'), lapses = ?, consecutive_lapses = ? WHERE word_id = ?`,
+		consecutiveLapses, consecutiveLapses, id); err != nil {
+		t.Fatalf("seedReviewWord: %v", err)
+	}
+	return id
+}
+
+func TestAnswer_WrongReviewCountsLapse(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id := seedReviewWord(t, s, "记住", "remember", 1)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{"word_id": id, "mode": "zh_to_transl", "answer": "wrong"})
+	if rec.Code != 200 {
+		t.Fatalf("answer: %d %s", rec.Code, rec.Body)
+	}
+	// A retry on the same day is not a review and must not count again.
+	do(t, r, "POST", "/api/quiz/answer", map[string]any{"word_id": id, "mode": "zh_to_transl", "answer": "wrong"})
+
+	p, _ := s.GetSM2Progress(context.Background(), id)
+	if p.Lapses != 2 || p.ConsecutiveLapses != 2 {
+		t.Errorf("lapses: want 2/2, got %d/%d", p.Lapses, p.ConsecutiveLapses)
+	}
+}
+
+func TestAnswer_DrillDoesNotCountLapse(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id := seedReviewWord(t, s, "记住", "remember", 1)
+
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{"word_id": id, "mode": "zh_to_transl", "answer": "wrong", "drill": true})
+	if rec.Code != 200 {
+		t.Fatalf("answer: %d %s", rec.Code, rec.Body)
+	}
+	p, _ := s.GetSM2Progress(context.Background(), id)
+	if p.Lapses != 1 || p.ConsecutiveLapses != 1 {
+		t.Errorf("lapses: want 1/1 (unchanged), got %d/%d", p.Lapses, p.ConsecutiveLapses)
+	}
+}
+
+func TestAcceptCorrect_UndoesLapse(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id := seedReviewWord(t, s, "记住", "remember", 2)
+
+	do(t, r, "POST", "/api/quiz/answer", map[string]any{"word_id": id, "mode": "zh_to_transl", "answer": "remembr"})
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", map[string]any{"word_id": id, "mode": "zh_to_transl"})
+	if rec.Code != 200 {
+		t.Fatalf("accept-correct: %d %s", rec.Code, rec.Body)
+	}
+	// The accepted answer is a correct first answer: the lapse is undone and
+	// the run of consecutive lapses ends.
+	p, _ := s.GetSM2Progress(context.Background(), id)
+	if p.Lapses != 2 || p.ConsecutiveLapses != 0 {
+		t.Errorf("lapses: want 2/0, got %d/%d", p.Lapses, p.ConsecutiveLapses)
 	}
 }

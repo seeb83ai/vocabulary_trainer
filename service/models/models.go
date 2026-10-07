@@ -202,6 +202,13 @@ type SM2Progress struct {
 	// their encounter (no wrong attempt preceded them before the correct one).
 	// Used as the cycle-position counter when CycleAdvanceOnKnownOnly is set.
 	KnownCorrectCount int
+	// Lapses counts failed reviews: a wrong first answer of the day on a due
+	// word that has left the New bucket. ConsecutiveLapses counts those in a
+	// row and drives the leech warning.
+	Lapses            int
+	ConsecutiveLapses int
+	// LastAttemptAt is read-only here (written by RecordAnswerTimestamps).
+	LastAttemptAt time.Time
 }
 
 // API request/response structs
@@ -260,6 +267,9 @@ type AnswerRequest struct {
 	Mode   string   `json:"mode"`
 	Answer string   `json:"answer"`
 	Langs  []string `json:"langs,omitempty"`
+	// Drill is true for answers in the difficult-words drill; they never
+	// count as reviews (no lapse tracking).
+	Drill bool `json:"drill,omitempty"`
 }
 
 type AcceptCorrectRequest struct {

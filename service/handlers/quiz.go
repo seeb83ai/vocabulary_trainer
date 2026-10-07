@@ -517,6 +517,13 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	if correct && firstTry {
 		updated.KnownCorrectCount++
 	}
+	// Lapse tracking judges the state coming into this answer (due, New
+	// bucket, last attempt), not the state ProcessAnswer just computed.
+	if !req.Drill {
+		if reviewed, counted := sm2.RecordReview(*progress, correct, time.Now()); counted {
+			updated.Lapses, updated.ConsecutiveLapses = reviewed.Lapses, reviewed.ConsecutiveLapses
+		}
+	}
 	graduated := progress.LearningNewWord && !updated.LearningNewWord
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
@@ -686,6 +693,12 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 
 	updated := sm2.ProcessAnswer(*prev, true)
 	graduated := prev.LearningNewWord && !updated.LearningNewWord
+	// prev holds the lapse counters from before the wrong answer. If that
+	// answer counted a lapse, the accepted answer replaces it as a correct
+	// review, which also ends the run of consecutive lapses.
+	if cur, err := h.Store.GetSM2Progress(ctx, req.WordID); err == nil && cur != nil && cur.Lapses > prev.Lapses {
+		updated.ConsecutiveLapses = 0
+	}
 
 	if err := h.Store.UpdateSM2Progress(ctx, updated); err != nil {
 		internalError(w, err)
