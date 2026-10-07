@@ -9,14 +9,29 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const ANSWER_LANG_PLACEHOLDERS = ['en', 'de'];
 
+function translPlaceholderKey(answerLang) {
+  return ANSWER_LANG_PLACEHOLDERS.includes(answerLang) ? `card.placeholderTransl.${answerLang}` : 'card.placeholder';
+}
+
 function placeholderKeyForCard(cardType, mode, answerLang) {
   if (cardType === 'sentence') return 'card.placeholderSentence';
   if (!cardType && mode === 'transl_to_zh') return 'card.placeholderZh';
-  if ((!cardType || cardType === 'component') && ANSWER_LANG_PLACEHOLDERS.includes(answerLang)) {
-    return `card.placeholderTransl.${answerLang}`;
-  }
+  if (!cardType || cardType === 'component') return translPlaceholderKey(answerLang);
   return 'card.placeholder';
 }
+
+// The retype-on-wrong meaning field uses the same text (issue #549).
+describe('translPlaceholderKey', () => {
+  it('names the answer language', () => {
+    expect(translPlaceholderKey('de')).toBe('card.placeholderTransl.de');
+    expect(translPlaceholderKey('en')).toBe('card.placeholderTransl.en');
+  });
+
+  it('falls back to the generic key for an unknown language', () => {
+    expect(translPlaceholderKey('fr')).toBe('card.placeholder');
+    expect(translPlaceholderKey(undefined)).toBe('card.placeholder');
+  });
+});
 
 describe('placeholderKeyForCard', () => {
   it('uses the sentence-specific placeholder key for sentence cards', () => {

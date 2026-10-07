@@ -440,23 +440,28 @@ async function loadNextCard(trackCurrent = false) {
   await loadStats();
 }
 
-// Languages with a "Type the <language> translation…" placeholder (issue #542).
+// Languages with a "Type <language>" placeholder (issue #542).
 const ANSWER_LANG_PLACEHOLDERS = ['en', 'de'];
+
+function translPlaceholderKey(answerLang) {
+  return ANSWER_LANG_PLACEHOLDERS.includes(answerLang) ? `card.placeholderTransl.${answerLang}` : 'card.placeholder';
+}
 
 function placeholderKeyForCard(cardType, mode, answerLang) {
   if (cardType === 'sentence') return 'card.placeholderSentence';
   if (!cardType && mode === 'transl_to_zh') return 'card.placeholderZh';
-  if ((!cardType || cardType === 'component') && ANSWER_LANG_PLACEHOLDERS.includes(answerLang)) {
-    return `card.placeholderTransl.${answerLang}`;
-  }
+  if (!cardType || cardType === 'component') return translPlaceholderKey(answerLang);
   return 'card.placeholder';
+}
+
+// Name the primary language if it is selected, else the first selected one.
+function currentAnswerLang() {
+  return orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang)[0] || userPrimaryLang;
 }
 
 function showCard() {
   show('card-area');
-  // Name the primary language if it is selected, else the first selected one.
-  const answerLang = orderLangsPrimaryFirst(selectedLangs, userPrimaryLang, userSecondaryLang)[0] || userPrimaryLang;
-  $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type, currentCard.mode, answerLang));
+  $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type, currentCard.mode, currentAnswerLang()));
   // Prompt size: Hanzi prompts are larger, sentence prompts smaller.
   const promptEl = $('prompt-word');
   const zhPrompt = currentCard.card_type === 'component' ||

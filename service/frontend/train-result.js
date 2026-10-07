@@ -366,6 +366,7 @@ function renderWordAnswerResult(result, answer) {
         wrongRetypeTarget = { zhText: result.zh_text, translations: mergeTranslationMaps(result.translations, result.translations_extra), requireZh, requireTrans };
         $('wrong-retype-zh-input').value = '';
         $('wrong-retype-trans-input').value = '';
+        $('wrong-retype-trans-input').placeholder = t(translPlaceholderKey(currentAnswerLang()));
         setCheckMark('wrong-retype-zh-check', '', false);
         setCheckMark('wrong-retype-trans-check', '', false);
         requireZh ? show('wrong-retype-zh-group') : hide('wrong-retype-zh-group');
