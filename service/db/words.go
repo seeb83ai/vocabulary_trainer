@@ -78,6 +78,8 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		dueFilterSQL = " AND p.due_date >= date('now', '+1 day') AND p.due_date < date('now', '+2 day')"
 	case "known":
 		dueFilterSQL = " AND p.is_known = 1"
+	case "lapsed":
+		dueFilterSQL = " AND p.consecutive_lapses >= 1 AND p.is_known = 0"
 	}
 
 	bucketFilter := tierFilter(bucket)

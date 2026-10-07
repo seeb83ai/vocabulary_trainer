@@ -768,3 +768,20 @@ func TestLibraryDiffAndResetToLibrary(t *testing.T) {
 		t.Errorf("unknown word reset: want 404, got %d", rec.Code)
 	}
 }
+
+func TestListWords_DueLapsed(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	lapsed := seedLapsedWord(t, s, "记住")
+	seedWord(t, s, "山", "", []string{"mountain"})
+
+	rec := do(t, r, "GET", "/api/words?due=lapsed", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.WordListResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 1 || len(resp.Words) != 1 || resp.Words[0].ID != lapsed {
+		t.Errorf("due=lapsed: want only 记住, got %+v", resp)
+	}
+}

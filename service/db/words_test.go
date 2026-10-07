@@ -2765,3 +2765,27 @@ func TestGetNextCard_BaselineLapsed_BlocksNewWords(t *testing.T) {
 		t.Errorf("at the limit: the unseen word 火 must be blocked, got %+v", w)
 	}
 }
+
+func TestGetWords_DueFilterLapsed(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	lapsed := seedWord(t, s, "记住", "", []string{"remember"})
+	seedWord(t, s, "山", "", []string{"mountain"})
+	knownLapsed := seedWord(t, s, "水", "", []string{"water"})
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET consecutive_lapses = 2, lapses = 3, first_seen_at = datetime('now') WHERE word_id IN (?, ?)`,
+		lapsed, knownLapsed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sm2_progress SET is_known = 1 WHERE word_id = ?`, knownLapsed); err != nil {
+		t.Fatal(err)
+	}
+
+	words, total, err := s.GetWords(ctx, int64(2), "", 1, 50, "", "", nil, false, false, "", "lapsed", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(words) != 1 || words[0].ID != lapsed {
+		t.Errorf("due=lapsed: want only 记住, got total=%d %+v", total, words)
+	}
+}
