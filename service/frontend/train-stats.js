@@ -182,11 +182,16 @@ function dueDisplayCount(stats, sessionExtension, newWordIntro = false) {
     + (sessionExtension ? 1 : 0) + (newWordIntro ? 1 : 0);
 }
 
-// Returns the {pct, min} i18n params when the accuracy baseline pauses new
-// words (issue #484), else null.
-function accuracyPauseParams(stats) {
-  if (stats.accuracy_pause_pct === undefined || stats.accuracy_pause_min === undefined) return null;
-  return { pct: stats.accuracy_pause_pct, min: stats.accuracy_pause_min };
+// Returns the {key, params} of the "new words paused" message, else null.
+// The accuracy baseline (issue #484) comes first when both baselines pause.
+function newPauseMessage(stats) {
+  if (stats.accuracy_pause_pct !== undefined && stats.accuracy_pause_min !== undefined) {
+    return { key: 'statsBar.newPaused', params: { pct: stats.accuracy_pause_pct, min: stats.accuracy_pause_min } };
+  }
+  if (stats.lapsed_pause_count !== undefined && stats.lapsed_pause_max !== undefined) {
+    return { key: 'statsBar.newPausedLapsed', params: { n: stats.lapsed_pause_count, max: stats.lapsed_pause_max } };
+  }
+  return null;
 }
 
 // renderSessionProgress fills the session bar's "X of Y today" label and bar.
@@ -233,11 +238,11 @@ async function loadStats() {
     setText('stats-total', stats.total);
     setText('stats-new', t('session.newOf', { n: stats.new_today, max: stats.max_new_per_day }));
     renderSessionProgress(stats.today_attempts, dueLeft);
-    const pause = accuracyPauseParams(stats);
+    const pause = newPauseMessage(stats);
     const pausedEl = document.getElementById('stats-new-paused');
     const pausedBtn = document.getElementById('stats-new-paused-btn');
     if (pausedEl && pausedBtn) {
-      pausedEl.textContent = pause ? t('statsBar.newPaused', pause) : '';
+      pausedEl.textContent = pause ? t(pause.key, pause.params) : '';
       pausedBtn.classList.toggle('hidden', !pause);
       if (!pause) setNewPausedOpen(false);
     }

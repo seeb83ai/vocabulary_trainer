@@ -16,14 +16,17 @@ import (
 // GetSM2Progress returns the SM-2 progress for a word.
 func (s *Store) GetSM2Progress(ctx context.Context, wordID int64) (*models.SM2Progress, error) {
 	var p models.SM2Progress
-	var dueDate string
+	var dueDate, lastAttemptAt string
 	var learning int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus, learning_new_word, known_correct_count
+		`SELECT word_id, repetitions, easiness, interval_days, due_date, total_correct, total_attempts, streak_bonus, learning_new_word, known_correct_count,
+		        lapses, consecutive_lapses, COALESCE(last_attempt_at, '')
 		 FROM sm2_progress WHERE word_id = ?`, wordID).
 		Scan(&p.WordID, &p.Repetitions, &p.Easiness, &p.IntervalDays, &dueDate,
-			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning, &p.KnownCorrectCount)
+			&p.TotalCorrect, &p.TotalAttempts, &p.StreakBonus, &learning, &p.KnownCorrectCount,
+			&p.Lapses, &p.ConsecutiveLapses, &lastAttemptAt)
 	p.DueDate = parseDateTime(dueDate)
+	p.LastAttemptAt = parseDateTime(lastAttemptAt)
 	p.LearningNewWord = learning == 1
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -43,11 +46,13 @@ func (s *Store) UpdateSM2Progress(ctx context.Context, p models.SM2Progress) err
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress
 		 SET repetitions = ?, easiness = ?, interval_days = ?, due_date = ?,
-		     total_correct = ?, total_attempts = ?, streak_bonus = ?, learning_new_word = ?, known_correct_count = ?
+		     total_correct = ?, total_attempts = ?, streak_bonus = ?, learning_new_word = ?, known_correct_count = ?,
+		     lapses = ?, consecutive_lapses = ?
 		 WHERE word_id = ?`,
 		p.Repetitions, p.Easiness, p.IntervalDays,
 		p.DueDate.UTC().Format("2006-01-02 15:04:05"),
-		p.TotalCorrect, p.TotalAttempts, p.StreakBonus, learningInt, p.KnownCorrectCount, p.WordID)
+		p.TotalCorrect, p.TotalAttempts, p.StreakBonus, learningInt, p.KnownCorrectCount,
+		p.Lapses, p.ConsecutiveLapses, p.WordID)
 	if err != nil {
 		return fmt.Errorf("update sm2: %w", err)
 	}
@@ -137,15 +142,31 @@ func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error
 	return nil
 }
 
+// CountLapsedWords returns how many of the user's zh words failed their last
+// review (consecutive_lapses >= 1). It drives the lapsed-words baseline.
+func (s *Store) CountLapsedWords(ctx context.Context, userID int64) (int, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.is_known = 0 AND p.consecutive_lapses >= 1`,
+		userID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count lapsed words: %w", err)
+	}
+	return n, nil
+}
+
 // ResetWordProgress restores a zh word's SM-2 progress to the unseen state
 // (matching a freshly created word) so it is removed from every bucket and
-// reintroduced as new.
+// reintroduced as new. It also erases the answer history (lapses, pending
+// prev state, today's mistake).
 func (s *Store) ResetWordProgress(ctx context.Context, userID, id int64) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE sm2_progress
 		 SET repetitions = 0, easiness = 2.5, interval_days = 1, due_date = CURRENT_TIMESTAMP,
 		     total_correct = 0, total_attempts = 0, streak_bonus = 0, learning_new_word = 1,
-		     first_seen_at = NULL
+		     first_seen_at = NULL, last_attempt_at = NULL, last_wrong_at = NULL, prev_state = NULL,
+		     lapses = 0, consecutive_lapses = 0
 		 WHERE word_id = ? AND word_id IN (
 		     SELECT id FROM words WHERE id = ? AND language = 'zh' AND user_id = ?)`,
 		id, id, userID)
@@ -394,6 +415,8 @@ type sm2PrevState struct {
 	StreakBonus       int     `json:"sb"`
 	LearningNewWord   bool    `json:"lnw"`
 	KnownCorrectCount int     `json:"kcc"`
+	Lapses            int     `json:"lap"`
+	ConsecutiveLapses int     `json:"clap"`
 }
 
 // SaveSM2PrevState serialises p to JSON and stores it in the prev_state column
@@ -409,6 +432,8 @@ func (s *Store) SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2
 		StreakBonus:       p.StreakBonus,
 		LearningNewWord:   p.LearningNewWord,
 		KnownCorrectCount: p.KnownCorrectCount,
+		Lapses:            p.Lapses,
+		ConsecutiveLapses: p.ConsecutiveLapses,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal prev state: %w", err)
@@ -447,6 +472,8 @@ func (s *Store) GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2P
 		StreakBonus:       prev.StreakBonus,
 		LearningNewWord:   prev.LearningNewWord,
 		KnownCorrectCount: prev.KnownCorrectCount,
+		Lapses:            prev.Lapses,
+		ConsecutiveLapses: prev.ConsecutiveLapses,
 	}, nil
 }
 

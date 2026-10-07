@@ -2710,3 +2710,82 @@ func TestGetWordByID_ExposesKnownFlag(t *testing.T) {
 		t.Errorf("GetWordByID should report Known=true, got %+v", w)
 	}
 }
+
+func TestGetNextCard_BaselineLapsed_BlocksNewWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// Two reviewed words whose last review failed (consecutive_lapses >= 1),
+	// due tomorrow, and one unseen word.
+	for _, zh := range []string{"水", "山"} {
+		id, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+			ZhText: zh, Translations: map[string][]string{"en": {zh}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`UPDATE sm2_progress SET first_seen_at = date('now', '-5 days'), learning_new_word = 0,
+			 total_attempts = 5, total_correct = 3, lapses = 2, consecutive_lapses = 1,
+			 due_date = datetime('now', '+1 day') WHERE word_id = ?`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.CountLapsedWords(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("CountLapsedWords: want 2, got %d", n)
+	}
+
+	// 2 lapsed words, limit 3: the unseen word is served.
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, &NewWordBaselines{LapsedEnabled: true, LapsedValue: 3}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.Text != "火" {
+		t.Fatalf("below the limit: want 火, got %+v", w)
+	}
+
+	// 2 lapsed words, limit 2: new words are blocked. Nothing else is due
+	// today, so no card at all is served.
+	w, _, _, err = s.GetNextCard(ctx, userID, nil, 100, "", false, &NewWordBaselines{LapsedEnabled: true, LapsedValue: 2}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil {
+		t.Errorf("at the limit: the unseen word 火 must be blocked, got %+v", w)
+	}
+}
+
+func TestGetWords_DueFilterLapsed(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	lapsed := seedWord(t, s, "记住", "", []string{"remember"})
+	seedWord(t, s, "山", "", []string{"mountain"})
+	knownLapsed := seedWord(t, s, "水", "", []string{"water"})
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET consecutive_lapses = 2, lapses = 3, first_seen_at = datetime('now') WHERE word_id IN (?, ?)`,
+		lapsed, knownLapsed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sm2_progress SET is_known = 1 WHERE word_id = ?`, knownLapsed); err != nil {
+		t.Fatal(err)
+	}
+
+	words, total, err := s.GetWords(ctx, int64(2), "", 1, 50, "", "", nil, false, false, "", "lapsed", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(words) != 1 || words[0].ID != lapsed {
+		t.Errorf("due=lapsed: want only 记住, got total=%d %+v", total, words)
+	}
+}

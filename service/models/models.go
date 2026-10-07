@@ -46,6 +46,9 @@ type UserSettings struct {
 	BaselineNewBucketValue           int      `json:"baseline_new_bucket_value"`
 	BaselineAccuracyEnabled          bool     `json:"baseline_accuracy_enabled"`
 	BaselineAccuracyValue            int      `json:"baseline_accuracy_value"`
+	LeechThreshold                   int      `json:"leech_threshold"`
+	BaselineLapsedEnabled            bool     `json:"baseline_lapsed_enabled"`
+	BaselineLapsedValue              int      `json:"baseline_lapsed_value"`
 	DeeplKeySet                      bool     `json:"deepl_key_set"`
 	DeeplKeyMasked                   string   `json:"deepl_key_masked,omitempty"`
 	LLMProvider                      string   `json:"llm_provider"`
@@ -202,6 +205,13 @@ type SM2Progress struct {
 	// their encounter (no wrong attempt preceded them before the correct one).
 	// Used as the cycle-position counter when CycleAdvanceOnKnownOnly is set.
 	KnownCorrectCount int
+	// Lapses counts failed reviews: a wrong first answer of the day on a due
+	// word that has left the New bucket. ConsecutiveLapses counts those in a
+	// row and drives the leech warning.
+	Lapses            int
+	ConsecutiveLapses int
+	// LastAttemptAt is read-only here (written by RecordAnswerTimestamps).
+	LastAttemptAt time.Time
 }
 
 // API request/response structs
@@ -260,6 +270,9 @@ type AnswerRequest struct {
 	Mode   string   `json:"mode"`
 	Answer string   `json:"answer"`
 	Langs  []string `json:"langs,omitempty"`
+	// Drill is true for answers in the difficult-words drill; they never
+	// count as reviews (no lapse tracking).
+	Drill bool `json:"drill,omitempty"`
 }
 
 type AcceptCorrectRequest struct {
@@ -298,6 +311,9 @@ type AnswerResponse struct {
 	SceneText         string              `json:"scene_text,omitempty"`
 	Ambiguous         bool                `json:"ambiguous,omitempty"`
 	UserAnswerPinyin  *string             `json:"user_answer_pinyin,omitempty"`
+	// LeechLapses is set when this answer was a lapse that reached the
+	// user's leech threshold (or a multiple of it): the number of lapses in a row.
+	LeechLapses int `json:"leech_lapses,omitempty"`
 }
 
 // TranslationSources, when present, parallels Translations[lang] index-for-index:

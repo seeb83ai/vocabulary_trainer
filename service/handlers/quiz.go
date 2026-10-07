@@ -86,6 +86,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			NewBucketValue:    userSettings.BaselineNewBucketValue,
 			AccuracyEnabled:   userSettings.BaselineAccuracyEnabled,
 			AccuracyValue:     userSettings.BaselineAccuracyValue,
+			LapsedEnabled:     userSettings.BaselineLapsedEnabled,
+			LapsedValue:       userSettings.BaselineLapsedValue,
 			CooldownMinutes:   userSettings.NewWordCooldownMinutes,
 		}
 	}
@@ -517,6 +519,21 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	if correct && firstTry {
 		updated.KnownCorrectCount++
 	}
+	// Lapse tracking judges the state coming into this answer (due, New
+	// bucket, last attempt), not the state ProcessAnswer just computed.
+	leechLapses := 0
+	if !req.Drill {
+		if reviewed, counted := sm2.RecordReview(*progress, correct, time.Now()); counted {
+			updated.Lapses, updated.ConsecutiveLapses = reviewed.Lapses, reviewed.ConsecutiveLapses
+			threshold := 5
+			if userSettings != nil {
+				threshold = userSettings.LeechThreshold
+			}
+			if !correct && threshold > 0 && updated.ConsecutiveLapses%threshold == 0 {
+				leechLapses = updated.ConsecutiveLapses
+			}
+		}
+	}
 	graduated := progress.LearningNewWord && !updated.LearningNewWord
 
 	if err := h.Store.UpdateSM2Progress(r.Context(), updated); err != nil {
@@ -587,6 +604,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		GraduateReps:      sm2.LearningGraduateReps,
 		LearningNewWord:   updated.LearningNewWord,
 		Graduated:         graduated,
+		LeechLapses:       leechLapses,
 	}
 
 	if sceneText, err := h.Store.GetHMMSceneText(r.Context(), req.WordID); err != nil {
@@ -686,6 +704,12 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 
 	updated := sm2.ProcessAnswer(*prev, true)
 	graduated := prev.LearningNewWord && !updated.LearningNewWord
+	// prev holds the lapse counters from before the wrong answer. If that
+	// answer counted a lapse, the accepted answer replaces it as a correct
+	// review, which also ends the run of consecutive lapses.
+	if cur, err := h.Store.GetSM2Progress(ctx, req.WordID); err == nil && cur != nil && cur.Lapses > prev.Lapses {
+		updated.ConsecutiveLapses = 0
+	}
 
 	if err := h.Store.UpdateSM2Progress(ctx, updated); err != nil {
 		internalError(w, err)

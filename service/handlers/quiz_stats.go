@@ -122,6 +122,19 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			newAvailable = 0
 		}
 	}
+	// Lapsed-words baseline: mirrors the gate in db.GetNextCard.
+	lapsedPause := -1
+	if userSettings != nil && userSettings.BaselineLapsedEnabled {
+		n, err := h.Store.CountLapsedWords(r.Context(), userID)
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		if n >= userSettings.BaselineLapsedValue {
+			lapsedPause = n
+			newAvailable = 0
+		}
+	}
 	mnemonics := r.URL.Query().Get("mnemonics") != "false"
 	hmmDueToday := 0
 	hmmTotal := 0
@@ -174,6 +187,10 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	if pausePct >= 0 {
 		resp["accuracy_pause_pct"] = pausePct
 		resp["accuracy_pause_min"] = userSettings.BaselineAccuracyValue
+	}
+	if lapsedPause >= 0 {
+		resp["lapsed_pause_count"] = lapsedPause
+		resp["lapsed_pause_max"] = userSettings.BaselineLapsedValue
 	}
 	writeJSON(w, http.StatusOK, resp)
 }

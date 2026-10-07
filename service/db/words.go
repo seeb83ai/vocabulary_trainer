@@ -78,6 +78,8 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 		dueFilterSQL = " AND p.due_date >= date('now', '+1 day') AND p.due_date < date('now', '+2 day')"
 	case "known":
 		dueFilterSQL = " AND p.is_known = 1"
+	case "lapsed":
+		dueFilterSQL = " AND p.consecutive_lapses >= 1 AND p.is_known = 0"
 	}
 
 	bucketFilter := tierFilter(bucket)
@@ -1163,6 +1165,8 @@ type NewWordBaselines struct {
 	NewBucketValue    int // max allowed New-bucket count
 	AccuracyEnabled   bool
 	AccuracyValue     int // min accuracy in percent over the previous 3 days
+	LapsedEnabled     bool
+	LapsedValue       int // max allowed lapsed words (consecutive_lapses >= 1)
 	CooldownMinutes   int // minutes that must pass since last new word (0 = disabled)
 }
 
@@ -1313,6 +1317,16 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				return nil, nil, false, err
 			}
 			if ok && pct < float64(baselines.AccuracyValue) {
+				newWordFilter = " AND p.first_seen_at IS NOT NULL"
+				newWordsBlocked = true
+			}
+		}
+		if newWordFilter == "" && baselines.LapsedEnabled {
+			lapsed, err := s.CountLapsedWords(ctx, userID)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			if lapsed >= baselines.LapsedValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}

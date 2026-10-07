@@ -174,21 +174,37 @@ describe('dueTomorrowCount', () => {
   });
 });
 
-// ── accuracy-baseline pause notice (#484) ───────────────────────────────────
-// Mirrors accuracyPauseParams in train-stats.js.
+// ── new-words pause notice: accuracy (#484) and lapsed-words baselines ─────
+// Mirrors newPauseMessage in train-stats.js.
 
-function accuracyPauseParams(stats) {
-  if (stats.accuracy_pause_pct === undefined || stats.accuracy_pause_min === undefined) return null;
-  return { pct: stats.accuracy_pause_pct, min: stats.accuracy_pause_min };
+function newPauseMessage(stats) {
+  if (stats.accuracy_pause_pct !== undefined && stats.accuracy_pause_min !== undefined) {
+    return { key: 'statsBar.newPaused', params: { pct: stats.accuracy_pause_pct, min: stats.accuracy_pause_min } };
+  }
+  if (stats.lapsed_pause_count !== undefined && stats.lapsed_pause_max !== undefined) {
+    return { key: 'statsBar.newPausedLapsed', params: { n: stats.lapsed_pause_count, max: stats.lapsed_pause_max } };
+  }
+  return null;
 }
 
-describe('accuracyPauseParams', () => {
+describe('newPauseMessage', () => {
   it('returns null when new words are not paused', () => {
-    expect(accuracyPauseParams({ new_today: 1 })).toBeNull();
+    expect(newPauseMessage({ new_today: 1 })).toBeNull();
   });
 
-  it('returns pct and min when paused, also for 0%', () => {
-    expect(accuracyPauseParams({ accuracy_pause_pct: 0, accuracy_pause_min: 70 })).toEqual({ pct: 0, min: 70 });
+  it('returns the accuracy message with pct and min, also for 0%', () => {
+    expect(newPauseMessage({ accuracy_pause_pct: 0, accuracy_pause_min: 70 }))
+      .toEqual({ key: 'statsBar.newPaused', params: { pct: 0, min: 70 } });
+  });
+
+  it('returns the lapsed-words message with count and limit', () => {
+    expect(newPauseMessage({ lapsed_pause_count: 12, lapsed_pause_max: 10 }))
+      .toEqual({ key: 'statsBar.newPausedLapsed', params: { n: 12, max: 10 } });
+  });
+
+  it('shows the accuracy message first when both baselines pause', () => {
+    expect(newPauseMessage({ accuracy_pause_pct: 62, accuracy_pause_min: 70, lapsed_pause_count: 12, lapsed_pause_max: 10 }).key)
+      .toBe('statsBar.newPaused');
   });
 });
 

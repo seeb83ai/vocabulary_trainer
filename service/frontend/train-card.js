@@ -229,6 +229,9 @@ function watchImports() {
 
 async function loadNextCard(trackCurrent = false) {
   _noCardsPaused = true;  // pause until we confirm a card is ready
+  // Every way off a result screen (Next, accept as correct, add translation)
+  // ends here; only renderWordAnswerResult shows the leech box again.
+  hide('leech-box');
   await _flushTime();
   // Track the word we're leaving so it isn't immediately re-shown.
   // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
@@ -625,6 +628,7 @@ async function submitAnswer(e) {
         mode: currentCard.mode,
         answer: answer,
         langs: selectedLangs,
+        drill: difficultDrill,
       }),
     });
     maybeCelebrateThenShow(result, (r) => renderWordAnswerResult(r, answer));
@@ -734,8 +738,24 @@ document.addEventListener('DOMContentLoaded', () => {
       showFallback();
       return;
     }
+    hide('leech-box');
     await _maybeShowMatchGame();
     loadNextCard(true);
+  });
+  $('leech-keep-btn').addEventListener('click', () => hide('leech-box'));
+  // "Back to unseen" erases the word's history (POST /api/words/{id}/reset);
+  // it leaves today's session and is introduced again later as a new word.
+  $('leech-reset-btn').addEventListener('click', async () => {
+    const btn = $('leech-reset-btn');
+    btn.disabled = true;
+    try {
+      await apiFetch(`/api/words/${currentCard.word_id}/reset`, { method: 'POST' });
+      loadNextCard(true);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
   });
   $('accept-correct-btn').addEventListener('click', async () => {
     const btn = $('accept-correct-btn');

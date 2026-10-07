@@ -47,3 +47,49 @@ export function seedYesterdayBucketSnapshot(email, buckets = {}) {
     db.close();
   }
 }
+
+const WORD_ID_BY_EMAIL_AND_TEXT = `(SELECT w.id FROM words w JOIN users u ON u.id = w.user_id
+  WHERE u.email = ? AND w.text = ? AND w.language = 'zh')`;
+
+/**
+ * Turn the zh word into a review word: it left the New bucket, is due now,
+ * was last answered yesterday and failed its last `consecutiveLapses` reviews.
+ * The next wrong answer in the main quiz is then lapse number consecutiveLapses+1.
+ * @param {string} email
+ * @param {string} zhText
+ * @param {number} consecutiveLapses
+ */
+export function seedReviewWord(email, zhText, consecutiveLapses) {
+  const db = new DatabaseSync(getDbPath());
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    const res = db.prepare(`
+      UPDATE sm2_progress SET learning_new_word = 0, repetitions = 2, interval_days = 3, total_attempts = 6,
+        total_correct = 2, first_seen_at = datetime('now', '-10 days'), last_attempt_at = datetime('now', '-1 day'),
+        due_date = datetime('now', '-1 hour'), lapses = ?, consecutive_lapses = ?
+      WHERE word_id = ${WORD_ID_BY_EMAIL_AND_TEXT}
+    `).run(consecutiveLapses, consecutiveLapses, email, zhText);
+    if (res.changes !== 1) throw new Error(`seedReviewWord: no word ${zhText} for ${email}`);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Read the SM-2 progress row of the user's zh word.
+ * @param {string} email
+ * @param {string} zhText
+ * @returns {{first_seen_at: string|null, lapses: number, consecutive_lapses: number}}
+ */
+export function getWordProgress(email, zhText) {
+  const db = new DatabaseSync(getDbPath());
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    return /** @type {any} */ (db.prepare(`
+      SELECT first_seen_at, lapses, consecutive_lapses FROM sm2_progress
+      WHERE word_id = ${WORD_ID_BY_EMAIL_AND_TEXT}
+    `).get(email, zhText));
+  } finally {
+    db.close();
+  }
+}

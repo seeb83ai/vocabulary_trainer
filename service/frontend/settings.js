@@ -259,6 +259,8 @@ async function loadSettings() {
     if (maxNewEl) maxNewEl.value = st.max_new_words_per_day ?? 5;
     const cooldownEl = document.getElementById('new-word-cooldown');
     if (cooldownEl) cooldownEl.value = st.new_word_cooldown_minutes ?? 1;
+    const leechEl = document.getElementById('leech-threshold');
+    if (leechEl) leechEl.value = st.leech_threshold ?? 5;
     const skipVisEl = document.getElementById('skip-new-visible');
     if (skipVisEl) skipVisEl.checked = st.skip_new_words_visible !== false;
     const extendSessionEl = document.getElementById('extend-session-extra-words');
@@ -268,6 +270,7 @@ async function loadSettings() {
     setBaselineRow('baseline-learning', st.baseline_learning_enabled, st.baseline_learning_value ?? 20);
     setBaselineRow('baseline-new-bucket', st.baseline_new_bucket_enabled, st.baseline_new_bucket_value ?? 10);
     setBaselineRow('baseline-accuracy', st.baseline_accuracy_enabled, st.baseline_accuracy_value ?? 70);
+    setBaselineRow('baseline-lapsed', st.baseline_lapsed_enabled !== false, st.baseline_lapsed_value ?? 10);
 
     const gamEnabledEl = document.getElementById('gamification-enabled');
     if (gamEnabledEl) gamEnabledEl.checked = !!st.gamification_enabled;
@@ -444,6 +447,7 @@ function buildDailyPayload() {
   return {
     max_new_words_per_day:         parseInt(document.getElementById('max-new-words')?.value || '5', 10),
     new_word_cooldown_minutes:     parseInt(document.getElementById('new-word-cooldown')?.value || '1', 10),
+    leech_threshold:               parseInt(document.getElementById('leech-threshold')?.value || '0', 10),
     skip_new_words_visible:        !!(document.getElementById('skip-new-visible')?.checked),
     extend_session_with_extra_words: !!(document.getElementById('extend-session-extra-words')?.checked),
     baseline_due_today_enabled:    !!(document.getElementById('baseline-due-today-enabled')?.checked),
@@ -456,6 +460,8 @@ function buildDailyPayload() {
     baseline_new_bucket_value:     parseInt(document.getElementById('baseline-new-bucket-value')?.value || '10', 10),
     baseline_accuracy_enabled:     !!(document.getElementById('baseline-accuracy-enabled')?.checked),
     baseline_accuracy_value:       parseInt(document.getElementById('baseline-accuracy-value')?.value || '70', 10),
+    baseline_lapsed_enabled:       !!(document.getElementById('baseline-lapsed-enabled')?.checked),
+    baseline_lapsed_value:         parseInt(document.getElementById('baseline-lapsed-value')?.value || '10', 10),
   };
 }
 
@@ -470,7 +476,7 @@ function setBaselineRow(prefix, enabled, value) {
 }
 
 // Wire each baseline checkbox to enable/disable its threshold input.
-for (const prefix of ['baseline-due-today', 'baseline-struggling', 'baseline-learning', 'baseline-new-bucket', 'baseline-accuracy']) {
+for (const prefix of ['baseline-due-today', 'baseline-struggling', 'baseline-learning', 'baseline-new-bucket', 'baseline-accuracy', 'baseline-lapsed']) {
   document.getElementById(prefix + '-enabled')?.addEventListener('change', e => {
     const valEl = document.getElementById(prefix + '-value');
     if (valEl) valEl.disabled = !e.target.checked;

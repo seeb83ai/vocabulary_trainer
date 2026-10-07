@@ -313,7 +313,7 @@ function updateFilterChips() {
   setChip('filter-all-btn', !hasWordFilters());
   setChip('hide-unseen-btn', hideUnseenActive);
   setChip('review-filter-btn', reviewFilterActive);
-  ['today', 'tomorrow', 'known'].forEach(key => setChip('due-' + key + '-btn', dueFilter === key));
+  ['today', 'tomorrow', 'known', 'lapsed'].forEach(key => setChip('due-' + key + '-btn', dueFilter === key));
   setChip('missing-de-chip', !!secondaryLang && missingLangFilter === secondaryLang);
   const missingChip = $('missing-de-chip');
   if (missingChip) {
@@ -425,7 +425,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadComponents();
   });
 
-  ['today', 'tomorrow', 'known'].forEach(key => {
+  ['today', 'tomorrow', 'known', 'lapsed'].forEach(key => {
     $('due-' + key + '-btn').addEventListener('click', () => {
       dueFilter = dueFilter === key ? '' : key;
       updateDueFilterBtns();

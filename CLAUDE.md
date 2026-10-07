@@ -199,6 +199,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/models/models.go` | All shared structs and mode constants |
 | `service/sm2/sm2.go` | SM-2 algorithm, `CheckAnswer`, `expandVariants`, `normalize` |
 | `service/sm2/pinyin.go` | Pinyin tone mark conversion, answer parsing (`NumberedToToneMark`, `CheckPinyinAnswer`) |
+| `service/sm2/lapse.go` | `RecordReview` — lapse counters (`lapses`, `consecutive_lapses`) for the leech warning and the lapsed-words baseline |
 
 ### Database (`service/db/`)
 | Path | Purpose |
@@ -304,6 +305,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/global-setup.js` | Builds Go binary, starts server on port 18080 with temp SQLite, seeds test user + words |
 | `e2e/global-teardown.js` | Kills server, removes temp SQLite file |
 | `e2e/helpers/api.js` | `seedWord()`, `parseSetCookieHeaders()` helpers for setup scripts |
+| `e2e/helpers/db.js` | Direct-SQLite seeding the REST API can't do (`seedYesterdayBucketSnapshot`, `seedReviewWord`, `getWordProgress`) |
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
@@ -316,6 +318,9 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/train-redesign.spec.js` | Browser tests: Train session bar + session sheet, tier chip, More info box, mix-up layout, new-word card, inline match game, all-done week grid, error card |
 | `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
 | `e2e/csv-upload.spec.js` | Browser tests: CSV upload dialog — default translation source, per-row `source` column, invalid rows skipped |
+| `e2e/leech.spec.js` | Browser tests: leech warning on the wrong-answer screen (keep training, back to unseen), leech threshold setting |
+| `e2e/new-word-pause.spec.js` | Browser tests: new words paused by the lapsed-words baseline and by a bad session today (accuracy baseline), lapsed baseline setting |
+| `e2e/vocab-lapsed.spec.js` | Browser tests: Vocabulary *Failed last review* chip and reset from the edit sheet |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
 | `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |
