@@ -4,8 +4,10 @@ import { captureForPR } from './helpers/screenshot.js';
 import { syncNewWordMode } from './helpers/mode.js';
 import { seedReviewWord } from './helpers/db.js';
 
-// Lapsed-words baseline: new words pause while too many words failed their
-// last review. The stats bar "!" says why. On by default with limit 10.
+// Baselines that pause new words, and the stats bar "!" that says why:
+// - lapsed words: too many words failed their last review (on, limit 10)
+// - accuracy: today counts once it has 20 answers, so a bad session pauses
+//   new words on the same day.
 
 async function registerUser(page) {
   const email = `e2e-lapsed-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
@@ -61,5 +63,30 @@ test.describe('Lapsed-words baseline', () => {
     await captureForPR(page, 'settings-lapsed-baseline');
     await value.fill('7');
     await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).baseline_lapsed_value).toBe(7);
+  });
+
+  test('a bad session today pauses new words at once (accuracy baseline)', async ({ page }) => {
+    await registerUser(page);
+    const res = await page.request.post('/api/words', {
+      data: { zh_text: '水', translations: { en: ['water'] }, tags: [], start_training: true },
+    });
+    expect(res.ok()).toBeTruthy();
+    const { id } = await res.json();
+    await seed(page, '火', 'fire', false);
+    const st = await (await page.request.get('/api/settings')).json();
+    const patch = await page.request.patch('/api/settings', {
+      data: { ...st, baseline_accuracy_enabled: true, baseline_accuracy_value: 70 },
+    });
+    expect(patch.ok()).toBeTruthy();
+    for (let i = 0; i < 20; i++) {
+      const a = await page.request.post('/api/quiz/answer', { data: { word_id: id, mode: 'zh_to_transl', answer: 'wrong', langs: ['en'] } });
+      expect(a.ok()).toBeTruthy();
+    }
+
+    await page.goto('/train');
+    const hint = page.locator('#stats-new-paused-btn');
+    await expect(hint).toBeVisible({ timeout: 12_000 });
+    await hint.click();
+    await expect(page.locator('#stats-new-paused')).toHaveText('New words paused: accuracy 0% < 70%');
   });
 });

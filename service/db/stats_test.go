@@ -534,7 +534,7 @@ func seedDailyAttempts(t *testing.T, s *Store, daysAgo, attempts, mistakes int) 
 func TestGetRecentAccuracy_PoolsPreviousDays(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	seedDailyAttempts(t, s, 0, 100, 100) // today: ignored
+	seedDailyAttempts(t, s, 0, 19, 19) // today, fewer than 20 attempts: ignored
 	seedDailyAttempts(t, s, 1, 10, 5)
 	seedDailyAttempts(t, s, 3, 30, 3)
 	seedDailyAttempts(t, s, 4, 100, 100) // older than 3 days: ignored
@@ -545,6 +545,30 @@ func TestGetRecentAccuracy_PoolsPreviousDays(t *testing.T) {
 	}
 	if !ok || pct != 80 {
 		t.Errorf("want 80%% (32/40), got %v ok=%v", pct, ok)
+	}
+}
+
+func TestGetRecentAccuracy_IncludesTodayFrom20Attempts(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedDailyAttempts(t, s, 0, 20, 10)
+	seedDailyAttempts(t, s, 1, 20, 0)
+
+	pct, ok, err := s.GetRecentAccuracy(ctx, 2, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || pct != 75 {
+		t.Errorf("want 75%% (30/40) with today included, got %v ok=%v", pct, ok)
+	}
+}
+
+func TestGetRecentAccuracy_TodayAloneFrom20Attempts(t *testing.T) {
+	s := openTestDB(t)
+	seedDailyAttempts(t, s, 0, 20, 10)
+	pct, ok, err := s.GetRecentAccuracy(context.Background(), 2, 3)
+	if err != nil || !ok || pct != 50 {
+		t.Errorf("want 50%% from today's 20 attempts, got %v ok=%v err=%v", pct, ok, err)
 	}
 }
 
