@@ -229,6 +229,9 @@ function watchImports() {
 
 async function loadNextCard(trackCurrent = false) {
   _noCardsPaused = true;  // pause until we confirm a card is ready
+  // Every way off a result screen (Next, accept as correct, add translation)
+  // ends here; only renderWordAnswerResult shows the leech box again.
+  hide('leech-box');
   await _flushTime();
   // Track the word we're leaving so it isn't immediately re-shown.
   // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
@@ -742,7 +745,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.disabled = true;
     try {
       await apiFetch(`/api/words/${currentCard.word_id}/reset`, { method: 'POST' });
-      hide('leech-box');
       loadNextCard(true);
     } catch (err) {
       alert('Error: ' + err.message);
