@@ -353,40 +353,7 @@ function renderWordAnswerResult(result, answer) {
       loadDecomposition(result.zh_text, 'result-decompose', 'result-decompose-toggle');
       autoPlayResultAudio(currentCard, result);
 
-      // Retype-on-wrong gate: block Next until the user retypes the correct
-      // Chinese word and translation (same input-validation pattern as the
-      // new-word introduction screen — see updateGotItState/isZhCorrect/isTransCorrect).
-      // "Add as translation" (issue #372) and "Accept as correct (typo)"
-      // (issue #389) both stay visible alongside the gate — clicking either
-      // accepts the answer and advances immediately, intentionally bypassing
-      // the retype requirement, since accepting the answer already confirms
-      // it without needing a retype.
-      if (wrongAnswerRetryMode !== 'off') {
-        const { requireZh, requireTrans } = wrongRetypeFieldsForCard(wrongAnswerRetryMode, currentCard.mode);
-        wrongRetypeTarget = { zhText: result.zh_text, translations: mergeTranslationMaps(result.translations, result.translations_extra), requireZh, requireTrans };
-        $('wrong-retype-zh-input').value = '';
-        $('wrong-retype-trans-input').value = '';
-        $('wrong-retype-trans-input').placeholder = t(translPlaceholderKey(currentAnswerLang()));
-        setCheckMark('wrong-retype-zh-check', '', false);
-        setCheckMark('wrong-retype-trans-check', '', false);
-        requireZh ? show('wrong-retype-zh-group') : hide('wrong-retype-zh-group');
-        requireTrans ? show('wrong-retype-trans-group') : hide('wrong-retype-trans-group');
-        show('wrong-retype-area');
-        $('next-btn').disabled = true;
-        // Delayed so the just-unhidden input has completed layout before we
-        // focus it. Guarded on an empty value so this can never steal focus
-        // back from someone (or an E2E test) who already started typing in
-        // the 50ms window — auto-focus is a convenience for the common case
-        // of an untouched field, not a mandate to fight with faster input.
-        setTimeout(() => {
-          const el = $(requireZh ? 'wrong-retype-zh-input' : 'wrong-retype-trans-input');
-          if (autofocusInput && !el.value) el.focus();
-        }, 50);
-      } else {
-        wrongRetypeTarget = null;
-        hide('wrong-retype-area');
-        $('next-btn').disabled = false;
-      }
+      showWrongRetypeGate(result.zh_text, mergeTranslationMaps(result.translations, result.translations_extra));
     };
 
     if (result.ambiguous) {
@@ -738,6 +705,44 @@ function showHMMResult(resp) {
   loadStats();
 }
 
+// Retype-on-wrong gate: block Next until the user retypes the correct
+// Chinese word and/or translation (same input-validation pattern as the
+// new-word introduction screen — see updateGotItState/isZhCorrect/isTransCorrect).
+// Used by word and component results (issue #550).
+// "Add as translation" (issue #372) and "Accept as correct (typo)"
+// (issue #389) both stay visible alongside the gate — clicking either
+// accepts the answer and advances immediately, intentionally bypassing
+// the retype requirement, since accepting the answer already confirms
+// it without needing a retype.
+function showWrongRetypeGate(zhText, translations) {
+  if (wrongAnswerRetryMode !== 'off') {
+    const { requireZh, requireTrans } = wrongRetypeFieldsForCard(wrongAnswerRetryMode, currentCard.mode);
+    wrongRetypeTarget = { zhText, translations, requireZh, requireTrans };
+    $('wrong-retype-zh-input').value = '';
+    $('wrong-retype-trans-input').value = '';
+    $('wrong-retype-trans-input').placeholder = t(translPlaceholderKey(currentAnswerLang()));
+    setCheckMark('wrong-retype-zh-check', '', false);
+    setCheckMark('wrong-retype-trans-check', '', false);
+    requireZh ? show('wrong-retype-zh-group') : hide('wrong-retype-zh-group');
+    requireTrans ? show('wrong-retype-trans-group') : hide('wrong-retype-trans-group');
+    show('wrong-retype-area');
+    $('next-btn').disabled = true;
+    // Delayed so the just-unhidden input has completed layout before we
+    // focus it. Guarded on an empty value so this can never steal focus
+    // back from someone (or an E2E test) who already started typing in
+    // the 50ms window — auto-focus is a convenience for the common case
+    // of an untouched field, not a mandate to fight with faster input.
+    setTimeout(() => {
+      const el = $(requireZh ? 'wrong-retype-zh-input' : 'wrong-retype-trans-input');
+      if (autofocusInput && !el.value) el.focus();
+    }, 50);
+  } else {
+    wrongRetypeTarget = null;
+    hide('wrong-retype-area');
+    $('next-btn').disabled = false;
+  }
+}
+
 function showComponentResult(resp) {
   hide('card-area');
   show('result-area');
@@ -817,6 +822,7 @@ function showComponentResult(resp) {
 
   if (!resp.correct) {
     const normCorrects = splitComponentDefs(resp.correct_answers);
+    showWrongRetypeGate(currentCard.prompt, { meanings: normCorrects });
     if (shouldShowAcceptBtn(answer, normCorrects, acceptCorrectMode)) {
       const acceptBtn = $('accept-correct-btn');
       acceptBtn.disabled = false;
