@@ -748,6 +748,16 @@ describe('splitComponentDefs', () => {
   it('returns empty array for empty input', () => {
     expect(splitComponentDefs({})).toEqual([]);
   });
+
+  // Issue #550: the retype gate on component results checks the retyped
+  // meaning against { meanings: splitComponentDefs(correct_answers) }.
+  it('lets the retype gate accept any one meaning of a component', () => {
+    const translations = { meanings: splitComponentDefs({ de: 'Baum; Holz, Schnittholz', en: 'tree' }) };
+    expect(wrongRetypeSatisfied('', 'Holz', '木', translations, false, true)).toBe(true);
+    expect(wrongRetypeSatisfied('', 'Tree', '木', translations, false, true)).toBe(true);
+    expect(wrongRetypeSatisfied('', 'Baum; Holz', '木', translations, false, true)).toBe(false);
+    expect(wrongRetypeSatisfied('', 'Wurzel', '木', translations, false, true)).toBe(false);
+  });
 });
 
 // ── stripPosTag / dedupeTranslations ────────────────────────────────────────

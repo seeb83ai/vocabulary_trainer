@@ -1697,6 +1697,77 @@ test.describe('Quiz – retype on wrong answer', () => {
     }
   });
 
+  // Issue #550: component cards get the same retype gate as word cards, also
+  // on the "That's a different word" mix-up screen.
+  async function mockWrongComponentAnswer(page, confusedWith) {
+    await page.route('**/api/quiz/next*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        card_type: 'component', prompt: '木', pinyin: 'mù', is_new: false, is_also_word: false,
+        definitions: { en: 'tree; wood, timber' },
+      }),
+    }));
+    await page.route('**/api/component/answer', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        correct: false,
+        correct_answers: { en: 'tree; wood, timber' },
+        interval_days: 1, total_correct: 3, total_attempts: 5,
+        confused_with: confusedWith,
+      }),
+    }));
+  }
+
+  for (const [name, confusedWith, title] of [
+    ['mix-up', {
+      zh_kind: 'component', zh_component: '木', zh_text: '木', zh_pinyin: 'mù',
+      confused_with_kind: 'component', confused_with_component: '本', confused_with_id: 0,
+      confused_with_text: '本', confused_with_pinyin: 'běn',
+      confused_with_translations: { en: ['root', 'origin'] },
+      mode: 'zh_pinyin_to_transl', count: 1, last_seen: new Date().toISOString(),
+    }, 'That’s a different word'],
+    ['wrong', null, 'Not quite'],
+  ]) {
+    test(`component ${name} answer requires retyping the meaning before Next is enabled`, async ({ page }) => {
+      const settingsRes = await page.request.get('/api/settings');
+      const originalSettings = await settingsRes.json();
+      await page.request.patch('/api/settings', { data: { ...originalSettings, wrong_answer_retry_mode: 'matched' } });
+
+      try {
+        await mockWrongComponentAnswer(page, confusedWith);
+        await useZhToTranslMode(page);
+        await page.goto('/train');
+        await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+        await expect(page.locator('#prompt-word')).toHaveText('木');
+
+        await page.locator('#answer-input').fill('root');
+        await page.locator('#answer-form button[type="submit"]').click();
+        await expect(page.locator('#result-icon')).toHaveText(title, { timeout: 8_000 });
+
+        await expect(page.locator('#wrong-retype-area')).toBeVisible();
+        await expect(page.locator('#wrong-retype-zh-group')).not.toBeVisible();
+        await expect(page.locator('#wrong-retype-trans-group')).toBeVisible();
+        await expect(page.locator('#wrong-retype-trans-input')).toHaveAttribute('placeholder', 'Type English');
+        await expect(page.locator('#wrong-retype-trans-group')).not.toContainText('Type the meaning');
+        await expect(page.locator('#next-btn')).toBeDisabled();
+        await captureForPR(page, `train-component-${name}-retype`);
+
+        await page.locator('#wrong-retype-trans-input').fill('root');
+        await page.locator('#wrong-retype-trans-input').dispatchEvent('input');
+        await expect(page.locator('#next-btn')).toBeDisabled();
+
+        // Any single meaning of the component unlocks Next; ";" separates meanings.
+        await page.locator('#wrong-retype-trans-input').fill('wood');
+        await page.locator('#wrong-retype-trans-input').dispatchEvent('input');
+        await expect(page.locator('#next-btn')).toBeEnabled({ timeout: 8_000 });
+      } finally {
+        await page.request.patch('/api/settings', { data: originalSettings });
+      }
+    });
+  }
+
   // Issue #527: Enter in a retype field must continue once the gate is satisfied.
   test('Enter in the retype field continues once the correct answer is typed', async ({ page }) => {
     const settingsRes = await page.request.get('/api/settings');
