@@ -730,8 +730,25 @@ document.addEventListener('DOMContentLoaded', () => {
       showFallback();
       return;
     }
+    hide('leech-box');
     await _maybeShowMatchGame();
     loadNextCard(true);
+  });
+  $('leech-keep-btn').addEventListener('click', () => hide('leech-box'));
+  // "Back to unseen" erases the word's history (POST /api/words/{id}/reset);
+  // it leaves today's session and is introduced again later as a new word.
+  $('leech-reset-btn').addEventListener('click', async () => {
+    const btn = $('leech-reset-btn');
+    btn.disabled = true;
+    try {
+      await apiFetch(`/api/words/${currentCard.word_id}/reset`, { method: 'POST' });
+      hide('leech-box');
+      loadNextCard(true);
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
   });
   $('accept-correct-btn').addEventListener('click', async () => {
     const btn = $('accept-correct-btn');

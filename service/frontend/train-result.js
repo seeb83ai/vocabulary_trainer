@@ -179,6 +179,12 @@ function renderStatusRow(result) {
 function renderWordAnswerResult(result, answer) {
   hide('card-area');
   show('result-area');
+  if (!result.correct && result.leech_lapses) {
+    setText('leech-title', t('leech.title', { n: result.leech_lapses }));
+    show('leech-box');
+  } else {
+    hide('leech-box');
+  }
   hide('result-subtitle');
   hide('result-question');
   const breakdown = $('word-breakdown');

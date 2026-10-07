@@ -260,6 +260,10 @@
           <span class="st-stepper"><button type="button" class="st-step" data-step-for="new-word-cooldown" data-step="-1" aria-label="−">−</button><input type="number" id="new-word-cooldown" min="0" max="1440" class="st-number"><button type="button" class="st-step" data-step-for="new-word-cooldown" data-step="1" aria-label="+">+</button></span>
         </div>
         <div class="st-row ">
+          <label class="st-text" for="leech-threshold"><span class="st-label" data-i18n="settings.leechThreshold">Warn after failed reviews in a row</span><span class="st-desc" data-i18n="settings.leechThresholdDesc">After this many failed reviews of a word in a row, the answer screen offers to put it back to your unseen words. Set to 0 to disable.</span></label>
+          <span class="st-stepper"><button type="button" class="st-step" data-step-for="leech-threshold" data-step="-1" aria-label="−">−</button><input type="number" id="leech-threshold" min="0" max="50" class="st-number"><button type="button" class="st-step" data-step-for="leech-threshold" data-step="1" aria-label="+">+</button></span>
+        </div>
+        <div class="st-row ">
           <label class="st-text" for="skip-new-visible"><span class="st-label" data-i18n="settings.skipButtonVisibility">Show skip button for new words</span><span class="st-desc" data-i18n="settings.skipButtonVisibilityDesc">When unchecked, new words must be reviewed — there is no way to skip them.</span></label>
           <span class="ui-toggle"><input type="checkbox" id="skip-new-visible"><span></span></span>
         </div>

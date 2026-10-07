@@ -259,6 +259,8 @@ async function loadSettings() {
     if (maxNewEl) maxNewEl.value = st.max_new_words_per_day ?? 5;
     const cooldownEl = document.getElementById('new-word-cooldown');
     if (cooldownEl) cooldownEl.value = st.new_word_cooldown_minutes ?? 1;
+    const leechEl = document.getElementById('leech-threshold');
+    if (leechEl) leechEl.value = st.leech_threshold ?? 5;
     const skipVisEl = document.getElementById('skip-new-visible');
     if (skipVisEl) skipVisEl.checked = st.skip_new_words_visible !== false;
     const extendSessionEl = document.getElementById('extend-session-extra-words');
@@ -444,6 +446,7 @@ function buildDailyPayload() {
   return {
     max_new_words_per_day:         parseInt(document.getElementById('max-new-words')?.value || '5', 10),
     new_word_cooldown_minutes:     parseInt(document.getElementById('new-word-cooldown')?.value || '1', 10),
+    leech_threshold:               parseInt(document.getElementById('leech-threshold')?.value || '0', 10),
     skip_new_words_visible:        !!(document.getElementById('skip-new-visible')?.checked),
     extend_session_with_extra_words: !!(document.getElementById('extend-session-extra-words')?.checked),
     baseline_due_today_enabled:    !!(document.getElementById('baseline-due-today-enabled')?.checked),

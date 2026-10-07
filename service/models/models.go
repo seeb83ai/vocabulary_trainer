@@ -46,6 +46,7 @@ type UserSettings struct {
 	BaselineNewBucketValue           int      `json:"baseline_new_bucket_value"`
 	BaselineAccuracyEnabled          bool     `json:"baseline_accuracy_enabled"`
 	BaselineAccuracyValue            int      `json:"baseline_accuracy_value"`
+	LeechThreshold                   int      `json:"leech_threshold"`
 	DeeplKeySet                      bool     `json:"deepl_key_set"`
 	DeeplKeyMasked                   string   `json:"deepl_key_masked,omitempty"`
 	LLMProvider                      string   `json:"llm_provider"`
@@ -308,6 +309,9 @@ type AnswerResponse struct {
 	SceneText         string              `json:"scene_text,omitempty"`
 	Ambiguous         bool                `json:"ambiguous,omitempty"`
 	UserAnswerPinyin  *string             `json:"user_answer_pinyin,omitempty"`
+	// LeechLapses is set when this answer was a lapse that reached the
+	// user's leech threshold (or a multiple of it): the number of lapses in a row.
+	LeechLapses int `json:"leech_lapses,omitempty"`
 }
 
 // TranslationSources, when present, parallels Translations[lang] index-for-index:

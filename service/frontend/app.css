@@ -528,6 +528,10 @@ label.st-text { cursor: pointer; }
 .tr-box { padding: 14px 16px; border-radius: 16px; }
 .tr-box-green { background: #f0fdf4; border: 1px solid #bbf7d0; }
 .tr-box-amber { background: #fffbeb; border: 1px solid #fde68a; }
+.tr-leech { margin-top: 14px; }
+.tr-leech-title { font-size: 15px; font-weight: 700; color: #92400e; }
+.tr-leech-text { margin: 4px 0 0; font-size: 13.5px; line-height: 1.5; color: #78350f; }
+.tr-leech .tr-two-btns { margin-top: 12px; }
 .tr-box-red { background: #fef2f2; border: 1px solid #fecaca; }
 .tr-box-orange { background: #fff7ed; border: 1px solid #fed7aa; }
 .tr-box-label { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 4px; }

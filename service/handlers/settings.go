@@ -67,6 +67,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineNewBucketValue           int      `json:"baseline_new_bucket_value"`
 		BaselineAccuracyEnabled          bool     `json:"baseline_accuracy_enabled"`
 		BaselineAccuracyValue            int      `json:"baseline_accuracy_value"`
+		LeechThreshold                   *int     `json:"leech_threshold"`
 		GamificationEnabled              *bool    `json:"gamification_enabled"`
 		GamificationFrequency            *int     `json:"gamification_frequency"`
 		GameModeMismatch                 bool     `json:"game_mode_mismatch"`
@@ -231,6 +232,19 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "baseline_accuracy_value must be between 0 and 100")
 		return
 	}
+	// leech_threshold: nil means field was omitted → keep stored value.
+	resolvedLeechThreshold := 5
+	if req.LeechThreshold == nil {
+		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
+			resolvedLeechThreshold = existing.LeechThreshold
+		}
+	} else {
+		resolvedLeechThreshold = *req.LeechThreshold
+	}
+	if resolvedLeechThreshold < 0 {
+		writeError(w, http.StatusBadRequest, "leech_threshold must be >= 0")
+		return
+	}
 	if req.SentenceBlankRatio < 0 || req.SentenceBlankRatio > 100 {
 		writeError(w, http.StatusBadRequest, "sentence_blank_ratio must be between 0 and 100")
 		return
@@ -349,6 +363,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineNewBucketValue:           req.BaselineNewBucketValue,
 		BaselineAccuracyEnabled:          req.BaselineAccuracyEnabled,
 		BaselineAccuracyValue:            req.BaselineAccuracyValue,
+		LeechThreshold:                   resolvedLeechThreshold,
 		GamificationEnabled:              resolvedGamificationEnabled,
 		GamificationFrequency:            resolvedFrequency,
 		GameModeMismatch:                 req.GameModeMismatch,

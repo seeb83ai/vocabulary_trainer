@@ -519,9 +519,17 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 	// Lapse tracking judges the state coming into this answer (due, New
 	// bucket, last attempt), not the state ProcessAnswer just computed.
+	leechLapses := 0
 	if !req.Drill {
 		if reviewed, counted := sm2.RecordReview(*progress, correct, time.Now()); counted {
 			updated.Lapses, updated.ConsecutiveLapses = reviewed.Lapses, reviewed.ConsecutiveLapses
+			threshold := 5
+			if userSettings != nil {
+				threshold = userSettings.LeechThreshold
+			}
+			if !correct && threshold > 0 && updated.ConsecutiveLapses%threshold == 0 {
+				leechLapses = updated.ConsecutiveLapses
+			}
 		}
 	}
 	graduated := progress.LearningNewWord && !updated.LearningNewWord
@@ -594,6 +602,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		GraduateReps:      sm2.LearningGraduateReps,
 		LearningNewWord:   updated.LearningNewWord,
 		Graduated:         graduated,
+		LeechLapses:       leechLapses,
 	}
 
 	if sceneText, err := h.Store.GetHMMSceneText(r.Context(), req.WordID); err != nil {

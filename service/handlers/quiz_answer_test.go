@@ -938,3 +938,52 @@ func TestAcceptCorrect_UndoesLapse(t *testing.T) {
 		t.Errorf("lapses: want 2/0, got %d/%d", p.Lapses, p.ConsecutiveLapses)
 	}
 }
+
+func TestAnswer_LeechAtThresholdAndMultiples(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	// Default threshold is 5.
+	tests := []struct {
+		before    int
+		correct   bool
+		wantLeech int
+	}{
+		{3, false, 0},  // 4th lapse in a row
+		{4, false, 5},  // 5th: the warning shows
+		{5, false, 0},  // 6th: no repeat
+		{9, false, 10}, // 10th: shows again
+		{4, true, 0},   // correct answer: no warning
+	}
+	for i, tc := range tests {
+		id := seedReviewWord(t, s, string(rune('甲'+i)), "remember", tc.before)
+		answer := "wrong"
+		if tc.correct {
+			answer = "remember"
+		}
+		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{"word_id": id, "mode": "zh_to_transl", "answer": answer})
+		var resp struct {
+			LeechLapses int `json:"leech_lapses"`
+		}
+		decodeJSON(t, rec, &resp)
+		if resp.LeechLapses != tc.wantLeech {
+			t.Errorf("before=%d correct=%v: leech_lapses want %d, got %d", tc.before, tc.correct, tc.wantLeech, resp.LeechLapses)
+		}
+	}
+}
+
+func TestAnswer_LeechOffWhenThresholdZero(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	if rec := patchSettingsFromCurrent(t, r, func(st map[string]any) { st["leech_threshold"] = 0 }); rec.Code != 200 {
+		t.Fatalf("patch: %d %s", rec.Code, rec.Body)
+	}
+	id := seedReviewWord(t, s, "记住", "remember", 4)
+	rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{"word_id": id, "mode": "zh_to_transl", "answer": "wrong"})
+	var resp struct {
+		LeechLapses int `json:"leech_lapses"`
+	}
+	decodeJSON(t, rec, &resp)
+	if resp.LeechLapses != 0 {
+		t.Errorf("leech_lapses with threshold 0: want 0, got %d", resp.LeechLapses)
+	}
+}
