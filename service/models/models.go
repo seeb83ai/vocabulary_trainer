@@ -47,6 +47,8 @@ type UserSettings struct {
 	BaselineAccuracyEnabled          bool     `json:"baseline_accuracy_enabled"`
 	BaselineAccuracyValue            int      `json:"baseline_accuracy_value"`
 	LeechThreshold                   int      `json:"leech_threshold"`
+	BaselineLapsedEnabled            bool     `json:"baseline_lapsed_enabled"`
+	BaselineLapsedValue              int      `json:"baseline_lapsed_value"`
 	DeeplKeySet                      bool     `json:"deepl_key_set"`
 	DeeplKeyMasked                   string   `json:"deepl_key_masked,omitempty"`
 	LLMProvider                      string   `json:"llm_provider"`

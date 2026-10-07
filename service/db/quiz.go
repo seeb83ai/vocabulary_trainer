@@ -142,6 +142,20 @@ func (s *Store) AcknowledgeWord(ctx context.Context, userID, wordID int64) error
 	return nil
 }
 
+// CountLapsedWords returns how many of the user's zh words failed their last
+// review (consecutive_lapses >= 1). It drives the lapsed-words baseline.
+func (s *Store) CountLapsedWords(ctx context.Context, userID int64) (int, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sm2_progress p
+		 JOIN words w ON w.id = p.word_id
+		 WHERE w.language = 'zh' AND w.user_id = ? AND p.is_known = 0 AND p.consecutive_lapses >= 1`,
+		userID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count lapsed words: %w", err)
+	}
+	return n, nil
+}
+
 // ResetWordProgress restores a zh word's SM-2 progress to the unseen state
 // (matching a freshly created word) so it is removed from every bucket and
 // reintroduced as new. It also erases the answer history (lapses, pending

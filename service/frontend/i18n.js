@@ -24,6 +24,7 @@ const I18N = {
     'statsBar.totalWords': 'Total words:',
     'statsBar.newToday': 'New today:',
     'statsBar.newPaused': 'New words paused: accuracy {pct}% < {min}%',
+    'statsBar.newPausedLapsed': 'New words paused: {n} words failed their last review (limit {max})',
     'statsBar.newPausedLabel': 'New words paused',
 
     // Quiz modes
@@ -702,6 +703,7 @@ const I18N = {
     'settings.maxInLearning': 'Max words in Learning bucket',
     'settings.maxInNewBucket': 'Max words in New bucket',
     'settings.minAccuracy3Days': 'Min. accuracy of the last 3 days (%)',
+    'settings.maxLapsedWords': 'Max words that failed their last review',
     'settings.newWordsPerDayMin': 'New words per day must be at least 1.',
     'settings.frequencyRange': 'Frequency must be between 1 and 1440 minutes.',
     'settings.thresholdRange': 'Threshold must be between 0 and 100.',
@@ -1071,6 +1073,7 @@ const I18N = {
     'statsBar.totalWords': '总词数：',
     'statsBar.newToday': '今日新词：',
     'statsBar.newPaused': '新词已暂停：正确率 {pct}% < {min}%',
+    'statsBar.newPausedLapsed': '新词已暂停：{n} 个词上次复习答错（上限 {max}）',
     'statsBar.newPausedLabel': '新词已暂停',
 
     // Quiz modes
@@ -1749,6 +1752,7 @@ const I18N = {
     'settings.maxInLearning': '"学习中"等级中的最大词数',
     'settings.maxInNewBucket': '"新词"等级中的最大词数',
     'settings.minAccuracy3Days': '最近 3 天的最低正确率 (%)',
+    'settings.maxLapsedWords': '上次复习答错的词的上限',
     'settings.newWordsPerDayMin': '每天新词数量至少为1。',
     'settings.frequencyRange': '频率必须在1到1440分钟之间。',
     'settings.thresholdRange': '阈值必须在0到100之间。',
@@ -2118,6 +2122,7 @@ const I18N = {
     'statsBar.totalWords': 'Wörter gesamt:',
     'statsBar.newToday': 'Neu heute:',
     'statsBar.newPaused': 'Neue Wörter pausiert: Trefferquote {pct}% < {min}%',
+    'statsBar.newPausedLapsed': 'Neue Wörter pausiert: {n} Wörter bei der letzten Wiederholung falsch (Grenze {max})',
     'statsBar.newPausedLabel': 'Neue Wörter pausiert',
 
     // Quiz modes
@@ -2796,6 +2801,7 @@ const I18N = {
     'settings.maxInLearning': 'Max. Wörter im Level Am Lernen',
     'settings.maxInNewBucket': 'Max. Wörter im Level Neu',
     'settings.minAccuracy3Days': 'Min. Trefferquote der letzten 3 Tage (%)',
+    'settings.maxLapsedWords': 'Max. Wörter, die bei der letzten Wiederholung falsch waren',
     'settings.newWordsPerDayMin': 'Neue Wörter pro Tag muss mindestens 1 sein.',
     'settings.frequencyRange': 'Häufigkeit muss zwischen 1 und 1440 Minuten liegen.',
     'settings.thresholdRange': 'Schwellenwert muss zwischen 0 und 100 liegen.',

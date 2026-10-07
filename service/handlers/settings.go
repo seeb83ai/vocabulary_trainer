@@ -68,6 +68,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineAccuracyEnabled          bool     `json:"baseline_accuracy_enabled"`
 		BaselineAccuracyValue            int      `json:"baseline_accuracy_value"`
 		LeechThreshold                   *int     `json:"leech_threshold"`
+		BaselineLapsedEnabled            *bool    `json:"baseline_lapsed_enabled"`
+		BaselineLapsedValue              *int     `json:"baseline_lapsed_value"`
 		GamificationEnabled              *bool    `json:"gamification_enabled"`
 		GamificationFrequency            *int     `json:"gamification_frequency"`
 		GameModeMismatch                 bool     `json:"game_mode_mismatch"`
@@ -232,17 +234,31 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "baseline_accuracy_value must be between 0 and 100")
 		return
 	}
-	// leech_threshold: nil means field was omitted → keep stored value.
-	resolvedLeechThreshold := 5
-	if req.LeechThreshold == nil {
+	// leech_threshold and the lapsed baseline: nil means field was omitted →
+	// keep stored value.
+	resolvedLeechThreshold, resolvedLapsedEnabled, resolvedLapsedValue := 5, true, 10
+	if req.LeechThreshold == nil || req.BaselineLapsedEnabled == nil || req.BaselineLapsedValue == nil {
 		if existing, err := h.store.GetUserSettings(r.Context(), UserIDFromContext(r.Context())); err == nil {
 			resolvedLeechThreshold = existing.LeechThreshold
+			resolvedLapsedEnabled = existing.BaselineLapsedEnabled
+			resolvedLapsedValue = existing.BaselineLapsedValue
 		}
-	} else {
+	}
+	if req.LeechThreshold != nil {
 		resolvedLeechThreshold = *req.LeechThreshold
+	}
+	if req.BaselineLapsedEnabled != nil {
+		resolvedLapsedEnabled = *req.BaselineLapsedEnabled
+	}
+	if req.BaselineLapsedValue != nil {
+		resolvedLapsedValue = *req.BaselineLapsedValue
 	}
 	if resolvedLeechThreshold < 0 {
 		writeError(w, http.StatusBadRequest, "leech_threshold must be >= 0")
+		return
+	}
+	if resolvedLapsedValue < 0 {
+		writeError(w, http.StatusBadRequest, "baseline_lapsed_value must be >= 0")
 		return
 	}
 	if req.SentenceBlankRatio < 0 || req.SentenceBlankRatio > 100 {
@@ -364,6 +380,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		BaselineAccuracyEnabled:          req.BaselineAccuracyEnabled,
 		BaselineAccuracyValue:            req.BaselineAccuracyValue,
 		LeechThreshold:                   resolvedLeechThreshold,
+		BaselineLapsedEnabled:            resolvedLapsedEnabled,
+		BaselineLapsedValue:              resolvedLapsedValue,
 		GamificationEnabled:              resolvedGamificationEnabled,
 		GamificationFrequency:            resolvedFrequency,
 		GameModeMismatch:                 req.GameModeMismatch,
