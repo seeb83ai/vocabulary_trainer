@@ -464,8 +464,7 @@ label.st-text { cursor: pointer; }
 .tr-check.is-ok { background: #16a34a; }
 .tr-check.is-bad { background: #f87171; }
 .tr-label { font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 8px; }
-.tr-check-field .tr-label, .tr-check-field .tr-label-sm { margin-bottom: 0; }
-.tr-label-sm { font-size: 12.5px; font-weight: 600; color: #6b7280; }
+.tr-check-field .tr-label { margin-bottom: 0; }
 .tr-two-btns { margin-top: 22px; display: grid; grid-template-columns: 1fr 1.4fr; gap: 8px; }
 .tr-two-equal { grid-template-columns: 1fr 1fr; margin-top: 16px; }
 .tr-two-btns .ui-btn { min-height: 48px; border-radius: 14px; }
