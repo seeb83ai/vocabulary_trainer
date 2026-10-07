@@ -440,7 +440,7 @@ async function loadNextCard(trackCurrent = false) {
   await loadStats();
 }
 
-// Languages with a "Type the <language> translation…" placeholder (issue #542).
+// Languages with a "Type <language>" placeholder (issue #542).
 const ANSWER_LANG_PLACEHOLDERS = ['en', 'de'];
 
 function translPlaceholderKey(answerLang) {

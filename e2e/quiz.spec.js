@@ -1668,8 +1668,8 @@ test.describe('Quiz – retype on wrong answer', () => {
       await expect(page.locator('#next-btn')).toBeDisabled();
       // Issue #549: the field hints sit inside the inputs as placeholders,
       // not as labels above them. The meaning field names the answer language.
-      await expect(page.locator('#wrong-retype-zh-input')).toHaveAttribute('placeholder', 'Type the Chinese…');
-      await expect(page.locator('#wrong-retype-trans-input')).toHaveAttribute('placeholder', 'Type the English translation…');
+      await expect(page.locator('#wrong-retype-zh-input')).toHaveAttribute('placeholder', 'Type Chinese');
+      await expect(page.locator('#wrong-retype-trans-input')).toHaveAttribute('placeholder', 'Type English');
       await expect(page.locator('#wrong-retype-zh-group')).not.toContainText('Type the Chinese');
       await expect(page.locator('#wrong-retype-trans-group')).not.toContainText('Type the meaning');
       await captureForPR(page, 'wrong-answer-retry-both-fields');

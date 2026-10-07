@@ -609,7 +609,7 @@ test.describe('Train – answer placeholder names the language', () => {
     await mockCard(page, { word_id: 1, mode: 'zh_pinyin_to_transl', prompt: '复习', pinyin: 'fùxí' });
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the German translation…');
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type German');
     await captureForPR(page, 'train-placeholder-german');
   });
 
@@ -620,7 +620,7 @@ test.describe('Train – answer placeholder names the language', () => {
     await mockCard(page, { word_id: 1, mode: 'zh_to_transl', prompt: '复习', pinyin: 'fùxí' });
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the English translation…');
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type English');
   });
 
   test('a component card asks for the primary-language translation', async ({ page }) => {
@@ -630,7 +630,7 @@ test.describe('Train – answer placeholder names the language', () => {
     await mockCard(page, { card_type: 'component', prompt: '氵', pinyin: 'shuǐ', is_new: false, is_also_word: false, definitions: { de: 'Wasser', en: 'water' } });
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
-    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the German translation…');
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type German');
     await captureForPR(page, 'train-placeholder-component');
   });
 });
