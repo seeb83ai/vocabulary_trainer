@@ -273,12 +273,21 @@ type AnswerRequest struct {
 	// Drill is true for answers in the difficult-words drill; they never
 	// count as reviews (no lapse tracking).
 	Drill bool `json:"drill,omitempty"`
+	// PinyinSeen and AudioPlayed report the help the user had before
+	// answering; they pick the answer buckets (see sm2.AnswerBuckets).
+	PinyinSeen  *bool `json:"pinyin_seen,omitempty"`
+	AudioPlayed *bool `json:"audio_played,omitempty"`
 }
 
 type AcceptCorrectRequest struct {
 	WordID int64    `json:"word_id"`
 	Mode   string   `json:"mode"`
 	Langs  []string `json:"langs,omitempty"`
+	// Drill, PinyinSeen and AudioPlayed repeat the values of the wrong
+	// answer, so the error is removed from the same answer buckets.
+	Drill       bool  `json:"drill,omitempty"`
+	PinyinSeen  *bool `json:"pinyin_seen,omitempty"`
+	AudioPlayed *bool `json:"audio_played,omitempty"`
 }
 
 type ComponentAcceptCorrectRequest struct {

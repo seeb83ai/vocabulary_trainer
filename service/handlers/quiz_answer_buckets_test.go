@@ -1,0 +1,103 @@
+package handlers_test
+
+import (
+	"context"
+	"reflect"
+	"testing"
+
+	"vocabulary_trainer/db"
+	"vocabulary_trainer/models"
+)
+
+func todayBuckets(t *testing.T, s *db.Store, wordID int64) map[string]db.AnswerBucketCount {
+	t.Helper()
+	got, err := s.TodayAnswerBucketsForTest(context.Background(), wordID)
+	if err != nil {
+		t.Fatalf("TodayAnswerBucketsForTest: %v", err)
+	}
+	return got
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestQuizAnswer_RecordsAnswerBuckets(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhPinyinToTransl, Answer: "wrong",
+		PinyinSeen: boolPtr(true), AudioPlayed: boolPtr(false),
+	})
+
+	want := map[string]db.AnswerBucketCount{"pinyin": {Attempts: 1, Errors: 1}}
+	if got := todayBuckets(t, s, id); !reflect.DeepEqual(got, want) {
+		t.Errorf("buckets: got %v, want %v", got, want)
+	}
+}
+
+func TestQuizAnswer_DrillAnswerNotRecordedInBuckets(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "wrong", Drill: true,
+		PinyinSeen: boolPtr(false), AudioPlayed: boolPtr(false),
+	})
+
+	if got := todayBuckets(t, s, id); len(got) != 0 {
+		t.Errorf("drill answers must not be recorded, got %v", got)
+	}
+}
+
+func TestQuizAnswer_VoiceUnavailableIsNotVoiceOnly(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	st, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.VoiceUnavailable = true
+	if err := s.UpdateUserSettings(ctx, 2, *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeVoiceToTransl, Answer: "hello",
+		PinyinSeen: boolPtr(false), AudioPlayed: boolPtr(false),
+	})
+
+	want := map[string]db.AnswerBucketCount{"zh_only": {Attempts: 1, Errors: 0}}
+	if got := todayBuckets(t, s, id); !reflect.DeepEqual(got, want) {
+		t.Errorf("buckets: got %v, want %v", got, want)
+	}
+}
+
+func TestAcceptCorrect_RemovesBucketError(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhPinyinToTransl, Answer: "helo",
+		PinyinSeen: boolPtr(true), AudioPlayed: boolPtr(true),
+	})
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: id, Mode: models.ModeZhPinyinToTransl,
+		PinyinSeen: boolPtr(true), AudioPlayed: boolPtr(true),
+	})
+	if rec.Code != 200 {
+		t.Fatalf("accept-correct: want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	want := map[string]db.AnswerBucketCount{
+		"pinyin": {Attempts: 1, Errors: 0},
+		"voice":  {Attempts: 1, Errors: 0},
+	}
+	if got := todayBuckets(t, s, id); !reflect.DeepEqual(got, want) {
+		t.Errorf("buckets: got %v, want %v", got, want)
+	}
+}

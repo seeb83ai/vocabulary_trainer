@@ -65,6 +65,8 @@ type QuizStore interface {
 	GetLastMistakesForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error)
 	MarkWordsShownInGame(ctx context.Context, userID int64, wordIDs []int64, mode string) error
 	RecordAnswerTimestamps(ctx context.Context, wordID int64, correct bool) error
+	RecordAnswerBuckets(ctx context.Context, userID, wordID int64, buckets []string, correct bool) error
+	AcceptAnswerBuckets(ctx context.Context, userID, wordID int64, buckets []string) error
 	SaveSM2PrevState(ctx context.Context, wordID int64, p models.SM2Progress) error
 	GetSM2PrevState(ctx context.Context, wordID int64) (*models.SM2Progress, error)
 	ClearSM2PrevState(ctx context.Context, wordID int64) error

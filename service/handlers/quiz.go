@@ -577,6 +577,15 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if !req.Drill {
+		voiceUnavailable := userSettings != nil && userSettings.VoiceUnavailable
+		if buckets := sm2.AnswerBuckets(req.Mode, req.PinyinSeen, req.AudioPlayed, voiceUnavailable); len(buckets) > 0 {
+			if err := h.Store.RecordAnswerBuckets(ctx, UserIDFromContext(ctx), req.WordID, buckets, correct); err != nil {
+				log.Printf("answer: RecordAnswerBuckets word %d: %v", req.WordID, err)
+			}
+		}
+	}
+
 	sessionStreak, err := h.Store.RecordDailyStat(r.Context(), UserIDFromContext(r.Context()), correct)
 	if err != nil {
 		log.Printf("answer: RecordDailyStat user %d: %v", UserIDFromContext(r.Context()), err)
@@ -722,6 +731,15 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 	_ = h.Store.ClearCyclePinMode(ctx, req.WordID)
 	// Accepting a typo as correct also retires the word from the difficult drill.
 	_ = h.Store.ClearDrillFlag(ctx, req.WordID)
+
+	if !req.Drill {
+		voiceUnavailable := userSettings != nil && userSettings.VoiceUnavailable
+		if buckets := sm2.AnswerBuckets(req.Mode, req.PinyinSeen, req.AudioPlayed, voiceUnavailable); len(buckets) > 0 {
+			if err := h.Store.AcceptAnswerBuckets(ctx, userID, req.WordID, buckets); err != nil {
+				log.Printf("accept-correct: AcceptAnswerBuckets word %d: %v", req.WordID, err)
+			}
+		}
+	}
 
 	sessionStreak, _ := h.Store.RecordDailyStat(ctx, userID, true)
 
