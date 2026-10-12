@@ -889,6 +889,35 @@ vocabulary_trainer/
 
 The app records every request internally, in the `usage_events` table (`user_id`, `name`, `count`, `last_seen`). This lets admins see which pages and endpoints are actually used. The `name` field holds the HTTP method plus the matched route, for example `GET /train` or `POST /api/quiz/answer`. Hits for the same user and route aggregate into one row, with an incrementing `count` and a refreshed `last_seen`. The app records anonymous requests with `user_id = 0`. It excludes static asset requests and audio-streaming routes (`/api/audio/*`, `/api/pinyin-quiz/audio/*`) as noise.
 
+## Answer buckets
+
+The app counts attempts and errors per word and per *answer bucket*. A bucket tells what help the user had on the card before the answer:
+
+| Bucket | When |
+|---|---|
+| `zh_only` | Hanzi only: no pinyin seen, no sound played |
+| `pinyin` | The pinyin was visible, or blurred and tapped |
+| `voice` | The sound played (play button or autoplay), with the hanzi visible |
+| `voice_only` | Voice-only card (`voice_to_transl`), unless *voice unavailable* is set |
+| `to_zh` | Translation → Chinese card |
+
+An answer with pinyin and sound counts in `pinyin` and in `voice`.
+
+Four *help buckets* tell how often the user chose a help themselves:
+
+| Bucket | When |
+|---|---|
+| `pinyin_reveal_offered` | The pinyin hint was blurred, so the user could tap it |
+| `pinyin_revealed` | The user tapped the blurred pinyin hint |
+| `play_offered` | The question screen showed the play button (not on voice-only cards, where the sound is the question) |
+| `play_pressed` | The user pressed play, also as a replay after autoplay. Autoplay alone does not count |
+
+In all buckets, `attempts` counts the answers in that situation and `errors` counts the wrong answers in that situation. The use rate of a help is `pinyin_revealed.attempts / pinyin_reveal_offered.attempts` (the same for play). The buckets overlap, so never add all buckets together.
+
+The client sends `pinyin_seen`, `audio_played` and `play_pressed`. The server ignores a flag that the card mode makes impossible. If a flag is missing, the server counts the help as used when the card offered it, and it records no help buckets.
+
+The counts go into two tables: `answer_stats_daily` (one row per day, kept for 30 days) and `answer_stats_monthly` (one row per month, kept). Each answer deletes the user's daily rows that are older than 30 days. Drill answers and retypes after a wrong answer do not count. *Accept as correct* removes the error again. The app does not show these stats yet.
+
 ## Admin dashboard
 
 Users with the `admin` role can view cross-user usage insights at `/admin-dashboard` (non-admins are redirected to `/`). Admins land here directly after signing in. It shows:
@@ -921,10 +950,10 @@ Stages: **registered** (accounts created) → **verified email** → **activated
 | `GET` | `/api/demo/cards` | Public demo card list for the landing page (no auth, translations omitted) |
 | `POST` | `/api/demo/answer` | Check a demo answer statelessly (no auth; returns `correct` + accepted translations) |
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
-| `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag). Send `drill: true` in the difficult-words drill, so the answer does not count as a review. The response has `leech_lapses` when the answer is a lapse that reaches the leech threshold (or a multiple of it) |
+| `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag). Send `drill: true` in the difficult-words drill, so the answer does not count as a review. Send `pinyin_seen`, `audio_played` and `play_pressed` to tell what help the user had before the answer. The server counts the answer in its answer buckets (see below). The response has `leech_lapses` when the answer is a lapse that reaches the leech threshold (or a multiple of it) |
 | `GET` | `/api/quiz/match-game` | Get a round of words for the match mini-game, picked at random among the user's enabled game modes (mismatch / newest / hardest / last-mistakes) that currently have enough eligible words; empty `words` if none qualify. Mismatch tiles may be words or hanzi components; other modes are word-only |
 | `POST` | `/api/quiz/match-answer` | Submit a match-game result — `{zh_word_id, correct}` for a word tile, or `{kind: "component", character, correct}` for a component tile — updates SM-2 or component progress |
-| `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress |
+| `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress. Send the same `drill`, `pinyin_seen`, `audio_played` and `play_pressed` values as with the answer, so the server removes the error from the same answer buckets |
 | `GET` | `/api/quiz/langs` | List the distinct translation languages available |
 | `POST` | `/api/quiz/skip` | Skip a word (defer due date by `days`, default 7). With `"reveal": true`, returns `200` with the word's `zh_text`, `pinyin` and `translations` instead of `204`. `/api/component/skip` (returns `correct_answers`) and `/api/hmm-quiz/skip` (returns `correct_answer`) accept `reveal` too. |
 | `POST` | `/api/quiz/acknowledge` | Mark a new word as introduced (ready for quizzing) |

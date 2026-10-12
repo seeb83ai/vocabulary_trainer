@@ -1872,6 +1872,53 @@ test.describe('Quiz – retype on wrong answer', () => {
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
   });
 
+  // The server used to reject accept-correct for voice_to_transl with 400,
+  // so the button was shown on voice-only cards but did nothing.
+  test('"Accept as correct" works on a voice-only card', async ({ page }) => {
+    const email = `e2e-voice-accept-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'VoiceAcceptTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const seedRes = await page.request.post('/api/words', {
+      data: {
+        zh_text: '橙子',
+        pinyin: 'chéngzi',
+        translations: { en: ['orange'] },
+        tags: [],
+        start_training: true,
+      },
+    });
+    expect(seedRes.ok()).toBeTruthy();
+
+    const settingsRes = await page.request.get('/api/settings');
+    const originalSettings = await settingsRes.json();
+    await page.request.patch('/api/settings', { data: { ...originalSettings, accept_correct_mode: 'typo' } });
+    await page.request.patch('/api/training-filters', {
+      data: { mode: 'voice_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
+    });
+    await syncNewWordMode(page, 'voice_to_transl');
+    await page.addInitScript(() => {
+      localStorage.setItem('quizMode', 'voice_to_transl');
+      localStorage.setItem('quizLangs', JSON.stringify(['en']));
+    });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).not.toBeVisible();
+
+    await page.locator('#answer-input').fill('orang');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
+
+    const acceptRes = page.waitForResponse(r => r.url().includes('/api/quiz/accept-correct'));
+    await page.locator('#accept-correct-btn').scrollIntoViewIfNeeded();
+    await page.locator('#accept-correct-btn').click();
+    expect((await acceptRes).status()).toBe(200);
+    await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+
   // Regression test for issue #372: the same #346 refactor that regressed
   // #389 also silently re-hid "Add as translation" under the retype gate.
   // It must stay offered, and clicking it must still advance straight to
