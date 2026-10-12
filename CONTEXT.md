@@ -40,6 +40,9 @@ A separate learning mode for tone and sound discrimination. Users hear a pinyin 
 **Mnemonic (HMM)**
 A Hanzi Movie Method scene linking a character to an actor (pinyin initial), location (pinyin final), room (tone), and prop (radical). Mnemonics are memory aids — they appear during training to support recall but are not quizzed independently. A user builds their personal mnemonic library at `/mnemonics`.
 
+**Answer bucket**
+The help a user had on a quiz card before the answer: hanzi only (`zh_only`), pinyin seen (`pinyin`), sound played with the hanzi visible (`voice`), sound only (`voice_only`), or the translation → Chinese direction (`to_zh`). An answer with pinyin and sound counts in both buckets. The app counts attempts and errors per word and bucket, per day (kept 30 days) and per month (kept), to find a user's weaknesses. Drill answers do not count.
+
 **Confusion pair**
 A recorded instance where a user's wrong answer is a valid translation of a *different* known vocabulary entry. Tracked to surface systematic mix-ups. Visible on `/mismatches`.
 

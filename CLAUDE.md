@@ -199,6 +199,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/models/models.go` | All shared structs and mode constants |
 | `service/sm2/sm2.go` | SM-2 algorithm, `CheckAnswer`, `expandVariants`, `normalize` |
 | `service/sm2/pinyin.go` | Pinyin tone mark conversion, answer parsing (`NumberedToToneMark`, `CheckPinyinAnswer`) |
+| `service/sm2/bucket.go` | `AnswerBuckets` — answer buckets (`zh_only`, `pinyin`, `voice`, `voice_only`, `to_zh`) from the mode and the client's `pinyin_seen`/`audio_played` flags |
 | `service/sm2/lapse.go` | `RecordReview` — lapse counters (`lapses`, `consecutive_lapses`) for the leech warning and the lapsed-words baseline |
 
 ### Database (`service/db/`)
@@ -211,6 +212,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/tags.go` | Tag management — `GetAllTags`, `GetTagDetails`, `UpsertTagMeta`, `GetImportableSourceTags` |
 | `service/db/quiz.go` | Core SM-2 progress — `GetSM2Progress`, `UpdateSM2Progress`, `GetStats`, prev-state, `SharesTranslation` |
 | `service/db/confusion.go` | Word/component confusion detection, resolution, mismatch history |
+| `service/db/answer_stats.go` | Answer-bucket counters — `RecordAnswerBuckets` (daily + monthly upsert, prunes daily rows > 30 days), `AcceptAnswerBuckets` |
 | `service/db/drill.go` | Difficult-word drill flagging (`FlagDifficultWords`, `GetNextDrillCard`) |
 | `service/db/match_game.go` | Match-game candidate word queries |
 | `service/db/stats.go` | `RecordDailyStat`, `GetDailyStatsHistory`, `GetWordStats`, `AdvanceDueDates` |
@@ -305,7 +307,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/global-setup.js` | Builds Go binary, starts server on port 18080 with temp SQLite, seeds test user + words |
 | `e2e/global-teardown.js` | Kills server, removes temp SQLite file |
 | `e2e/helpers/api.js` | `seedWord()`, `parseSetCookieHeaders()` helpers for setup scripts |
-| `e2e/helpers/db.js` | Direct-SQLite seeding the REST API can't do (`seedYesterdayBucketSnapshot`, `seedReviewWord`, `getWordProgress`) |
+| `e2e/helpers/db.js` | Direct-SQLite seeding the REST API can't do (`seedYesterdayBucketSnapshot`, `seedReviewWord`, `getWordProgress`, `getTodayAnswerBuckets`) |
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
@@ -321,6 +323,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/leech.spec.js` | Browser tests: leech warning on the wrong-answer screen (keep training, back to unseen), leech threshold setting |
 | `e2e/new-word-pause.spec.js` | Browser tests: new words paused by the lapsed-words baseline and by a bad session today (accuracy baseline), lapsed baseline setting |
 | `e2e/vocab-lapsed.spec.js` | Browser tests: Vocabulary *Failed last review* chip and reset from the edit sheet |
+| `e2e/answer-buckets.spec.js` | Browser tests: answer buckets from pinyin seen/tapped and sound played, accept-correct removes the error |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
 | `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |
