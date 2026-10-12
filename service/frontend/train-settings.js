@@ -142,7 +142,7 @@ async function loadTrainTags() {
     return;
   }
   // Tag changes apply when the session sheet closes (Done / backdrop).
-  for (const tag of allTags) {
+  renderTagGroups(overlayTagChips, allTags, (tag) => {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'overlay-tag-btn ui-chip';
@@ -158,7 +158,7 @@ async function loadTrainTags() {
       scheduleFilterSave();
       loadTrainTags();
     });
-    overlayTagChips.appendChild(chip);
-  }
+    return chip;
+  });
   $('overlay-tags-section').classList.remove('hidden');
 }

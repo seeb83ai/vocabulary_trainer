@@ -255,19 +255,7 @@ func (s *Store) AcknowledgeRandomWords(ctx context.Context, userID int64, n int)
 // GetStats returns due-today count, total word count (zh words only), and the number of
 // new words introduced today (globally, not filtered by tag).
 func (s *Store) GetStats(ctx context.Context, userID int64, tags []string, bucket string) (dueToday, total, newToday int, err error) {
-	tagFilter := ""
-	var tagArgs []any
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, t := range tags {
-			placeholders[i] = "?"
-			tagArgs = append(tagArgs, t)
-		}
-		tagFilter = ` AND EXISTS (
-			SELECT 1 FROM word_tags wt
-			JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
 	bucketSQL := tierFilter(bucket)
 
 	// When a bucket filter is active the total count must join sm2_progress.
@@ -305,19 +293,8 @@ func (s *Store) GetStats(ctx context.Context, userID int64, tags []string, bucke
 // CountUnseenZhWords returns the number of zh words that have never been presented
 // (first_seen_at IS NULL), optionally filtered by tags.
 func (s *Store) CountUnseenZhWords(ctx context.Context, userID int64, tags []string) (int, error) {
-	tagFilter := ""
-	args := []any{userID}
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, t := range tags {
-			placeholders[i] = "?"
-			args = append(args, t)
-		}
-		tagFilter = ` AND EXISTS (
-			SELECT 1 FROM word_tags wt
-			JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
+	args := append([]any{userID}, tagArgs...)
 	var count int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
@@ -333,19 +310,8 @@ func (s *Store) CountUnseenZhWords(ctx context.Context, userID int64, tags []str
 // CountLearningNewWords returns the number of zh words still in the "new" learning
 // phase (learning_new_word = 1), optionally filtered by tags.
 func (s *Store) CountLearningNewWords(ctx context.Context, userID int64, tags []string) (int, error) {
-	tagFilter := ""
-	args := []any{userID}
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, t := range tags {
-			placeholders[i] = "?"
-			args = append(args, t)
-		}
-		tagFilter = ` AND EXISTS (
-			SELECT 1 FROM word_tags wt
-			JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
+	args := append([]any{userID}, tagArgs...)
 	var count int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
@@ -362,19 +328,8 @@ func (s *Store) CountLearningNewWords(ctx context.Context, userID int64, tags []
 // covering overdue words (grouped as today), today, and the next 30 days.
 // Unseen words (first_seen_at IS NULL) are excluded.
 func (s *Store) GetWordCountByDueDate(ctx context.Context, userID int64, tags []string) ([]models.DueDateCount, error) {
-	tagFilter := ""
-	args := []any{userID}
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, t := range tags {
-			placeholders[i] = "?"
-			args = append(args, t)
-		}
-		tagFilter = ` AND EXISTS (
-			SELECT 1 FROM word_tags wt
-			JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
+	args := append([]any{userID}, tagArgs...)
 	query := `SELECT
 		CASE
 			WHEN date(p.due_date) <= date('now') THEN date('now')

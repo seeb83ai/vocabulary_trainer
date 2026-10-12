@@ -237,27 +237,17 @@ func classifyAccBucket(learningNewWord bool, attempts int, accuracy float64) str
 }
 
 // wordAccBucketsForTags computes the accuracy-bucket breakdown restricted to
-// zh words carrying at least one of the given tags. Used by GetWordStats so
+// zh words matching the tag filter (see tagFilterSQL). Used by GetWordStats so
 // the bucket breakdown alone can be tag-filtered while every other section
 // (hardest, most-practiced) keeps counting all of the user's words.
 func (s *Store) wordAccBucketsForTags(ctx context.Context, userID int64, tags []string) (map[string]int, error) {
-	placeholders := make([]string, len(tags))
-	args := make([]any, 0, len(tags)+1)
-	args = append(args, userID)
-	for i, t := range tags {
-		placeholders[i] = "?"
-		args = append(args, t)
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL
-		  AND EXISTS (
-			SELECT 1 FROM word_tags wt
-			JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (`+strings.Join(placeholders, ",")+`))`,
-		args...)
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL`+tagFilter,
+		append([]any{userID}, tagArgs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("get word acc buckets for tags: %w", err)
 	}
@@ -284,26 +274,16 @@ func (s *Store) wordAccBucketsForTags(ctx context.Context, userID int64, tags []
 }
 
 // countUnseenWords counts zh words that have never been seen and are not
-// marked known, optionally restricted to words carrying at least one of tags.
+// marked known, optionally restricted to words matching the tag filter (see tagFilterSQL).
 func (s *Store) countUnseenWords(ctx context.Context, userID int64, tags []string) (int, error) {
 	query := `
 		SELECT COUNT(*)
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NULL AND p.is_known = 0`
-	args := []any{userID}
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, t := range tags {
-			placeholders[i] = "?"
-			args = append(args, t)
-		}
-		query += `
-		  AND EXISTS (
-			SELECT 1 FROM word_tags wt
-			JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
+	query += tagFilter
+	args := append([]any{userID}, tagArgs...)
 	var n int
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count unseen words: %w", err)
@@ -313,7 +293,7 @@ func (s *Store) countUnseenWords(ctx context.Context, userID int64, tags []strin
 
 // GetWordStats returns aggregate statistics for all words seen at least once.
 // When tags is non-empty, the accuracy-bucket breakdown (AccBuckets) is
-// restricted to words carrying at least one of the given tags; every other
+// restricted to words matching the tag filter (tagFilterSQL); every other
 // section (Hardest, MostPract, TotalSeen) still covers all of the user's words.
 func (s *Store) GetWordStats(ctx context.Context, userID int64, tags []string) (*models.WordStatsResponse, error) {
 	// Fetch per-word stats for all seen zh words in a single query.

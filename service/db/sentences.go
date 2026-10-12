@@ -164,19 +164,8 @@ func (s *Store) getKnownWordSet(ctx context.Context, userID int64) (map[string]i
 // GetNextCard). No LIMIT — the full tag-filtered due set is needed so that
 // sentence-compatible words are not silently excluded by an arbitrary cutoff.
 func (s *Store) dueZhWordSet(ctx context.Context, userID int64, tags []string) (map[int64]time.Time, error) {
-	tagFilter := ""
-	var args []any
-	args = append(args, userID)
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, t := range tags {
-			placeholders[i] = "?"
-			args = append(args, t)
-		}
-		tagFilter = ` AND EXISTS (
-			SELECT 1 FROM word_tags wt JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
+	args := append([]any{userID}, tagArgs...)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id, p.due_date FROM words w
 		JOIN sm2_progress p ON p.word_id = w.id

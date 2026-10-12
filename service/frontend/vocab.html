@@ -62,7 +62,8 @@
           <span class="vb-filter-label" data-i18n="filter.level">Level</span>
         </div>
         <div id="filter-tags-bar" class="vb-filter-row hidden">
-          <span class="vb-filter-label" data-i18n="filter.tagsShort">Tags</span>
+          <span class="vb-filter-label"><span data-i18n="filter.tagsShort">Tags</span><span class="tag-help"><button type="button" class="tag-help-btn" aria-expanded="false" aria-label="How tag groups work" data-i18n-aria-label="tags.helpLabel">i</button><span class="tag-help-pop hidden" role="note"><span data-i18n="tags.help">Tags with the same prefix (e.g. topic-food, topic-travel) form a group. Training and the word list show words that match any tag of a group and every selected group. All hsk… tags are one group. Tags without &quot;-&quot; are one group.</span><span class="tag-help-example" data-i18n="tags.helpExample">Example: hsk3-1 + hsk3-2 + topic-food → words from HSK level 1 or 2 that are also tagged topic-food.</span></span></span></span>
+          <div id="filter-tag-groups" class="tag-groups"></div>
         </div>
         <div class="vb-filter-row">
           <span class="vb-filter-label" data-i18n="vocab.missingLangLabel">Missing</span>
@@ -180,7 +181,7 @@
           </div>
 
           <div>
-            <label class="vb-field-label" data-i18n="vocab.tags">Tags</label>
+            <label class="vb-field-label"><span data-i18n="vocab.tags">Tags</span><span id="form-tags-help" class="tag-help"><button type="button" class="tag-help-btn" aria-expanded="false" aria-label="How tag groups work" data-i18n-aria-label="tags.helpLabel">i</button><span class="tag-help-pop hidden" role="note"><span data-i18n="tags.help">Tags with the same prefix (e.g. topic-food, topic-travel) form a group. Training and the word list show words that match any tag of a group and every selected group. All hsk… tags are one group. Tags without &quot;-&quot; are one group.</span><span class="tag-help-example" data-i18n="tags.helpExample">Example: hsk3-1 + hsk3-2 + topic-food → words from HSK level 1 or 2 that are also tagged topic-food.</span></span></span></label>
             <div id="form-tags" class="flex flex-wrap gap-1 mb-2"></div>
             <div class="relative">
               <input id="form-tag-input" type="text" placeholder="Add tag…" data-i18n-placeholder="vocab.addTag"
@@ -313,7 +314,7 @@
 
         <!-- Step 3: apply tags + confirm -->
         <div id="import-step3" class="hidden">
-          <p class="text-sm text-gray-600 mb-2" data-i18n="vocab.importApplyTags">Tags to apply to imported words:</p>
+          <p class="text-sm text-gray-600 mb-2"><span data-i18n="vocab.importApplyTags">Tags to apply to imported words:</span><span id="import-tags-help" class="tag-help"><button type="button" class="tag-help-btn" aria-expanded="false" aria-label="How tag groups work" data-i18n-aria-label="tags.helpLabel">i</button><span class="tag-help-pop hidden" role="note"><span data-i18n="tags.help">Tags with the same prefix (e.g. topic-food, topic-travel) form a group. Training and the word list show words that match any tag of a group and every selected group. All hsk… tags are one group. Tags without &quot;-&quot; are one group.</span><span class="tag-help-example" data-i18n="tags.helpExample">Example: hsk3-1 + hsk3-2 + topic-food → words from HSK level 1 or 2 that are also tagged topic-food.</span></span></span></p>
           <div id="import-apply-tags" class="flex flex-wrap gap-1 mb-2"></div>
           <div class="relative mb-4">
             <input id="import-tag-input" type="text" placeholder="Add tag…" data-i18n-placeholder="vocab.addTag"
@@ -336,7 +337,7 @@
 
       <!-- Tags panel -->
       <div id="panel-tags" class="hidden">
-        <p class="text-sm text-gray-500 mb-4" data-i18n="vocab.tagsDesc">Set a description and control whether other users can import words from each tag.</p>
+        <p class="text-sm text-gray-500 mb-4"><span data-i18n="vocab.tagsDesc">Set a description and control whether other users can import words from each tag.</span><span id="panel-tags-help" class="tag-help"><button type="button" class="tag-help-btn" aria-expanded="false" aria-label="How tag groups work" data-i18n-aria-label="tags.helpLabel">i</button><span class="tag-help-pop hidden" role="note"><span data-i18n="tags.help">Tags with the same prefix (e.g. topic-food, topic-travel) form a group. Training and the word list show words that match any tag of a group and every selected group. All hsk… tags are one group. Tags without &quot;-&quot; are one group.</span><span class="tag-help-example" data-i18n="tags.helpExample">Example: hsk3-1 + hsk3-2 + topic-food → words from HSK level 1 or 2 that are also tagged topic-food.</span></span></span></p>
         <div id="tags-list" class="space-y-3">
           <span class="text-sm text-gray-400" data-i18n="vocab.tagsLoading">Loading tags…</span>
         </div>
@@ -458,7 +459,7 @@
 
       <!-- Tag input -->
       <div>
-        <label class="vb-field-label">Tags <span class="text-red-500">*</span></label>
+        <label class="vb-field-label">Tags <span class="text-red-500">*</span><span id="csv-upload-tags-help" class="tag-help"><button type="button" class="tag-help-btn" aria-expanded="false" aria-label="How tag groups work" data-i18n-aria-label="tags.helpLabel">i</button><span class="tag-help-pop hidden" role="note"><span data-i18n="tags.help">Tags with the same prefix (e.g. topic-food, topic-travel) form a group. Training and the word list show words that match any tag of a group and every selected group. All hsk… tags are one group. Tags without &quot;-&quot; are one group.</span><span class="tag-help-example" data-i18n="tags.helpExample">Example: hsk3-1 + hsk3-2 + topic-food → words from HSK level 1 or 2 that are also tagged topic-food.</span></span></span></label>
         <div id="csv-upload-tags" class="flex flex-wrap gap-1 mb-2"></div>
         <div class="relative">
           <input id="csv-upload-tag-input" type="text" placeholder="Add tag…"

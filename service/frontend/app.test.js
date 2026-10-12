@@ -343,3 +343,60 @@ describe('resolveUILang', () => {
     expect(resolveUILang('fr', 'de')).toEqual({ lang: 'de', seed: true });
   });
 });
+
+// ── tagGroupKey / groupTags ─────────────────────────────────────────────────
+// Inlined from app.js. tagGroupKey mirrors tagGroupKey in service/db/words.go.
+
+function tagGroupKey(name) {
+  const s = String(name).toLowerCase();
+  const i = s.indexOf('-');
+  if (i < 0) return '';
+  const prefix = s.slice(0, i);
+  return prefix.startsWith('hsk') ? 'hsk' : prefix;
+}
+
+function groupTags(tags) {
+  const groups = new Map();
+  for (const tag of tags) {
+    const key = tagGroupKey(tag);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(tag);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === '') - (b === '') || a.localeCompare(b))
+    .map(([key, list]) => ({ key, tags: list }));
+}
+
+describe('tagGroupKey', () => {
+  it('uses the lowercased text before the first "-"', () => {
+    expect(tagGroupKey('topic-food')).toBe('topic');
+    expect(tagGroupKey('Topic-travel')).toBe('topic');
+    expect(tagGroupKey('chapter-3-a')).toBe('chapter');
+  });
+
+  it('puts every hsk version into one group', () => {
+    expect(tagGroupKey('hsk2-6')).toBe('hsk');
+    expect(tagGroupKey('hsk3-1')).toBe('hsk');
+    expect(tagGroupKey('HSK3-2')).toBe('hsk');
+  });
+
+  it('puts tags without a prefix into the "" group', () => {
+    expect(tagGroupKey('lesson1')).toBe('');
+    expect(tagGroupKey('my words')).toBe('');
+    expect(tagGroupKey('-odd')).toBe('');
+  });
+});
+
+describe('groupTags', () => {
+  it('sorts groups by key, keeps tag order and puts the "" group last', () => {
+    expect(groupTags(['lesson1', 'topic-food', 'hsk2-2', 'hsk3-1', 'Topic-travel'])).toEqual([
+      { key: 'hsk', tags: ['hsk2-2', 'hsk3-1'] },
+      { key: 'topic', tags: ['topic-food', 'Topic-travel'] },
+      { key: '', tags: ['lesson1'] },
+    ]);
+  });
+
+  it('returns no groups for no tags', () => {
+    expect(groupTags([])).toEqual([]);
+  });
+});
