@@ -8,7 +8,7 @@ import { getTodayAnswerBuckets } from './helpers/db.js';
 const wrong = { attempts: 1, errors: 1 };
 
 test.describe('Answer buckets', () => {
-  async function setup(page, { blurPinyin }) {
+  async function setup(page, { blurPinyin, autoplay = false, noAutoVoiceOnBlur = false }) {
     const email = `e2e-buckets-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
     const regRes = await page.request.post('/api/register', {
       data: { email, password: 'AnswerBuckets123!' },
@@ -21,7 +21,10 @@ test.describe('Answer buckets', () => {
 
     const settings = await (await page.request.get('/api/settings')).json();
     await page.request.patch('/api/settings', {
-      data: { ...settings, blur_pinyin: blurPinyin, autoplay_always: false, wrong_answer_retry_mode: 'off' },
+      data: {
+        ...settings, blur_pinyin: blurPinyin, autoplay_always: autoplay,
+        no_auto_voice_on_blur: noAutoVoiceOnBlur, wrong_answer_retry_mode: 'off',
+      },
     });
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_pinyin_to_transl', langs: ['en'], bucket: '', mnemonics: true, components: true, tags: [] },
@@ -96,6 +99,26 @@ test.describe('Answer buckets', () => {
     const accepted = { attempts: 1, errors: 0 };
     expect(getTodayAnswerBuckets(email, '橙子')).toEqual({
       zh_only: accepted, pinyin_reveal_offered: accepted, play_offered: accepted,
+    });
+  });
+
+  test('autoplay counts as voice, but not as play pressed', async ({ page }) => {
+    const email = await setup(page, { blurPinyin: false, autoplay: true });
+    await answerWrong(page);
+
+    expect(getTodayAnswerBuckets(email, '橙子')).toEqual({
+      pinyin: wrong, voice: wrong, play_offered: wrong,
+    });
+  });
+
+  // "No auto voice on blurred pinyin" blocks autoplay on the question
+  // screen; the sound then plays on the result screen, after the answer.
+  test('autoplay blocked by blurred pinyin does not count as voice', async ({ page }) => {
+    const email = await setup(page, { blurPinyin: true, autoplay: true, noAutoVoiceOnBlur: true });
+    await answerWrong(page);
+
+    expect(getTodayAnswerBuckets(email, '橙子')).toEqual({
+      zh_only: wrong, pinyin_reveal_offered: wrong, play_offered: wrong,
     });
   });
 });

@@ -131,3 +131,47 @@ func TestQuizAnswer_RecordsHelpBuckets(t *testing.T) {
 		t.Errorf("buckets: got %v, want %v", got, want)
 	}
 }
+
+// A "That's a different word" answer (a translation of another word) is a
+// wrong answer and counts as an error in the buckets.
+func TestQuizAnswer_ConfusionCountsAsBucketError(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	other := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	r := newRouter(s)
+	// A confusion only matches words the user has already seen.
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{WordID: other, Mode: models.ModeZhToTransl, Answer: "goodbye"})
+
+	rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "goodbye", Langs: []string{"en"},
+		PinyinSeen: boolPtr(false), AudioPlayed: boolPtr(false), PlayPressed: boolPtr(false),
+	})
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Correct || resp.ConfusedWith == nil {
+		t.Fatalf("want a wrong answer confused with 再见, got correct=%v confused_with=%v", resp.Correct, resp.ConfusedWith)
+	}
+
+	wrong := db.AnswerBucketCount{Attempts: 1, Errors: 1}
+	want := map[string]db.AnswerBucketCount{"zh_only": wrong, "play_offered": wrong}
+	if got := todayBuckets(t, s, id); !reflect.DeepEqual(got, want) {
+		t.Errorf("buckets: got %v, want %v", got, want)
+	}
+}
+
+// Translation → ZH cards offer no help: only to_zh, whatever the flags say.
+func TestQuizAnswer_TranslToZhRecordsOnlyToZh(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeTranslToZh, Answer: "再见",
+		PinyinSeen: boolPtr(true), AudioPlayed: boolPtr(true), PlayPressed: boolPtr(true),
+	})
+
+	want := map[string]db.AnswerBucketCount{"to_zh": {Attempts: 1, Errors: 1}}
+	if got := todayBuckets(t, s, id); !reflect.DeepEqual(got, want) {
+		t.Errorf("buckets: got %v, want %v", got, want)
+	}
+}

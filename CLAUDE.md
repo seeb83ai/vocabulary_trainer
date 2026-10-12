@@ -323,7 +323,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/leech.spec.js` | Browser tests: leech warning on the wrong-answer screen (keep training, back to unseen), leech threshold setting |
 | `e2e/new-word-pause.spec.js` | Browser tests: new words paused by the lapsed-words baseline and by a bad session today (accuracy baseline), lapsed baseline setting |
 | `e2e/vocab-lapsed.spec.js` | Browser tests: Vocabulary *Failed last review* chip and reset from the edit sheet |
-| `e2e/answer-buckets.spec.js` | Browser tests: answer and help buckets from pinyin seen/tapped and sound played/pressed, accept-correct removes the error |
+| `e2e/answer-buckets.spec.js` | Browser tests: answer and help buckets from pinyin seen/tapped and sound played/pressed, autoplay (and autoplay blocked by blurred pinyin), accept-correct removes the error |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
 | `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |
