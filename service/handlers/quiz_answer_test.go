@@ -987,3 +987,25 @@ func TestAnswer_LeechOffWhenThresholdZero(t *testing.T) {
 		t.Errorf("leech_lapses with threshold 0: want 0, got %d", resp.LeechLapses)
 	}
 }
+
+func TestAcceptCorrect_VoiceToTransl(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeVoiceToTransl, Answer: "helo",
+	})
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: id,
+		Mode:   models.ModeVoiceToTransl,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for voice_to_transl accept-correct, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.CorrectAnswers) != 1 || resp.CorrectAnswers[0] != "hello" {
+		t.Errorf("CorrectAnswers: want [hello], got %v", resp.CorrectAnswers)
+	}
+}

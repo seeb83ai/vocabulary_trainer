@@ -93,3 +93,23 @@ export function getWordProgress(email, zhText) {
     db.close();
   }
 }
+
+/**
+ * Read today's answer-bucket counters of the user's zh word.
+ * @param {string} email
+ * @param {string} zhText
+ * @returns {Record<string, {attempts: number, errors: number}>}
+ */
+export function getTodayAnswerBuckets(email, zhText) {
+  const db = new DatabaseSync(getDbPath());
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    const rows = db.prepare(`
+      SELECT bucket, attempts, errors FROM answer_stats_daily
+      WHERE day = date('now') AND word_id = ${WORD_ID_BY_EMAIL_AND_TEXT}
+    `).all(email, zhText);
+    return Object.fromEntries(rows.map(r => [r.bucket, { attempts: Number(r.attempts), errors: Number(r.errors) }]));
+  } finally {
+    db.close();
+  }
+}

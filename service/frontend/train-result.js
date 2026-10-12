@@ -331,6 +331,7 @@ function renderWordAnswerResult(result, answer) {
                 word_id: currentCard.word_id,
                 mode: currentCard.mode,
                 langs: selectedLangs,
+                ...answerHelp,
               }),
             });
             addBtn.textContent = t('result.added');

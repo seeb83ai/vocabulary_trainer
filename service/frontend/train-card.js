@@ -160,6 +160,12 @@ let currentAutoPlayAudio = null;
 // autoPlayCard, so the result screen knows whether to play it there instead
 // (issue #272). Reset whenever loadNextCard replaces currentCard.
 let questionAutoPlayed = false;
+// True once the user pressed play on the question screen of the current card.
+let questionAudioPlayed = false;
+// The help the user had before the last word answer (pinyin seen, audio
+// played, play pressed by the user) and whether it was a drill answer. Sent with the answer and again
+// with accept-correct, so the server counts both in the same answer buckets.
+let answerHelp = {};
 
 let skipNewWords = false;
 let requireNewWordZh = true;
@@ -319,6 +325,7 @@ async function loadNextCard(trackCurrent = false) {
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url);
     questionAutoPlayed = false;
+    questionAudioPlayed = false;
     // The served card was pulled in from beyond today's due-date bound solely
     // to avoid repeating a just-answered word — it isn't reflected in
     // latestStats.due_today, so bump the displayed count by 1 to match.
@@ -545,7 +552,10 @@ function showCard() {
     // (the point of that mode is to drill without an audio cue).
     const playBtn = $('play-btn');
     if (isZhPromptWithSound(currentCard.mode)) {
-      playBtn.onclick = () => playAudio(currentCard.word_id, currentCard.prompt);
+      playBtn.onclick = () => {
+        questionAudioPlayed = true;
+        playAudio(currentCard.word_id, currentCard.prompt);
+      };
       show('play-btn');
     } else {
       hide('play-btn');
@@ -621,6 +631,15 @@ async function submitAnswer(e) {
       return;
     }
 
+    // A blurred pinyin hint counts as seen only once the user tapped it
+    // (the tap removes blur-sm, see applyPinyinBlur).
+    const pinyinEl = $('pinyin-hint');
+    answerHelp = {
+      drill: difficultDrill,
+      pinyin_seen: !pinyinEl.classList.contains('hidden') && !pinyinEl.classList.contains('blur-sm'),
+      audio_played: questionAutoPlayed || questionAudioPlayed,
+      play_pressed: questionAudioPlayed,
+    };
     const result = await apiFetch('/api/quiz/answer', {
       method: 'POST',
       body: JSON.stringify({
@@ -628,7 +647,7 @@ async function submitAnswer(e) {
         mode: currentCard.mode,
         answer: answer,
         langs: selectedLangs,
-        drill: difficultDrill,
+        ...answerHelp,
       }),
     });
     maybeCelebrateThenShow(result, (r) => renderWordAnswerResult(r, answer));
@@ -773,6 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
             word_id: currentCard.word_id,
             mode: currentCard.mode,
             langs: selectedLangs,
+            ...answerHelp,
           }),
         });
       }
