@@ -46,19 +46,7 @@ func (s *Store) GetWords(ctx context.Context, userID int64, q string, page, perP
 	q = strings.TrimSpace(q)
 
 	// Build optional tag filter clause
-	tagFilter := ""
-	var tagArgs []any
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, t := range tags {
-			placeholders[i] = "?"
-			tagArgs = append(tagArgs, t)
-		}
-		tagFilter = ` AND EXISTS (
-			SELECT 1 FROM word_tags wt
-			JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
 
 	reviewFilter := ""
 	if reviewOnly {
@@ -1109,6 +1097,49 @@ func (s *Store) backfillWordsCollidingWithKnownComponents(ctx context.Context, u
 	return nil
 }
 
+// tagGroupKey returns the group a tag belongs to: the lowercased text before
+// the first "-". All hsk… tags (hsk2-N, hsk3-N) form one "hsk" group. Tags
+// without "-" (or with an empty prefix) form the "" group.
+func tagGroupKey(name string) string {
+	prefix, _, found := strings.Cut(strings.ToLower(name), "-")
+	if !found {
+		return ""
+	}
+	if strings.HasPrefix(prefix, "hsk") {
+		return "hsk"
+	}
+	return prefix
+}
+
+// tagFilterSQL builds the word tag filter used by training and the
+// vocabulary list: a word must carry at least one of the selected tags of
+// every selected tag group (OR inside a group, AND across groups — see
+// tagGroupKey). It returns "" and no args when tags is empty.
+func tagFilterSQL(tags []string) (string, []any) {
+	var order []string
+	groups := map[string][]string{}
+	for _, t := range tags {
+		k := tagGroupKey(t)
+		if _, ok := groups[k]; !ok {
+			order = append(order, k)
+		}
+		groups[k] = append(groups[k], t)
+	}
+	var sb strings.Builder
+	var args []any
+	for _, k := range order {
+		names := groups[k]
+		sb.WriteString(` AND EXISTS (
+			SELECT 1 FROM word_tags wt
+			JOIN tags tg ON tg.id = wt.tag_id
+			WHERE wt.word_id = w.id AND tg.name IN (` + strings.TrimSuffix(strings.Repeat("?,", len(names)), ",") + `))`)
+		for _, n := range names {
+			args = append(args, n)
+		}
+	}
+	return sb.String(), args
+}
+
 // tierFilter returns the SQL WHERE fragment (prefixed with AND) that restricts
 // rows to the given accuracy/attempt bucket. The alias "p" must refer to
 // sm2_progress in the enclosing query. Returns "" for an empty/unknown key.
@@ -1189,19 +1220,7 @@ const AccuracyBaselineDays = 3
 // count shown to the user.
 func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, maxNew int, bucket string, skipNew bool, baselines *NewWordBaselines, excludeIDs []int64, allowSessionExtension bool) (*models.Word, *models.SM2Progress, bool, error) {
 	// Build optional tag filter
-	tagFilter := ""
-	var tagArgs []any
-	if len(tags) > 0 {
-		placeholders := make([]string, len(tags))
-		for i, t := range tags {
-			placeholders[i] = "?"
-			tagArgs = append(tagArgs, t)
-		}
-		tagFilter = ` AND EXISTS (
-			SELECT 1 FROM word_tags wt
-			JOIN tags tg ON tg.id = wt.tag_id
-			WHERE wt.word_id = w.id AND tg.name IN (` + strings.Join(placeholders, ",") + `))`
-	}
+	tagFilter, tagArgs := tagFilterSQL(tags)
 	bucketSQL := tierFilter(bucket)
 
 	// Count new words already introduced today (per user, not per-tag).

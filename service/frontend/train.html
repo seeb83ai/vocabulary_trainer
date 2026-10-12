@@ -329,8 +329,8 @@
           <button id="overlay-components-pill" type="button" class="tr-toggle-row" aria-pressed="false"><span data-i18n="filter.componentsShort">Components</span><span class="ui-toggle-vis"></span></button>
         </div>
         <div id="overlay-tags-section" class="hidden">
-          <div class="tr-label" data-i18n="filter.tagsShort">Tags</div>
-          <div id="overlay-tag-chips" class="tr-chips"></div>
+          <div class="tr-label"><span data-i18n="filter.tagsShort">Tags</span><span class="tag-help"><button type="button" class="tag-help-btn" aria-expanded="false" aria-label="How tag groups work" data-i18n-aria-label="tags.helpLabel">i</button><span class="tag-help-pop hidden" role="note"><span data-i18n="tags.help">Tags with the same prefix (e.g. topic-food, topic-travel) form a group. Training and the word list show words that match any tag of a group and every selected group. All hsk… tags are one group. Tags without &quot;-&quot; are one group.</span><span class="tag-help-example" data-i18n="tags.helpExample">Example: hsk3-1 + hsk3-2 + topic-food → words from HSK level 1 or 2 that are also tagged topic-food.</span></span></span></div>
+          <div id="overlay-tag-chips" class="tag-groups"></div>
         </div>
       </div>
       <button id="filter-overlay-close" type="button" class="ui-btn ui-btn-primary tr-block tr-mt-24" data-i18n="filter.done">Done</button>

@@ -256,6 +256,65 @@ function playComponentAudio(char) {
   return audio;
 }
 
+// Tag groups: tags with the same prefix (text before the first "-") form a
+// group; all hsk… tags are one group, tags without a prefix are the "" group.
+// Training and the word list match any tag of a group and every selected group.
+// tagGroupKey mirrors tagGroupKey in service/db/words.go.
+function tagGroupKey(name) {
+  const s = String(name).toLowerCase();
+  const i = s.indexOf('-');
+  if (i < 0) return '';
+  const prefix = s.slice(0, i);
+  return prefix.startsWith('hsk') ? 'hsk' : prefix;
+}
+
+// groupTags returns [{key, tags}] sorted by key with the "" group last.
+function groupTags(tags) {
+  const groups = new Map();
+  for (const tag of tags) {
+    const key = tagGroupKey(tag);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(tag);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => (a === '') - (b === '') || a.localeCompare(b))
+    .map(([key, list]) => ({ key, tags: list }));
+}
+
+// renderTagGroups appends one labelled row per tag group to container;
+// makeChip(tag) returns the chip element for one tag.
+function renderTagGroups(container, tags, makeChip) {
+  for (const group of groupTags(tags)) {
+    const row = document.createElement('div');
+    row.className = 'tag-group';
+    row.dataset.group = group.key;
+    const label = document.createElement('span');
+    label.className = 'tag-group-label';
+    label.textContent = group.key === 'hsk' ? 'HSK' : group.key || t('tags.groupOther');
+    const chips = document.createElement('div');
+    chips.className = 'tag-group-chips';
+    for (const tag of group.tags) chips.appendChild(makeChip(tag));
+    row.append(label, chips);
+    container.appendChild(row);
+  }
+}
+
+// The ⓘ button next to every tag field toggles its .tag-help-pop; a click
+// anywhere else closes all open pops.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.tag-help-btn');
+  document.querySelectorAll('.tag-help-btn[aria-expanded="true"]').forEach(other => {
+    if (other === btn) return;
+    other.setAttribute('aria-expanded', 'false');
+    other.parentElement.querySelector('.tag-help-pop').classList.add('hidden');
+  });
+  if (!btn) return;
+  e.preventDefault();
+  const open = btn.getAttribute('aria-expanded') !== 'true';
+  btn.setAttribute('aria-expanded', String(open));
+  btn.parentElement.querySelector('.tag-help-pop').classList.toggle('hidden', !open);
+});
+
 function escHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')

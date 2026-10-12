@@ -250,14 +250,14 @@ function renderDue(word) {
 
 function renderFilterTags() {
   const bar = $('filter-tags-bar');
-  const pills = bar.querySelectorAll('.filter-tag-pill');
-  pills.forEach(p => p.remove());
+  const groups = $('filter-tag-groups');
+  groups.innerHTML = '';
   if (allTags.length === 0) {
     bar.classList.add('hidden');
     return;
   }
   bar.classList.remove('hidden');
-  for (const tag of allTags) {
+  renderTagGroups(groups, allTags, (tag) => {
     const pill = document.createElement('button');
     const active = selectedFilterTags.includes(tag);
     pill.type = 'button';
@@ -274,8 +274,8 @@ function renderFilterTags() {
       renderFilterTags();
       loadWords();
     });
-    bar.appendChild(pill);
-  }
+    return pill;
+  });
 }
 
 function renderTierFilter() {

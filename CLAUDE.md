@@ -208,7 +208,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/db.go` | `Store`, `Open`, `Close`, `parseDateTime`, `upsertWord`, `initSM2` |
 | `service/db/migrate.go` | Version-based schema migrations (`Migrate()`, `migrations` slice) |
 | `service/db/users.go` | User CRUD, email verification, password update, user settings |
-| `service/db/words.go` | Word CRUD, translation links, `GetNextCard`, `tierFilter`, `validSortExprs` |
+| `service/db/words.go` | Word CRUD, translation links, `GetNextCard`, `tierFilter`, `tagFilterSQL` (tag groups: OR in a group, AND between groups), `validSortExprs` |
 | `service/db/tags.go` | Tag management — `GetAllTags`, `GetTagDetails`, `UpsertTagMeta`, `GetImportableSourceTags` |
 | `service/db/quiz.go` | Core SM-2 progress — `GetSM2Progress`, `UpdateSM2Progress`, `GetStats`, prev-state, `SharesTranslation` |
 | `service/db/confusion.go` | Word/component confusion detection, resolution, mismatch history |
@@ -259,7 +259,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 ### Frontend (`service/frontend/`)
 | Path | Purpose |
 |---|---|
-| `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`), app shell (More sheet, fullscreen), UI-language sync (`changeUILang`, `syncUILang`), report-issue dialog |
+| `service/frontend/app.js` | `apiFetch`, `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`), app shell (More sheet, fullscreen), UI-language sync (`changeUILang`, `syncUILang`), report-issue dialog, tag groups (`tagGroupKey`, `groupTags`, `renderTagGroups`, ⓘ `.tag-help` pop) |
 | `service/frontend/i18n.js` | Internationalisation helpers |
 | `service/frontend/demo.js` | Landing-page demo quiz widget |
 | `service/frontend/train-answer.js` | Answer-checking/normalization helpers |
@@ -323,6 +323,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/leech.spec.js` | Browser tests: leech warning on the wrong-answer screen (keep training, back to unseen), leech threshold setting |
 | `e2e/new-word-pause.spec.js` | Browser tests: new words paused by the lapsed-words baseline and by a bad session today (accuracy baseline), lapsed baseline setting |
 | `e2e/vocab-lapsed.spec.js` | Browser tests: Vocabulary *Failed last review* chip and reset from the edit sheet |
+| `e2e/tag-groups.spec.js` | Browser tests: tag groups (OR in a group, AND between groups) in the Train session sheet and the Vocabulary filter, ⓘ explanation next to every tag field, phone layout |
 | `e2e/answer-buckets.spec.js` | Browser tests: answer and help buckets from pinyin seen/tapped and sound played/pressed, autoplay (and autoplay blocked by blurred pinyin), accept-correct removes the error |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |

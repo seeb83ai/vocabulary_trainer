@@ -37,6 +37,31 @@ func TestWordsList_Search(t *testing.T) {
 	}
 }
 
+// Tags with the same prefix are OR'd, different prefixes are AND'd.
+func TestWordsList_TagGroups(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	for zh, tags := range map[string][]string{
+		"米饭": {"hsk3-1", "topic-food"},
+		"面条": {"hsk2-2", "topic-food"},
+		"你好": {"hsk3-1"},
+		"苹果": {"topic-food"},
+	} {
+		rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+			ZhText: zh, Translations: map[string][]string{"en": {zh}}, Tags: tags,
+		})
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("create %s: want 201, got %d: %s", zh, rec.Code, rec.Body)
+		}
+	}
+
+	rec := do(t, r, "GET", "/api/words?tags=hsk3-1,hsk2-2,topic-food", nil)
+	var resp models.WordListResponse
+	decodeJSON(t, rec, &resp)
+	if resp.Total != 2 {
+		t.Errorf("(hsk3-1 OR hsk2-2) AND topic-food: want 2, got %d", resp.Total)
+	}
+}
+
 func TestWordsCreate_Valid(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{

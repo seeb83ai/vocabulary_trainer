@@ -1067,3 +1067,16 @@ func TestResetWordProgress_ClearsLapsesAndTodaysMistake(t *testing.T) {
 		t.Errorf("today's mistakes: want none, got %+v", wrong)
 	}
 }
+
+func TestGetStats_TagGroupsAndAcrossGroups(t *testing.T) {
+	s := openTestDB(t)
+	seedTagGroupWords(t, s)
+
+	_, total, _, err := s.GetStats(context.Background(), int64(2), []string{"hsk3-1", "hsk2-2", "topic-food"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 2 {
+		t.Errorf("(hsk3-1 OR hsk2-2) AND topic-food total: want 2, got %d", total)
+	}
+}

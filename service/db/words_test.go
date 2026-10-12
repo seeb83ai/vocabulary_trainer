@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -2787,5 +2788,86 @@ func TestGetWords_DueFilterLapsed(t *testing.T) {
 	}
 	if total != 1 || len(words) != 1 || words[0].ID != lapsed {
 		t.Errorf("due=lapsed: want only 记住, got total=%d %+v", total, words)
+	}
+}
+
+func TestTagGroupKey(t *testing.T) {
+	cases := map[string]string{
+		"hsk3-1":       "hsk",
+		"hsk2-6":       "hsk",
+		"HSK3-2":       "hsk",
+		"topic-food":   "topic",
+		"Topic-travel": "topic",
+		"chapter-3-a":  "chapter",
+		"lesson1":      "",
+		"my words":     "",
+		"-odd":         "",
+	}
+	for name, want := range cases {
+		if got := tagGroupKey(name); got != want {
+			t.Errorf("tagGroupKey(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// seedTagGroupWords seeds words for the tag group tests: 米饭 and 面条 carry an
+// HSK tag and topic-food, 你好 only an HSK tag, 苹果 only topic-food, 鞋 and
+// 书 only a custom tag without "-".
+func seedTagGroupWords(t *testing.T, s *Store) {
+	t.Helper()
+	seedWordWithTags(t, s, "米饭", "", []string{"rice"}, []string{"hsk3-1", "topic-food"})
+	seedWordWithTags(t, s, "面条", "", []string{"noodles"}, []string{"hsk2-2", "topic-food"})
+	seedWordWithTags(t, s, "你好", "", []string{"hello"}, []string{"hsk3-1"})
+	seedWordWithTags(t, s, "苹果", "", []string{"apple"}, []string{"topic-food"})
+	seedWordWithTags(t, s, "鞋", "", []string{"shoe"}, []string{"lesson1"})
+	seedWordWithTags(t, s, "书", "", []string{"book"}, []string{"lesson2"})
+}
+
+func TestGetWords_TagGroups(t *testing.T) {
+	s := openTestDB(t)
+	seedTagGroupWords(t, s)
+
+	cases := []struct {
+		tags []string
+		want []string
+	}{
+		// OR inside a group; hsk2 and hsk3 are one group.
+		{[]string{"hsk3-1", "hsk2-2"}, []string{"你好", "米饭", "面条"}},
+		// AND across groups.
+		{[]string{"hsk3-1", "topic-food"}, []string{"米饭"}},
+		{[]string{"hsk3-1", "hsk2-2", "topic-food"}, []string{"米饭", "面条"}},
+		// Tags without "-" are one group (OR).
+		{[]string{"lesson1", "lesson2"}, []string{"书", "鞋"}},
+		{[]string{"lesson1", "topic-food"}, nil},
+	}
+	for _, c := range cases {
+		words, total, err := s.GetWords(context.Background(), int64(2), "", 1, 20, "zh", "asc", c.tags, false, false, "", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, w := range words {
+			got = append(got, w.ZhText)
+		}
+		sort.Strings(got)
+		want := append([]string(nil), c.want...)
+		sort.Strings(want)
+		if strings.Join(got, ",") != strings.Join(want, ",") || total != len(want) {
+			t.Errorf("tags %v: got %v (total %d), want %v", c.tags, got, total, want)
+		}
+	}
+}
+
+func TestGetNextCard_TagGroupsAndAcrossGroups(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedTagGroupWords(t, s)
+
+	w, _, _, err := s.GetNextCard(ctx, int64(2), []string{"hsk3-1", "topic-food"}, 100, "", false, nil, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.Text != "米饭" {
+		t.Fatalf("expected 米饭 (hsk3-1 AND topic-food), got %+v", w)
 	}
 }
