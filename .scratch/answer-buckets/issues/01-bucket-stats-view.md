@@ -13,6 +13,10 @@ Show the user how often they are wrong in each answer bucket (`zh_only`, `pinyin
 `voice`, `voice_only`, `to_zh`). The user must see where they are weak, for example
 "voice only: 40 % wrong, hanzi only: 12 % wrong".
 
+Also show how often the user chose a help: reveal rate
+(`pinyin_revealed` / `pinyin_reveal_offered`) and play rate (`play_pressed` /
+`play_offered`), and the error rate with and without the help.
+
 ## Rules from the tracking design
 
 - Last 30 days by day: read only `answer_stats_daily`.

@@ -101,3 +101,33 @@ func TestAcceptCorrect_RemovesBucketError(t *testing.T) {
 		t.Errorf("buckets: got %v, want %v", got, want)
 	}
 }
+
+func TestQuizAnswer_RecordsHelpBuckets(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	st, err := s.GetUserSettings(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetUserSettings: %v", err)
+	}
+	st.BlurPinyin = true
+	if err := s.UpdateUserSettings(ctx, 2, *st); err != nil {
+		t.Fatalf("UpdateUserSettings: %v", err)
+	}
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhPinyinToTransl, Answer: "wrong",
+		PinyinSeen: boolPtr(true), AudioPlayed: boolPtr(true), PlayPressed: boolPtr(false),
+	})
+
+	wrong := db.AnswerBucketCount{Attempts: 1, Errors: 1}
+	want := map[string]db.AnswerBucketCount{
+		"pinyin": wrong, "voice": wrong,
+		"pinyin_reveal_offered": wrong, "pinyin_revealed": wrong,
+		"play_offered": wrong,
+	}
+	if got := todayBuckets(t, s, id); !reflect.DeepEqual(got, want) {
+		t.Errorf("buckets: got %v, want %v", got, want)
+	}
+}

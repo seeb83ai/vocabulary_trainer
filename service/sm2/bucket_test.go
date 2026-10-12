@@ -50,3 +50,46 @@ func deref(b *bool) any {
 	}
 	return *b
 }
+
+func TestHelpBuckets(t *testing.T) {
+	yes, no := true, false
+	cases := []struct {
+		name             string
+		mode             string
+		pinyinSeen       *bool
+		playPressed      *bool
+		hasPinyin        bool
+		blurPinyin       bool
+		voiceUnavailable bool
+		want             []string
+	}{
+		{"blurred pinyin tapped", models.ModeZhPinyinToTransl, &yes, nil, true, true, false,
+			[]string{BucketPinyinRevealOffered, BucketPinyinRevealed}},
+		{"blurred pinyin not tapped", models.ModeZhPinyinToTransl, &no, nil, true, true, false,
+			[]string{BucketPinyinRevealOffered}},
+		{"pinyin not blurred: no reveal offered", models.ModeZhPinyinToTransl, &yes, nil, true, false, false, nil},
+		{"word without pinyin: no reveal offered", models.ModeZhPinyinToTransl, &no, nil, false, true, false, nil},
+		{"old client without pinyin flag", models.ModeZhPinyinToTransl, nil, nil, true, true, false, nil},
+		{"zh_to_transl, play pressed", models.ModeZhToTransl, nil, &yes, true, true, false,
+			[]string{BucketPlayOffered, BucketPlayPressed}},
+		{"zh_to_transl, play not pressed", models.ModeZhToTransl, nil, &no, true, false, false,
+			[]string{BucketPlayOffered}},
+		{"pinyin mode, revealed and play pressed", models.ModeZhPinyinToTransl, &yes, &yes, true, true, false,
+			[]string{BucketPinyinRevealOffered, BucketPinyinRevealed, BucketPlayOffered, BucketPlayPressed}},
+		{"voice_to_transl: sound is the question", models.ModeVoiceToTransl, nil, &yes, true, false, false, nil},
+		{"voice_to_transl with voice unavailable shows play", models.ModeVoiceToTransl, nil, &yes, true, false, true,
+			[]string{BucketPlayOffered, BucketPlayPressed}},
+		{"no_sound: no play button", models.ModeZhToTranslNoSound, nil, &yes, true, false, false, nil},
+		{"transl_to_zh: no help", models.ModeTranslToZh, &yes, &yes, true, true, false, nil},
+		{"old client without play flag", models.ModeZhToTransl, nil, nil, true, false, false, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := HelpBuckets(c.mode, c.pinyinSeen, c.playPressed, c.hasPinyin, c.blurPinyin, c.voiceUnavailable)
+			if !reflect.DeepEqual(got, c.want) {
+				t.Errorf("HelpBuckets(%q, %v, %v, hasPinyin=%v, blur=%v, voiceUnavailable=%v) = %v, want %v",
+					c.mode, deref(c.pinyinSeen), deref(c.playPressed), c.hasPinyin, c.blurPinyin, c.voiceUnavailable, got, c.want)
+			}
+		})
+	}
+}

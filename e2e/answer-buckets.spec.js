@@ -4,6 +4,9 @@ import { getTodayAnswerBuckets } from './helpers/db.js';
 
 // Answer buckets record the help the user had before answering: pinyin
 // seen (shown, or blurred and tapped) and audio played (button or autoplay).
+// Help buckets record if a pinyin reveal or play was offered and used.
+const wrong = { attempts: 1, errors: 1 };
+
 test.describe('Answer buckets', () => {
   async function setup(page, { blurPinyin }) {
     const email = `e2e-buckets-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
@@ -46,8 +49,7 @@ test.describe('Answer buckets', () => {
     await answerWrong(page);
 
     expect(getTodayAnswerBuckets(email, '橙子')).toEqual({
-      pinyin: { attempts: 1, errors: 1 },
-      voice: { attempts: 1, errors: 1 },
+      pinyin: wrong, voice: wrong, play_offered: wrong, play_pressed: wrong,
     });
   });
 
@@ -56,7 +58,7 @@ test.describe('Answer buckets', () => {
     await answerWrong(page);
 
     expect(getTodayAnswerBuckets(email, '橙子')).toEqual({
-      pinyin: { attempts: 1, errors: 1 },
+      pinyin: wrong, play_offered: wrong,
     });
   });
 
@@ -65,7 +67,7 @@ test.describe('Answer buckets', () => {
     await answerWrong(page);
 
     expect(getTodayAnswerBuckets(email, '橙子')).toEqual({
-      zh_only: { attempts: 1, errors: 1 },
+      zh_only: wrong, pinyin_reveal_offered: wrong, play_offered: wrong,
     });
   });
 
@@ -75,7 +77,7 @@ test.describe('Answer buckets', () => {
     await answerWrong(page);
 
     expect(getTodayAnswerBuckets(email, '橙子')).toEqual({
-      pinyin: { attempts: 1, errors: 1 },
+      pinyin: wrong, pinyin_reveal_offered: wrong, pinyin_revealed: wrong, play_offered: wrong,
     });
   });
 
@@ -91,8 +93,9 @@ test.describe('Answer buckets', () => {
     await page.locator('#accept-correct-btn').click();
     expect((await acceptRes).status()).toBe(200);
 
+    const accepted = { attempts: 1, errors: 0 };
     expect(getTodayAnswerBuckets(email, '橙子')).toEqual({
-      zh_only: { attempts: 1, errors: 0 },
+      zh_only: accepted, pinyin_reveal_offered: accepted, play_offered: accepted,
     });
   });
 });

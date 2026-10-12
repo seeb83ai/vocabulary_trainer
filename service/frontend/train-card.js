@@ -163,7 +163,7 @@ let questionAutoPlayed = false;
 // True once the user pressed play on the question screen of the current card.
 let questionAudioPlayed = false;
 // The help the user had before the last word answer (pinyin seen, audio
-// played) and whether it was a drill answer. Sent with the answer and again
+// played, play pressed by the user) and whether it was a drill answer. Sent with the answer and again
 // with accept-correct, so the server counts both in the same answer buckets.
 let answerHelp = {};
 
@@ -638,6 +638,7 @@ async function submitAnswer(e) {
       drill: difficultDrill,
       pinyin_seen: !pinyinEl.classList.contains('hidden') && !pinyinEl.classList.contains('blur-sm'),
       audio_played: questionAutoPlayed || questionAudioPlayed,
+      play_pressed: questionAudioPlayed,
     };
     const result = await apiFetch('/api/quiz/answer', {
       method: 'POST',

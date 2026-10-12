@@ -578,8 +578,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !req.Drill {
-		voiceUnavailable := userSettings != nil && userSettings.VoiceUnavailable
-		if buckets := sm2.AnswerBuckets(req.Mode, req.PinyinSeen, req.AudioPlayed, voiceUnavailable); len(buckets) > 0 {
+		if buckets := answerBuckets(req.Mode, req.PinyinSeen, req.AudioPlayed, req.PlayPressed, zhWord, userSettings); len(buckets) > 0 {
 			if err := h.Store.RecordAnswerBuckets(ctx, UserIDFromContext(ctx), req.WordID, buckets, correct); err != nil {
 				log.Printf("answer: RecordAnswerBuckets word %d: %v", req.WordID, err)
 			}
@@ -733,8 +732,7 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 	_ = h.Store.ClearDrillFlag(ctx, req.WordID)
 
 	if !req.Drill {
-		voiceUnavailable := userSettings != nil && userSettings.VoiceUnavailable
-		if buckets := sm2.AnswerBuckets(req.Mode, req.PinyinSeen, req.AudioPlayed, voiceUnavailable); len(buckets) > 0 {
+		if buckets := answerBuckets(req.Mode, req.PinyinSeen, req.AudioPlayed, req.PlayPressed, zhWord, userSettings); len(buckets) > 0 {
 			if err := h.Store.AcceptAnswerBuckets(ctx, userID, req.WordID, buckets); err != nil {
 				log.Printf("accept-correct: AcceptAnswerBuckets word %d: %v", req.WordID, err)
 			}
@@ -792,6 +790,14 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.SceneText, _ = h.Store.GetHMMSceneText(ctx, req.WordID)
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// answerBuckets returns the answer and help buckets of a word answer.
+func answerBuckets(mode string, pinyinSeen, audioPlayed, playPressed *bool, word *models.WordDetail, st *models.UserSettings) []string {
+	voiceUnavailable := st != nil && st.VoiceUnavailable
+	blurPinyin := st != nil && st.BlurPinyin
+	buckets := sm2.AnswerBuckets(mode, pinyinSeen, audioPlayed, voiceUnavailable)
+	return append(buckets, sm2.HelpBuckets(mode, pinyinSeen, playPressed, derefPinyin(word.Pinyin) != "", blurPinyin, voiceUnavailable)...)
 }
 
 // RecordTime accumulates focused training seconds for today's daily stats.
