@@ -671,6 +671,7 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		models.ModeZhToTransl:        true,
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
+		models.ModeVoiceToTransl:     true,
 	}
 	if !validModes[req.Mode] && req.Mode != "" {
 		writeError(w, http.StatusBadRequest, "invalid mode")
