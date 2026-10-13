@@ -48,6 +48,7 @@ async function registerUserWithSentence(page) {
     },
   });
   expect(sentenceRes.ok()).toBeTruthy();
+  const sentenceId = (await sentenceRes.json()).id;
 
   const settingsRes = await page.request.get('/api/settings');
   expect(settingsRes.ok()).toBeTruthy();
@@ -57,7 +58,7 @@ async function registerUserWithSentence(page) {
   });
   expect(patchRes.ok()).toBeTruthy();
 
-  return { email, idToZh };
+  return { email, idToZh, sentenceId };
 }
 
 test.describe('Sentence-blank training mode', () => {
@@ -227,5 +228,93 @@ test.describe('Sentence-blank training mode', () => {
 
     expect(card.card_type).not.toBe('sentence');
     expect(Object.keys(idToZh).map(Number)).toContain(card.word_id);
+  });
+
+  // issue #557: the result screen shows the full sentence (answer word
+  // marked) and its translation above the word, with a speaker button that
+  // reads out the whole sentence.
+  test('the result screen shows the full sentence with a speaker button (issue #557)', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(new URL(route.request().url()).pathname);
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    const { idToZh, sentenceId } = await registerUserWithSentence(page);
+    const card = await (await page.request.get('/api/quiz/next?langs=en')).json();
+    const correctZh = idToZh[card.word_id];
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#result-sentence')).toBeHidden();
+
+    await page.locator('#answer-input').fill(correctZh);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 8_000 });
+
+    const block = page.locator('#result-sentence');
+    await expect(block).toBeVisible();
+    await expect(block.locator('.tr-sentence-zh')).toHaveText('我买牛奶');
+    await expect(block.locator('.tr-sentence-zh mark')).toHaveText(correctZh);
+    await expect(block.locator('.tr-sentence-transl')).toHaveText('I buy milk');
+    // The sentence sits above the answer word.
+    const blockBox = await block.boundingBox();
+    const wordBox = await page.locator('#word-breakdown .result-word').boundingBox();
+    expect(blockBox.y).toBeLessThan(wordBox.y);
+    await captureForPR(page, 'sentence-result-correct');
+
+    await block.locator('.result-sentence-play').click();
+    await expect.poll(() => audioRequests).toContain(`/api/audio/${sentenceId}`);
+  });
+
+  test('a wrong answer also shows the full sentence (issue #557)', async ({ page }) => {
+    await registerUserWithSentence(page);
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Not quite', { timeout: 8_000 });
+
+    await expect(page.locator('#result-sentence')).toBeVisible();
+    await expect(page.locator('#result-sentence .tr-sentence-zh')).toHaveText('我买牛奶');
+    await expect(page.locator('#result-sentence .tr-sentence-transl')).toHaveText('I buy milk');
+    await captureForPR(page, 'sentence-result-wrong');
+  });
+
+  test('auto-play reads out the full sentence on the result screen (issue #557)', async ({ page }) => {
+    const audioRequests = [];
+    await page.route('**/api/audio/**', (route) => {
+      audioRequests.push(new URL(route.request().url()).pathname);
+      route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) });
+    });
+
+    const { idToZh, sentenceId } = await registerUserWithSentence(page);
+    const card = await (await page.request.get('/api/quiz/next?langs=en')).json();
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#autoplay-toggle-btn').click();
+    await expect(page.locator('#autoplay-toggle-btn')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.locator('#answer-input').fill(idToZh[card.word_id]);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+
+    await expect.poll(() => audioRequests.length, { timeout: 5_000 }).toBeGreaterThan(0);
+    expect(audioRequests[0]).toBe(`/api/audio/${sentenceId}`);
+  });
+
+  test('a normal word card result shows no sentence block (issue #557)', async ({ page }) => {
+    await registerUserWithSentence(page);
+    const settings = await (await page.request.get('/api/settings')).json();
+    await page.request.patch('/api/settings', { data: { ...settings, sentence_blank_enabled: false } });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('xxxxxxxxxxx');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-sentence')).toBeHidden();
   });
 });

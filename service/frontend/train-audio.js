@@ -68,9 +68,18 @@ function shouldAutoPlayResult(currentCard, autoPlayEnabled, alreadyPlayed) {
   return !alreadyPlayed;
 }
 
-// autoPlayResultAudio plays the solved word's/component's Chinese audio on
-// the result screen when eligible (see shouldAutoPlayResult), cutting off
-// any still-playing previous clip.
+// resultAudioTarget picks what the result screen reads out: the full
+// sentence for sentence-blank cards (issue #557), else the solved word.
+function resultAudioTarget(currentCard, zhText) {
+  if (currentCard.card_type === 'sentence' && currentCard.sentence_id) {
+    return { id: currentCard.sentence_id, text: currentCard.sentence_text };
+  }
+  return { id: currentCard.word_id, text: zhText };
+}
+
+// autoPlayResultAudio plays the solved word's/component's Chinese audio (the
+// full sentence for sentence-blank cards) on the result screen when eligible
+// (see shouldAutoPlayResult), cutting off any still-playing previous clip.
 function autoPlayResultAudio(currentCard, result) {
   if (!shouldAutoPlayResult(currentCard, autoPlayEnabled, questionAutoPlayed)) return;
   if (currentAutoPlayAudio) {
@@ -78,9 +87,10 @@ function autoPlayResultAudio(currentCard, result) {
     currentAutoPlayAudio = null;
   }
   questionAutoPlayed = true; // avoid double-firing if called again for the same card
+  const target = resultAudioTarget(currentCard, result.zh_text);
   currentAutoPlayAudio = currentCard.card_type === 'component'
     ? playComponentAudio(currentCard.prompt)
-    : playAudio(currentCard.word_id, result.zh_text);
+    : playAudio(target.id, target.text);
 }
 
 // applyPinyinBlur blurs the pinyin hint (if the user enabled the setting)

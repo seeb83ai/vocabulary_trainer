@@ -224,7 +224,7 @@ func TestFindSentenceBlank_TagFilterRestrictsToTrainedWords(t *testing.T) {
 func TestNextSentenceBlankCard_ZhBlankDirection(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	wo, mai, niunai, _ := seedSentenceScenario(t, s)
+	wo, mai, niunai, sentence := seedSentenceScenario(t, s)
 	now := time.Now().UTC()
 	markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))
 	// totalAttempts=1 (<3) → SelectProgressiveMode returns cfg.New → default transl_to_zh.
@@ -255,12 +255,28 @@ func TestNextSentenceBlankCard_ZhBlankDirection(t *testing.T) {
 	if card.SentenceContext != "I buy milk" {
 		t.Errorf("want context %q, got %q", "I buy milk", card.SentenceContext)
 	}
+	assertFullSentence(t, card, sentence)
+}
+
+// assertFullSentence checks the full-sentence fields the result screen shows
+// above the answer word (issue #557), whichever side was blanked.
+func assertFullSentence(t *testing.T, card *models.QuizCard, sentenceID int64) {
+	t.Helper()
+	if card.SentenceID != sentenceID {
+		t.Errorf("want sentence_id=%d, got %d", sentenceID, card.SentenceID)
+	}
+	if card.SentenceText != "我买牛奶" {
+		t.Errorf("want sentence_text 我买牛奶, got %q", card.SentenceText)
+	}
+	if card.SentenceTranslation != "I buy milk" {
+		t.Errorf("want sentence_translation %q, got %q", "I buy milk", card.SentenceTranslation)
+	}
 }
 
 func TestNextSentenceBlankCard_TranslationBlankDirection(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
-	wo, mai, niunai, _ := seedSentenceScenario(t, s)
+	wo, mai, niunai, sentence := seedSentenceScenario(t, s)
 	now := time.Now().UTC()
 	markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))
 	markReviewed(t, s, mai, 1, 1, now.Add(2*time.Hour))
@@ -290,6 +306,7 @@ func TestNextSentenceBlankCard_TranslationBlankDirection(t *testing.T) {
 	if card.SentenceContext != "我买牛奶" {
 		t.Errorf("want context 我买牛奶, got %q", card.SentenceContext)
 	}
+	assertFullSentence(t, card, sentence)
 }
 
 func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *testing.T) {

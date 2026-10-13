@@ -135,6 +135,38 @@ function resultWordBlockHTML(zh, pinyin, meanings) {
     </div>`;
 }
 
+// sentenceHighlightHTML escapes the full sentence and marks the first
+// occurrence of the answer word — the same one the question screen blanked.
+function sentenceHighlightHTML(sentence, word) {
+  const i = word ? sentence.indexOf(word) : -1;
+  if (i === -1) return escHtml(sentence);
+  return escHtml(sentence.slice(0, i)) + `<mark>${escHtml(word)}</mark>` +
+    escHtml(sentence.slice(i + word.length));
+}
+
+// renderResultSentence shows the full sentence, its translation and a
+// speaker button above the answer word on sentence-blank results (issue
+// #557); hidden for every other card.
+function renderResultSentence(zhText) {
+  if (currentCard.card_type !== 'sentence' || !currentCard.sentence_text) {
+    hide('result-sentence');
+    return;
+  }
+  const el = $('result-sentence');
+  const transl = currentCard.sentence_translation
+    ? `<div class="tr-sentence-transl">${escHtml(currentCard.sentence_translation)}</div>` : '';
+  el.innerHTML = `<div class="tr-word-row">
+      <div class="tr-word-main">
+        <div class="tr-sentence-zh font-hanzi">${sentenceHighlightHTML(currentCard.sentence_text, zhText)}</div>
+        ${transl}
+      </div>
+      ${speakerButtonHTML('result-sentence-play', true)}
+    </div>`;
+  const { sentence_id: id, sentence_text: text } = currentCard;
+  el.querySelector('.result-sentence-play').addEventListener('click', () => playAudio(id, text));
+  show('result-sentence');
+}
+
 // nextDueText turns the answer's interval into the status-row text.
 function nextDueText(result) {
   if (result.graduated) return t('result.graduated');
@@ -199,6 +231,7 @@ function renderWordAnswerResult(result, answer) {
 
   const renderCorrect = () => {
     setResultHead('correct');
+    renderResultSentence(result.zh_text);
     breakdown.innerHTML = resultWordBlockHTML(result.zh_text, pinyin, meanings) + moreInfoBoxHTML(moreTexts, 'result-more-info');
     wireDisclosures(breakdown);
     breakdown.querySelector('.result-inline-play')?.addEventListener('click', playWord);
@@ -288,6 +321,7 @@ function renderWordAnswerResult(result, answer) {
     const renderWrongResult = () => {
       hide('result-question');
       hide('result-subtitle');
+      renderResultSentence(result.zh_text);
       if (cw && !isEmpty) {
         setResultHead('mixup');
         breakdown.innerHTML = mixupHtml();
@@ -611,6 +645,7 @@ function showSkipResult(resp) {
   show('result-area');
   hide('result-subtitle');
   setResultHead('skipped');
+  renderResultSentence(resp.zh_text);
 
   const breakdown = $('word-breakdown');
   if (currentCard.card_type === 'hmm') {

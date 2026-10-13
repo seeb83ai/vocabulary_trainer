@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -58,6 +59,7 @@ func TestQuizNext_SentenceBlank_ServedWhenEnabledAndEligible(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
 	}
+	body := rec.Body.String()
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
 	if card.CardType != "sentence" {
@@ -68,6 +70,20 @@ func TestQuizNext_SentenceBlank_ServedWhenEnabledAndEligible(t *testing.T) {
 	}
 	if !strings.Contains(card.SentenceBlank, "___") {
 		t.Errorf("sentence_blank should contain a blank marker, got %q", card.SentenceBlank)
+	}
+	// issue #557: the full sentence for the result screen.
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(body), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if id, _ := raw["sentence_id"].(float64); id <= 0 {
+		t.Errorf("sentence_id should be positive, got %v", raw["sentence_id"])
+	}
+	if raw["sentence_text"] != "我买牛奶" {
+		t.Errorf("want sentence_text 我买牛奶, got %v", raw["sentence_text"])
+	}
+	if raw["sentence_translation"] != "I buy milk" {
+		t.Errorf("want sentence_translation %q, got %v", "I buy milk", raw["sentence_translation"])
 	}
 }
 

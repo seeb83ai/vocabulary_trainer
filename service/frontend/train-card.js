@@ -282,6 +282,7 @@ async function loadNextCard(trackCurrent = false) {
   hide('new-word-area');
   hide('new-component-area');
   hide('result-question');
+  hide('result-sentence');
   hide('result-decompose');
   hide('result-decompose-content');
   hide('bucket-info');

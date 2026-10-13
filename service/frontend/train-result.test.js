@@ -296,3 +296,34 @@ describe('allTransTexts', () => {
     expect(texts).toEqual([]);
   });
 });
+
+// ── Full sentence on the result screen (issue #557) ──────────────────────────
+
+function sentenceHighlightHTML(sentence, word) {
+  const i = word ? sentence.indexOf(word) : -1;
+  if (i === -1) return escHtml(sentence);
+  return escHtml(sentence.slice(0, i)) + `<mark>${escHtml(word)}</mark>` +
+    escHtml(sentence.slice(i + word.length));
+}
+
+describe('sentenceHighlightHTML', () => {
+  it('marks the answer word inside the sentence', () => {
+    expect(sentenceHighlightHTML('我买牛奶', '买')).toBe('我<mark>买</mark>牛奶');
+  });
+
+  it('marks only the first occurrence, like the blank on the question screen', () => {
+    expect(sentenceHighlightHTML('我买，你买', '买')).toBe('我<mark>买</mark>，你买');
+  });
+
+  it('returns the plain sentence when the word is not in it', () => {
+    expect(sentenceHighlightHTML('我买牛奶', '茶')).toBe('我买牛奶');
+  });
+
+  it('returns the plain sentence when there is no word', () => {
+    expect(sentenceHighlightHTML('我买牛奶', '')).toBe('我买牛奶');
+  });
+
+  it('escapes HTML in the sentence and the word', () => {
+    expect(sentenceHighlightHTML('<b>我</b>', '我')).toBe('&lt;b&gt;<mark>我</mark>&lt;/b&gt;');
+  });
+});
