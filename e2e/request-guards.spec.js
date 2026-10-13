@@ -148,3 +148,78 @@ test.describe('Request guards – Train', () => {
     await expect(page.locator('#error-msg')).toHaveText(TIMEOUT_TEXT);
   });
 });
+
+test.describe('Request guards – Vocabulary', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+
+  test('a double tap on Save adds the word once', async ({ page }) => {
+    await registerUser(page);
+    await page.goto('/vocab');
+    await page.locator('#open-add-btn').click();
+    await page.locator('#form-zh').fill('水');
+    await page.locator('#en-inputs-container .en-input').first().fill('water');
+    await page.locator('#form-start-training').check();
+
+    let posts = 0;
+    await page.route('**/api/words', async route => {
+      if (route.request().method() === 'POST') {
+        posts++;
+        await new Promise(r => setTimeout(r, 600));
+      }
+      await route.continue();
+    });
+    await page.locator('#word-form button[type="submit"]').dblclick();
+
+    await expect(page.locator('#vocab-sheet')).toBeHidden({ timeout: 8_000 });
+    await expect(page.locator('#words-tbody .vb-row', { hasText: '水' })).toHaveCount(1);
+    expect(posts).toBe(1);
+  });
+
+  test('fast search typing shows only the newest results', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await seed(page, '你们', 'nǐmen', ['you']);
+    await page.goto('/vocab');
+    await expect(page.locator('#words-tbody .vb-row')).toHaveCount(2, { timeout: 10_000 });
+
+    // The older search ("你") answers late, with a marked first row.
+    await page.route('**/api/words?**', async route => {
+      const q = new URL(route.request().url()).searchParams.get('q');
+      if (q !== '你') return route.continue();
+      const res = await route.fetch();
+      const data = await res.json();
+      await new Promise(r => setTimeout(r, 1_500));
+      data.words[0].zh_text = '旧旧';
+      await route.fulfill({ response: res, json: data });
+    });
+    await page.locator('#search-input').fill('你');
+    await page.waitForTimeout(500);
+    await page.locator('#search-input').fill('你好');
+
+    const rows = page.locator('#words-tbody .vb-row');
+    await expect(rows).toHaveCount(1, { timeout: 8_000 });
+    await expect(rows.first()).toContainText('你好');
+    await page.waitForTimeout(2_000);
+    await expect(rows).toHaveCount(1);
+    await expect(page.locator('#words-tbody')).not.toContainText('旧旧');
+  });
+
+  test('Translate waits for the slow-call timeout, then shows a toast', async ({ page }) => {
+    await registerUser(page);
+    await page.clock.install();
+    await page.goto('/vocab');
+    await page.locator('#open-add-btn').click();
+    await page.locator('#form-zh').fill('水');
+    await expect(page.locator('#translate-btn')).toBeVisible();
+
+    await hang(page, '**/api/translate');
+    await page.locator('#translate-btn').click();
+    await expect(page.locator('#translate-btn')).toBeDisabled();
+    // The default 15 s timeout doesn't apply: DeepL may take longer.
+    await page.clock.fastForward(16_000);
+    await expect(page.locator('#translate-btn')).toBeDisabled();
+    await page.clock.fastForward(45_000);
+    await expect(page.locator('[data-testid="toast"]')).toContainText(TIMEOUT_TEXT);
+    await expect(page.locator('#translate-btn')).toBeEnabled();
+  });
+});

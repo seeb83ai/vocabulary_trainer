@@ -88,14 +88,27 @@ async function startListImports(selected, applyTags, mode) {
   return jobs;
 }
 
+// An import job keeps running on the server, so a poll that times out or
+// loses the network tries again on the next tick.
+function isRetryableError(err) {
+  return err?.name === 'TimeoutError' || err instanceof TypeError;
+}
+
 // waitForImport polls the jobs until until(summary) is true and returns that
 // summary. It throws when a job failed.
 async function waitForImport(jobs, until, onProgress) {
   for (;;) {
-    const summary = summarizeImportJobs(await Promise.all(jobs.map(job => apiFetch(`/api/import/jobs/${job.id}`))));
-    if (summary.failed) throw new Error(summary.error || t('empty.qsFailed'));
-    if (onProgress) onProgress(summary);
-    if (until(summary)) return summary;
+    let summary = null;
+    try {
+      summary = summarizeImportJobs(await Promise.all(jobs.map(job => apiFetch(`/api/import/jobs/${job.id}`))));
+    } catch (e) {
+      if (!isRetryableError(e)) throw e;
+    }
+    if (summary) {
+      if (summary.failed) throw new Error(summary.error || t('empty.qsFailed'));
+      if (onProgress) onProgress(summary);
+      if (until(summary)) return summary;
+    }
     await new Promise(resolve => setTimeout(resolve, IMPORT_POLL_MS));
   }
 }
@@ -141,7 +154,14 @@ async function watchActiveImports(onUpdate) {
   activeImportWatcher = true;
   try {
     for (;;) {
-      const jobs = await apiFetch('/api/import/jobs');
+      let jobs;
+      try {
+        jobs = await apiFetch('/api/import/jobs');
+      } catch (e) {
+        if (!isRetryableError(e)) throw e;
+        await new Promise(resolve => setTimeout(resolve, IMPORT_POLL_MS));
+        continue;
+      }
       if (!jobs || !jobs.length) {
         onUpdate(null);
         return;

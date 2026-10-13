@@ -46,6 +46,10 @@ let csvUploadTags = [];
 let csvUploadWordCount = 0;
 let csvUploadFile = null;
 
+// Search and filters reload the list; the newest request wins, so older
+// results can't render over newer ones.
+const wordsRequest = latestRequest();
+
 async function loadWords() {
   const params = new URLSearchParams({
     q: searchQuery,
@@ -75,12 +79,13 @@ async function loadWords() {
     params.set('missing_lang', missingLangFilter);
   }
   try {
-    const data = await apiFetch(`/api/words?${params}`);
+    const data = await apiFetch(`/api/words?${params}`, { signal: wordsRequest() });
     updateFilterChips();
     renderTable(data.words);
     renderPagination(data.total, data.page, data.per_page);
   } catch (e) {
-    alert('Failed to load words: ' + e.message);
+    if (isAbortError(e)) return;
+    showToastError(e.message);
   }
 }
 
@@ -558,28 +563,24 @@ document.addEventListener('DOMContentLoaded', () => {
     closeVocabSheet();
   });
 
-  $('form-delete-btn').addEventListener('click', async () => {
+  $('form-delete-btn').addEventListener('click', () => withBusyButton($('form-delete-btn'), async () => {
     if (!editingWordId) return;
     if (await deleteWord(editingWordId)) {
       resetForm();
       closeVocabSheet();
     }
-  });
+  }));
 
-  $('form-reset-btn').addEventListener('click', () => {
-    resetWordProgress();
-  });
+  $('form-reset-btn').addEventListener('click', () => withBusyButton($('form-reset-btn'), resetWordProgress));
 
-  $('form-known-btn').addEventListener('click', () => {
-    toggleWordKnown();
-  });
+  $('form-known-btn').addEventListener('click', () => withBusyButton($('form-known-btn'), toggleWordKnown));
 
   $('form-library-reset-btn').addEventListener('click', () => {
     show('library-reset-confirm');
     $('library-reset-confirm').scrollIntoView({ block: 'nearest' });
   });
   $('library-reset-cancel').addEventListener('click', () => hide('library-reset-confirm'));
-  $('library-reset-apply').addEventListener('click', () => resetToLibrary());
+  $('library-reset-apply').addEventListener('click', () => withBusyButton($('library-reset-apply'), resetToLibrary));
 
   $('view-words-btn').addEventListener('click', () => { if (currentView !== 'words') switchView('words'); });
   $('view-components-btn').addEventListener('click', () => { if (currentView !== 'components') switchView('components'); });
@@ -668,7 +669,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (currentView === 'components') loadComponents();
     } catch (e) {
-      alert('Failed to save: ' + e.message);
+      showToastError(e.message);
     } finally {
       btn.disabled = false;
     }

@@ -584,3 +584,37 @@ describe('groupTags', () => {
     expect(groupTags([])).toEqual([]);
   });
 });
+
+// ── timeoutSignal ────────────────────────────────────────────────────────────
+// Inlined from app.js: the signal for direct fetch calls that skip apiFetch.
+
+function timeoutSignal(ms = API_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  setTimeout(() => {
+    const err = new Error(t('api.timeout'));
+    err.name = 'TimeoutError';
+    ctrl.abort(err);
+  }, ms);
+  return ctrl.signal;
+}
+
+describe('timeoutSignal', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('aborts with a TimeoutError after the default 15 s', () => {
+    const signal = timeoutSignal();
+    vi.advanceTimersByTime(API_TIMEOUT_MS - 1);
+    expect(signal.aborted).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(signal.aborted).toBe(true);
+    expect(isTimeoutError(signal.reason)).toBe(true);
+    expect(signal.reason.message).toBe('api.timeout');
+  });
+
+  it('uses the given time', () => {
+    const signal = timeoutSignal(5000);
+    vi.advanceTimersByTime(5000);
+    expect(signal.aborted).toBe(true);
+  });
+});

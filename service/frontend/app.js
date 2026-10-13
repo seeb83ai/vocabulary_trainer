@@ -116,6 +116,19 @@ async function apiFetch(path, options = {}) {
   }
 }
 
+// The signal for a direct fetch call that can't use apiFetch (form uploads,
+// pages that handle 401 themselves). Uses setTimeout, not AbortSignal.timeout,
+// so tests can fake the clock.
+function timeoutSignal(ms = API_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  setTimeout(() => {
+    const err = new Error(t('api.timeout'));
+    err.name = 'TimeoutError';
+    ctrl.abort(err);
+  }, ms);
+  return ctrl.signal;
+}
+
 // A request cancelled by a newer one (latestRequest) — not an error to show.
 function isAbortError(err) {
   return err?.name === 'AbortError';
