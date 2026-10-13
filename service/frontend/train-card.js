@@ -18,7 +18,7 @@ let _lastGameShownAt = 0;
 let _matchGamePinyinReveal = 'always';
 let _matchGameSm2Update = 'always';
 let _matchGameShowSummary = true;
-const _settingsPromise = fetch('/api/settings').then(r => r.ok ? r.json() : null).then(st => {
+const _settingsPromise = fetch('/api/settings', { signal: timeoutSignal() }).then(r => r.ok ? r.json() : null).then(st => {
   if (st?.primary_lang) userPrimaryLang = st.primary_lang;
   userSecondaryLang = st?.secondary_lang ?? '';
   acceptCorrectMode = st?.accept_correct_mode ?? 'typo';
