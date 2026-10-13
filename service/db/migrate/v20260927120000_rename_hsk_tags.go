@@ -2,7 +2,6 @@ package migrate
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 )
 
@@ -38,51 +37,13 @@ func init() {
 				}
 			}
 
-			type setting struct {
-				userID int64
-				tags   string
-			}
-			rows, err := tx.Query(`SELECT user_id, train_tags FROM user_settings WHERE train_tags LIKE '%hsk%'`)
-			if err != nil {
-				return fmt.Errorf("read train_tags: %w", err)
-			}
-			var settings []setting
-			for rows.Next() {
-				var s setting
-				if err := rows.Scan(&s.userID, &s.tags); err != nil {
-					rows.Close()
-					return err
+			if err := renameTrainTags(tx, `%hsk%'`, func(tg string) string {
+				if n, ok := renames[tg]; ok {
+					return n
 				}
-				settings = append(settings, s)
-			}
-			rows.Close()
-			if err := rows.Err(); err != nil {
+				return tg
+			}); err != nil {
 				return err
-			}
-			for _, s := range settings {
-				var tags []string
-				if err := json.Unmarshal([]byte(s.tags), &tags); err != nil {
-					continue
-				}
-				seen := map[string]bool{}
-				out := make([]string, 0, len(tags))
-				for _, tg := range tags {
-					if n, ok := renames[tg]; ok {
-						tg = n
-					}
-					if seen[tg] {
-						continue
-					}
-					seen[tg] = true
-					out = append(out, tg)
-				}
-				b, err := json.Marshal(out)
-				if err != nil {
-					return err
-				}
-				if _, err := tx.Exec(`UPDATE user_settings SET train_tags = ? WHERE user_id = ?`, string(b), s.userID); err != nil {
-					return fmt.Errorf("update train_tags: %w", err)
-				}
 			}
 			return tx.Commit()
 		},

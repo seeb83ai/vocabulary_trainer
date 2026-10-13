@@ -2796,6 +2796,7 @@ func TestTagGroupKey(t *testing.T) {
 		"hsk3-1":       "hsk",
 		"hsk2-6":       "hsk",
 		"HSK3-2":       "hsk",
+		"hsk2-1_s":     "hsk",
 		"topic-food":   "topic",
 		"Topic-travel": "topic",
 		"chapter-3-a":  "chapter",

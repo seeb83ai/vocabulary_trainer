@@ -135,7 +135,7 @@ describe('hskVersions', () => {
   });
 
   it('ignores tags that only look similar', () => {
-    expect(hskVersions(['hsk1', 'HSK3-1', 's_hsk2-1', 'hsk3'])).toEqual([]);
+    expect(hskVersions(['hsk1', 'HSK3-1', 'hsk2-1_s', 'hsk3'])).toEqual([]);
   });
 
   it('handles an empty tag list', () => {

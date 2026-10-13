@@ -377,6 +377,7 @@ describe('tagGroupKey', () => {
   it('puts every hsk version into one group', () => {
     expect(tagGroupKey('hsk2-6')).toBe('hsk');
     expect(tagGroupKey('hsk3-1')).toBe('hsk');
+    expect(tagGroupKey('hsk2-1_s')).toBe('hsk');
     expect(tagGroupKey('HSK3-2')).toBe('hsk');
   });
 
