@@ -293,6 +293,8 @@ The app calculates the bonus as the minimum value needed to reach the target acc
 
 **Skip for Today:** Below the Submit button on the training card, a secondary **Skip for Today** button defers the current card (word, HMM mnemonic, or component) by 1 day, without recording an attempt. Use this to clear a stuck card from today's queue and try again tomorrow. If you turn on **Settings → Training → Show the answer when I skip** (off by default), a *Skipped* screen shows the answer of the card (the word with pinyin and translations, the component definitions, or the mnemonic name) before the next card. The skip still counts as no attempt.
 
+If you answer the same card wrong 3 times in a row in this session, the wrong-answer screen also shows **Skip for today** below the Next button. It defers the card by 1 day and goes to the next card. The wrong answers stay recorded. A correct answer (or *Accept as correct*) sets the count back to 0. The count is per card and starts again when you reload the page.
+
 ## Cycle mode
 
 The **Cycle** quiz mode rotates through a fixed sequence of quiz directions. By default, the position advances on every attempt, correct or wrong, so the counter is `total_attempts`. In Settings → Cycle Mode, you can switch to **advance on success only**. This mode uses `total_correct` as the counter instead, so the step stays the same until you answer correctly. A stricter **advance only if known** option uses a first-try-correct counter instead: the step only advances once you get the answer right on your *first* attempt for that encounter — a wrong guess before the correct answer keeps the step the same, even though the word is eventually marked correct.
