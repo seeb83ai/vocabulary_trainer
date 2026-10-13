@@ -529,9 +529,12 @@ test.describe('Train – auto-focus setting for the other input fields (touch de
     await syncNewWordMode(page, 'transl_to_zh');
     // transl_to_zh shows the English prompt and the due word is random, so
     // read which word the page got and answer with the other one.
-    const answerWrong = async (load) => {
+    // Leave the current page first: a /api/quiz/next still in flight there
+    // would match the wait and lose its body when the page navigates away.
+    const answerWrong = async () => {
+      await page.goto('about:blank');
       const nextResp = page.waitForResponse(r => r.url().includes('/api/quiz/next') && r.ok());
-      await load();
+      await page.goto('/train');
       const card = await (await nextResp).json();
       const wrong = card.word_id === id1 ? '认识' : '知道';
       await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
@@ -539,11 +542,11 @@ test.describe('Train – auto-focus setting for the other input fields (touch de
       await page.locator('#answer-form button[type="submit"]').click();
       await expect(page.locator('#disambig-input')).toBeVisible({ timeout: 8_000 });
     };
-    await answerWrong(() => page.goto('/train'));
+    await answerWrong();
     await expect(page.locator('#disambig-input')).not.toBeFocused();
 
     await setAutofocus(page, { autofocus_mobile: true });
-    await answerWrong(() => page.reload());
+    await answerWrong();
     await expect(page.locator('#disambig-input')).toBeFocused();
   });
 });
