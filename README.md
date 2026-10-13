@@ -169,6 +169,8 @@ MAX_BODY_BYTES=1048576   # max /api request body in bytes (default 1 MiB)
 
 The HTTP server runs with read, write, and idle timeouts, so a slow or stalled client cannot tie up the single SQLite connection. It also shuts down gracefully on `SIGINT` and `SIGTERM`, draining in-flight requests for up to 30 seconds before it exits. This lets systemd auto-restarts (see `deploy/vocab-trainer.service`) drop fewer in-flight requests.
 
+The web client has its own timeouts. A request stops after 15 seconds. Slow calls (DeepL translation, LLM scene generation, CSV upload, subword backfill and issue reports) stop after 60 seconds, the server's write timeout. When a request stops, the page shows "The server did not answer. Try again." and you can try again. A button stays disabled while its request runs, so a second tap does not send the request again. When you change a filter or a search before the last result arrives, the page shows only the newest result.
+
 The app sets a strict `Content-Security-Policy` header on every response, along with `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()`. Configure HTTPS at the reverse proxy — see `deploy/nginx.conf`, which also sets `Strict-Transport-Security`.
 
 Always deploy behind a reverse proxy, for example nginx, that sets `X-Real-IP` to the real client address. Rate limiting reads the client IP from that header. Do not expose the binary directly to the internet. The app deliberately never trusts the spoofable `X-Forwarded-For` header, so a directly-exposed binary would rate-limit on `RemoteAddr` only.
