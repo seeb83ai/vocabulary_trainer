@@ -307,7 +307,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/global-setup.js` | Builds Go binary, starts server on port 18080 with temp SQLite, seeds test user + words |
 | `e2e/global-teardown.js` | Kills server, removes temp SQLite file |
 | `e2e/helpers/api.js` | `seedWord()`, `parseSetCookieHeaders()` helpers for setup scripts |
-| `e2e/helpers/db.js` | Direct-SQLite seeding the REST API can't do (`seedYesterdayBucketSnapshot`, `seedReviewWord`, `getWordProgress`, `getTodayAnswerBuckets`) |
+| `e2e/helpers/db.js` | Direct-SQLite seeding the REST API can't do (`seedYesterdayBucketSnapshot`, `seedReviewWord`, `getWordProgress`, `getTodayAnswerBuckets`, `makeWordDueNow`, `getWordDueDate`) |
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
@@ -320,6 +320,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/train-redesign.spec.js` | Browser tests: Train session bar + session sheet, tier chip, More info box, mix-up layout, new-word card, inline match game, all-done week grid, error card |
 | `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
 | `e2e/csv-upload.spec.js` | Browser tests: CSV upload dialog — default translation source, per-row `source` column, invalid rows skipped |
+| `e2e/skip-after-wrong.spec.js` | Browser tests: *Skip for today* on the wrong-answer screen after 3 wrong answers in a row on a card; a correct or accepted answer resets the count |
 | `e2e/leech.spec.js` | Browser tests: leech warning on the wrong-answer screen (keep training, back to unseen), leech threshold setting |
 | `e2e/new-word-pause.spec.js` | Browser tests: new words paused by the lapsed-words baseline and by a bad session today (accuracy baseline), lapsed baseline setting |
 | `e2e/vocab-lapsed.spec.js` | Browser tests: Vocabulary *Failed last review* chip and reset from the edit sheet |

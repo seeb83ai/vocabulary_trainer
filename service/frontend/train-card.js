@@ -175,6 +175,24 @@ let wrongAnswerRetryMode = 'off';
 // result while the retype-on-wrong gate is active; read by the top-level
 // wrong-retype input listeners set up in DOMContentLoaded.
 let wrongRetypeTarget = null;
+// Wrong answers in a row per card in this session (issue #554). From the
+// SKIP_AFTER_WRONG-th one, the wrong-answer screen offers "Skip for today".
+const SKIP_AFTER_WRONG = 3;
+const wrongStreaks = new Map();
+
+function cardStreakKey(card) {
+  if (card.card_type === 'hmm') return `hmm:${card.entity_type}:${card.entity_key}`;
+  if (card.card_type === 'component') return `component:${card.prompt}`;
+  return `word:${card.word_id}`;
+}
+
+// Updates the count of wrong answers in a row for key and returns it.
+function recordWrongStreak(streaks, key, correct) {
+  const n = correct ? 0 : (streaks.get(key) || 0) + 1;
+  if (n) streaks.set(key, n);
+  else streaks.delete(key);
+  return n;
+}
 // Difficult-words drill: when active, /api/quiz/next is queried with difficult=true
 // and only flagged (hardest) words are served until each is answered correctly.
 let difficultDrill = localStorage.getItem('quizDifficultDrill') === 'true';
@@ -271,6 +289,7 @@ async function loadNextCard(trackCurrent = false) {
   hide('streak-dots');
   hide('result-subtitle');
   hide('wrong-retype-area');
+  hide('result-skip-today-row');
   wrongRetypeTarget = null;
   $('next-btn').disabled = false;
   $('answer-input').value = '';
@@ -662,6 +681,8 @@ async function submitAnswer(e) {
 // setting) — so it appears BEFORE the correct/wrong result screen, not
 // after it. Otherwise renders the result screen immediately.
 function maybeCelebrateThenShow(result, showFn) {
+  const wrongInARow = recordWrongStreak(wrongStreaks, cardStreakKey(currentCard), result.correct);
+  $('result-skip-today-row').classList.toggle('hidden', wrongInARow < SKIP_AFTER_WRONG);
   const tierAdvanced = result.correct && result.tier && result.prev_tier && result.prev_tier !== result.tier;
   if (celebrateBucketChange && tierAdvanced) {
     const meanings = result.translations
@@ -675,6 +696,27 @@ function maybeCelebrateThenShow(result, showFn) {
   } else {
     showFn(result);
   }
+}
+
+// Advances the current card's due date by 1 day.
+function skipCurrentCardForToday(reveal) {
+  let url, body;
+  if (currentCard.card_type === 'hmm') {
+    url = '/api/hmm-quiz/skip';
+    body = { entity_type: currentCard.entity_type, entity_key: currentCard.entity_key, days: 1 };
+  } else if (currentCard.card_type === 'component') {
+    url = '/api/component/skip';
+    body = { character: currentCard.prompt, days: 1, langs: selectedLangs };
+  } else {
+    url = '/api/quiz/skip';
+    body = { word_id: currentCard.word_id, days: 1 };
+  }
+  if (reveal) body.reveal = true;
+  const key = cardStreakKey(currentCard);
+  return apiFetch(url, { method: 'POST', body: JSON.stringify(body) }).then(resp => {
+    wrongStreaks.delete(key);
+    return resp;
+  });
 }
 
 // Picks the button Enter presses on the visible train screen (issue #535), or
@@ -799,6 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }),
         });
       }
+      wrongStreaks.delete(cardStreakKey(currentCard));
       loadNextCard(true);
     } catch (err) {
       btn.disabled = false;
@@ -843,23 +886,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    let url, body;
-    if (currentCard.card_type === 'hmm') {
-      url = '/api/hmm-quiz/skip';
-      body = { entity_type: currentCard.entity_type, entity_key: currentCard.entity_key, days: 1 };
-    } else if (currentCard.card_type === 'component') {
-      url = '/api/component/skip';
-      body = { character: currentCard.prompt, days: 1, langs: selectedLangs };
-    } else {
-      url = '/api/quiz/skip';
-      body = { word_id: currentCard.word_id, days: 1 };
-    }
     // With skip_reveal_answer on, the skip response holds the answer and a
     // "Skipped" screen shows it before the next card (issue #536).
-    if (skipRevealAnswer) body.reveal = true;
     let resp;
     try {
-      resp = await apiFetch(url, { method: 'POST', body: JSON.stringify(body) });
+      resp = await skipCurrentCardForToday(skipRevealAnswer);
     } catch (err) {
       alert('Error: ' + err.message);
       return;
@@ -870,6 +901,23 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     loadNextCard();
+  });
+
+  // The wrong-answer screen offers the same skip after SKIP_AFTER_WRONG wrong
+  // answers in a row (issue #554). The answer is already on screen.
+  $('result-skip-today-btn').addEventListener('click', async () => {
+    if (!currentCard) return;
+    const btn = $('result-skip-today-btn');
+    btn.disabled = true;
+    try {
+      await skipCurrentCardForToday(false);
+    } catch (err) {
+      alert('Error: ' + err.message);
+      return;
+    } finally {
+      btn.disabled = false;
+    }
+    loadNextCard(true);
   });
 
   // Progressive mode: new word buttons

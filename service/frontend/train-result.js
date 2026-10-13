@@ -335,6 +335,7 @@ function renderWordAnswerResult(result, answer) {
               }),
             });
             addBtn.textContent = t('result.added');
+            wrongStreaks.delete(cardStreakKey(currentCard));
             loadNextCard(true);
           } catch (err) {
             addBtn.disabled = false;
@@ -453,6 +454,8 @@ function renderWordAnswerResult(result, answer) {
               body: JSON.stringify({ word_id: currentCard.word_id, mode: currentCard.mode, langs: selectedLangs }),
             });
             ambiguousUnresolved = null;
+            wrongStreaks.delete(cardStreakKey(currentCard));
+            hide('result-skip-today-row');
             restoreResultQuestion();
             hide('result-question');
             hide('result-subtitle');

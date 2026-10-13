@@ -113,3 +113,42 @@ export function getTodayAnswerBuckets(email, zhText) {
     db.close();
   }
 }
+
+/**
+ * Make the user's zh word due now, so it comes back as the next card without
+ * waiting for the wrong-answer retry delay.
+ * @param {string} email
+ * @param {string} zhText
+ */
+export function makeWordDueNow(email, zhText) {
+  const db = new DatabaseSync(getDbPath());
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    const res = db.prepare(`
+      UPDATE sm2_progress SET due_date = datetime('now', '-1 minute')
+      WHERE word_id = ${WORD_ID_BY_EMAIL_AND_TEXT}
+    `).run(email, zhText);
+    if (res.changes !== 1) throw new Error(`makeWordDueNow: no word ${zhText} for ${email}`);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Read the due date of the user's zh word, as SQLite stores it (UTC).
+ * @param {string} email
+ * @param {string} zhText
+ * @returns {string}
+ */
+export function getWordDueDate(email, zhText) {
+  const db = new DatabaseSync(getDbPath());
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    const row = /** @type {any} */ (db.prepare(`
+      SELECT due_date FROM sm2_progress WHERE word_id = ${WORD_ID_BY_EMAIL_AND_TEXT}
+    `).get(email, zhText));
+    return row.due_date;
+  } finally {
+    db.close();
+  }
+}

@@ -154,3 +154,63 @@ describe('enterActionButtonId', () => {
     expect(enterActionButtonId({}, 'BODY')).toBeNull();
   });
 });
+
+// ── Skip for today after repeated wrong answers (issue #554) ──────────────
+// Mirrors cardStreakKey / recordWrongStreak in train-card.js.
+
+const SKIP_AFTER_WRONG = 3;
+
+function cardStreakKey(card) {
+  if (card.card_type === 'hmm') return `hmm:${card.entity_type}:${card.entity_key}`;
+  if (card.card_type === 'component') return `component:${card.prompt}`;
+  return `word:${card.word_id}`;
+}
+
+function recordWrongStreak(streaks, key, correct) {
+  const n = correct ? 0 : (streaks.get(key) || 0) + 1;
+  if (n) streaks.set(key, n);
+  else streaks.delete(key);
+  return n;
+}
+
+describe('cardStreakKey', () => {
+  it('keys word cards by word id, whatever the mode', () => {
+    expect(cardStreakKey({ word_id: 7, mode: 'zh_to_transl' })).toBe('word:7');
+    expect(cardStreakKey({ word_id: 7, mode: 'transl_to_zh' })).toBe('word:7');
+  });
+
+  it('keys component cards by character', () => {
+    expect(cardStreakKey({ card_type: 'component', prompt: '口' })).toBe('component:口');
+  });
+
+  it('keys hmm cards by entity type and key', () => {
+    expect(cardStreakKey({ card_type: 'hmm', entity_type: 'actor', entity_key: 'b' })).toBe('hmm:actor:b');
+  });
+});
+
+describe('recordWrongStreak', () => {
+  it('counts wrong answers in a row and reaches the skip threshold on the 3rd', () => {
+    const s = new Map();
+    expect(recordWrongStreak(s, 'word:1', false)).toBe(1);
+    expect(recordWrongStreak(s, 'word:1', false)).toBe(2);
+    expect(recordWrongStreak(s, 'word:1', false)).toBe(SKIP_AFTER_WRONG);
+    expect(recordWrongStreak(s, 'word:1', false)).toBe(4);
+  });
+
+  it('a correct answer resets the count', () => {
+    const s = new Map();
+    recordWrongStreak(s, 'word:1', false);
+    recordWrongStreak(s, 'word:1', false);
+    expect(recordWrongStreak(s, 'word:1', true)).toBe(0);
+    expect(recordWrongStreak(s, 'word:1', false)).toBe(1);
+    expect(s.size).toBe(1);
+  });
+
+  it('counts each card on its own', () => {
+    const s = new Map();
+    recordWrongStreak(s, 'word:1', false);
+    recordWrongStreak(s, 'word:1', false);
+    expect(recordWrongStreak(s, 'word:2', false)).toBe(1);
+    expect(recordWrongStreak(s, 'word:1', false)).toBe(3);
+  });
+});
