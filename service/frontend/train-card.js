@@ -758,6 +758,9 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     hide('leech-box');
+    // A second tap during a slow match-game load opened a second round
+    // (issue #563). loadNextCard enables the button again.
+    $('next-btn').disabled = true;
     await _maybeShowMatchGame();
     loadNextCard(true);
   });

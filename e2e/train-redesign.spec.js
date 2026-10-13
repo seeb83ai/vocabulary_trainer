@@ -284,6 +284,54 @@ test.describe('Train redesign – new word and match game', () => {
     await captureForPR(page, 'train-match-game-done-wrong-only');
   });
 
+  // Issue #563: on a slow connection a second tap on Next arrived while the
+  // first match-game request was still loading. Both rounds opened; finishing
+  // one showed the other on top of the next question card.
+  test('a double tap on Next opens only one match game', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await seed(page, '再见', 'zài jiàn', ['bye']);
+    await useMode(page, 'zh_to_transl');
+    await enableGamification(page);
+    let gameRequests = 0;
+    await page.route('**/api/quiz/match-game', async route => {
+      gameRequests++;
+      await new Promise(r => setTimeout(r, 800));
+      await route.fulfill({
+        json: {
+          words: [
+            { zh_word_id: 9631, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
+            { zh_word_id: 9632, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+          ],
+        },
+      });
+    });
+    await page.route('**/api/quiz/match-answer', route => route.fulfill({ json: { ok: true } }));
+    await page.goto('/train');
+
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('wrong');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#next-btn')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#next-btn').dblclick();
+
+    const game = page.locator('#match-game-overlay');
+    await expect(game).toBeVisible({ timeout: 8_000 });
+    await page.waitForTimeout(1_200);
+    await expect(game).toHaveCount(1);
+    expect(gameRequests).toBe(1);
+    await captureForPR(page, 'train-match-game-double-tap');
+
+    await game.locator('.mg-tile', { hasText: '猫' }).click();
+    await game.locator('.mg-tile', { hasText: 'cat' }).click();
+    await game.locator('.mg-tile', { hasText: '狗' }).click();
+    await game.locator('.mg-tile', { hasText: 'dog' }).click();
+    await page.locator('#match-continue-btn').click();
+
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    await expect(game).toHaveCount(0);
+  });
+
   test('the done screen is skipped when "show round summary" is off', async ({ page }) => {
     const game = await playMatchGame(page, { match_game_show_summary: false });
     await expect(game).toBeHidden();
