@@ -7,7 +7,7 @@ import { captureForPR } from './helpers/screenshot.js';
 //
 // A fresh isolated user is registered with three acknowledged component words
 // (我/买/牛奶, all total_attempts=1 via start_training=true) and one sentence
-// word (我买牛奶, tagged `s_test`, NOT started so it doesn't clutter the normal
+// word (我买牛奶, tagged `test_s`, NOT started so it doesn't clutter the normal
 // due queue). sentence_blank_enabled + sentence_blank_ratio=100 make the
 // server deterministically attempt a sentence-blank card on every /api/quiz/next
 // call. Since all three component words are freshly acknowledged
@@ -43,7 +43,7 @@ async function registerUserWithSentence(page) {
       zh_text: '我买牛奶',
       pinyin: 'wǒ mǎi niú nǎi',
       translations: { en: ['I buy milk'] },
-      tags: ['s_test'],
+      tags: ['test_s'],
       start_training: false,
     },
   });
@@ -154,7 +154,7 @@ test.describe('Sentence-blank training mode', () => {
         zh_text: '我买牛奶，你喜欢茶',
         pinyin: 'wǒ mǎi niú nǎi, nǐ xǐhuan chá',
         translations: { en: ['I buy milk, you like tea'] },
-        tags: ['s_test'],
+        tags: ['test_s'],
         start_training: false,
       },
     });

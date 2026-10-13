@@ -31,7 +31,7 @@ func enableSentenceBlank(t *testing.T, s *db.Store, userID int64, enabled bool, 
 }
 
 // seedSentenceScenario seeds three acknowledged component words plus a
-// sentence word (我买牛奶, tagged s_test, left unacknowledged) that fully
+// sentence word (我买牛奶, tagged test_s, left unacknowledged) that fully
 // segments from them — the shared fixture for sentence-blank handler tests.
 func seedSentenceScenario(t *testing.T, s *db.Store, userID int64) (wo, mai, niunai int64) {
 	t.Helper()
@@ -44,7 +44,7 @@ func seedSentenceScenario(t *testing.T, s *db.Store, userID int64) (wo, mai, niu
 			t.Fatalf("AcknowledgeWord %d: %v", id, err)
 		}
 	}
-	seedWordFull(t, s, userID, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I buy milk"}, nil, []string{"s_test"})
+	seedWordFull(t, s, userID, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I buy milk"}, nil, []string{"test_s"})
 	return
 }
 

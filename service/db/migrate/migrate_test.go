@@ -69,6 +69,13 @@ func migrateUpTo(t *testing.T, db *sql.DB, target int64) {
 		if m.version > target {
 			break
 		}
+		var applied int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version).Scan(&applied); err != nil {
+			t.Fatalf("check migration %d in migrateUpTo: %v", m.version, err)
+		}
+		if applied > 0 {
+			continue
+		}
 		if m.sql != "" {
 			if _, err := db.Exec(m.sql); err != nil {
 				t.Fatalf("migrate up to %d: migration %d sql: %v", target, m.version, err)

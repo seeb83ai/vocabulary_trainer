@@ -70,9 +70,7 @@ func TestRenameHSKTags(t *testing.T) {
 		t.Fatalf("insert settings: %v", err)
 	}
 
-	if err := Migrate(db); err != nil {
-		t.Fatalf("Migrate: %v", err)
-	}
+	migrateUpTo(t, db, 20260927120000)
 
 	cases := []struct {
 		wordID int64

@@ -102,7 +102,7 @@ func seedSentenceScenario(t *testing.T, s *Store) (wo, mai, niunai, sentence int
 	wo = seedWord(t, s, "我", "wǒ", []string{"I"})
 	mai = seedWord(t, s, "买", "mǎi", []string{"buy"})
 	niunai = seedWord(t, s, "牛奶", "niú nǎi", []string{"milk"})
-	sentence = seedWordWithTags(t, s, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I buy milk"}, []string{"s_test"})
+	sentence = seedWordWithTags(t, s, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I buy milk"}, []string{"test_s"})
 	return
 }
 
@@ -150,6 +150,28 @@ func TestFindSentenceBlank_NoDueWords_ReturnsNil(t *testing.T) {
 	}
 	if match != nil {
 		t.Errorf("expected nil match when nothing is due, got %+v", match)
+	}
+}
+
+func TestFindSentenceBlank_SPrefixTagIsNotASentence(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	wo := seedWord(t, s, "我", "wǒ", []string{"I"})
+	mai := seedWord(t, s, "买", "mǎi", []string{"buy"})
+	niunai := seedWord(t, s, "牛奶", "niú nǎi", []string{"milk"})
+	seedWordWithTags(t, s, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I buy milk"}, []string{"s_test"})
+
+	now := time.Now().UTC()
+	markReviewed(t, s, wo, 1, 1, now.Add(-1*time.Hour))
+	markReviewed(t, s, mai, 1, 1, now.Add(-1*time.Hour))
+	markReviewed(t, s, niunai, 1, 1, now.Add(-1*time.Hour))
+
+	match, err := s.findSentenceBlank(ctx, testUserID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match != nil {
+		t.Errorf("s_ prefix must not mark a sentence (suffix _s does), got match %+v", match)
 	}
 }
 
@@ -210,7 +232,7 @@ func TestFindSentenceBlank_TagFilterRestrictsToTrainedWords(t *testing.T) {
 	}
 
 	// With filter ["other"]: all words are in that tag → sentence blank found.
-	match, err = s.findSentenceBlank(ctx, testUserID, []string{"other", "s_test"})
+	match, err = s.findSentenceBlank(ctx, testUserID, []string{"other", "test_s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +340,7 @@ func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *test
 	wo := seedWord(t, s, "我", "wǒ", []string{"I"})
 	mai := seedWord(t, s, "买", "mǎi", []string{"buy"})
 	niunai := seedWord(t, s, "牛奶", "niú nǎi", []string{"milk"})
-	seedWordWithTags(t, s, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I bought milk"}, []string{"s_test"})
+	seedWordWithTags(t, s, "我买牛奶", "wǒ mǎi niú nǎi", []string{"I bought milk"}, []string{"test_s"})
 
 	now := time.Now().UTC()
 	markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))

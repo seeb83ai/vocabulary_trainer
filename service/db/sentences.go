@@ -15,8 +15,8 @@ import (
 const sentenceBlankToken = "___"
 
 // sentenceTagLike is the SQL LIKE pattern (with its ESCAPE clause) that
-// identifies a "sentence" tag by the `s_` prefix convention (e.g. s_hsk2-1).
-const sentenceTagLike = `s\_%' ESCAPE '\'`
+// identifies a "sentence" tag by the `_s` suffix convention (e.g. hsk2-1_s).
+const sentenceTagLike = `%\_s' ESCAPE '\'`
 
 // wordSegment is one token produced by segmentSentence: the matched text and
 // the zh word_id it corresponds to in the user's vocabulary.
@@ -103,7 +103,7 @@ func segmentSentence(text string, known map[string]int64) (segments []wordSegmen
 	return segments, true
 }
 
-// getSentenceCandidates returns the user's zh words tagged with an `s_`-prefixed
+// getSentenceCandidates returns the user's zh words tagged with an `_s`-suffixed
 // tag (the sentence-marker convention — see CLAUDE.md).
 func (s *Store) getSentenceCandidates(ctx context.Context, userID int64) ([]models.Word, error) {
 	rows, err := s.db.QueryContext(ctx, `
