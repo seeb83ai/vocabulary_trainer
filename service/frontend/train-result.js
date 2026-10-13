@@ -338,7 +338,7 @@ function renderWordAnswerResult(result, answer) {
             loadNextCard(true);
           } catch (err) {
             addBtn.disabled = false;
-            alert('Could not add translation: ' + err.message);
+            showToastError(err.message);
           }
         };
       } else {
@@ -446,7 +446,10 @@ function renderWordAnswerResult(result, answer) {
         const typed = disambigInput.value.trim();
         if (!typed) return;
         if (typed.toLowerCase() === result.zh_text.toLowerCase()) {
-          // Correct — upgrade to correct via AcceptCorrect
+          // Correct — upgrade to correct via AcceptCorrect. One request at a
+          // time: a second submit would render the correct screen twice.
+          if (ev.target.dataset.busy) return;
+          ev.target.dataset.busy = '1';
           try {
             await apiFetch('/api/quiz/accept-correct', {
               method: 'POST',
@@ -462,6 +465,8 @@ function renderWordAnswerResult(result, answer) {
           } catch (err) {
             disambigFeedback.textContent = 'Error: ' + err.message;
             disambigFeedback.classList.remove('hidden');
+          } finally {
+            delete ev.target.dataset.busy;
           }
         } else {
           // Wrong word typed — let the user retry; the disambiguation stays
@@ -490,7 +495,7 @@ function renderWordAnswerResult(result, answer) {
       renderFlagButton(reviewBtn, true);
     } catch (err) {
       reviewBtn.disabled = false;
-      alert('Could not flag word: ' + err.message);
+      showToastError(err.message);
     }
   };
 
@@ -855,7 +860,7 @@ function showComponentResult(resp) {
       renderFlagButton(reviewBtn, true);
     } catch (err) {
       reviewBtn.disabled = false;
-      alert('Could not flag component: ' + err.message);
+      showToastError(err.message);
     }
   };
 

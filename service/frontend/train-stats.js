@@ -222,6 +222,10 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Stats reload with every card; the newest request wins so older counts
+// can't overwrite newer ones.
+const statsRequest = latestRequest();
+
 async function loadStats() {
   try {
     const params = new URLSearchParams();
@@ -231,7 +235,7 @@ async function loadStats() {
     if (includeComponents) params.set('trainComponents', '1');
     const qs = params.toString();
     const statsUrl = qs ? `/api/quiz/stats?${qs}` : '/api/quiz/stats';
-    const stats = await apiFetch(statsUrl);
+    const stats = await apiFetch(statsUrl, { signal: statsRequest() });
     latestStats = stats;
     const dueLeft = dueDisplayCount(stats, false);
     setText('stats-due', dueLeft);

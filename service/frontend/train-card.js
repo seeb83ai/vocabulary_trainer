@@ -233,12 +233,16 @@ function watchImports() {
   });
 }
 
+// A filter change starts a new load before the old one ends. The newest load
+// wins, so an older card can't render over a newer one.
+const nextCardRequest = latestRequest();
+
 async function loadNextCard(trackCurrent = false) {
+  const signal = nextCardRequest();
   _noCardsPaused = true;  // pause until we confirm a card is ready
   // Every way off a result screen (Next, accept as correct, add translation)
   // ends here; only renderWordAnswerResult shows the leech box again.
   hide('leech-box');
-  await _flushTime();
   // Track the word we're leaving so it isn't immediately re-shown.
   // Only track regular vocabulary cards (not new-word introductions, HMM, or components).
   if (trackCurrent && currentCard?.word_id && !currentCard.card_type && currentCard.mode !== 'new_word') {
@@ -278,12 +282,17 @@ async function loadNextCard(trackCurrent = false) {
   renderFlagButton(reviewBtn, false);
   reviewBtn.disabled = false;
   reviewBtn.onclick = null;
+  // The screens are hidden before the first await, so the button that
+  // started this load is gone before withBusyButton enables it again.
+  await _flushTime();
+  if (signal.aborted) return;
 
   // Fetch fresh stats first. The backend's GetNextCard may return non-due
   // (future) cards via its fallback queries even when due_today = 0, so we
   // cannot rely solely on a 404 "no words available" to trigger the success
   // screen — we must check due_today proactively.
   await loadStats();
+  if (signal.aborted) return;
 
   if (latestStats) {
     if (latestStats.total === 0) {
@@ -323,7 +332,7 @@ async function loadNextCard(trackCurrent = false) {
     if (difficultDrill) params.set('difficult', 'true');
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
-    currentCard = await apiFetch(url);
+    currentCard = await apiFetch(url, { signal });
     questionAutoPlayed = false;
     questionAudioPlayed = false;
     // The served card was pulled in from beyond today's due-date bound solely
@@ -333,6 +342,7 @@ async function loadNextCard(trackCurrent = false) {
       setText('stats-due', dueDisplayCount(latestStats, true));
     }
   } catch (e) {
+    if (isAbortError(e)) return;
     hide('card-area');
     if (e.message === 'no words available' && difficultDrill) {
       // The drill pool is exhausted — leave the drill and fall back to the
@@ -347,7 +357,8 @@ async function loadNextCard(trackCurrent = false) {
       if (selectedBucket) fbParams.set('bucket', selectedBucket);
       const fbQs = fbParams.toString();
       const statsUrl = fbQs ? `/api/quiz/stats?${fbQs}` : '/api/quiz/stats';
-      const stats = latestStats || await apiFetch(statsUrl).catch(() => null);
+      const stats = latestStats || await apiFetch(statsUrl, { signal }).catch(() => null);
+      if (signal.aborted) return;
       if (!stats || stats.total === 0) {
         showEmptyState();
       } else {
@@ -415,6 +426,7 @@ async function loadNextCard(trackCurrent = false) {
     }
     loadNewWordBreakdown(currentCard.prompt);
     await loadStats();
+    if (signal.aborted) return;
     // The word being introduced has first_seen_at IS NULL and is not counted in
     // stats.due_today; add 1 so the counter reflects the card the user is working on.
     if (latestStats) {
@@ -653,7 +665,7 @@ async function submitAnswer(e) {
     maybeCelebrateThenShow(result, (r) => renderWordAnswerResult(r, answer));
   } catch (err) {
     isSubmitted = false;
-    alert('Error: ' + err.message);
+    showToastError(err.message);
   }
 }
 
@@ -774,7 +786,7 @@ document.addEventListener('DOMContentLoaded', () => {
       await apiFetch(`/api/words/${currentCard.word_id}/reset`, { method: 'POST' });
       loadNextCard(true);
     } catch (err) {
-      alert('Error: ' + err.message);
+      showToastError(err.message);
     } finally {
       btn.disabled = false;
     }
@@ -802,7 +814,7 @@ document.addEventListener('DOMContentLoaded', () => {
       loadNextCard(true);
     } catch (err) {
       btn.disabled = false;
-      alert('Could not accept as correct: ' + err.message);
+      showToastError(err.message);
     }
   });
 
@@ -830,7 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   // Skip current card for today (advance due_date by 1 day).
-  $('skip-today-btn').addEventListener('click', async () => {
+  $('skip-today-btn').addEventListener('click', () => withBusyButton($('skip-today-btn'), async () => {
     if (isSubmitted || !currentCard) return;
 
     // If skipping a voice card, ask whether to disable voice for this session.
@@ -861,7 +873,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       resp = await apiFetch(url, { method: 'POST', body: JSON.stringify(body) });
     } catch (err) {
-      alert('Error: ' + err.message);
+      showToastError(err.message);
       return;
     }
     if (skipRevealAnswer && resp) {
@@ -870,10 +882,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     loadNextCard();
-  });
+  }));
 
   // Progressive mode: new word buttons
-  $('new-word-skip-btn').addEventListener('click', async () => {
+  $('new-word-skip-btn').addEventListener('click', () => withBusyButton($('new-word-skip-btn'), async () => {
     if (!currentCard) return;
     try {
       await apiFetch('/api/quiz/skip', {
@@ -881,11 +893,11 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ word_id: currentCard.word_id }),
       });
     } catch (err) {
-      alert('Error: ' + err.message);
+      showToastError(err.message);
       return;
     }
     loadNextCard();
-  });
+  }));
   // Bracketed annotations (e.g. "过（动词）") are optional, mirroring the
   // backend's CheckAnswer / expandVariants rule for regular quiz answers.
   function isZhCorrect(inputVal, prompt) {
@@ -913,7 +925,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('new-word-zh-input').addEventListener('input', updateGotItState);
   $('new-word-trans-input').addEventListener('input', updateGotItState);
 
-  $('new-word-got-it-btn').addEventListener('click', async () => {
+  $('new-word-got-it-btn').addEventListener('click', () => withBusyButton($('new-word-got-it-btn'), async () => {
     if (!currentCard) return;
     try {
       await apiFetch('/api/quiz/acknowledge', {
@@ -921,11 +933,11 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ word_id: currentCard.word_id }),
       });
     } catch (err) {
-      alert('Error: ' + err.message);
+      showToastError(err.message);
       return;
     }
     loadNextCard();
-  });
+  }));
   $('new-word-no-new-btn').addEventListener('click', () => {
     skipNewWords = true;
     loadNextCard();
@@ -973,7 +985,7 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     $(btnId).click();
   });
-  $('new-component-got-it-btn').addEventListener('click', async () => {
+  $('new-component-got-it-btn').addEventListener('click', () => withBusyButton($('new-component-got-it-btn'), async () => {
     if (!currentCard) return;
     try {
       await apiFetch('/api/component/seen', {
@@ -981,14 +993,14 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ character: currentCard.prompt }),
       });
     } catch (err) {
-      alert('Error: ' + err.message);
+      showToastError(err.message);
       return;
     }
     loadNextCard();
-  });
+  }));
 
   document.querySelectorAll('.advance-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => withBusyButton(btn, async () => {
       const count = parseInt(btn.dataset.advance);
       // When "drill my hardest words" is ticked, the amount buttons flag that
       // many difficult words and start a focused drill instead of advancing.
@@ -1000,7 +1012,7 @@ document.addEventListener('DOMContentLoaded', () => {
             body: JSON.stringify({ count }),
           });
         } catch (err) {
-          alert('Error: ' + err.message);
+          showToastError(err.message);
           return;
         }
         if (!resp || !resp.flagged) {
@@ -1022,12 +1034,12 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({ count, reset_new_cap: resetNewCap }),
         });
       } catch (err) {
-        alert('Error: ' + err.message);
+        showToastError(err.message);
         return;
       }
       hide('success-state');
       loadNextCard();
-    });
+    }));
   });
 
   const difficultCheckbox = $('difficult-words-checkbox');
@@ -1056,7 +1068,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await apiFetch('/api/quiz/wrong-today/retrain', { method: 'POST' });
     } catch (err) {
-      alert('Error: ' + err.message);
+      showToastError(err.message);
       return;
     } finally {
       btn.disabled = false;
@@ -1066,19 +1078,19 @@ document.addEventListener('DOMContentLoaded', () => {
     loadNextCard();
   });
 
-  $('introduce-new-btn').addEventListener('click', async () => {
+  $('introduce-new-btn').addEventListener('click', () => withBusyButton($('introduce-new-btn'), async () => {
     try {
       await apiFetch('/api/quiz/advance', {
         method: 'POST',
         body: JSON.stringify({ count: 0, reset_new_cap: true }),
       });
     } catch (err) {
-      alert('Error: ' + err.message);
+      showToastError(err.message);
       return;
     }
     hide('success-state');
     loadNextCard();
-  });
+  }));
 
   // Re-render dynamic text when language changes
   document.addEventListener('langchange', () => {
