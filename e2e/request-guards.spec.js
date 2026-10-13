@@ -349,3 +349,39 @@ test.describe('Request guards – Pinyin and Mnemonics', () => {
     expect(puts).toBe(1);
   });
 });
+
+test.describe('Request guards – Landing page', () => {
+  test('a double tap on the demo Check sends one answer', async ({ page }) => {
+    let answers = 0;
+    await page.route('**/api/demo/answer', async route => {
+      answers++;
+      await new Promise(r => setTimeout(r, 600));
+      await route.continue();
+    });
+    await page.goto('/');
+    await expect(page.locator('#demo-card')).toBeVisible();
+    await page.locator('#demo-input').fill('hello');
+    await page.locator('#demo-submit').dblclick();
+
+    await expect(page.locator('#demo-icon')).toContainText(/correct/i);
+    await page.waitForTimeout(800);
+    expect(answers).toBe(1);
+  });
+
+  test('a registration that does not answer shows the timeout and can be tried again', async ({ page }) => {
+    await page.route('https://api.pwnedpasswords.com/**', route => route.fulfill({ status: 200, body: '' }));
+    await hang(page, '**/api/register');
+    await page.clock.install();
+    await page.goto('/#register');
+    await page.locator('#reg-email').fill(`e2e-guards-hang-${Date.now()}@test.local`);
+    await page.locator('#reg-password').fill(PASSWORD);
+    await page.locator('#reg-confirm').fill(PASSWORD);
+    const registering = page.waitForRequest('**/api/register');
+    await page.locator('#register-btn').click();
+    await registering;
+    await page.clock.fastForward(16_000);
+
+    await expect(page.locator('#register-error')).toHaveText(TIMEOUT_TEXT);
+    await expect(page.locator('#register-btn')).toBeEnabled();
+  });
+});

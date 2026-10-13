@@ -11,6 +11,8 @@
   let idx = 0;
   let score = 0;
   let answered = false;
+  // A second submit while the answer is checked would count it twice.
+  let checking = false;
 
   const el = id => document.getElementById(id);
   const escHtml = s => String(s).replace(/[&<>"']/g, c => ({
@@ -68,14 +70,16 @@
 
   async function submit(e) {
     e.preventDefault();
-    if (answered) return;
+    if (answered || checking) return;
     const answer = el('demo-input').value.trim();
     if (!answer) return;
+    checking = true;
     try {
       const res = await fetch('/api/demo/answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ card_id: cards[idx].id, answer }),
+        signal: timeoutSignal(),
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -84,6 +88,8 @@
       showResult(data.correct, answer, data.translations || []);
     } catch {
       // Network error: leave the form usable so the visitor can retry.
+    } finally {
+      checking = false;
     }
   }
 
@@ -101,7 +107,7 @@
 
   document.addEventListener('DOMContentLoaded', async () => {
     try {
-      const res = await fetch('/api/demo/cards');
+      const res = await fetch('/api/demo/cards', { signal: timeoutSignal() });
       if (!res.ok) return;
       cards = (await res.json()).cards || [];
     } catch {

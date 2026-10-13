@@ -36,3 +36,20 @@ describe('initialTab', () => {
     expect(initialTab('#something-else')).toBe('signin');
   });
 });
+
+// Inlined from index.js.
+function networkErrorText(err) {
+  return err?.name === 'TimeoutError' ? err.message : 'Network error. Please try again.';
+}
+
+describe('networkErrorText', () => {
+  it('shows a timeout with its own message', () => {
+    const err = Object.assign(new Error('The server did not answer. Try again.'), { name: 'TimeoutError' });
+    expect(networkErrorText(err)).toBe('The server did not answer. Try again.');
+  });
+
+  it('shows every other failure as a network error', () => {
+    expect(networkErrorText(new TypeError('Failed to fetch'))).toBe('Network error. Please try again.');
+    expect(networkErrorText(undefined)).toBe('Network error. Please try again.');
+  });
+});
