@@ -223,3 +223,73 @@ test.describe('Request guards – Vocabulary', () => {
     await expect(page.locator('#translate-btn')).toBeEnabled();
   });
 });
+
+test.describe('Request guards – Settings and Stats', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+
+  test('two quick setting changes are saved in order', async ({ page }) => {
+    await registerUser(page);
+    await page.goto('/settings');
+    const select = page.locator('#match-game-pinyin-reveal');
+    await expect(select).toHaveValue('always');
+
+    // The first save reaches the server late. Without ordering it would
+    // overwrite the second one.
+    let patches = 0;
+    await page.route('**/api/settings', async route => {
+      if (route.request().method() === 'PATCH' && ++patches === 1) {
+        await new Promise(r => setTimeout(r, 1_500));
+      }
+      await route.continue();
+    });
+    await select.selectOption('off');
+    await page.waitForTimeout(600);
+    await select.selectOption('after_correct');
+    await page.waitForTimeout(3_000);
+
+    const st = await (await page.request.get('/api/settings')).json();
+    expect(st.match_game_pinyin_reveal).toBe('after_correct');
+  });
+
+  test('a setting save that does not answer shows a toast', async ({ page }) => {
+    await registerUser(page);
+    await page.clock.install();
+    await page.goto('/settings');
+    const select = page.locator('#match-game-pinyin-reveal');
+    await expect(select).toHaveValue('always');
+
+    await page.route('**/api/settings', route =>
+      route.request().method() === 'PATCH' ? undefined : route.continue());
+    const saving = page.waitForRequest(req => req.url().endsWith('/api/settings') && req.method() === 'PATCH');
+    await select.selectOption('off');
+    await saving;
+    await page.clock.fastForward(16_000);
+    await expect(page.locator('[data-testid="toast"]')).toContainText(TIMEOUT_TEXT);
+  });
+
+  test('fast tag changes on Stats show only the newest word stats', async ({ page }) => {
+    await registerUser(page);
+    const res = await page.request.post('/api/words', {
+      data: { zh_text: '你好', pinyin: 'nǐ hǎo', translations: { en: ['hello'] }, tags: ['greetings'], start_training: true },
+    });
+    expect(res.ok()).toBe(true);
+    await page.goto('/stats');
+    const chip = page.locator('#bucket-tag-chips button', { hasText: 'greetings' });
+    await expect(chip).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#word-stats-section')).toBeVisible();
+
+    // The older request (tag selected) answers late with no words at all,
+    // which would hide the section.
+    await page.route('**/api/quiz/word-stats**', async route => {
+      if (!route.request().url().includes('tags=')) return route.continue();
+      const res = await route.fetch();
+      const ws = await res.json();
+      await new Promise(r => setTimeout(r, 1_500));
+      await route.fulfill({ response: res, json: { ...ws, total_seen: 0, accuracy_buckets: { ...ws.accuracy_buckets, unseen: 0 } } });
+    });
+    await chip.click();
+    await chip.click();
+    await page.waitForTimeout(2_500);
+    await expect(page.locator('#word-stats-section')).toBeVisible();
+  });
+});

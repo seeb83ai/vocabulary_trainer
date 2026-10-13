@@ -132,7 +132,7 @@ fetch('/api/me').then(r => {
 
 async function loadLanguages() {
   try {
-    const res = await fetch('/api/quiz/langs');
+    const res = await fetch('/api/quiz/langs', { signal: timeoutSignal() });
     if (!res.ok) return;
     const langs = await res.json(); // e.g. ["en", "de"]
     const primaryEl = document.getElementById('primary-lang');
@@ -159,7 +159,7 @@ async function loadLanguages() {
 
 async function loadSettings() {
   try {
-    const res = await fetch('/api/settings');
+    const res = await fetch('/api/settings', { signal: timeoutSignal() });
     if (!res.ok) return;
     const st = await res.json();
 
@@ -508,6 +508,7 @@ async function saveAPIKeys(clearAll) {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: timeoutSignal(),
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
@@ -547,13 +548,13 @@ async function saveAPIKeys(clearAll) {
       const localEl = document.getElementById('llm-local-url');
       if (localEl) localEl.value = '';
     }
-  } catch {
-    showToastError(t('settings.networkError'));
+  } catch (e) {
+    showToastError(isTimeoutError(e) ? e.message : t('settings.networkError'));
   }
 }
 
-document.getElementById('apikey-save-btn')?.addEventListener('click', () => saveAPIKeys(false));
-document.getElementById('apikey-clear-btn')?.addEventListener('click', () => saveAPIKeys(true));
+document.getElementById('apikey-save-btn')?.addEventListener('click', e => withBusyButton(e.currentTarget, () => saveAPIKeys(false)));
+document.getElementById('apikey-clear-btn')?.addEventListener('click', e => withBusyButton(e.currentTarget, () => saveAPIKeys(true)));
 
 // ── Change password ────────────────────────────────────────────────────────────
 
@@ -591,7 +592,8 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
     const res = await fetch('/api/change-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ current_password: currentPw, new_password: newPw })
+      body: JSON.stringify({ current_password: currentPw, new_password: newPw }),
+      signal: timeoutSignal(),
     });
     const data = await res.json();
 
@@ -601,8 +603,8 @@ document.getElementById('pw-form').addEventListener('submit', async e => {
       showSaved(t('settings.pwChanged'));
       document.getElementById('pw-form').reset();
     }
-  } catch {
-    showToastError(t('settings.networkErrorRetry'));
+  } catch (e) {
+    showToastError(isTimeoutError(e) ? e.message : t('settings.networkErrorRetry'));
   }
 
   btn.disabled = false;
@@ -614,7 +616,7 @@ document.getElementById('backfill-subwords-btn')?.addEventListener('click', asyn
   const btn = document.getElementById('backfill-subwords-btn');
   if (btn) { btn.disabled = true; btn.textContent = t('settings.backfillRunning'); }
   try {
-    const res = await fetch('/api/settings/backfill-subwords', { method: 'POST' });
+    const res = await fetch('/api/settings/backfill-subwords', { method: 'POST', signal: timeoutSignal(API_SLOW_TIMEOUT_MS) });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
       showToastError(d.error || t('settings.backfillFailed'));
@@ -622,8 +624,8 @@ document.getElementById('backfill-subwords-btn')?.addEventListener('click', asyn
       const d = await res.json();
       showSaved(t('settings.backfillDone', { n: d.processed }));
     }
-  } catch {
-    showToastError(t('settings.networkError'));
+  } catch (e) {
+    showToastError(isTimeoutError(e) ? e.message : t('settings.networkError'));
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = t('settings.backfillButton'); }
   }
@@ -720,7 +722,7 @@ function updateComponentCoverageSummary() {
 
 async function loadComponentCoverage() {
   try {
-    const res = await fetch('/api/components/coverage');
+    const res = await fetch('/api/components/coverage', { signal: timeoutSignal() });
     if (!res.ok) return;
     const data = await res.json();
     componentCoverageData = data.components || [];
@@ -782,10 +784,16 @@ function localValidationError(group, payload) {
 }
 
 const autoSaveTimers = {};
+// Every save sends all settings, so an older save that reaches the server
+// last would undo a newer one. Saves run one after the other, and each one
+// reads the form when it starts.
+let autoSaveChain = Promise.resolve();
 
 function scheduleAutoSave(group) {
   clearTimeout(autoSaveTimers[group]);
-  autoSaveTimers[group] = setTimeout(() => autoSaveSettings(group), 400);
+  autoSaveTimers[group] = setTimeout(() => {
+    autoSaveChain = autoSaveChain.then(() => autoSaveSettings(group));
+  }, 400);
 }
 
 async function autoSaveSettings(group) {
@@ -802,6 +810,7 @@ async function autoSaveSettings(group) {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: timeoutSignal(),
     });
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
@@ -809,8 +818,8 @@ async function autoSaveSettings(group) {
       return;
     }
     showSaved(t('settings.saved'));
-  } catch {
-    showToastError(t('settings.networkError'));
+  } catch (e) {
+    showToastError(isTimeoutError(e) ? e.message : t('settings.networkError'));
   }
 }
 
