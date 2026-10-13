@@ -293,3 +293,59 @@ test.describe('Request guards – Settings and Stats', () => {
     await expect(page.locator('#word-stats-section')).toBeVisible();
   });
 });
+
+test.describe('Request guards – Pinyin and Mnemonics', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+
+  const pinyinCard = labels => ({
+    sound_id: 11, audio_file: 'ma3.mp3', mode: 'multiple_choice',
+    options: labels.map((label, i) => ({ sound_id: 10 + i, label })),
+  });
+
+  test('fast group changes on Pinyin show only the newest card', async ({ page }) => {
+    await registerUser(page);
+    await page.route('**/api/pinyin-quiz/audio/**', r => r.fulfill({ status: 204, body: '' }));
+    await page.route('**/api/pinyin-quiz/tags', r => r.fulfill({ json: ['tones', 'initials'] }));
+    await page.route('**/api/pinyin-quiz/stats**', r => r.fulfill({ json: { due_today: 4, total: 1600 } }));
+    // The "tones" card answers late, after the "initials" card.
+    await page.route('**/api/pinyin-quiz/next**', async r => {
+      const tags = new URL(r.request().url()).searchParams.get('tags');
+      if (tags === 'tones') {
+        await new Promise(res => setTimeout(res, 1_500));
+        return r.fulfill({ json: pinyinCard(['旧', '旧', '旧', '旧']) });
+      }
+      return r.fulfill({ json: pinyinCard(['mā', 'má', 'mǎ', 'mà']) });
+    });
+    await page.goto('/pinyin');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 10_000 });
+
+    await page.locator('#tag-chips .tag-btn', { hasText: 'tones' }).click();
+    await page.locator('#tag-chips .tag-btn', { hasText: 'initials' }).click();
+    await page.waitForTimeout(2_500);
+    await expect(page.locator('#mc-options .mc-btn').first()).toHaveText(/m/);
+    await expect(page.locator('#mc-options')).not.toContainText('旧');
+  });
+
+  test('a double tap on Add prop sends one request', async ({ page }) => {
+    await registerUser(page);
+    for (const path of ['actors', 'locations', 'tone-rooms']) {
+      await page.route(`**/api/hmm/${path}`, r => r.fulfill({ json: [] }));
+    }
+    let puts = 0;
+    await page.route('**/api/hmm/props', async r => {
+      if (r.request().method() === 'PUT') {
+        puts++;
+        await new Promise(res => setTimeout(res, 600));
+        return r.fulfill({ json: { ok: true } });
+      }
+      return r.fulfill({ json: [] });
+    });
+    await page.goto('/mnemonics');
+    await page.locator('#mn-tab-props').click();
+    await page.locator('#new-prop-radical').fill('木');
+    await page.locator('#new-prop-name').fill('tree');
+    await page.locator('#add-prop-btn').dblclick();
+    await page.waitForTimeout(1_500);
+    expect(puts).toBe(1);
+  });
+});

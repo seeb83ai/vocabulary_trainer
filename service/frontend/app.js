@@ -163,7 +163,7 @@ async function withBusyButton(btn, fn) {
 }
 
 async function logout() {
-  await fetch('/api/logout', { method: 'POST' });
+  await fetch('/api/logout', { method: 'POST', signal: timeoutSignal() });
   window.location.href = '/login';
 }
 
@@ -183,7 +183,7 @@ function changeUILang(lang) {
 async function syncUILang() {
   let st;
   try {
-    const res = await fetch('/api/settings');
+    const res = await fetch('/api/settings', { signal: timeoutSignal() });
     if (!res.ok) return;
     st = await res.json();
   } catch (_) { return; }
@@ -198,6 +198,7 @@ async function syncUILang() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ui_lang: lang }),
+      signal: timeoutSignal(),
     }).catch(() => {});
   }
 }
@@ -226,7 +227,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ($('app-sidebar')) syncUILang();
 
   try {
-    const res = await fetch('/api/auth/status');
+    const res = await fetch('/api/auth/status', { signal: timeoutSignal() });
     if (res.ok) {
       for (const id of ['logout-btn', 'more-logout-btn']) {
         const btn = $(id);
@@ -465,7 +466,7 @@ async function initIssueReporter() {
   // Only enable when the server reports the feature is configured.
   let enabled = false;
   try {
-    const res = await fetch('/api/github/config');
+    const res = await fetch('/api/github/config', { signal: timeoutSignal() });
     if (res.ok) enabled = (await res.json()).enabled === true;
   } catch (_) { /* feature unavailable */ }
   if (!enabled) return;
@@ -618,7 +619,7 @@ async function initIssueReporter() {
     submitting = true;
     setSubmitState('busy');
     try {
-      const res = await apiFetch('/api/github/issues', { method: 'POST', body: JSON.stringify(payload) });
+      const res = await apiFetch('/api/github/issues', { method: 'POST', body: JSON.stringify(payload), timeoutMs: API_SLOW_TIMEOUT_MS });
       setText('issue-success-num', res && res.number ? `#${res.number}` : '');
       setText('issue-success-title', form.title.trim());
       const link = $('issue-success-link');

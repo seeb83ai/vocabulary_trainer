@@ -350,13 +350,15 @@ Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${lo
             props:    [...container.querySelectorAll('.hmm-prop-input')]
                         .map(el => el.value.trim()).filter(Boolean),
           }),
+          timeoutMs: API_SLOW_TIMEOUT_MS,
         });
         if (result && result.text) {
           document.getElementById('hmm-scene-text').value = result.text.trim();
         }
         label.textContent = 'Done!';
         setTimeout(() => { label.textContent = 'Generate scene'; }, 2000);
-      } catch (_) {
+      } catch (e) {
+        if (isTimeoutError(e)) showToastError(e.message);
         label.textContent = 'Error';
         setTimeout(() => { label.textContent = 'Generate scene'; }, 2000);
       } finally {
@@ -464,7 +466,7 @@ Please suggest 3 vivid, memorable movie scene examples where ${actor} is in ${lo
       status.classList.remove('hidden');
       setTimeout(() => status.classList.add('hidden'), 2000);
     } catch (e) {
-      alert(t('hmm.saveFailed') + ': ' + e.message);
+      showToastError(t('hmm.saveFailed') + ': ' + e.message);
     } finally {
       btn.disabled = false;
     }

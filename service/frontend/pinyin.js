@@ -21,11 +21,11 @@ function playPinyinAudio(filename) {
   currentAudio.play().catch(() => {});
 }
 
-async function loadStats() {
+async function loadStats(signal) {
   try {
     const params = new URLSearchParams();
     if (selectedTags.length) params.set('tags', selectedTags.join(','));
-    const stats = await apiFetch(`/api/pinyin-quiz/stats?${params}`);
+    const stats = await apiFetch(`/api/pinyin-quiz/stats?${params}`, { signal });
     renderPinyinBar(stats);
     return stats;
   } catch (e) {
@@ -78,7 +78,12 @@ function applyTagPills() {
   });
 }
 
+// Group chips reload the card; the newest load wins, so an older card can't
+// render over a newer one.
+const nextCardRequest = latestRequest();
+
 async function loadNextCard() {
+  const signal = nextCardRequest();
   isSubmitted = false;
   hide('card-area');
   hide('result-area');
@@ -86,14 +91,16 @@ async function loadNextCard() {
   hide('empty-state');
   hide('error-state');
 
-  const stats = await loadStats();
+  const stats = await loadStats(signal);
+  if (signal.aborted) return;
 
   const params = new URLSearchParams();
   if (selectedTags.length) params.set('tags', selectedTags.join(','));
 
   try {
-    currentCard = await apiFetch(`/api/pinyin-quiz/next?${params}`);
+    currentCard = await apiFetch(`/api/pinyin-quiz/next?${params}`, { signal });
   } catch (e) {
+    if (isAbortError(e)) return;
     if (e.message === 'no pinyin sounds available') {
       if (stats && stats.total === 0) {
         show('empty-state');

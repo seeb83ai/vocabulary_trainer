@@ -114,7 +114,7 @@ async function loadActors() {
               body: JSON.stringify({ actor_name: el.value }),
             });
             flashSaved(el);
-          } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+          } catch (e) { showToastError(t('mnemonics.saveFailed') + ': ' + e.message); }
         },
       }));
     }
@@ -146,7 +146,7 @@ async function loadLocations() {
             body: JSON.stringify({ location_name: el.value }),
           });
           flashSaved(el);
-        } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+        } catch (e) { showToastError(t('mnemonics.saveFailed') + ': ' + e.message); }
       },
     }));
   }
@@ -175,7 +175,7 @@ async function loadToneRooms() {
             body: JSON.stringify({ room_name: el.value }),
           });
           flashSaved(el);
-        } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+        } catch (e) { showToastError(t('mnemonics.saveFailed') + ': ' + e.message); }
       },
     });
     item.title = TONE_LABEL_KEYS[room.tone] ? t(TONE_LABEL_KEYS[room.tone]) : t('hmm.tone', { n: room.tone });
@@ -210,7 +210,7 @@ function renderProps(props) {
             body: JSON.stringify({ radical: el.dataset.radical, prop_name: el.value }),
           });
           flashSaved(el);
-        } catch (e) { alert(t('mnemonics.saveFailed') + ': ' + e.message); }
+        } catch (e) { showToastError(t('mnemonics.saveFailed') + ': ' + e.message); }
       },
       onDelete: async (row) => {
         const radical = prop.radical;
@@ -219,7 +219,7 @@ function renderProps(props) {
           await apiFetch(`/api/hmm/props/${encodeURIComponent(radical)}`, { method: 'DELETE' });
           row.remove();
           updateTabCount('props');
-        } catch (err) { alert(t('mnemonics.deleteFailed') + ': ' + err.message); }
+        } catch (err) { showToastError(t('mnemonics.deleteFailed') + ': ' + err.message); }
       },
     }));
   }
@@ -227,7 +227,7 @@ function renderProps(props) {
 }
 
 function setupAddProp() {
-  $('add-prop-btn').addEventListener('click', async () => {
+  $('add-prop-btn').addEventListener('click', () => withBusyButton($('add-prop-btn'), async () => {
     const radical = $('new-prop-radical').value.trim();
     const name = $('new-prop-name').value.trim();
     if (!radical) { alert(t('mnemonics.propRequired')); return; }
@@ -239,8 +239,8 @@ function setupAddProp() {
       $('new-prop-radical').value = '';
       $('new-prop-name').value = '';
       await loadProps();
-    } catch (e) { alert(t('mnemonics.addFailed') + ': ' + e.message); }
-  });
+    } catch (e) { showToastError(t('mnemonics.addFailed') + ': ' + e.message); }
+  }));
 }
 
 // ── Tabs ────────────────────────────────────────────────────────────────
