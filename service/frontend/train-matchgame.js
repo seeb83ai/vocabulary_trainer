@@ -2,12 +2,16 @@
 
 // ── Match Game ───────────────────────────────────────────────────────────────
 
+// Next stays disabled while the match game loads (issue #563), so a request
+// that does not answer is cancelled and the round is skipped.
+const MATCH_GAME_FETCH_TIMEOUT_MS = 5000;
+
 async function _maybeShowMatchGame() {
   if (!_gamificationEnabled) return;
   if (Date.now() - _lastGameShownAt < _gamificationFrequencyMs) return;
   let data;
   try {
-    data = await apiFetch('/api/quiz/match-game');
+    data = await apiFetch('/api/quiz/match-game', { signal: AbortSignal.timeout(MATCH_GAME_FETCH_TIMEOUT_MS) });
   } catch {
     return;
   }

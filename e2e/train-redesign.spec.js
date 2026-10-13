@@ -332,6 +332,64 @@ test.describe('Train redesign – new word and match game', () => {
     await expect(game).toHaveCount(0);
   });
 
+  // Issue #563: Next is disabled while the match game loads, so a request
+  // that never answers must not block the user. After the timeout the game
+  // is skipped and the next card loads.
+  test('a match-game request that does not answer is skipped after a timeout', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await seed(page, '再见', 'zài jiàn', ['bye']);
+    await useMode(page, 'zh_to_transl');
+    await enableGamification(page);
+    await page.route('**/api/quiz/match-game', async route => {
+      await new Promise(r => setTimeout(r, 9_000));
+      try {
+        await route.fulfill({
+          json: {
+            words: [
+              { zh_word_id: 9641, zh_text: '猫', pinyin: 'māo', translations: { en: ['cat'] } },
+              { zh_word_id: 9642, zh_text: '狗', pinyin: 'gǒu', translations: { en: ['dog'] } },
+            ],
+          },
+        });
+      } catch { /* the page cancelled the request */ }
+    });
+    await page.goto('/train');
+
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('wrong');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#next-btn')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#next-btn').click();
+
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#match-game-overlay')).toHaveCount(0);
+    // A late response must not open the game on top of the card.
+    await page.waitForTimeout(4_500);
+    await expect(page.locator('#match-game-overlay')).toHaveCount(0);
+    await expect(page.locator('#card-area')).toBeVisible();
+  });
+
+  test('a failed match-game request skips the game and loads the next card', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '你好', 'nǐ hǎo', ['hello']);
+    await seed(page, '再见', 'zài jiàn', ['bye']);
+    await useMode(page, 'zh_to_transl');
+    await enableGamification(page);
+    await page.route('**/api/quiz/match-game', route => route.fulfill({ status: 500, json: { error: 'boom' } }));
+    await page.goto('/train');
+
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill('wrong');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#next-btn')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#next-btn').click();
+
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#match-game-overlay')).toHaveCount(0);
+    await expect(page.locator('#next-btn')).toBeEnabled();
+  });
+
   test('the done screen is skipped when "show round summary" is off', async ({ page }) => {
     const game = await playMatchGame(page, { match_game_show_summary: false });
     await expect(game).toBeHidden();
