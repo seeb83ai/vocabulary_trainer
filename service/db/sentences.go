@@ -286,15 +286,19 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 		sentenceTransTexts = append(sentenceTransTexts, texts...)
 	}
 
+	sentenceTranslation := strings.Join(sentenceTransTexts, " · ")
 	zhBlankCard := func() *models.QuizCard {
 		return &models.QuizCard{
-			CardType:        "sentence",
-			WordID:          match.TargetWordID,
-			Mode:            models.ModeTranslToZh,
-			SentenceContext: strings.Join(sentenceTransTexts, " · "),
-			SentenceBlank:   strings.Replace(match.SentenceText, match.TargetText, sentenceBlankToken, 1),
-			DueDate:         progress.DueDate,
-			IntervalDays:    progress.IntervalDays,
+			CardType:            "sentence",
+			WordID:              match.TargetWordID,
+			Mode:                models.ModeTranslToZh,
+			SentenceContext:     sentenceTranslation,
+			SentenceBlank:       strings.Replace(match.SentenceText, match.TargetText, sentenceBlankToken, 1),
+			SentenceID:          match.SentenceID,
+			SentenceText:        match.SentenceText,
+			SentenceTranslation: sentenceTranslation,
+			DueDate:             progress.DueDate,
+			IntervalDays:        progress.IntervalDays,
 		}
 	}
 
@@ -315,13 +319,16 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 	for _, sentenceTrans := range sentenceTransTexts {
 		if blanked, ok := locateTranslationBlank(sentenceTrans, wordTransTexts); ok {
 			return &models.QuizCard{
-				CardType:        "sentence",
-				WordID:          match.TargetWordID,
-				Mode:            mode,
-				SentenceContext: match.SentenceText,
-				SentenceBlank:   blanked,
-				DueDate:         progress.DueDate,
-				IntervalDays:    progress.IntervalDays,
+				CardType:            "sentence",
+				WordID:              match.TargetWordID,
+				Mode:                mode,
+				SentenceContext:     match.SentenceText,
+				SentenceBlank:       blanked,
+				SentenceID:          match.SentenceID,
+				SentenceText:        match.SentenceText,
+				SentenceTranslation: sentenceTranslation,
+				DueDate:             progress.DueDate,
+				IntervalDays:        progress.IntervalDays,
 			}, nil
 		}
 	}

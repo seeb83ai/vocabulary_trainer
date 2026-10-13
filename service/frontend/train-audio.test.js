@@ -196,3 +196,27 @@ describe('isAutoPlayBlockedByBlur', () => {
     expect(isAutoPlayBlockedByBlur({ mode: 'voice_to_transl', pinyin: 'nǐhǎo' }, true, true)).toBe(false);
   });
 });
+
+// ── resultAudioTarget (issue #557) ────────────────────────────────────────────
+
+function resultAudioTarget(currentCard, zhText) {
+  if (currentCard.card_type === 'sentence' && currentCard.sentence_id) {
+    return { id: currentCard.sentence_id, text: currentCard.sentence_text };
+  }
+  return { id: currentCard.word_id, text: zhText };
+}
+
+describe('resultAudioTarget', () => {
+  it('reads out the full sentence for sentence-blank cards', () => {
+    const card = { card_type: 'sentence', word_id: 3, sentence_id: 9, sentence_text: '我买牛奶' };
+    expect(resultAudioTarget(card, '买')).toEqual({ id: 9, text: '我买牛奶' });
+  });
+
+  it('falls back to the word when a sentence card has no sentence id', () => {
+    expect(resultAudioTarget({ card_type: 'sentence', word_id: 3 }, '买')).toEqual({ id: 3, text: '买' });
+  });
+
+  it('reads out the solved word for normal word cards', () => {
+    expect(resultAudioTarget({ word_id: 3, mode: 'transl_to_zh' }, '买')).toEqual({ id: 3, text: '买' });
+  });
+});
