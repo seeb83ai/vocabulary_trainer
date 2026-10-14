@@ -355,6 +355,7 @@ func main() {
 			})
 		})
 		r.Get("/tags", wordsH.ListTags)
+		r.With(expensiveLimit).Post("/sentences/generate", llmH.GenerateSentences)
 		r.Get("/import/source-tags", importH.SourceTags)
 		r.Get("/import/preview", importH.Preview)
 		r.Post("/import", importH.Import)

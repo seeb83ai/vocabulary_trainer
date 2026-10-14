@@ -206,6 +206,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	r.Get("/api/components/{char}/hmm/context", componentH.GetComponentHMMContext)
 	r.Put("/api/components/{char}/hmm", componentH.SaveCompScene)
 	r.Post("/api/components/{char}/hmm/generate-scene", llmH.GenerateCompScene)
+	r.Post("/api/sentences/generate", llmH.GenerateSentences)
 	r.Get("/api/hanzi/decompose", hanziH.Decompose)
 	r.Post("/api/hmm-quiz/skip", hmmQuizH.Skip)
 	r.Get("/api/hmm/breakdown", hmmH.GetBreakdown)
