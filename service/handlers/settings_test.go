@@ -286,14 +286,18 @@ func TestPatchSettings_VoiceToZhModesAccepted(t *testing.T) {
 	}
 }
 
-func TestPatchTrainingFilters_VoiceToZh(t *testing.T) {
-	s := openTestDB(t)
-	r := newRouter(s)
-	rec := do(t, r, http.MethodPatch, "/api/training-filters", map[string]any{
-		"mode": "voice_to_zh", "bucket": "", "langs": []string{"en"}, "tags": []string{},
-	})
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200 for mode voice_to_zh, got %d: %s", rec.Code, rec.Body.String())
+// TestPatchTrainingFilters_VoiceModes covers issue #571: both voice modes
+// are valid train modes, so the Train chip choice is saved.
+func TestPatchTrainingFilters_VoiceModes(t *testing.T) {
+	for _, mode := range []string{"voice_to_transl", "voice_to_zh"} {
+		s := openTestDB(t)
+		r := newRouter(s)
+		rec := do(t, r, http.MethodPatch, "/api/training-filters", map[string]any{
+			"mode": mode, "bucket": "", "langs": []string{"en"}, "tags": []string{},
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200 for mode %s, got %d: %s", mode, rec.Code, rec.Body.String())
+		}
 	}
 }
 

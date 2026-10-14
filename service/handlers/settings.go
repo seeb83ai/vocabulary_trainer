@@ -459,6 +459,7 @@ var validTrainModes = map[string]bool{
 	"zh_to_transl":          true,
 	"zh_pinyin_to_transl":   true,
 	"zh_to_transl_no_sound": true,
+	"voice_to_transl":       true,
 	"voice_to_zh":           true,
 	"":                      true,
 }
