@@ -115,6 +115,18 @@ func (s *Store) wordIDsToMatchGameWords(ctx context.Context, userID int64, ids [
 	return words, nil
 }
 
+// wordGameShownJoin is a derived table "g" with the latest time each word of
+// the user was shown in any game mode (issue #558). It takes the user id as
+// its one bind parameter.
+const wordGameShownJoin = `(SELECT word_id, MAX(last_shown_in_game) AS last_shown_in_game
+	   FROM word_game_shown WHERE user_id = ? GROUP BY word_id) g`
+
+// wordGameShownEligible keeps a word that was never shown in a game, or that
+// got a wrong answer in training after it was last shown (issue #558). Needs
+// sm2_progress as "p" and wordGameShownJoin as "g".
+const wordGameShownEligible = `(g.last_shown_in_game IS NULL
+	   OR (p.last_wrong_at IS NOT NULL AND p.last_wrong_at > g.last_shown_in_game))`
+
 // newestWordsGamePoolSize is how many of the user's most-recently-created zh
 // words form the eligible pool for the "newest words" game mode.
 const newestWordsGamePoolSize = 30
@@ -122,20 +134,16 @@ const newestWordsGamePoolSize = 30
 // GetNewestWordsForGame returns up to `count` distinct zh words drawn from the
 // newestWordsGamePoolSize most recently created words for the user, via
 // weighted random sampling without replacement, excluding any word shown in
-// this game mode more recently than its most recent wrong answer. As with
-// GetLastMistakesForGame, the qualifying re-eligibility event is specifically
-// a new wrong answer in normal training — a correct re-attempt alone does not
-// resurface the word (issue #350).
+// any game mode more recently than its most recent wrong answer (issues #350,
+// #558).
 func (s *Store) GetNewestWordsForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.id FROM words w
 		LEFT JOIN sm2_progress p ON p.word_id = w.id
-		LEFT JOIN word_game_shown g
-		  ON g.user_id = ? AND g.word_id = w.id AND g.game_mode = 'newest'
+		LEFT JOIN `+wordGameShownJoin+` ON g.word_id = w.id
 		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_at IS NOT NULL
-		  AND (g.last_shown_in_game IS NULL
-		       OR (p.last_wrong_at IS NOT NULL AND p.last_wrong_at > g.last_shown_in_game))
+		  AND `+wordGameShownEligible+`
 		ORDER BY w.created_at DESC, w.id DESC
 		LIMIT ?`, userID, userID, newestWordsGamePoolSize)
 	if err != nil {
@@ -202,20 +210,18 @@ func weightedSampleWithoutReplacement(ids []int64, n int) []int64 {
 // GetHardestWordsForGame returns up to `count` "hardest words" game
 // candidates: seen, graduated, >=3-attempt zh words ranked by lowest accuracy
 // (mirrors FlagDifficultWords' accuracy formula), excluding any word shown in
-// this game mode more recently than its most recent quiz attempt. The
-// qualifying re-eligibility event is any new attempt, right or wrong.
+// any game mode more recently than its most recent wrong answer (issue #558).
 func (s *Store) GetHardestWordsForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.word_id
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		LEFT JOIN word_game_shown g
-		  ON g.user_id = ? AND g.word_id = p.word_id AND g.game_mode = 'hardest'
+		LEFT JOIN `+wordGameShownJoin+` ON g.word_id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_at IS NOT NULL
 		  AND p.learning_new_word = 0
 		  AND p.total_attempts >= 3
-		  AND (g.last_shown_in_game IS NULL OR p.last_attempt_at > g.last_shown_in_game)
+		  AND `+wordGameShownEligible+`
 		ORDER BY `+difficultCandidateAccuracy+` ASC, p.word_id ASC
 		LIMIT ?`, userID, userID, count)
 	if err != nil {
@@ -230,20 +236,18 @@ func (s *Store) GetHardestWordsForGame(ctx context.Context, userID int64, count 
 
 // GetLastMistakesForGame returns up to `count` "last mistakes" game
 // candidates: zh words with at least one recorded wrong answer, most-recent
-// mistake first, excluding any word shown in this game mode more recently
-// than its most recent wrong answer. Unlike hardest-words, the qualifying
-// re-eligibility event is specifically a new wrong answer — a correct
-// re-attempt alone does not resurface the word.
+// mistake first, excluding any word shown in any game mode more recently
+// than its most recent wrong answer — a correct re-attempt alone does not
+// resurface the word (issue #558).
 func (s *Store) GetLastMistakesForGame(ctx context.Context, userID int64, count int) ([]models.MatchGameWord, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT p.word_id
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		LEFT JOIN word_game_shown g
-		  ON g.user_id = ? AND g.word_id = p.word_id AND g.game_mode = 'last_mistakes'
+		LEFT JOIN `+wordGameShownJoin+` ON g.word_id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.last_wrong_at IS NOT NULL
-		  AND (g.last_shown_in_game IS NULL OR p.last_wrong_at > g.last_shown_in_game)
+		  AND `+wordGameShownEligible+`
 		ORDER BY p.last_wrong_at DESC, p.word_id ASC
 		LIMIT ?`, userID, userID, count)
 	if err != nil {
@@ -278,9 +282,8 @@ func scanInt64Rows(rows *sql.Rows) ([]int64, error) {
 }
 
 // MarkWordsShownInGame upserts the current time as "last shown" for each
-// (userID, wordID, mode) pair, so GetHardestWordsForGame and
-// GetLastMistakesForGame suppress a word until their respective qualifying
-// event happens again. Mirrors MarkConfusionsShownInGame's idiom for the new,
+// (userID, wordID, mode) pair, so every game mode suppresses the word until
+// a new wrong answer (wordGameShownEligible, issue #558). Mirrors MarkConfusionsShownInGame's idiom for the new,
 // per-word rather than per-confusion-pair, game modes.
 func (s *Store) MarkWordsShownInGame(ctx context.Context, userID int64, wordIDs []int64, mode string) error {
 	now := time.Now().UTC().Format("2006-01-02 15:04:05")
