@@ -81,6 +81,8 @@ test.describe('Generate sentences', () => {
     await rows.nth(1).locator('input[type=checkbox]').uncheck();
     await page.locator('#sentences-tag-input').fill('daily');
     await expect(page.locator('#sentences-tag-hint')).toContainText('daily_s');
+    await expect(page.locator('#sentences-add-btn')).toBeEnabled();
+    await page.waitForTimeout(300); // let the button's background transition end for the screenshot
     await captureForPR(page, 'vocab-sentences-results');
     await page.locator('#sentences-add-btn').click();
 
