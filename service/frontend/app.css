@@ -734,6 +734,9 @@ label.st-text { cursor: pointer; }
 .sentence-input:hover, .sentence-input:focus { border-color: #d1d5db; background: #fff; outline: none; }
 .sentence-pinyin { color: #6b7280; margin-left: -6px; }
 .sent-import { border-top: 1px solid #e5e7eb; padding-top: 12px; }
+.vb-form-actions.sent-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.sent-start { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: #374151; cursor: pointer; }
+.sent-start input { width: 16px; height: 16px; accent-color: #2563eb; }
 .vb-sheet-title { margin: 0 0 14px; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: #111827; }
 .vb-form { display: flex; flex-direction: column; gap: 14px; }
 .vb-grid-2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }

@@ -375,8 +375,12 @@
             placeholder="e.g. daily_s" data-i18n-placeholder="sent.tagPlaceholder">
           <datalist id="sentences-tag-options"></datalist>
           <p id="sentences-tag-hint" class="tr-muted-sm mt-1"></p>
-          <div class="vb-form-actions">
+          <div class="vb-form-actions sent-actions">
             <button id="sentences-add-btn" type="button" class="ui-btn ui-btn-primary" data-i18n="sent.add">Add selected</button>
+            <label class="sent-start" for="sentences-start-training">
+              <input type="checkbox" id="sentences-start-training">
+              <span data-i18n="vocab.startTraining">Start training immediately</span>
+            </label>
           </div>
         </div>
         <p id="sentences-status" class="hidden text-sm mt-3" role="status"></p>

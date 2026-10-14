@@ -15,8 +15,8 @@ function normalizeSentenceTag(name) {
 }
 
 // sentenceWordPayload builds the POST /api/words body for one generated
-// sentence. Pure for unit testing.
-function sentenceWordPayload(sentence, tag) {
+// sentence; startTraining puts it into training at once. Pure for unit testing.
+function sentenceWordPayload(sentence, tag, startTraining) {
   const translations = {};
   for (const [lang, list] of Object.entries(sentence.translations || {})) {
     const clean = list.map(s => s.trim()).filter(Boolean);
@@ -27,6 +27,7 @@ function sentenceWordPayload(sentence, tag) {
     pinyin: (sentence.pinyin || '').trim(),
     translations,
     tags: [tag],
+    start_training: !!startTraining,
   };
 }
 
@@ -159,13 +160,14 @@ async function addSelectedSentences() {
   const btn = $('sentences-add-btn');
   btn.disabled = true;
   const checked = [...$('sentences-results').querySelectorAll('.sentence-check:checked')];
+  const startTraining = $('sentences-start-training').checked;
   const addedIdx = new Set();
   const failed = [];
   for (const cb of checked) {
     const i = Number(cb.dataset.index);
     const s = sentResults[i];
     try {
-      await apiFetch('/api/words', { method: 'POST', body: JSON.stringify(sentenceWordPayload(s, tag)) });
+      await apiFetch('/api/words', { method: 'POST', body: JSON.stringify(sentenceWordPayload(s, tag, startTraining)) });
       addedIdx.add(i);
     } catch (e) {
       failed.push(`${s.zh_text}: ${e.message}`);

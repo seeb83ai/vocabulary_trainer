@@ -79,6 +79,7 @@ test.describe('Generate sentences', () => {
     await expect(rows.nth(0).locator('input[type=checkbox]')).toBeChecked();
 
     await rows.nth(1).locator('input[type=checkbox]').uncheck();
+    await expect(page.locator('#sentences-start-training')).not.toBeChecked();
     await page.locator('#sentences-tag-input').fill('daily');
     await expect(page.locator('#sentences-tag-hint')).toContainText('daily_s');
     await expect(page.locator('#sentences-add-btn')).toBeEnabled();
@@ -94,6 +95,18 @@ test.describe('Generate sentences', () => {
     expect(words[0].tags).toContain('daily_s');
     expect(words[0].translations.en).toEqual(['I eat rice.']);
     expect(words[0].translations.de).toEqual(['Ich esse Reis.']);
+    expect(words[0].total_attempts).toBe(0); // not in training yet
+
+    // The other sentence goes into training at once.
+    await expect(rows).toHaveCount(1);
+    await expect(rows.nth(0)).toContainText('你吃米饭吗？');
+    await page.locator('#sentences-start-training').check();
+    await page.locator('#sentences-add-btn').click();
+    await expect(page.locator('#sentences-status')).toContainText('1');
+    const trained = (await (await page.request.get('/api/words?tags=daily_s&per_page=50')).json());
+    const byZh = Object.fromEntries((trained.words || trained).map(w => [w.zh_text, w]));
+    expect(byZh['你吃米饭吗？'].total_attempts).toBe(1);
+    expect(byZh['我吃米饭。'].total_attempts).toBe(0);
   });
 
   test('generating waits for the slow-call timeout, then shows the timeout message', async ({ page }) => {

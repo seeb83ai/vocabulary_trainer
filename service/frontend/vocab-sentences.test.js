@@ -10,7 +10,7 @@ function normalizeSentenceTag(name) {
   return tag.endsWith('_s') ? tag : tag + '_s';
 }
 
-function sentenceWordPayload(sentence, tag) {
+function sentenceWordPayload(sentence, tag, startTraining) {
   const translations = {};
   for (const [lang, list] of Object.entries(sentence.translations || {})) {
     const clean = list.map(s => s.trim()).filter(Boolean);
@@ -21,6 +21,7 @@ function sentenceWordPayload(sentence, tag) {
     pinyin: (sentence.pinyin || '').trim(),
     translations,
     tags: [tag],
+    start_training: !!startTraining,
   };
 }
 
@@ -55,7 +56,13 @@ describe('sentenceWordPayload', () => {
       pinyin: 'wǒ chī mǐ fàn.',
       translations: { en: ['I eat rice.'], de: ['Ich esse Reis.'] },
       tags: ['daily_s'],
+      start_training: false,
     });
+  });
+
+  it('asks to start training when the box is checked', () => {
+    const p = sentenceWordPayload({ zh_text: '我吃米饭。', pinyin: '', translations: { en: ['I eat rice.'] } }, 'x_s', true);
+    expect(p.start_training).toBe(true);
   });
 
   it('drops empty translations the user cleared', () => {
