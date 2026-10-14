@@ -187,7 +187,7 @@ async function loadSettings() {
     // Cycle step selects
     const defaultSeq = 'zh_pinyin_to_transl,transl_to_zh,zh_to_transl';
     const cycleSteps = (st.cycle_sequence || defaultSeq).split(',');
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 7; i++) {
       const el = document.getElementById('cycle-step-' + i);
       if (el) populateCycleSelect(el, cycleSteps[i] || '');
     }
@@ -328,7 +328,7 @@ for (const id of ['mode-prog-new','mode-prog-struggling','mode-prog-learning','m
   const el = document.getElementById(id);
   if (el) populateModeSelect(el, '');
 }
-for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2','cycle-step-3','cycle-step-4','cycle-step-5']) {
+for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2','cycle-step-3','cycle-step-4','cycle-step-5','cycle-step-6']) {
   const el = document.getElementById(id);
   if (el) populateCycleSelect(el, '');
 }
@@ -368,7 +368,7 @@ document.addEventListener('langchange', () => {
     const el = document.getElementById(id);
     if (el) populateModeSelect(el, el.value);
   }
-  for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2','cycle-step-3','cycle-step-4','cycle-step-5']) {
+  for (const id of ['cycle-step-0','cycle-step-1','cycle-step-2','cycle-step-3','cycle-step-4','cycle-step-5','cycle-step-6']) {
     const el = document.getElementById(id);
     if (el) populateCycleSelect(el, el.value);
   }
@@ -393,7 +393,7 @@ document.addEventListener('langchange', () => {
 
 function buildCycleSequence() {
   const steps = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     const v = document.getElementById('cycle-step-' + i)?.value;
     if (v) steps.push(v);
   }

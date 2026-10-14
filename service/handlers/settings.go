@@ -139,8 +139,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "cycle_sequence must have at least 2 steps")
 			return
 		}
-		if len(steps) > 6 {
-			writeError(w, http.StatusBadRequest, "cycle_sequence must have at most 6 steps")
+		if len(steps) > 7 {
+			writeError(w, http.StatusBadRequest, "cycle_sequence must have at most 7 steps")
 			return
 		}
 		for _, step := range steps {

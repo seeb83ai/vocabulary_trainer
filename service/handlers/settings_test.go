@@ -610,11 +610,30 @@ func TestSettingsCycleSequence_TooManySteps(t *testing.T) {
 		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
 		"prog_tier_mastered": "random",
 		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
-		"cycle_sequence": "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,transl_to_zh,zh_to_transl,zh_pinyin_to_transl",
+		"cycle_sequence": "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,transl_to_zh,zh_to_transl,zh_pinyin_to_transl,voice_to_zh",
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("want 400 for cycle_sequence with 7 steps, got %d", rec.Code)
+		t.Errorf("want 400 for cycle_sequence with 8 steps, got %d", rec.Code)
+	}
+}
+
+// TestSettingsCycleSequence_SevenSteps covers issue #571: with Voice →
+// Chinese there are 7 modes, so a cycle can have 7 steps.
+func TestSettingsCycleSequence_SevenSteps(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["cycle_sequence"] = "zh_pinyin_to_transl,transl_to_zh,zh_to_transl,zh_to_transl_no_sound,voice_to_transl,voice_to_zh,mask_pinyin"
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for cycle_sequence with 7 steps, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var st models.UserSettings
+	decodeJSON(t, do(t, r, http.MethodGet, "/api/settings", nil), &st)
+	if st.CycleSequence != payload["cycle_sequence"] {
+		t.Errorf("want cycle_sequence %q, got %q", payload["cycle_sequence"], st.CycleSequence)
 	}
 }
 
