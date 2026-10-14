@@ -96,6 +96,26 @@ test.describe('Generate sentences', () => {
     expect(words[0].translations.de).toEqual(['Ich esse Reis.']);
   });
 
+  test('generating waits for the slow-call timeout, then shows the timeout message', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '米饭', 'mǐfàn', { en: ['rice'] }, ['food']);
+    await mockConfig(page, true);
+    await page.route('**/api/sentences/generate', () => {}); // the LLM never answers
+    await page.clock.install();
+
+    await page.goto('/vocab');
+    await page.locator('#vocab-menu-btn').click();
+    await page.locator('#open-sentences-btn').click();
+    await page.locator('#sentences-generate-btn').click();
+    await expect(page.locator('#sentences-loading')).toBeVisible();
+    // The default 15 s timeout doesn't apply: the LLM may take up to a minute.
+    await page.clock.fastForward(16_000);
+    await expect(page.locator('#sentences-loading')).toBeVisible();
+    await page.clock.fastForward(45_000);
+    await expect(page.locator('#sentences-status')).toContainText('The server did not answer. Try again.');
+    await expect(page.locator('#sentences-generate-btn')).toBeEnabled();
+  });
+
   test('without LLM access the tab explains why and cannot generate', async ({ page }) => {
     await registerUser(page);
     await seed(page, '米饭', 'mǐfàn', { en: ['rice'] }, ['food']);
