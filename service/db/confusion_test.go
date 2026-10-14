@@ -1101,3 +1101,20 @@ func TestGetRecentMismatches_BlockedByWordShownInGame(t *testing.T) {
 		t.Errorf("pair must come back after a new confusion, got %d items", len(items))
 	}
 }
+
+// TestDetectConfusion_VoiceToZh_Found covers issue #571: in voice_to_zh the
+// user types hanzi, so a typed known zh word is a confusion as in transl_to_zh.
+func TestDetectConfusion_VoiceToZh_Found(t *testing.T) {
+	s := openTestDB(t)
+	sheID := seedWord(t, s, "她", "tā", []string{"she"})
+	markWordTrained(t, s, sheID)
+	heID := seedWord(t, s, "他", "tā", []string{"he"})
+
+	confusedWithID, found, err := s.DetectConfusion(context.Background(), int64(2), heID, "她", models.ModeVoiceToZh, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || confusedWithID != sheID {
+		t.Errorf("want confusion with %d, got found=%v id=%d", sheID, found, confusedWithID)
+	}
+}

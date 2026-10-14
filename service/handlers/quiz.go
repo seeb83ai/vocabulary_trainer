@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -310,7 +311,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		mode = sm2.SelectNewWordMode(progress.TotalCorrect, nwCfg)
 	} else {
 		switch requestedMode {
-		case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
+		case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl, models.ModeVoiceToZh:
 			mode = requestedMode
 		case models.ModeProgressive:
 			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
@@ -374,8 +375,10 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch mode {
-	case models.ModeTranslToZh:
+	case models.ModeTranslToZh, models.ModeVoiceToZh:
 		// Load translations for ALL selected langs so the user sees every meaning as context.
+		// voice_to_zh needs them for the voice-unavailable fallback (shown as
+		// transl_to_zh) and the homophone screen (issue #571).
 		translations := map[string][]string{}
 		translationsExtra := map[string][]string{}
 		for _, lang := range langs {
@@ -407,7 +410,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		card.ZhText = word.Text
 		// Apply pinyin hint when the word is in the learning phase or mask_pinyin was requested.
 		// Cycle mode skips the learning-phase hint: the user chose the step explicitly.
-		if word.Pinyin != nil {
+		// voice_to_zh never gets one: the audio is the question.
+		if word.Pinyin != nil && mode == models.ModeTranslToZh {
 			if forceMaskPinyin && !progress.LearningNewWord {
 				// Tier-based mask_pinyin: always show a level-0 masked hint (first char of each syllable).
 				if masked := sm2.MaskPinyin(*word.Pinyin, 0); masked != "" {
@@ -448,6 +452,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
 		models.ModeVoiceToTransl:     true,
+		models.ModeVoiceToZh:         true,
 	}
 	if !validModes[req.Mode] {
 		writeError(w, http.StatusBadRequest, "invalid mode")
@@ -477,7 +482,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 	var correctTexts []string
 	switch req.Mode {
-	case models.ModeTranslToZh:
+	case models.ModeTranslToZh, models.ModeVoiceToZh:
 		correctTexts = []string{zhWord.ZhText}
 	case models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
 		for _, lang := range langs {
@@ -655,9 +660,35 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			pinyin, _ := h.Store.GetPinyinByZhText(r.Context(), UserIDFromContext(r.Context()), req.Answer)
 			resp.UserAnswerPinyin = pinyin
 		}
+		if req.Mode == models.ModeVoiceToZh {
+			resp.Homophone = h.isHomophone(r.Context(), req.Answer, derefPinyin(zhWord.Pinyin))
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// isHomophone reports whether the typed hanzi has the same pinyin and tones
+// as wordPinyin. The typed word's pinyin comes from the user's own words, else
+// from the dictionary (issue #571).
+func (h *QuizHandler) isHomophone(ctx context.Context, answer, wordPinyin string) bool {
+	if answer == "" || wordPinyin == "" {
+		return false
+	}
+	var answerPinyin string
+	if p, err := h.Store.GetPinyinByZhText(ctx, UserIDFromContext(ctx), answer); err != nil {
+		log.Printf("answer: GetPinyinByZhText %q: %v", answer, err)
+	} else if p != nil {
+		answerPinyin = *p
+	}
+	if answerPinyin == "" {
+		p, err := h.Store.LookupPinyin(ctx, answer)
+		if err != nil {
+			log.Printf("answer: LookupPinyin %q: %v", answer, err)
+		}
+		answerPinyin = p
+	}
+	return sm2.SamePinyin(answerPinyin, wordPinyin)
 }
 
 // AcceptCorrect handles POST /api/quiz/accept-correct. It restores the pre-answer
@@ -680,6 +711,7 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
 		models.ModeVoiceToTransl:     true,
+		models.ModeVoiceToZh:         true,
 	}
 	if !validModes[req.Mode] && req.Mode != "" {
 		writeError(w, http.StatusBadRequest, "invalid mode")
@@ -747,7 +779,7 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 	}
 	var correctTexts []string
 	switch req.Mode {
-	case models.ModeTranslToZh:
+	case models.ModeTranslToZh, models.ModeVoiceToZh:
 		correctTexts = []string{zhWord.ZhText}
 	default:
 		for _, lang := range langs {

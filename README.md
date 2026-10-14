@@ -11,12 +11,15 @@ This is a self-hosted Chinese-English vocabulary trainer. It uses the SM-2 space
 - **Try-before-signup demo quiz.** Signed-out visitors can answer five fixed demo cards (Chinese + pinyin → English) directly on the root page, with no account. Answers are checked server-side with the same flexible matching logic as the real quiz, wrong answers reveal the accepted translations, and finishing the demo leads to a "Create free account" prompt. The endpoints (`GET /api/demo/cards`, `POST /api/demo/answer`) are public, stateless, and store nothing.
 - Add vocabulary with Chinese characters, pinyin, and one or more English translations.
 - The app supports N:N word relationships. The same English or Chinese word can appear in more than one entry.
-- The app has seven quiz modes. You can pick a mode, or let the app pick one at random.
+- The app has eight quiz modes. You can pick a mode, or let the app pick one at random.
   - **English → Chinese**
   - **Chinese → English**
   - **Chinese (no sound) → English**. This mode is the same as Chinese → English, but it hides the 🔊 play button and never auto-plays audio. Use this mode to drill visual hanzi recognition without an audio cue.
   - **Chinese + Pinyin → English**
   - **Voice → Translation**. The Chinese character is hidden; only the audio plays. You must type the translation from memory. Audio always plays automatically when a card appears. If your device has no speaker, enable "Voice not available" in Settings to fall back to showing the Chinese text (equivalent to Chinese → English).
+  - **Voice → Chinese**. The word and its meaning are hidden; only the audio plays. You must type the Chinese characters. If you type a different word with the same pinyin and tones (a homophone, for example 她 for 他), the result screen "Same sound, other word" shows the meaning of the word you heard and lets you type again. A correct second answer counts as correct, like on the "Right meaning, other word" screen. The app gets the pinyin of the typed word from your vocabulary, else from the dictionary.
+
+  When you skip a voice card, the app asks if voice is not available. If you answer yes, the app asks the same word again at once instead of skipping it: a *Voice → Translation* word as *Chinese → Translation*, a *Voice → Chinese* word as *Translation → Chinese*. Later voice cards in the same session use these fallback modes too.
   - **Progressive**. This mode picks the quiz direction based on your learning progress.
   - **Cycle**. This mode rotates through a sequence of directions that you configure for each word.
 - The app uses [SM-2 spaced repetition](https://www.supermemo.com/en/blog/application-of-a-computer-to-improve-the-results-obtained-in-working-with-the-super-memo-method). Words you get wrong appear more often. The app schedules correct answers further into the future.
@@ -312,18 +315,18 @@ Default sequence: **Chinese + Pinyin → Translation → Chinese → Translation
 
 This sequence, like every other training-mode setting, only takes effect once a word has **graduated** out of the new-word introduction phase. While `learning_new_word = true`, the overall training mode you have selected (Cycle, Progressive, Random, or a fixed direction) never matters — the quiz format always comes from the **New word phase** steps configured in Settings → Training Mode instead (see "Progressive mode" above).
 
-You can configure the sequence (2 to 6 steps) in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, *Voice → Translation*, and *Translation → Chinese (pinyin hint)*. The same settings panel offers three mutually exclusive advance options: **Advance on every attempt** (default, counter is `total_attempts`), **Advance only on success** (counter is `total_correct`), and **Advance only if known** (counter is a first-try-correct count that only increments when an answer is correct with no wrong guess earlier in that encounter).
+You can configure the sequence (2 to 6 steps) in **Settings → Cycle Mode**. The available directions are: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, *Voice → Translation*, *Voice → Chinese*, and *Translation → Chinese (pinyin hint)*. The same settings panel offers three mutually exclusive advance options: **Advance on every attempt** (default, counter is `total_attempts`), **Advance only on success** (counter is `total_correct`), and **Advance only if known** (counter is a first-try-correct count that only increments when an answer is correct with no wrong guess earlier in that encounter).
 
 Under **advance only on success** or **advance only if known**, a wrong answer holds the step at exactly the format that was just shown — even if that answer also moves the word into a different accuracy tier (which would otherwise re-filter the step against a different "Random / Cycle mode by bucket" range, see below, and could pick a different format for the same step). The pinned format is cleared as soon as the encounter is resolved by a correct answer.
 
 ## Random / Cycle mode by bucket
 
-**Random** mode and **Cycle** mode both pick from 5 quiz formats: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, and *Voice → Translation*. In **Settings → Random / Cycle Mode by Bucket**, you can restrict which of these formats is eligible for each of the 5 accuracy tiers (New, Struggling, Learning, Practicing, Mastered — the same buckets used elsewhere in the app). For each format, choose an inclusive "from" and "to" bucket range, or turn the format off entirely.
+**Random** mode and **Cycle** mode both pick from 6 quiz formats: *Translation → Chinese*, *Chinese → Translation*, *Chinese (no sound) → Translation*, *Chinese + Pinyin → Translation*, *Voice → Translation*, and *Voice → Chinese*. In **Settings → Random / Cycle Mode by Bucket**, you can restrict which of these formats is eligible for each of the 5 accuracy tiers (New, Struggling, Learning, Practicing, Mastered — the same buckets used elsewhere in the app). For each format, choose an inclusive "from" and "to" bucket range, or turn the format off entirely.
 
 - **Random mode** picks uniformly at random among the formats eligible for the word's current bucket.
 - **Cycle mode** filters your configured step sequence down to the formats eligible for the word's current bucket before picking a step. If none of your configured steps are eligible for that bucket, the app falls back to picking from the full bucket-eligible format list instead. This filtering only applies to a graduated word — a word still in the new-word introduction phase ignores it entirely (see "Cycle mode" above).
 
-On save, the app checks that every one of the 5 buckets has at least one eligible format across all 5 settings combined. If a bucket would be left with no eligible format, the save is rejected and nothing changes.
+On save, the app checks that every one of the 5 buckets has at least one eligible format across all 6 settings combined. If a bucket would be left with no eligible format, the save is rejected and nothing changes.
 
 The default ladder increases difficulty (fewer hints) for higher buckets:
 
@@ -334,6 +337,7 @@ The default ladder increases difficulty (fewer hints) for higher buckets:
 | Chinese → Translation | Struggling – Mastered |
 | Chinese (no sound) → Translation | Learning – Mastered |
 | Voice → Translation | Practicing – Mastered |
+| Voice → Chinese | Practicing – Mastered |
 
 ## User settings
 
@@ -911,6 +915,8 @@ The app counts attempts and errors per word and per *answer bucket*. A bucket te
 | `voice_only` | Voice-only card (`voice_to_transl`), unless *voice unavailable* is set |
 | `to_zh` | Translation → Chinese card |
 
+*Voice → Chinese* answers (`voice_to_zh`) are not counted in a bucket.
+
 An answer with pinyin and sound counts in `pinyin` and in `voice`.
 
 Four *help buckets* tell how often the user chose a help themselves:
@@ -960,7 +966,7 @@ Stages: **registered** (accounts created) → **verified email** → **activated
 | `GET` | `/api/demo/cards` | Public demo card list for the landing page (no auth, translations omitted) |
 | `POST` | `/api/demo/answer` | Check a demo answer statelessly (no auth; returns `correct` + accepted translations) |
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
-| `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag). Send `drill: true` in the difficult-words drill, so the answer does not count as a review. Send `pinyin_seen`, `audio_played` and `play_pressed` to tell what help the user had before the answer. The server counts the answer in its answer buckets (see below). The response has `leech_lapses` when the answer is a lapse that reaches the leech threshold (or a multiple of it) |
+| `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag). Send `drill: true` in the difficult-words drill, so the answer does not count as a review. Send `pinyin_seen`, `audio_played` and `play_pressed` to tell what help the user had before the answer. The server counts the answer in its answer buckets (see below). The response has `leech_lapses` when the answer is a lapse that reaches the leech threshold (or a multiple of it), and `homophone: true` on a wrong `voice_to_zh` answer with the same pinyin and tones as the word |
 | `GET` | `/api/quiz/match-game` | Get a round of words for the match mini-game, picked at random among the user's enabled game modes (mismatch / newest / hardest / last-mistakes) that currently have enough eligible words; empty `words` if none qualify. Mismatch tiles may be words or hanzi components; other modes are word-only |
 | `POST` | `/api/quiz/match-answer` | Submit a match-game result — `{zh_word_id, correct}` for a word tile, or `{kind: "component", character, correct}` for a component tile — updates SM-2 or component progress |
 | `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress. Send the same `drill`, `pinyin_seen`, `audio_played` and `play_pressed` values as with the answer, so the server removes the error from the same answer buckets |

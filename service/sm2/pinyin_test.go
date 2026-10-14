@@ -143,3 +143,27 @@ func TestTranslationEqualsPinyin(t *testing.T) {
 		}
 	}
 }
+
+// TestSamePinyin covers issue #571: a homophone has the same pinyin with the
+// same tones; case, spaces, apostrophes and v/ü do not matter.
+func TestSamePinyin(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"tā", "tā", true},
+		{"Tā", "tā", true},
+		{"zhī dào", "zhīdào", true},
+		{"Xī'ān", "xī ān", true},
+		{"nǚ", "nǚ", true},
+		{"mǎi", "mài", false},
+		{"ta", "tā", false},
+		{"", "", false},
+		{"shuǐ", "", false},
+	}
+	for _, c := range cases {
+		if got := SamePinyin(c.a, c.b); got != c.want {
+			t.Errorf("SamePinyin(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}

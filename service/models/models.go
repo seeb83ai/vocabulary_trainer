@@ -13,6 +13,7 @@ const (
 	ModeCycle             = "cycle"
 	ModeZhToTranslNoSound = "zh_to_transl_no_sound" // zh_to_transl with no play button / no auto-play
 	ModeVoiceToTransl     = "voice_to_transl"       // audio-only prompt; user types translation
+	ModeVoiceToZh         = "voice_to_zh"           // audio-only prompt; user types the hanzi
 )
 
 // UserSettings holds per-user configuration stored in user_settings.
@@ -82,6 +83,7 @@ type UserSettings struct {
 	RandomModeRangeZhPinyinToTransl  string   `json:"random_mode_range_zh_pinyin_to_transl"`
 	RandomModeRangeZhToTranslNoSound string   `json:"random_mode_range_zh_to_transl_no_sound"`
 	RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
+	RandomModeRangeVoiceToZh         string   `json:"random_mode_range_voice_to_zh"`
 	WrongAnswerRetryMode             string   `json:"wrong_answer_retry_mode"` // "off", "matched" (retype only the field(s) the current card direction tested), or "both"
 	ComponentCoverageThreshold       float64  `json:"component_coverage_threshold"`
 	SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
@@ -116,7 +118,7 @@ type NewWordModeConfig struct {
 	Step2 string // TotalCorrect>=2; default: ModeZhToTransl
 }
 
-// RandomModeConfig holds, for each of the 5 candidate quiz modes that
+// RandomModeConfig holds, for each of the 6 candidate quiz modes that
 // SelectMode/SelectCycleMode pick from, the inclusive learning-bucket range
 // ("new", "0-49", "50-69", "70-84", "85-100") in which that mode is eligible.
 // A zero-value string in any field uses the built-in default range for that
@@ -128,6 +130,7 @@ type RandomModeConfig struct {
 	ZhPinyinToTransl  string
 	ZhToTranslNoSound string
 	VoiceToTransl     string
+	VoiceToZh         string
 }
 
 // QuizConfig projects the user's progressive-mode settings into a
@@ -161,6 +164,7 @@ func (s UserSettings) RandomModeConfig() RandomModeConfig {
 		ZhPinyinToTransl:  s.RandomModeRangeZhPinyinToTransl,
 		ZhToTranslNoSound: s.RandomModeRangeZhToTranslNoSound,
 		VoiceToTransl:     s.RandomModeRangeVoiceToTransl,
+		VoiceToZh:         s.RandomModeRangeVoiceToZh,
 	}
 }
 
@@ -329,7 +333,10 @@ type AnswerResponse struct {
 	PrevTier          string              `json:"prev_tier,omitempty"`
 	SceneText         string              `json:"scene_text,omitempty"`
 	Ambiguous         bool                `json:"ambiguous,omitempty"`
-	UserAnswerPinyin  *string             `json:"user_answer_pinyin,omitempty"`
+	// Homophone is set on a wrong voice_to_zh answer with the same pinyin
+	// and tones as the word (issue #571).
+	Homophone        bool    `json:"homophone,omitempty"`
+	UserAnswerPinyin *string `json:"user_answer_pinyin,omitempty"`
 	// LeechLapses is set when this answer was a lapse that reached the
 	// user's leech threshold (or a multiple of it): the number of lapses in a row.
 	LeechLapses int `json:"leech_lapses,omitempty"`

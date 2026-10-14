@@ -325,6 +325,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/new-word-pause.spec.js` | Browser tests: new words paused by the lapsed-words baseline and by a bad session today (accuracy baseline), lapsed baseline setting |
 | `e2e/vocab-lapsed.spec.js` | Browser tests: Vocabulary *Failed last review* chip and reset from the edit sheet |
 | `e2e/tag-groups.spec.js` | Browser tests: tag groups (OR in a group, AND between groups) in the Train session sheet and the Vocabulary filter, ⓘ explanation next to every tag field, phone layout |
+| `e2e/voice-to-zh.spec.js` | Browser tests: Voice → Chinese card, homophone screen with retype, skip with "voice not available" asks the same word in the fallback mode (both voice modes), Settings range row |
 | `e2e/answer-buckets.spec.js` | Browser tests: answer and help buckets from pinyin seen/tapped and sound played/pressed, autoplay (and autoplay blocked by blurred pinyin), accept-correct removes the error |
 | `e2e/request-guards.spec.js` | Browser tests: one request per double tap (Train, Vocabulary Save, Add prop, demo), newest result wins after fast filter/search changes (Train, Vocabulary, Stats, Pinyin), settings saves kept in order, timeouts with a fake clock (toast, error card, slow-call timeout, registration) |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |

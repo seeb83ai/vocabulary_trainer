@@ -30,6 +30,7 @@ function modeOptions() {
     { value: 'zh_to_transl_no_sound', label: t('settingsMode.zh_to_transl_no_sound') },
     { value: 'zh_pinyin_to_transl', label: t('settingsMode.zh_pinyin_to_transl') },
     { value: 'voice_to_transl',    label: t('settingsMode.voice_to_transl') },
+    { value: 'voice_to_zh',        label: t('settingsMode.voice_to_zh') },
     { value: 'mask_pinyin',        label: t('settingsMode.mask_pinyin') },
     { value: 'random',             label: t('mode.random') },
   ];
@@ -42,6 +43,7 @@ function cycleStepOptions() {
     { value: 'zh_to_transl',       label: t('settingsMode.zh_to_transl') },
     { value: 'zh_to_transl_no_sound', label: t('settingsMode.zh_to_transl_no_sound') },
     { value: 'voice_to_transl',    label: t('settingsMode.voice_to_transl') },
+    { value: 'voice_to_zh',        label: t('settingsMode.voice_to_zh') },
     { value: 'mask_pinyin',        label: t('settingsMode.mask_pinyin') },
   ];
 }
@@ -74,7 +76,7 @@ function buckets() {
   ];
 }
 
-// The 5 candidate modes governed by the random/cycle per-bucket setting, with
+// The 6 candidate modes governed by the random/cycle per-bucket setting, with
 // the field name UserSettings uses and the built-in default range (mirrors
 // sm2.DefaultRandomModeConfig).
 const RANDOM_MODES = [
@@ -83,6 +85,7 @@ const RANDOM_MODES = [
   { key: 'zh_to_transl',          field: 'random_mode_range_zh_to_transl',          def: '0-49,85-100' },
   { key: 'zh_to_transl_no_sound', field: 'random_mode_range_zh_to_transl_no_sound', def: '50-69,85-100' },
   { key: 'voice_to_transl',       field: 'random_mode_range_voice_to_transl',       def: '70-84,85-100' },
+  { key: 'voice_to_zh',           field: 'random_mode_range_voice_to_zh',           def: '70-84,85-100' },
 ];
 
 // Parses a random-mode-range setting value ("" | "off" | "<from>,<to>") into

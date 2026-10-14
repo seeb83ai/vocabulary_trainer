@@ -80,7 +80,7 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		}
 		return 0, false, rows.Err()
 
-	case models.ModeTranslToZh:
+	case models.ModeTranslToZh, models.ModeVoiceToZh:
 		// First: find a ZH word whose text matches the answer (user typed Chinese).
 		var confusedWithID int64
 		err := s.db.QueryRowContext(ctx, `

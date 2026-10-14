@@ -12,17 +12,27 @@ function shouldAutoPlay(currentCard) {
   return isZhPromptWithSound(currentCard.mode);
 }
 
-// isVoiceOnlyMode returns true for voice_to_transl when the user hasn't
-// disabled it, meaning the Chinese prompt text should be hidden.
+// isVoiceOnlyMode returns true for voice_to_transl and voice_to_zh when the
+// user hasn't disabled voice, meaning the prompt text should be hidden.
 function isVoiceOnlyMode(mode) {
-  return mode === 'voice_to_transl' && !voiceUnavailable;
+  return (mode === 'voice_to_transl' || mode === 'voice_to_zh') && !voiceUnavailable;
+}
+
+// voiceFallbackMode returns the mode a voice card is asked in when voice is
+// unavailable: Voice → Translation becomes Chinese → Translation, Voice →
+// Chinese becomes Translation → Chinese (issue #571).
+function voiceFallbackMode(mode, unavailable) {
+  if (!unavailable) return mode;
+  if (mode === 'voice_to_transl') return 'zh_to_transl';
+  if (mode === 'voice_to_zh') return 'transl_to_zh';
+  return mode;
 }
 
 // isZhPromptWithSound decides whether the Chinese prompt for this mode has
 // audio available (play button + eligible for auto-play). zh_to_transl_no_sound
 // is deliberately excluded — it's the whole point of that mode.
 function isZhPromptWithSound(mode) {
-  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl' || mode === 'voice_to_transl';
+  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl' || mode === 'voice_to_transl' || mode === 'voice_to_zh';
 }
 
 // isAutoPlayBlockedByBlur decides whether the noAutoVoiceOnBlur guard should
@@ -49,7 +59,7 @@ function autoPlayCard(currentCard) {
   questionAutoPlayed = true;
   currentAutoPlayAudio = currentCard.card_type === 'component'
     ? playComponentAudio(currentCard.prompt)
-    : playAudio(currentCard.word_id, currentCard.prompt);
+    : playAudio(currentCard.word_id, currentCard.zh_text || currentCard.prompt);
 }
 
 // shouldAutoPlayResult decides whether the result screen should read out the

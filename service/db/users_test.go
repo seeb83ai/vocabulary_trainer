@@ -421,6 +421,7 @@ func TestUpdateUserSettings_RandomModeRangeRoundTrip(t *testing.T) {
 		RandomModeRangeZhPinyinToTransl:  "new,70-84",
 		RandomModeRangeZhToTranslNoSound: "50-69,85-100",
 		RandomModeRangeVoiceToTransl:     "70-84,85-100",
+		RandomModeRangeVoiceToZh:         "85-100,85-100",
 	}
 	if err := s.UpdateUserSettings(ctx, userID, in); err != nil {
 		t.Fatalf("UpdateUserSettings: %v", err)
@@ -443,6 +444,9 @@ func TestUpdateUserSettings_RandomModeRangeRoundTrip(t *testing.T) {
 	}
 	if out.RandomModeRangeVoiceToTransl != "70-84,85-100" {
 		t.Errorf("random_mode_range_voice_to_transl: want %q, got %q", "70-84,85-100", out.RandomModeRangeVoiceToTransl)
+	}
+	if out.RandomModeRangeVoiceToZh != "85-100,85-100" {
+		t.Errorf("random_mode_range_voice_to_zh: want %q, got %q", "85-100,85-100", out.RandomModeRangeVoiceToZh)
 	}
 }
 

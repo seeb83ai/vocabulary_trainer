@@ -365,7 +365,7 @@ describe('wrongRetypeSatisfied', () => {
 
 function wrongRetypeFieldsForCard(retryMode, cardMode) {
   if (retryMode === 'both') return { requireZh: true, requireTrans: true };
-  if (cardMode === 'transl_to_zh') return { requireZh: true, requireTrans: false };
+  if (cardMode === 'transl_to_zh' || cardMode === 'voice_to_zh') return { requireZh: true, requireTrans: false };
   return { requireZh: false, requireTrans: true };
 }
 
@@ -377,6 +377,10 @@ describe('wrongRetypeFieldsForCard', () => {
 
   it('requires only the Chinese word in "matched" mode for a transl_to_zh card', () => {
     expect(wrongRetypeFieldsForCard('matched', 'transl_to_zh')).toEqual({ requireZh: true, requireTrans: false });
+  });
+
+  it('requires only the Chinese word in "matched" mode for a voice_to_zh card (issue #571)', () => {
+    expect(wrongRetypeFieldsForCard('matched', 'voice_to_zh')).toEqual({ requireZh: true, requireTrans: false });
   });
 
   it('requires only the translation in "matched" mode for a zh_to_transl-family card', () => {
@@ -559,7 +563,7 @@ function shouldShowAcceptTypo(answer, result, mode, cardMode) {
   if (!answer || answer.trim() === '') return false;
   if (mode === 'always') return true;
   if (mode !== 'typo') return false;
-  if (cardMode === 'transl_to_zh') {
+  if (cardMode === 'transl_to_zh' || cardMode === 'voice_to_zh') {
     if (result.user_answer_pinyin && result.pinyin) {
       return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
                          result.pinyin.toLowerCase().trim()) <= 1;
@@ -1014,5 +1018,22 @@ describe('numberedMeaningRows', () => {
   it('strips short POS tags and duplicates', () => {
     const r = numberedMeaningRows({ de: ['Jahr (S)', 'jahr'] }, {}, ['de'], 3);
     expect(r.rows).toEqual(['Jahr']);
+  });
+});
+
+// ── isZhAnswerMode (issue #571) ─────────────────────────────────────────────
+// Mirrors train-answer.js: the modes where the user types the hanzi.
+function isZhAnswerMode(mode) {
+  return mode === 'transl_to_zh' || mode === 'voice_to_zh';
+}
+
+describe('isZhAnswerMode', () => {
+  it('is true for transl_to_zh and voice_to_zh', () => {
+    expect(isZhAnswerMode('transl_to_zh')).toBe(true);
+    expect(isZhAnswerMode('voice_to_zh')).toBe(true);
+  });
+  it('is false for modes that ask for a translation', () => {
+    expect(isZhAnswerMode('zh_to_transl')).toBe(false);
+    expect(isZhAnswerMode('voice_to_transl')).toBe(false);
   });
 });
