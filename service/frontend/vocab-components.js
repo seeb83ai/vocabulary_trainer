@@ -1,5 +1,7 @@
 // vocab-components.js — components table and component edit tab
 
+const componentsRequest = latestRequest();
+
 async function loadComponents() {
   const params = new URLSearchParams({
     q: searchQuery,
@@ -8,11 +10,12 @@ async function loadComponents() {
   });
   if (compReviewFilterActive) params.set('review', '1');
   try {
-    const data = await apiFetch(`/api/components?${params}`);
+    const data = await apiFetch(`/api/components?${params}`, { signal: componentsRequest() });
     renderComponentTable(data.components);
     renderPagination(data.total, data.page, data.per_page);
   } catch (e) {
-    alert('Failed to load components: ' + e.message);
+    if (isAbortError(e)) return;
+    showToastError(e.message);
   }
 }
 

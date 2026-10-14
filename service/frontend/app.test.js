@@ -213,21 +213,72 @@ describe('tierIconHTML', () => {
 // ── apiFetch ──────────────────────────────────────────────────────────────────
 // Re-implement apiFetch the same way app.js does, using the global fetch.
 
+const t = key => key;
+const API_TIMEOUT_MS = 15000;
+const API_SLOW_TIMEOUT_MS = 60000;
+
 async function apiFetch(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
-  if (!res.ok) {
-    let errMsg = res.statusText;
-    try {
-      const body = await res.json();
-      if (body.error) errMsg = body.error;
-    } catch (_) {}
-    throw new Error(errMsg);
+  const { timeoutMs = API_TIMEOUT_MS, signal, ...rest } = options;
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+  const cancel = () => ctrl.abort();
+  if (signal?.aborted) ctrl.abort();
+  else signal?.addEventListener('abort', cancel);
+  try {
+    const res = await fetch(path, {
+      headers: { 'Content-Type': 'application/json', ...(rest.headers || {}) },
+      ...rest,
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      let errMsg = res.statusText;
+      try {
+        const body = await res.json();
+        if (body.error) errMsg = body.error;
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+    if (res.status === 204) return null;
+    return await res.json();
+  } catch (err) {
+    if (timedOut) {
+      const timeoutErr = new Error(t('api.timeout'));
+      timeoutErr.name = 'TimeoutError';
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
   }
-  if (res.status === 204) return null;
-  return res.json();
+}
+
+function isAbortError(err) {
+  return err?.name === 'AbortError';
+}
+
+function isTimeoutError(err) {
+  return err?.name === 'TimeoutError';
+}
+
+function latestRequest() {
+  let ctrl = null;
+  return () => {
+    ctrl?.abort();
+    ctrl = new AbortController();
+    return ctrl.signal;
+  };
+}
+
+async function withBusyButton(btn, fn) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    return await fn();
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 describe('apiFetch', () => {
@@ -311,6 +362,139 @@ describe('apiFetch', () => {
     // the built headers object — X-Custom is present in the final call.
     const call = fetch.mock.calls[0][1];
     expect(call.headers['X-Custom']).toBe('val');
+  });
+});
+
+// ── apiFetch timeouts and cancel ─────────────────────────────────────────────
+
+// A fetch that never answers; it rejects only when its signal aborts, as a
+// browser fetch does.
+function hangingFetch() {
+  return vi.fn((path, opts) => new Promise((resolve, reject) => {
+    if (opts.signal.aborted) reject(new DOMException('aborted', 'AbortError'));
+    opts.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+  }));
+}
+
+describe('apiFetch timeout', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', hangingFetch());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects with a TimeoutError after the default 15 s', async () => {
+    const p = apiFetch('/api/quiz/next');
+    const check = expect(p).rejects.toMatchObject({ name: 'TimeoutError', message: 'api.timeout' });
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS - 1);
+    await vi.advanceTimersByTimeAsync(1);
+    await check;
+  });
+
+  it('uses timeoutMs when the caller sets it', async () => {
+    const p = apiFetch('/api/translate', { timeoutMs: API_SLOW_TIMEOUT_MS });
+    let settled = false;
+    p.catch(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(API_TIMEOUT_MS);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(API_SLOW_TIMEOUT_MS - API_TIMEOUT_MS);
+    await expect(p).rejects.toMatchObject({ name: 'TimeoutError' });
+  });
+
+  it('rejects with an AbortError when the caller cancels', async () => {
+    const ctrl = new AbortController();
+    const p = apiFetch('/api/words', { signal: ctrl.signal });
+    ctrl.abort();
+    const err = await p.catch(e => e);
+    expect(isAbortError(err)).toBe(true);
+    expect(isTimeoutError(err)).toBe(false);
+  });
+
+  it('rejects at once when the caller signal is already cancelled', async () => {
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const err = await apiFetch('/api/words', { signal: ctrl.signal }).catch(e => e);
+    expect(isAbortError(err)).toBe(true);
+  });
+
+  it('clears the timer when the request answers', async () => {
+    fetch.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    await apiFetch('/api/stats');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not pass timeoutMs to fetch', async () => {
+    fetch.mockResolvedValue({ ok: true, status: 204 });
+    await apiFetch('/api/stats', { timeoutMs: 5 });
+    expect(fetch.mock.calls[0][1]).not.toHaveProperty('timeoutMs');
+  });
+});
+
+describe('isAbortError / isTimeoutError', () => {
+  it('tells a cancel from a timeout and from other errors', () => {
+    const abort = new DOMException('aborted', 'AbortError');
+    const timeout = Object.assign(new Error('api.timeout'), { name: 'TimeoutError' });
+    expect(isAbortError(abort)).toBe(true);
+    expect(isAbortError(timeout)).toBe(false);
+    expect(isAbortError(new Error('boom'))).toBe(false);
+    expect(isAbortError(null)).toBe(false);
+    expect(isTimeoutError(timeout)).toBe(true);
+    expect(isTimeoutError(abort)).toBe(false);
+    expect(isTimeoutError(undefined)).toBe(false);
+  });
+});
+
+describe('latestRequest', () => {
+  it('cancels the previous signal when a new one is taken', () => {
+    const next = latestRequest();
+    const first = next();
+    const second = next();
+    expect(first.aborted).toBe(true);
+    expect(second.aborted).toBe(false);
+  });
+
+  it('keeps separate instances apart', () => {
+    const a = latestRequest();
+    const b = latestRequest();
+    const sa = a();
+    b();
+    expect(sa.aborted).toBe(false);
+  });
+});
+
+describe('withBusyButton', () => {
+  it('disables the button while the action runs and enables it after', async () => {
+    const btn = document.createElement('button');
+    let during;
+    await withBusyButton(btn, async () => { during = btn.disabled; });
+    expect(during).toBe(true);
+    expect(btn.disabled).toBe(false);
+  });
+
+  it('enables the button again when the action throws', async () => {
+    const btn = document.createElement('button');
+    await expect(withBusyButton(btn, async () => { throw new Error('x'); })).rejects.toThrow('x');
+    expect(btn.disabled).toBe(false);
+  });
+
+  it('does not run the action a second time while the first runs', async () => {
+    const btn = document.createElement('button');
+    let release;
+    const fn = vi.fn(() => new Promise(r => { release = r; }));
+    const first = withBusyButton(btn, fn);
+    await withBusyButton(btn, fn);
+    expect(fn).toHaveBeenCalledTimes(1);
+    release();
+    await first;
+  });
+
+  it('returns the action result', async () => {
+    const btn = document.createElement('button');
+    expect(await withBusyButton(btn, async () => 42)).toBe(42);
   });
 });
 
@@ -399,5 +583,39 @@ describe('groupTags', () => {
 
   it('returns no groups for no tags', () => {
     expect(groupTags([])).toEqual([]);
+  });
+});
+
+// ── timeoutSignal ────────────────────────────────────────────────────────────
+// Inlined from app.js: the signal for direct fetch calls that skip apiFetch.
+
+function timeoutSignal(ms = API_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  setTimeout(() => {
+    const err = new Error(t('api.timeout'));
+    err.name = 'TimeoutError';
+    ctrl.abort(err);
+  }, ms);
+  return ctrl.signal;
+}
+
+describe('timeoutSignal', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('aborts with a TimeoutError after the default 15 s', () => {
+    const signal = timeoutSignal();
+    vi.advanceTimersByTime(API_TIMEOUT_MS - 1);
+    expect(signal.aborted).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(signal.aborted).toBe(true);
+    expect(isTimeoutError(signal.reason)).toBe(true);
+    expect(signal.reason.message).toBe('api.timeout');
+  });
+
+  it('uses the given time', () => {
+    const signal = timeoutSignal(5000);
+    vi.advanceTimersByTime(5000);
+    expect(signal.aborted).toBe(true);
   });
 });

@@ -24,7 +24,7 @@ function applySecondaryLangVisibility() {
 
 async function loadLangSettings() {
   try {
-    const res = await fetch('/api/settings');
+    const res = await fetch('/api/settings', { signal: timeoutSignal() });
     if (!res.ok) return;
     const st = await res.json();
     primaryLang = st.primary_lang || 'en';
@@ -318,26 +318,29 @@ async function handleFormSubmit(e) {
   const totalTranslations = Object.values(payload.translations).reduce((s, a) => s + a.length, 0);
   if (!totalTranslations) { alert(t('vocab.translationRequired')); return; }
 
-  try {
-    if (editingWordId) {
-      await apiFetch(`/api/words/${editingWordId}`, {
-        method: 'PUT',
-        body: JSON.stringify(payload),
-      });
-    } else {
-      await apiFetch('/api/words', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+  // A second tap on Save during a slow request added the word twice.
+  await withBusyButton($('word-form').querySelector('button[type="submit"]'), async () => {
+    try {
+      if (editingWordId) {
+        await apiFetch(`/api/words/${editingWordId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await apiFetch('/api/words', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+      resetForm();
+      closeVocabSheet();
+      loadTags();
+      loadWords();
+      loadVocabSummary();
+    } catch (e) {
+      showToastError(e.message);
     }
-    resetForm();
-    closeVocabSheet();
-    loadTags();
-    loadWords();
-    loadVocabSummary();
-  } catch (e) {
-    alert('Error: ' + e.message);
-  }
+  });
 }
 
 // deleteWord asks for confirmation and deletes a word. Returns true when
@@ -351,7 +354,7 @@ async function deleteWord(id) {
     loadVocabSummary();
     return true;
   } catch (e) {
-    alert('Failed to delete: ' + e.message);
+    showToastError(e.message);
     return false;
   }
 }
@@ -364,7 +367,7 @@ async function resetWordProgress() {
     openEditForm(word);
     loadWords();
   } catch (e) {
-    alert('Failed to reset: ' + e.message);
+    showToastError(e.message);
   }
 }
 
@@ -411,7 +414,7 @@ async function resetToLibrary() {
     openEditForm(word);
     loadWords();
   } catch (e) {
-    alert('Failed to reset: ' + e.message);
+    showToastError(e.message);
   }
 }
 
@@ -423,7 +426,7 @@ async function toggleWordKnown() {
     openEditForm(await apiFetch(`/api/words/${editingWordId}`));
     loadWords();
   } catch (e) {
-    alert('Failed to update: ' + e.message);
+    showToastError(e.message);
   }
 }
 
@@ -441,6 +444,8 @@ async function applyPinyin(newPinyin) {
 }
 
 let pinyinTimer = null;
+// Typing and blur both look up pinyin; the newest lookup wins.
+const pinyinRequest = latestRequest();
 
 async function fetchAndFillPinyin(zh) {
   if (!zh) return;
@@ -448,6 +453,7 @@ async function fetchAndFillPinyin(zh) {
     const result = await apiFetch('/api/pinyin', {
       method: 'POST',
       body: JSON.stringify({ zh_text: zh }),
+      signal: pinyinRequest(),
     });
     await applyPinyin(result.pinyin);
   } catch (_) {}
@@ -474,6 +480,12 @@ async function handleTranslate() {
   btn.textContent = t('vocab.translating');
   btn.disabled = true;
 
+  // A field whose translation fails stays empty, but a timeout is shown.
+  const skipFailed = err => {
+    if (isTimeoutError(err)) throw err;
+    return null;
+  };
+
   try {
     // Translate zh → primary language (en-inputs-container) if that field is empty.
     // Uses the user's actual primary_lang setting, not a hardcoded 'EN' — the
@@ -484,7 +496,8 @@ async function handleTranslate() {
       ? apiFetch('/api/translate', {
           method: 'POST',
           body: JSON.stringify({ zh_text: zh, target_lang: primaryLang }),
-        }).catch(() => null)
+          timeoutMs: API_SLOW_TIMEOUT_MS,
+        }).catch(skipFailed)
       : Promise.resolve(null);
 
     // Translate zh → secondary language (de-inputs-container) if that field
@@ -493,7 +506,8 @@ async function handleTranslate() {
       ? apiFetch('/api/translate', {
           method: 'POST',
           body: JSON.stringify({ zh_text: zh, target_lang: secondaryLang }),
-        }).catch(() => null)
+          timeoutMs: API_SLOW_TIMEOUT_MS,
+        }).catch(skipFailed)
       : Promise.resolve(null);
 
     // Translate en/de → zh if zh field is empty
@@ -501,7 +515,8 @@ async function handleTranslate() {
       ? apiFetch('/api/translate', {
           method: 'POST',
           body: JSON.stringify({ source_text: en || de }),
-        }).catch(() => null)
+          timeoutMs: API_SLOW_TIMEOUT_MS,
+        }).catch(skipFailed)
       : Promise.resolve(null);
 
     const [enResult, deResult, zhResult] = await Promise.all([enPromise, dePromise, zhPromise]);
@@ -533,7 +548,7 @@ async function handleTranslate() {
       }
     }
   } catch (e) {
-    alert('Translation failed: ' + e.message);
+    showToastError(e.message);
   } finally {
     btn.textContent = origText;
     btn.disabled = false;

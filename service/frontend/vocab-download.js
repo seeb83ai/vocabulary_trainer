@@ -40,7 +40,7 @@ async function executeDownload() {
     URL.revokeObjectURL(url);
     hide('download-modal');
   } catch (e) {
-    alert('Download failed: ' + e.message);
+    showToastError(e.message);
   } finally {
     btn.textContent = t('download.download');
     btn.disabled = false;

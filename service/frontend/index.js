@@ -37,6 +37,26 @@ function closeModal() {
   document.getElementById('auth-modal').classList.add('hidden');
 }
 
+// The landing page doesn't load app.js, so it has its own copy of
+// timeoutSignal: a request that does not answer gives up after 15 s.
+const API_TIMEOUT_MS = 15000;
+
+function timeoutSignal(ms = API_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  setTimeout(() => {
+    const err = new Error(t('api.timeout'));
+    err.name = 'TimeoutError';
+    ctrl.abort(err);
+  }, ms);
+  return ctrl.signal;
+}
+
+// networkErrorText shows a timeout as such, every other failure as a
+// network error.
+function networkErrorText(err) {
+  return err?.name === 'TimeoutError' ? err.message : 'Network error. Please try again.';
+}
+
 async function isPasswordPwned(password) {
   if (!crypto?.subtle) return false;
   try {
@@ -71,9 +91,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Redirect to /train if already authenticated
-  fetch('/api/auth/status').then(r => r.json()).then(d => {
+  fetch('/api/auth/status', { signal: timeoutSignal() }).then(r => r.json()).then(d => {
     if (d.auth) {
-      fetch('/api/me').then(r => {
+      fetch('/api/me', { signal: timeoutSignal() }).then(r => {
         if (r.ok) window.location.replace('/train');
       });
     }
@@ -115,7 +135,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
+        signal: timeoutSignal(),
       });
       const data = await res.json();
 
@@ -141,8 +162,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       window.location.replace(data.redirect || '/train');
-    } catch {
-      errEl.textContent = 'Network error. Please try again.';
+    } catch (err) {
+      errEl.textContent = networkErrorText(err);
       errEl.classList.remove('hidden');
       btn.disabled = false;
       btn.textContent = 'Sign In';
@@ -189,7 +210,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
+        signal: timeoutSignal(),
       });
       const data = await res.json();
 
@@ -209,8 +231,8 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('register-form').classList.add('hidden');
       document.getElementById('register-pending-email').textContent = email;
       document.getElementById('register-pending').classList.remove('hidden');
-    } catch {
-      errEl.textContent = 'Network error. Please try again.';
+    } catch (err) {
+      errEl.textContent = networkErrorText(err);
       errEl.classList.remove('hidden');
       btn.disabled = false;
       btn.textContent = 'Create Account';

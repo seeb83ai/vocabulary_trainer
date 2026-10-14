@@ -68,29 +68,102 @@ function getModeLabel(mode) {
   return t('modeLabel.' + mode) || mode;
 }
 
+// Every request gives up after API_TIMEOUT_MS, so a request that does not
+// answer can't keep a button disabled. Slow calls (LLM, DeepL, uploads,
+// imports) pass timeoutMs: API_SLOW_TIMEOUT_MS, the server's WriteTimeout.
+// A caller's signal cancels the request (see latestRequest).
+const API_TIMEOUT_MS = 15000;
+const API_SLOW_TIMEOUT_MS = 60000;
+
 async function apiFetch(path, options = {}) {
-  const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
-  if (res.status === 401) {
-    window.location.href = '/login';
-    return;
+  const { timeoutMs = API_TIMEOUT_MS, signal, ...rest } = options;
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+  const cancel = () => ctrl.abort();
+  if (signal?.aborted) ctrl.abort();
+  else signal?.addEventListener('abort', cancel);
+  try {
+    const res = await fetch(path, {
+      headers: { 'Content-Type': 'application/json', ...(rest.headers || {}) },
+      ...rest,
+      signal: ctrl.signal,
+    });
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    if (!res.ok) {
+      let errMsg = res.statusText;
+      try {
+        const body = await res.json();
+        if (body.error) errMsg = body.error;
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
+    if (res.status === 204) return null;
+    return await res.json();
+  } catch (err) {
+    if (timedOut) {
+      const timeoutErr = new Error(t('api.timeout'));
+      timeoutErr.name = 'TimeoutError';
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
   }
-  if (!res.ok) {
-    let errMsg = res.statusText;
-    try {
-      const body = await res.json();
-      if (body.error) errMsg = body.error;
-    } catch (_) {}
-    throw new Error(errMsg);
+}
+
+// The signal for a direct fetch call that can't use apiFetch (form uploads,
+// pages that handle 401 themselves). Uses setTimeout, not AbortSignal.timeout,
+// so tests can fake the clock.
+function timeoutSignal(ms = API_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  setTimeout(() => {
+    const err = new Error(t('api.timeout'));
+    err.name = 'TimeoutError';
+    ctrl.abort(err);
+  }, ms);
+  return ctrl.signal;
+}
+
+// A request cancelled by a newer one (latestRequest) — not an error to show.
+function isAbortError(err) {
+  return err?.name === 'AbortError';
+}
+
+function isTimeoutError(err) {
+  return err?.name === 'TimeoutError';
+}
+
+// Returns a function that hands out a fresh AbortSignal and cancels the one
+// it handed out before. For reloads (filters, search) the newest request
+// wins, so an older response can't render over a newer one.
+function latestRequest() {
+  let ctrl = null;
+  return () => {
+    ctrl?.abort();
+    ctrl = new AbortController();
+    return ctrl.signal;
+  };
+}
+
+// Runs an action with its button disabled, so a second tap during a slow
+// request can't start it again (issue #563).
+async function withBusyButton(btn, fn) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    return await fn();
+  } finally {
+    btn.disabled = false;
   }
-  if (res.status === 204) return null;
-  return res.json();
 }
 
 async function logout() {
-  await fetch('/api/logout', { method: 'POST' });
+  await fetch('/api/logout', { method: 'POST', signal: timeoutSignal() });
   window.location.href = '/login';
 }
 
@@ -110,7 +183,7 @@ function changeUILang(lang) {
 async function syncUILang() {
   let st;
   try {
-    const res = await fetch('/api/settings');
+    const res = await fetch('/api/settings', { signal: timeoutSignal() });
     if (!res.ok) return;
     st = await res.json();
   } catch (_) { return; }
@@ -125,6 +198,7 @@ async function syncUILang() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ui_lang: lang }),
+      signal: timeoutSignal(),
     }).catch(() => {});
   }
 }
@@ -153,7 +227,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ($('app-sidebar')) syncUILang();
 
   try {
-    const res = await fetch('/api/auth/status');
+    const res = await fetch('/api/auth/status', { signal: timeoutSignal() });
     if (res.ok) {
       for (const id of ['logout-btn', 'more-logout-btn']) {
         const btn = $(id);
@@ -392,7 +466,7 @@ async function initIssueReporter() {
   // Only enable when the server reports the feature is configured.
   let enabled = false;
   try {
-    const res = await fetch('/api/github/config');
+    const res = await fetch('/api/github/config', { signal: timeoutSignal() });
     if (res.ok) enabled = (await res.json()).enabled === true;
   } catch (_) { /* feature unavailable */ }
   if (!enabled) return;
@@ -545,7 +619,7 @@ async function initIssueReporter() {
     submitting = true;
     setSubmitState('busy');
     try {
-      const res = await apiFetch('/api/github/issues', { method: 'POST', body: JSON.stringify(payload) });
+      const res = await apiFetch('/api/github/issues', { method: 'POST', body: JSON.stringify(payload), timeoutMs: API_SLOW_TIMEOUT_MS });
       setText('issue-success-num', res && res.number ? `#${res.number}` : '');
       setText('issue-success-title', form.title.trim());
       const link = $('issue-success-link');

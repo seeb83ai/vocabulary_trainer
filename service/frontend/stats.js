@@ -422,13 +422,17 @@ function renderWordStatsTagChips(allTags) {
   }
 }
 
+// Tag chips reload these sections; the newest request wins.
+const wordStatsRequest = latestRequest();
+const dueDateRequest = latestRequest();
+
 async function loadWordStats() {
   let url = '/api/quiz/word-stats';
   if (wordStatsSelectedTags.length > 0) {
     url += '?tags=' + encodeURIComponent(wordStatsSelectedTags.join(','));
   }
   let ws;
-  try { ws = await apiFetch(url); } catch (_) { return; }
+  try { ws = await apiFetch(url, { signal: wordStatsRequest() }); } catch (_) { return; }
   if (ws && wordStatsSelectedTags.length === 0) setText('tile-training-value', String(ws.total_seen || 0));
   if (ws && (ws.total_seen > 0 || (ws.accuracy_buckets.unseen || 0) > 0)) {
     renderWordStats(ws);
@@ -544,7 +548,7 @@ async function loadDueDateChart() {
     url += '?tags=' + encodeURIComponent(dueSelectedTags.join(','));
   }
   let data;
-  try { data = await apiFetch(url); } catch (_) { return; }
+  try { data = await apiFetch(url, { signal: dueDateRequest() }); } catch (_) { return; }
   const dates = data.dates || [];
   const canvas = $('due-date-chart');
   if (dates.length === 0) {

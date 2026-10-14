@@ -235,3 +235,25 @@ describe('buildListSyncPayload', () => {
     expect(buildListSyncPayload(list, true).include_removed).toBe(true);
   });
 });
+
+// ── isRetryableError ─────────────────────────────────────────────────────────
+// Inlined from import-lists.js. An import job keeps running on the server, so
+// a poll that times out or loses the network tries again on the next tick.
+
+function isRetryableError(err) {
+  return err?.name === 'TimeoutError' || err instanceof TypeError;
+}
+
+describe('isRetryableError', () => {
+  it('retries a timeout and a network error', () => {
+    const timeout = Object.assign(new Error('api.timeout'), { name: 'TimeoutError' });
+    expect(isRetryableError(timeout)).toBe(true);
+    expect(isRetryableError(new TypeError('Failed to fetch'))).toBe(true);
+  });
+
+  it('does not retry a server error or a cancel', () => {
+    expect(isRetryableError(new Error('job not found'))).toBe(false);
+    expect(isRetryableError(new DOMException('aborted', 'AbortError'))).toBe(false);
+    expect(isRetryableError(null)).toBe(false);
+  });
+});

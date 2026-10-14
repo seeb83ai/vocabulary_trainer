@@ -122,7 +122,7 @@ async function executeCsvUpload() {
   formData.append('default_source', $('csv-upload-default-source').value);
 
   try {
-    const resp = await fetch('/api/words/upload-csv', { method: 'POST', body: formData });
+    const resp = await fetch('/api/words/upload-csv', { method: 'POST', body: formData, signal: timeoutSignal(API_SLOW_TIMEOUT_MS) });
     if (resp.status === 401) { window.location.href = '/login'; return; }
     const data = await resp.json();
     if (!resp.ok) {
