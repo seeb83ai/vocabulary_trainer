@@ -71,7 +71,7 @@ test.describe('Generate sentences', () => {
     const rows = page.locator('#sentences-results .sentence-row');
     await expect(rows).toHaveCount(2);
     expect(generateBody).toEqual({ tags: ['food'], count: 5 });
-    await expect(page.locator('#sentences-focus')).toContainText('米饭');
+    await expect(page.locator('#panel-sentences')).not.toContainText('Practised words');
     await expect(rows.nth(0)).toContainText('我吃米饭。');
     await expect(rows.nth(0).locator('input[data-lang=en]')).toHaveValue('I eat rice.');
     await expect(rows.nth(0).locator('input[data-lang=de]')).toHaveValue('Ich esse Reis.');

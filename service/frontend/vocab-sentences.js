@@ -113,9 +113,6 @@ async function generateSentences() {
     });
     if (data && data.error) throw new Error(data.error);
     sentResults = data.sentences || [];
-    const focus = $('sentences-focus');
-    focus.textContent = t('sent.focus', { words: (data.focus_words || []).join(' · ') });
-    focus.classList.toggle('hidden', !(data.focus_words || []).length);
     renderSentenceResults();
     if (sentResults.length === 0) setSentenceStatus(t('sent.none'), true);
   } catch (e) {
