@@ -72,8 +72,10 @@ test.describe('Generate sentences', () => {
     await expect(rows).toHaveCount(2);
     expect(generateBody).toEqual({ tags: ['food'], count: 5 });
     await expect(page.locator('#sentences-focus')).toContainText('米饭');
-    await expect(rows.nth(0)).toContainText('I eat rice.');
-    await expect(rows.nth(0)).toContainText('Ich esse Reis.');
+    await expect(rows.nth(0)).toContainText('我吃米饭。');
+    await expect(rows.nth(0).locator('input[data-lang=en]')).toHaveValue('I eat rice.');
+    await expect(rows.nth(0).locator('input[data-lang=de]')).toHaveValue('Ich esse Reis.');
+    await expect(rows.nth(0).locator('input[data-field=pinyin]')).toHaveValue('wǒ chī mǐfàn.');
     await expect(rows.nth(0).locator('input[type=checkbox]')).toBeChecked();
 
     await rows.nth(1).locator('input[type=checkbox]').uncheck();
@@ -102,5 +104,30 @@ test.describe('Generate sentences', () => {
     await page.locator('#open-sentences-btn').click();
     await expect(page.locator('#sentences-no-llm')).toBeVisible();
     await expect(page.locator('#sentences-generate-btn')).toBeDisabled();
+  });
+});
+
+test.describe('Generate sentences – phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('the tab bar and the results fit a phone', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '米饭', 'mǐfàn', { en: ['rice'] }, ['food']);
+    await mockConfig(page, true);
+    await page.route('**/api/sentences/generate', r => r.fulfill({ json: GENERATED }));
+
+    await page.goto('/vocab');
+    await page.locator('#vocab-menu-btn').click();
+    await page.locator('#open-sentences-btn').click();
+    await page.locator('#sentences-generate-btn').click();
+    await expect(page.locator('#sentences-results .sentence-row')).toHaveCount(2);
+
+    const tabs = page.locator('#word-form-panel .vb-tabs');
+    const tabsBox = await tabs.boundingBox();
+    const lastTab = await page.locator('#tab-comp').boundingBox();
+    expect(lastTab.x + lastTab.width).toBeLessThanOrEqual(tabsBox.x + tabsBox.width + 1);
+    const overflow = await page.locator('#word-form-panel').evaluate(el => el.scrollWidth - el.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    await captureForPR(page, 'vocab-sentences-phone');
   });
 });

@@ -71,6 +71,7 @@ func TestSentenceVocabCheck_AcceptsKnownWordsOnlyAndBuildsPinyin(t *testing.T) {
 		markReviewed(t, s, id, 1, 1, now)
 	}
 	seedWordWithTags(t, s, "我吃米饭。", "wǒ chī mǐ fàn.", []string{"I eat rice."}, []string{"food_s"})
+	seedWord(t, s, "你吃", "nǐ chī", []string{"not reviewed yet"})
 
 	v, err := s.GetSentenceVocab(ctx, testUserID, nil, 30)
 	if err != nil {
@@ -81,8 +82,10 @@ func TestSentenceVocabCheck_AcceptsKnownWordsOnlyAndBuildsPinyin(t *testing.T) {
 		ok           bool
 	}{
 		{"你吃米饭，我吃米饭！", "nǐ chī mǐ fàn, wǒ chī mǐ fàn!", true},
-		{"你吃面条。", "", false},   // 面条 is not known
+		{"你吃面条。", "", false},  // 面条 is not known
 		{" 我吃米饭。", "", false}, // the user already has this sentence
+		{"你吃？", "", false},    // the user has this word (not reviewed yet)
+		{"米饭！", "", false},    // one word is no sentence: adding it would tag the word as a sentence
 	}
 	for _, c := range cases {
 		pinyin, ok := v.Check(c.text)

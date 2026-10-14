@@ -449,6 +449,7 @@ func main() {
 				"vocab-list.js",
 				"vocab-form.js",
 				"vocab-tags.js",
+				"vocab-sentences.js",
 				"import-lists.js",
 				"vocab-import.js",
 				"vocab-download.js",

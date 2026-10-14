@@ -230,6 +230,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/import_jobs.go` | Import job queue — `CreateImportJob`, `GetImportJob`, `ListActiveImportJobs`, `ListRunnableImportJobs`, progress and finish updates |
 | `service/db/hmm.go` | HMM actors/locations/scenes/props, `SaveHMMSceneWithLibrary` |
 | `service/db/pinyin.go` | Pinyin listening SQL — `GetNextPinyinCard`, distractors, progress, confusions |
+| `service/db/sentence_generation.go` | `GetSentenceVocab` — focus words (known words of the tags, least used in sentences first) and allowed words for LLM sentence generation; `SentenceVocab.Check` (known words only, not a duplicate, builds pinyin) |
 | `service/db/funnel.go` | Signup → activation → retention funnel (`GetFunnelReport`) |
 
 ### Handlers (`service/handlers/`)
@@ -248,6 +249,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/handlers/hmm_quiz.go` | HMM quiz `Next`, `Answer`, `Stats` handlers |
 | `service/handlers/hanzi.go` | Hanzi decomposition API handler |
 | `service/handlers/llm.go` | LLM-assisted features (scene generation, fill-translation) |
+| `service/handlers/sentences.go` | `GenerateSentences` (LLM example sentences from known words, on `LLMHandler`), prompt and reply parsing |
 | `service/handlers/translate.go` | DeepL translation proxy handler |
 | `service/handlers/mismatches.go` | Mismatch detection handler |
 | `service/handlers/import.go` | Word list import handler — `Import` queues a job (202), `Job` and `ActiveJobs` report progress |
@@ -276,6 +278,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/frontend/vocab-tags.js` | Tag autocomplete for the edit form |
 | `service/frontend/import-lists.js` | Shared library-list import helpers (multi-select, HSK version quick start, import job polling and progress) for onboarding, the train page banner and Vocabulary → Import |
 | `service/frontend/vocab-import.js` | CSV upload and tag-based import |
+| `service/frontend/vocab-sentences.js` | Generate sentences tab (tag selection, results with check boxes, add with a `_s` tag), `normalizeSentenceTag`, `sentenceWordPayload` |
 | `service/frontend/vocab-download.js` | Vocabulary export/download |
 | `service/frontend/vocab-components.js` | Components tab (hanzi component list/edit) |
 | `service/frontend/stats.js` | Stats page logic |
@@ -328,6 +331,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/voice-to-zh.spec.js` | Browser tests: Voice → Chinese card, homophone screen with retype, skip with "voice not available" asks the same word in the fallback mode (both voice modes), Settings range row |
 | `e2e/answer-buckets.spec.js` | Browser tests: answer and help buckets from pinyin seen/tapped and sound played/pressed, autoplay (and autoplay blocked by blurred pinyin), accept-correct removes the error |
 | `e2e/request-guards.spec.js` | Browser tests: one request per double tap (Train, Vocabulary Save, Add prop, demo), newest result wins after fast filter/search changes (Train, Vocabulary, Stats, Pinyin), settings saves kept in order, timeouts with a fake clock (toast, error card, slow-call timeout, registration) |
+| `e2e/sentences.spec.js` | Browser tests: Vocabulary → Generate sentences (tag selection, pick and add with a `_s` tag, no-LLM hint, phone layout); LLM endpoint mocked |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
 | `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |

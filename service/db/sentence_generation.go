@@ -20,7 +20,7 @@ type SentenceVocab struct {
 
 	known    map[string]int64
 	pinyin   map[string]string
-	existing map[string]bool
+	existing map[string]bool // all zh word texts of the user, end punctuation stripped
 }
 
 // knownWord is one row of knownWords.
@@ -91,13 +91,27 @@ func (s *Store) GetSentenceVocab(ctx context.Context, userID int64, tags []strin
 	}
 	uses := map[string]int{}
 	for _, sent := range sentences {
-		text := stripSentencePunctuation(sent.Text)
-		v.existing[text] = true
-		segs, _ := segmentSentence(text, v.known)
+		segs, _ := segmentSentence(stripSentencePunctuation(sent.Text), v.known)
 		for _, seg := range segs {
 			uses[seg.Text]++
 		}
 	}
+	rows, err := s.db.QueryContext(ctx, `SELECT text FROM words WHERE user_id = ? AND language = 'zh'`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get zh word texts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			return nil, err
+		}
+		v.existing[stripSentencePunctuation(text)] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	rand.Shuffle(len(v.Focus), func(i, j int) { v.Focus[i], v.Focus[j] = v.Focus[j], v.Focus[i] })
 	sort.SliceStable(v.Focus, func(i, j int) bool { return uses[v.Focus[i]] < uses[v.Focus[j]] })
 	if len(v.Focus) > maxFocus {
@@ -109,17 +123,18 @@ func (s *Store) GetSentenceVocab(ctx context.Context, userID int64, tags []strin
 // pinyinPunctuation maps full-width punctuation to the form used in pinyin.
 var pinyinPunctuation = strings.NewReplacer("，", ",", "。", ".", "！", "!", "？", "?", "；", ";", "：", ":", "、", ",", "　", " ")
 
-// Check reports whether text consists only of allowed words (punctuation
-// aside) and is not a sentence the user already has. For an accepted
-// sentence it returns the pinyin built from the words' own pinyin, or "" when
-// one of the words has no pinyin.
+// Check reports whether text consists of at least two allowed words
+// (punctuation aside) and is not a word or sentence the user already has —
+// adding such a text would tag the existing word as a sentence. For an
+// accepted sentence it returns the pinyin built from the words' own pinyin,
+// or "" when one of the words has no pinyin.
 func (v *SentenceVocab) Check(text string) (pinyin string, ok bool) {
 	text = strings.TrimSpace(text)
 	if text == "" || v.existing[stripSentencePunctuation(text)] {
 		return "", false
 	}
 	segs, covered := segmentSentence(text, v.known)
-	if !covered {
+	if !covered || len(segs) < 2 {
 		return "", false
 	}
 	var sb strings.Builder
