@@ -90,6 +90,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhPinyinToTransl  string   `json:"random_mode_range_zh_pinyin_to_transl"`
 		RandomModeRangeZhToTranslNoSound string   `json:"random_mode_range_zh_to_transl_no_sound"`
 		RandomModeRangeVoiceToTransl     string   `json:"random_mode_range_voice_to_transl"`
+		RandomModeRangeVoiceToZh         string   `json:"random_mode_range_voice_to_zh"`
 		WrongAnswerRetryMode             string   `json:"wrong_answer_retry_mode"`
 		ComponentCoverageThreshold       *float64 `json:"component_coverage_threshold"`
 		SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
@@ -138,8 +139,8 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "cycle_sequence must have at least 2 steps")
 			return
 		}
-		if len(steps) > 6 {
-			writeError(w, http.StatusBadRequest, "cycle_sequence must have at most 6 steps")
+		if len(steps) > 7 {
+			writeError(w, http.StatusBadRequest, "cycle_sequence must have at most 7 steps")
 			return
 		}
 		for _, step := range steps {
@@ -300,6 +301,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		ZhPinyinToTransl:  req.RandomModeRangeZhPinyinToTransl,
 		ZhToTranslNoSound: req.RandomModeRangeZhToTranslNoSound,
 		VoiceToTransl:     req.RandomModeRangeVoiceToTransl,
+		VoiceToZh:         req.RandomModeRangeVoiceToZh,
 	}
 	for name, v := range map[string]string{
 		"random_mode_range_transl_to_zh":          randCfg.TranslToZh,
@@ -307,6 +309,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		"random_mode_range_zh_pinyin_to_transl":   randCfg.ZhPinyinToTransl,
 		"random_mode_range_zh_to_transl_no_sound": randCfg.ZhToTranslNoSound,
 		"random_mode_range_voice_to_transl":       randCfg.VoiceToTransl,
+		"random_mode_range_voice_to_zh":           randCfg.VoiceToZh,
 	} {
 		if !sm2.ValidModeRange(v) {
 			writeError(w, http.StatusBadRequest, "invalid "+name+": "+v)
@@ -402,6 +405,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		RandomModeRangeZhPinyinToTransl:  randCfg.ZhPinyinToTransl,
 		RandomModeRangeZhToTranslNoSound: randCfg.ZhToTranslNoSound,
 		RandomModeRangeVoiceToTransl:     randCfg.VoiceToTransl,
+		RandomModeRangeVoiceToZh:         randCfg.VoiceToZh,
 		WrongAnswerRetryMode:             req.WrongAnswerRetryMode,
 		ComponentCoverageThreshold:       resolvedComponentThreshold,
 		SentenceBlankEnabled:             req.SentenceBlankEnabled,
@@ -455,6 +459,8 @@ var validTrainModes = map[string]bool{
 	"zh_to_transl":          true,
 	"zh_pinyin_to_transl":   true,
 	"zh_to_transl_no_sound": true,
+	"voice_to_transl":       true,
+	"voice_to_zh":           true,
 	"":                      true,
 }
 
@@ -630,6 +636,7 @@ var validQuizModes = map[string]bool{
 	models.ModeMaskPinyin:        true,
 	models.ModeZhToTranslNoSound: true,
 	models.ModeVoiceToTransl:     true,
+	models.ModeVoiceToZh:         true,
 	"random":                     true,
 }
 
@@ -644,6 +651,7 @@ var validCycleModes = map[string]bool{
 	models.ModeMaskPinyin:        true,
 	models.ModeZhToTranslNoSound: true,
 	models.ModeVoiceToTransl:     true,
+	models.ModeVoiceToZh:         true,
 }
 
 func isValidCycleMode(m string) bool {

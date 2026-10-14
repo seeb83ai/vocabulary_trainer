@@ -220,3 +220,50 @@ describe('resultAudioTarget', () => {
     expect(resultAudioTarget({ word_id: 3, mode: 'transl_to_zh' }, '买')).toEqual({ id: 3, text: '买' });
   });
 });
+
+// ── Voice → Chinese (issue #571) ─────────────────────────────────────────────
+// Mirrors train-audio.js: voice_to_zh is voice-only like voice_to_transl, and
+// with voice unavailable each voice mode falls back to its own mode.
+
+function voiceFallbackMode(mode, unavailable) {
+  if (!unavailable) return mode;
+  if (mode === 'voice_to_transl') return 'zh_to_transl';
+  if (mode === 'voice_to_zh') return 'transl_to_zh';
+  return mode;
+}
+
+function isVoiceModeOnly(mode, unavailable) {
+  return (mode === 'voice_to_transl' || mode === 'voice_to_zh') && !unavailable;
+}
+
+function isZhPromptWithSoundV2(mode) {
+  return mode === 'zh_to_transl' || mode === 'zh_pinyin_to_transl' || mode === 'voice_to_transl' || mode === 'voice_to_zh';
+}
+
+describe('voiceFallbackMode', () => {
+  it('keeps the mode while voice is available', () => {
+    expect(voiceFallbackMode('voice_to_zh', false)).toBe('voice_to_zh');
+    expect(voiceFallbackMode('voice_to_transl', false)).toBe('voice_to_transl');
+  });
+  it('falls back to Chinese → Translation for Voice → Translation', () => {
+    expect(voiceFallbackMode('voice_to_transl', true)).toBe('zh_to_transl');
+  });
+  it('falls back to Translation → Chinese for Voice → Chinese', () => {
+    expect(voiceFallbackMode('voice_to_zh', true)).toBe('transl_to_zh');
+  });
+  it('leaves other modes alone', () => {
+    expect(voiceFallbackMode('transl_to_zh', true)).toBe('transl_to_zh');
+    expect(voiceFallbackMode('new_word', true)).toBe('new_word');
+  });
+});
+
+describe('voice_to_zh audio rules', () => {
+  it('is voice-only while voice is available', () => {
+    expect(isVoiceModeOnly('voice_to_zh', false)).toBe(true);
+    expect(isVoiceModeOnly('voice_to_zh', true)).toBe(false);
+  });
+  it('shows the play button', () => {
+    expect(isZhPromptWithSoundV2('voice_to_zh')).toBe(true);
+    expect(isZhPromptWithSoundV2('transl_to_zh')).toBe(false);
+  });
+});

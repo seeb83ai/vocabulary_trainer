@@ -638,6 +638,7 @@ func TestSelectMode_ValidMode(t *testing.T) {
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
 		models.ModeVoiceToTransl:     true,
+		models.ModeVoiceToZh:         true,
 	}
 	// An empty/unknown bucket has no resolvable eligible-mode set, so SelectMode
 	// falls back to the full uniform pool — preserving the historical no-args behaviour.
@@ -654,7 +655,7 @@ func TestSelectMode_AllModesReachable(t *testing.T) {
 	for i := 0; i < 300; i++ {
 		seen[SelectMode("", RandomModeConfig{})] = true
 	}
-	for _, m := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl} {
+	for _, m := range []string{models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl, models.ModeVoiceToZh} {
 		if !seen[m] {
 			t.Errorf("mode %q was never returned in 300 calls", m)
 		}
@@ -720,6 +721,7 @@ func TestSelectProgressiveMode_Mastered(t *testing.T) {
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
 		models.ModeVoiceToTransl:     true,
+		models.ModeVoiceToZh:         true,
 	}
 	for i := 0; i < 50; i++ {
 		m := SelectProgressiveMode(9, 10, 0, DefaultProgressiveModeConfig()) // 90%, 10 attempts
@@ -975,6 +977,7 @@ func TestSelectProgressiveMode_Exactly85Pct(t *testing.T) {
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
 		models.ModeVoiceToTransl:     true,
+		models.ModeVoiceToZh:         true,
 	}
 	seen := map[string]bool{}
 	for i := 0; i < 100; i++ {
@@ -1101,8 +1104,8 @@ func TestResolveEligibleModes_Defaults(t *testing.T) {
 		{"new", []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl}},
 		{"0-49", []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl, models.ModeZhToTransl}},
 		{"50-69", []string{models.ModeTranslToZh, models.ModeZhPinyinToTransl, models.ModeZhToTransl, models.ModeZhToTranslNoSound}},
-		{"70-84", []string{models.ModeZhPinyinToTransl, models.ModeZhToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl}},
-		{"85-100", []string{models.ModeZhToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl}},
+		{"70-84", []string{models.ModeZhPinyinToTransl, models.ModeZhToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl, models.ModeVoiceToZh}},
+		{"85-100", []string{models.ModeZhToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl, models.ModeVoiceToZh}},
 	}
 	for _, tc := range cases {
 		got := modeSet(resolveEligibleModes(tc.bucket, cfg))
@@ -1165,6 +1168,7 @@ func TestBucketsWithoutEligibleMode_DetectsGap(t *testing.T) {
 		ZhPinyinToTransl:  "off",
 		ZhToTranslNoSound: "off",
 		VoiceToTransl:     "off",
+		VoiceToZh:         "off",
 	}
 	uncovered := BucketsWithoutEligibleMode(cfg)
 	if len(uncovered) != 5 {

@@ -3,6 +3,7 @@ package sm2
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -140,6 +141,26 @@ func plainPinyin(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// SamePinyin reports whether a and b are the same pinyin with the same
+// tones, ignoring case, spaces, apostrophes and v for ü — e.g. 他 and 她 are
+// both "tā" (issue #571). Empty pinyin never matches.
+func SamePinyin(a, b string) bool {
+	norm := func(s string) string {
+		var sb strings.Builder
+		for _, r := range strings.ToLower(s) {
+			if r == 'v' {
+				r = 'ü'
+			}
+			if unicode.IsLetter(r) {
+				sb.WriteRune(r)
+			}
+		}
+		return sb.String()
+	}
+	na := norm(a)
+	return na != "" && na == norm(b)
 }
 
 // TranslationEqualsPinyin reports whether a translation is only the word's

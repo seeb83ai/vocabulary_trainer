@@ -153,6 +153,7 @@ func TestPatchSettings_RandomModeRange_RoundTrip(t *testing.T) {
 	payload["random_mode_range_zh_pinyin_to_transl"] = "new,70-84"
 	payload["random_mode_range_zh_to_transl_no_sound"] = "50-69,85-100"
 	payload["random_mode_range_voice_to_transl"] = "70-84,85-100"
+	payload["random_mode_range_voice_to_zh"] = "85-100,85-100"
 
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
 	if rec.Code != http.StatusOK {
@@ -176,6 +177,9 @@ func TestPatchSettings_RandomModeRange_RoundTrip(t *testing.T) {
 	}
 	if st.RandomModeRangeVoiceToTransl != "70-84,85-100" {
 		t.Errorf("random_mode_range_voice_to_transl: want %q, got %q", "70-84,85-100", st.RandomModeRangeVoiceToTransl)
+	}
+	if st.RandomModeRangeVoiceToZh != "85-100,85-100" {
+		t.Errorf("random_mode_range_voice_to_zh: want %q, got %q", "85-100,85-100", st.RandomModeRangeVoiceToZh)
 	}
 }
 
@@ -209,6 +213,7 @@ func TestPatchSettings_RandomModeRange_UncoveredBucketRejected(t *testing.T) {
 	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
 	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
 	payload["random_mode_range_voice_to_transl"] = "off"
+	payload["random_mode_range_voice_to_zh"] = "off"
 
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
 	if rec.Code != http.StatusBadRequest {
@@ -238,10 +243,61 @@ func TestPatchSettings_RandomModeRange_PartialCoverageAccepted(t *testing.T) {
 	payload["random_mode_range_zh_pinyin_to_transl"] = "off"
 	payload["random_mode_range_zh_to_transl_no_sound"] = "off"
 	payload["random_mode_range_voice_to_transl"] = "off"
+	payload["random_mode_range_voice_to_zh"] = "off"
 
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200 for a config that still covers every bucket, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPatchSettings_RandomModeRange_VoiceToZhInvalidRejected(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["random_mode_range_voice_to_zh"] = "bogus"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400 for malformed random_mode_range_voice_to_zh, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPatchSettings_VoiceToZhModesAccepted covers issue #571: voice_to_zh is
+// a valid progressive tier mode, new-word step and cycle step.
+func TestPatchSettings_VoiceToZhModesAccepted(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["prog_tier_mastered"] = "voice_to_zh"
+	payload["new_word_mode_2"] = "voice_to_zh"
+	payload["cycle_sequence"] = "transl_to_zh,voice_to_zh"
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var st models.UserSettings
+	decodeJSON(t, do(t, r, http.MethodGet, "/api/settings", nil), &st)
+	if st.ProgTierMastered != "voice_to_zh" || st.NewWordMode2 != "voice_to_zh" || st.CycleSequence != "transl_to_zh,voice_to_zh" {
+		t.Errorf("want voice_to_zh saved, got mastered=%q step2=%q cycle=%q", st.ProgTierMastered, st.NewWordMode2, st.CycleSequence)
+	}
+}
+
+// TestPatchTrainingFilters_VoiceModes covers issue #571: both voice modes
+// are valid train modes, so the Train chip choice is saved.
+func TestPatchTrainingFilters_VoiceModes(t *testing.T) {
+	for _, mode := range []string{"voice_to_transl", "voice_to_zh"} {
+		s := openTestDB(t)
+		r := newRouter(s)
+		rec := do(t, r, http.MethodPatch, "/api/training-filters", map[string]any{
+			"mode": mode, "bucket": "", "langs": []string{"en"}, "tags": []string{},
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200 for mode %s, got %d: %s", mode, rec.Code, rec.Body.String())
+		}
 	}
 }
 
@@ -554,11 +610,30 @@ func TestSettingsCycleSequence_TooManySteps(t *testing.T) {
 		"prog_tier_learning": "zh_pinyin_to_transl", "prog_tier_practicing": "zh_to_transl",
 		"prog_tier_mastered": "random",
 		"new_word_mode_0":    "transl_to_zh", "new_word_mode_1": "transl_to_zh", "new_word_mode_2": "zh_to_transl",
-		"cycle_sequence": "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,transl_to_zh,zh_to_transl,zh_pinyin_to_transl",
+		"cycle_sequence": "transl_to_zh,zh_to_transl,zh_pinyin_to_transl,mask_pinyin,transl_to_zh,zh_to_transl,zh_pinyin_to_transl,voice_to_zh",
 	}
 	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("want 400 for cycle_sequence with 7 steps, got %d", rec.Code)
+		t.Errorf("want 400 for cycle_sequence with 8 steps, got %d", rec.Code)
+	}
+}
+
+// TestSettingsCycleSequence_SevenSteps covers issue #571: with Voice →
+// Chinese there are 7 modes, so a cycle can have 7 steps.
+func TestSettingsCycleSequence_SevenSteps(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	payload := baseSettingsPatch()
+	payload["cycle_sequence"] = "zh_pinyin_to_transl,transl_to_zh,zh_to_transl,zh_to_transl_no_sound,voice_to_transl,voice_to_zh,mask_pinyin"
+	rec := do(t, r, http.MethodPatch, "/api/settings", payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200 for cycle_sequence with 7 steps, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var st models.UserSettings
+	decodeJSON(t, do(t, r, http.MethodGet, "/api/settings", nil), &st)
+	if st.CycleSequence != payload["cycle_sequence"] {
+		t.Errorf("want cycle_sequence %q, got %q", payload["cycle_sequence"], st.CycleSequence)
 	}
 }
 

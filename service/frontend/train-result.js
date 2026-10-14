@@ -6,6 +6,7 @@ const STATUS_ICON_PATH = {
   wrong: 'M6 6l12 12M18 6 6 18',
   mixup: 'M4 7h14l-3-3M20 17H6l3 3',
   ambiguous: 'M12 8v5M12 16.5h.01',
+  homophone: 'M12 8v5M12 16.5h.01',
   skipped: 'M5 12h10M11 6l6 6-6 6M19 6v12',
 };
 const STATUS_TITLE_KEY = {
@@ -13,6 +14,7 @@ const STATUS_TITLE_KEY = {
   wrong: 'result.wrong',
   mixup: 'result.mixup',
   ambiguous: 'result.disambigAmbiguous',
+  homophone: 'result.disambigHomophone',
   skipped: 'result.skipped',
 };
 
@@ -277,7 +279,7 @@ function renderWordAnswerResult(result, answer) {
       const askedMw = askedCount ? `
           <button type="button" class="tr-disclosure-link" data-disclosure="mixup-asked-more"><span>▸ ${escHtml(askedInfo.measureWords.length && !askedInfo.meanings.length && !askedInfo.examples.length ? t('moreInfo.measureWord') : t('moreInfo.title'))}</span></button>
           <div id="mixup-asked-more" class="hidden tr-more-body" style="padding:6px 0 0">${moreInfoBlocksHTML(askedInfo)}</div>` : '';
-      const marked = currentCard.mode === 'transl_to_zh'
+      const marked = isZhAnswerMode(currentCard.mode)
         ? cwMeanings.map(text => ({ text, typed: false }))
         : markTypedMeaning(cwMeanings, answer);
       const cwList = marked.map(m => m.typed
@@ -335,7 +337,7 @@ function renderWordAnswerResult(result, answer) {
       breakdown.querySelector('.result-inline-play')?.addEventListener('click', playWord);
       show('word-breakdown');
 
-      if (!isEmpty && currentCard.mode !== 'transl_to_zh') {
+      if (!isEmpty && !isZhAnswerMode(currentCard.mode)) {
         const addBtn = $('add-translation-btn');
         const langSelect = $('add-translation-lang-select');
         addBtn.textContent = t('result.addTranslation', { answer });
@@ -382,8 +384,8 @@ function renderWordAnswerResult(result, answer) {
       }
 
       // Show "Accept as correct" button based on user's mode setting.
-      // ponytail: transl_to_zh stores zh answers as en/de translations — wrong shape, hide both buttons.
-      if (currentCard.mode !== 'transl_to_zh' && shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
+      // ponytail: transl_to_zh / voice_to_zh store zh answers as en/de translations — wrong shape, hide both buttons.
+      if (!isZhAnswerMode(currentCard.mode) && shouldShowAcceptTypo(answer, result, acceptCorrectMode, currentCard.mode)) {
         const acceptBtn = $('accept-correct-btn');
         acceptBtn.disabled = false;
         acceptBtn.textContent = t('result.acceptTypo');
@@ -398,11 +400,13 @@ function renderWordAnswerResult(result, answer) {
       showWrongRetypeGate(result.zh_text, mergeTranslationMaps(result.translations, result.translations_extra));
     };
 
-    if (result.ambiguous) {
-      // Several words share the typed meaning — ask for the word being learned.
-      setResultHead('ambiguous');
+    if (result.ambiguous || result.homophone) {
+      // Several words share the typed meaning, or (voice_to_zh) the typed
+      // word sounds the same (issue #571) — ask for the word being learned.
+      // For both modes currentCard.prompt is the word's first translation.
+      setResultHead(result.homophone ? 'homophone' : 'ambiguous');
       const subtitle = $('result-subtitle');
-      subtitle.textContent = t('result.ambiguousBody', { answer: currentCard.prompt });
+      subtitle.textContent = t(result.homophone ? 'result.homophoneBody' : 'result.ambiguousBody', { answer: currentCard.prompt });
       show('result-subtitle');
 
       $('result-question-label').textContent = getModeLabel(currentCard.mode);
@@ -413,7 +417,7 @@ function renderWordAnswerResult(result, answer) {
       } else {
         hide('result-question-pinyin');
       }
-      if (currentCard.mode === 'transl_to_zh') {
+      if (isZhAnswerMode(currentCard.mode)) {
         // Show all translations across all languages except the one already shown as prompt.
         // Example-sentence noise is dropped, as on the question screen: the user
         // still has to type the zh answer here (issue #465).
@@ -550,7 +554,7 @@ function renderWordAnswerResult(result, answer) {
   }
 
   // HMM mnemonic scene: folded disclosure on correct; hidden on wrong
-  renderResultMnemonic(result.correct && result.scene_text, !result.scene_text && !result.ambiguous,
+  renderResultMnemonic(result.correct && result.scene_text, !result.scene_text && !result.ambiguous && !result.homophone,
     `/vocab?edit=${currentCard.word_id}`);
 
   if (!ambiguousUnresolved) $('next-btn').focus();

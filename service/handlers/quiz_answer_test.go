@@ -1009,3 +1009,63 @@ func TestAcceptCorrect_VoiceToTransl(t *testing.T) {
 		t.Errorf("CorrectAnswers: want [hello], got %v", resp.CorrectAnswers)
 	}
 }
+
+// TestQuizAnswer_VoiceToZh covers issue #571: the answer is the hanzi; a
+// wrong word with the same pinyin and tones (from the user's words or the
+// dictionary) is flagged as a homophone, other wrong words are not.
+func TestQuizAnswer_VoiceToZh(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "他", "tā", []string{"he"})
+	seedWord(t, s, "她", "tā", []string{"she"})
+	seedWord(t, s, "大", "dà", []string{"big"})
+	if _, err := s.ExecForTest(`INSERT INTO cedict_entries (simplified, pinyin, definition, lang) VALUES ('它', 'tā', 'it', 'en')`); err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	cases := []struct {
+		answer             string
+		correct, homophone bool
+	}{
+		{"他", true, false},
+		{"她", false, true}, // user word, same pinyin
+		{"它", false, true}, // dictionary only, same pinyin
+		{"大", false, false},
+		{"踏", false, false}, // unknown word
+	}
+	for _, c := range cases {
+		rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+			WordID: id, Mode: models.ModeVoiceToZh, Answer: c.answer, Langs: []string{"en"},
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: want 200, got %d: %s", c.answer, rec.Code, rec.Body)
+		}
+		var resp models.AnswerResponse
+		decodeJSON(t, rec, &resp)
+		if resp.Correct != c.correct || resp.Homophone != c.homophone {
+			t.Errorf("%s: want correct=%v homophone=%v, got correct=%v homophone=%v",
+				c.answer, c.correct, c.homophone, resp.Correct, resp.Homophone)
+		}
+		if len(resp.CorrectAnswers) != 1 || resp.CorrectAnswers[0] != "他" {
+			t.Errorf("%s: want correct_answers [他], got %v", c.answer, resp.CorrectAnswers)
+		}
+	}
+}
+
+func TestQuizAcceptCorrect_VoiceToZh(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "他", "tā", []string{"he"})
+	seedWord(t, s, "她", "tā", []string{"she"})
+	r := newRouter(s)
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{WordID: id, Mode: models.ModeVoiceToZh, Answer: "她"})
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{WordID: id, Mode: models.ModeVoiceToZh})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp models.AnswerResponse
+	decodeJSON(t, rec, &resp)
+	if len(resp.CorrectAnswers) != 1 || resp.CorrectAnswers[0] != "他" {
+		t.Errorf("CorrectAnswers: want [他], got %v", resp.CorrectAnswers)
+	}
+}

@@ -461,6 +461,7 @@ var allRandomModes = []string{
 	models.ModeZhPinyinToTransl,
 	models.ModeZhToTranslNoSound,
 	models.ModeVoiceToTransl,
+	models.ModeVoiceToZh,
 }
 
 // controlledRandomModes is the set of modes RandomModeConfig governs. A cycle
@@ -471,9 +472,10 @@ var controlledRandomModes = map[string]bool{
 	models.ModeZhPinyinToTransl:  true,
 	models.ModeZhToTranslNoSound: true,
 	models.ModeVoiceToTransl:     true,
+	models.ModeVoiceToZh:         true,
 }
 
-// selectModeUniform randomly picks one of the 5 quiz modes with equal
+// selectModeUniform randomly picks one of the 6 quiz modes with equal
 // probability, ignoring any bucket restriction. Used internally by
 // resolveMode's "random" fallback for the progressive/new-word ladders,
 // which are intentionally unaffected by RandomModeConfig.
@@ -496,6 +498,7 @@ func DefaultRandomModeConfig() RandomModeConfig {
 		ZhToTransl:        "0-49,85-100",
 		ZhToTranslNoSound: "50-69,85-100",
 		VoiceToTransl:     "70-84,85-100",
+		VoiceToZh:         "70-84,85-100",
 	}
 }
 
@@ -538,7 +541,7 @@ func ValidModeRange(v string) bool {
 	return ok
 }
 
-// modeRangeValues returns, for each of the 5 controlled modes, its resolved
+// modeRangeValues returns, for each of the 6 controlled modes, its resolved
 // RandomModeConfig range value (cfg's field, falling back to
 // DefaultRandomModeConfig for an unset "" field). Used by resolveEligibleModes
 // so eligibility reads a single, consistent resolution rule.
@@ -550,6 +553,7 @@ func modeRangeValues(cfg RandomModeConfig) []struct{ mode, value string } {
 		{models.ModeZhPinyinToTransl, cfg.ZhPinyinToTransl, def.ZhPinyinToTransl},
 		{models.ModeZhToTranslNoSound, cfg.ZhToTranslNoSound, def.ZhToTranslNoSound},
 		{models.ModeVoiceToTransl, cfg.VoiceToTransl, def.VoiceToTransl},
+		{models.ModeVoiceToZh, cfg.VoiceToZh, def.VoiceToZh},
 	}
 	out := make([]struct{ mode, value string }, len(raw))
 	for i, r := range raw {

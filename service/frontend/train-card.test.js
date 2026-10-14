@@ -15,7 +15,7 @@ function translPlaceholderKey(answerLang) {
 
 function placeholderKeyForCard(cardType, mode, answerLang) {
   if (cardType === 'sentence') return 'card.placeholderSentence';
-  if (!cardType && mode === 'transl_to_zh') return 'card.placeholderZh';
+  if (!cardType && (mode === 'transl_to_zh' || mode === 'voice_to_zh')) return 'card.placeholderZh';
   if (!cardType || cardType === 'component') return translPlaceholderKey(answerLang);
   return 'card.placeholder';
 }
@@ -40,6 +40,10 @@ describe('placeholderKeyForCard', () => {
 
   it('asks for the Chinese on transl_to_zh word cards', () => {
     expect(placeholderKeyForCard(undefined, 'transl_to_zh', 'de')).toBe('card.placeholderZh');
+  });
+
+  it('asks for the Chinese on voice_to_zh word cards (issue #571)', () => {
+    expect(placeholderKeyForCard(undefined, 'voice_to_zh', 'de')).toBe('card.placeholderZh');
   });
 
   it('names the answer language on word cards', () => {

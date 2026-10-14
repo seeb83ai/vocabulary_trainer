@@ -353,6 +353,7 @@ async function loadNextCard(trackCurrent = false) {
     const qs = params.toString();
     const url = qs ? `/api/quiz/next?${qs}` : '/api/quiz/next';
     currentCard = await apiFetch(url, { signal });
+    if (currentCard?.mode) currentCard.mode = voiceFallbackMode(currentCard.mode, voiceUnavailable);
     questionAutoPlayed = false;
     questionAudioPlayed = false;
     // The served card was pulled in from beyond today's due-date bound solely
@@ -491,7 +492,7 @@ function translPlaceholderKey(answerLang) {
 
 function placeholderKeyForCard(cardType, mode, answerLang) {
   if (cardType === 'sentence') return 'card.placeholderSentence';
-  if (!cardType && mode === 'transl_to_zh') return 'card.placeholderZh';
+  if (!cardType && isZhAnswerMode(mode)) return 'card.placeholderZh';
   if (!cardType || cardType === 'component') return translPlaceholderKey(answerLang);
   return 'card.placeholder';
 }
@@ -507,7 +508,7 @@ function showCard() {
   // Prompt size: Hanzi prompts are larger, sentence prompts smaller.
   const promptEl = $('prompt-word');
   const zhPrompt = currentCard.card_type === 'component' ||
-    (!currentCard.card_type && currentCard.mode !== 'transl_to_zh');
+    (!currentCard.card_type && !isZhAnswerMode(currentCard.mode));
   promptEl.className = 'tr-prompt font-hanzi' + (zhPrompt ? ' is-hanzi' : '') +
     (currentCard.card_type === 'sentence' ? ' is-sentence' : '');
 
@@ -570,8 +571,9 @@ function showCard() {
 
     setText('mode-label', wordModeLabel(getModeLabel(currentCard.mode), currentCard.is_also_component, t('word.alsoComponent')));
 
-    // voice_to_transl: hide the Chinese text — the audio IS the prompt.
-    // If the user has voice_unavailable set, fall back to showing the text.
+    // voice_to_transl / voice_to_zh: hide the prompt — the audio IS the
+    // question. With voice unavailable, loadNextCard already switched the
+    // card to its fallback mode (voiceFallbackMode).
     if (isVoiceOnlyMode(currentCard.mode)) {
       hide('prompt-word');
     } else {
@@ -586,7 +588,7 @@ function showCard() {
     if (isZhPromptWithSound(currentCard.mode)) {
       playBtn.onclick = () => {
         questionAudioPlayed = true;
-        playAudio(currentCard.word_id, currentCard.prompt);
+        playAudio(currentCard.word_id, currentCard.zh_text || currentCard.prompt);
       };
       show('play-btn');
     } else {
@@ -889,13 +891,21 @@ document.addEventListener('DOMContentLoaded', () => {
   $('skip-today-btn').addEventListener('click', () => withBusyButton($('skip-today-btn'), async () => {
     if (isSubmitted || !currentCard) return;
 
-    // If skipping a voice card, ask whether to disable voice for this session.
-    if (currentCard.mode === 'voice_to_transl' && !voiceUnavailable) {
-      if (confirm('Voice not available? Switch to Chinese → Translation for the rest of this session?')) {
+    // If skipping a voice card, ask whether to disable voice for this
+    // session. On yes, the same word is asked again at once in the fallback
+    // mode instead of being skipped (issue #571).
+    const fallbackMode = voiceFallbackMode(currentCard.mode, true);
+    if (fallbackMode !== currentCard.mode && !voiceUnavailable) {
+      if (confirm(t(currentCard.mode === 'voice_to_zh' ? 'card.voiceUnavailableToZh' : 'card.voiceUnavailableToTransl'))) {
         voiceUnavailable = true;
-        selectedMode = 'zh_to_transl';
-        applyModeButtons();
-        localStorage.setItem('quizMode', selectedMode);
+        if (selectedMode === currentCard.mode) {
+          selectedMode = fallbackMode;
+          applyModeButtons();
+          localStorage.setItem('quizMode', selectedMode);
+        }
+        currentCard.mode = fallbackMode;
+        showCard();
+        return;
       }
     }
 

@@ -93,3 +93,15 @@ func TestHelpBuckets(t *testing.T) {
 		})
 	}
 }
+
+// TestAnswerBuckets_VoiceToZhNotRecorded covers issue #571: voice_to_zh has
+// no answer bucket, and the play button is the question, not a help.
+func TestAnswerBuckets_VoiceToZhNotRecorded(t *testing.T) {
+	yes := true
+	if got := AnswerBuckets(models.ModeVoiceToZh, &yes, &yes, false); got != nil {
+		t.Errorf("AnswerBuckets(voice_to_zh) = %v, want nil", got)
+	}
+	if got := HelpBuckets(models.ModeVoiceToZh, &yes, &yes, true, true, false); got != nil {
+		t.Errorf("HelpBuckets(voice_to_zh) = %v, want nil", got)
+	}
+}

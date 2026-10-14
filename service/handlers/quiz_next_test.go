@@ -183,7 +183,7 @@ func TestQuizNext_ModeParam(t *testing.T) {
 	}
 	var card models.QuizCard
 	decodeJSON(t, rec, &card)
-	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true, models.ModeZhToTranslNoSound: true, models.ModeVoiceToTransl: true}
+	validModes := map[string]bool{models.ModeTranslToZh: true, models.ModeZhToTransl: true, models.ModeZhPinyinToTransl: true, models.ModeZhToTranslNoSound: true, models.ModeVoiceToTransl: true, models.ModeVoiceToZh: true}
 	if !validModes[card.Mode] {
 		t.Errorf("invalid mode param: got unexpected mode %s", card.Mode)
 	}
@@ -702,6 +702,7 @@ func TestQuizNext_ProgressiveThresholds(t *testing.T) {
 		models.ModeZhPinyinToTransl:  true,
 		models.ModeZhToTranslNoSound: true,
 		models.ModeVoiceToTransl:     true,
+		models.ModeVoiceToZh:         true,
 	}
 	for i := 0; i < 30; i++ {
 		p, _ := s.GetSM2Progress(ctx, id)
@@ -1249,5 +1250,49 @@ func TestQuizNext_VoiceToTransl_SameShapeAsZhToTransl(t *testing.T) {
 	}
 	if card.Prompt != "你好" {
 		t.Errorf("want prompt=你好, got %q", card.Prompt)
+	}
+}
+
+// TestQuizNext_VoiceToZh covers issue #571: the card carries the hanzi for
+// the audio, the translations for the voice-unavailable fallback and the
+// homophone screen, and no pinyin hint.
+func TestQuizNext_VoiceToZh(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil || p == nil {
+		t.Fatalf("GetSM2Progress: %v / %v", err, p)
+	}
+	p.LearningNewWord = false
+	p.TotalAttempts = 1
+	p.TotalCorrect = 1
+	p.DueDate = time.Now().UTC().Add(-time.Hour)
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatalf("UpdateSM2Progress: %v", err)
+	}
+
+	r := newRouter(s)
+	rec := do(t, r, "GET", "/api/quiz/next?mode="+models.ModeVoiceToZh+"&langs=en", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+	var card models.QuizCard
+	decodeJSON(t, rec, &card)
+	if card.Mode != models.ModeVoiceToZh {
+		t.Errorf("want card.Mode=%s, got %s", models.ModeVoiceToZh, card.Mode)
+	}
+	if card.ZhText != "你好" {
+		t.Errorf("want zh_text=你好, got %q", card.ZhText)
+	}
+	if card.Prompt != "hello" {
+		t.Errorf("want prompt=hello (fallback prompt), got %q", card.Prompt)
+	}
+	if got := card.Translations["en"]; len(got) != 1 || got[0] != "hello" {
+		t.Errorf("want translations en=[hello], got %v", card.Translations)
+	}
+	if card.Pinyin != nil {
+		t.Errorf("want no pinyin hint, got %q", *card.Pinyin)
 	}
 }

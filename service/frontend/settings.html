@@ -193,6 +193,10 @@
           <label class="st-text" for="cycle-step-5"><span class="st-label" data-i18n-params='{"n":6}' data-i18n="settings.step">Step 6</span></label>
           <select id="cycle-step-5" class="st-select"></select>
         </div>
+        <div class="st-row ">
+          <label class="st-text" for="cycle-step-6"><span class="st-label" data-i18n-params='{"n":7}' data-i18n="settings.step">Step 7</span></label>
+          <select id="cycle-step-6" class="st-select"></select>
+        </div>
         <div class="st-choices" role="radiogroup">
           <label class="st-choice"><input type="radio" name="cycle-advance-mode" id="cycle-advance-every" value="every_attempt"><span><span class="st-label" data-i18n="settings.cycleAdvanceEveryTitle">Advance on every attempt</span><span class="st-desc" data-i18n="settings.cycleAdvanceEveryDesc">The default. The next step in the cycle is loaded after every attempt, correct or wrong.</span></span></label>
           <label class="st-choice"><input type="radio" name="cycle-advance-mode" id="cycle-advance-success" value="success"><span><span class="st-label" data-i18n="settings.cycleAdvanceSuccessTitle">Advance only on success</span><span class="st-desc" data-i18n="settings.cycleAdvanceSuccessDesc">The next step in the cycle is loaded only after a correct answer, however many attempts it took to get there.</span></span></label>
@@ -245,6 +249,15 @@
             <span class="st-muted" data-i18n="settings.toWord">to</span>
             <select id="random-mode-voice_to_transl-to" class="st-select"></select>
             <label class="st-off"><input type="checkbox" id="random-mode-voice_to_transl-off"><span data-i18n="settings.offLabel">Off</span></label>
+          </div>
+        </div>
+        <div class="st-row st-row-range" data-random-mode-row="voice_to_zh">
+          <div class="st-text"><span class="st-label" data-i18n="settingsMode.voice_to_zh">Voice → Chinese</span></div>
+          <div class="st-range">
+            <select id="random-mode-voice_to_zh-from" class="st-select"></select>
+            <span class="st-muted" data-i18n="settings.toWord">to</span>
+            <select id="random-mode-voice_to_zh-to" class="st-select"></select>
+            <label class="st-off"><input type="checkbox" id="random-mode-voice_to_zh-off"><span data-i18n="settings.offLabel">Off</span></label>
           </div>
         </div>
       </section>

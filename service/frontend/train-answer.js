@@ -181,9 +181,14 @@ function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations, requireZ
 // requires only the field(s) the card's direction actually tested — the
 // Chinese word for transl_to_zh cards, the translation for every other
 // (zh_to_transl-family) card mode.
+// isZhAnswerMode returns true for the modes where the user types the hanzi.
+function isZhAnswerMode(mode) {
+  return mode === 'transl_to_zh' || mode === 'voice_to_zh';
+}
+
 function wrongRetypeFieldsForCard(retryMode, cardMode) {
   if (retryMode === 'both') return { requireZh: true, requireTrans: true };
-  if (cardMode === 'transl_to_zh') return { requireZh: true, requireTrans: false };
+  if (isZhAnswerMode(cardMode)) return { requireZh: true, requireTrans: false };
   return { requireZh: false, requireTrans: true };
 }
 
@@ -196,7 +201,7 @@ function shouldShowAcceptTypo(answer, result, mode, cardMode) {
   if (!answer || answer.trim() === '') return false;
   if (mode === 'always') return true;
   if (mode !== 'typo') return false;
-  if (cardMode === 'transl_to_zh') {
+  if (isZhAnswerMode(cardMode)) {
     if (result.user_answer_pinyin && result.pinyin) {
       return levenshtein(result.user_answer_pinyin.toLowerCase().trim(),
                          result.pinyin.toLowerCase().trim()) <= 1;

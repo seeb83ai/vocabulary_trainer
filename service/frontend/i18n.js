@@ -36,6 +36,7 @@ const I18N = {
     'mode.zh_to_transl_no_sound': 'Chinese (no sound)',
     'mode.zh_pinyin_to_transl': 'Chinese + Pinyin',
     'mode.voice_to_transl': 'Voice',
+    'mode.voice_to_zh': 'Voice → Chinese',
 
     // Full quiz-mode descriptions, used in Settings dropdowns
     'settingsMode.transl_to_zh': 'Translation → Chinese',
@@ -43,6 +44,7 @@ const I18N = {
     'settingsMode.zh_to_transl_no_sound': 'Chinese (no sound) → Translation',
     'settingsMode.zh_pinyin_to_transl': 'Chinese + Pinyin → Translation',
     'settingsMode.voice_to_transl': 'Voice → Translation',
+    'settingsMode.voice_to_zh': 'Voice → Chinese',
     'settingsMode.mask_pinyin': 'Translation → Chinese (pinyin hint)',
 
     // Mode labels (result display)
@@ -51,6 +53,7 @@ const I18N = {
     'modeLabel.zh_to_transl_no_sound': 'Chinese (no sound)',
     'modeLabel.zh_pinyin_to_transl': 'Chinese + Pinyin',
     'modeLabel.voice_to_transl': 'Voice → Translation',
+    'modeLabel.voice_to_zh': 'Voice → Chinese',
     'modeLabel.new_word': 'New Word',
 
     // Tier/Level labels
@@ -129,6 +132,7 @@ const I18N = {
     'result.disambigPrompt': 'Several words share this translation - type another word with the same meaning',
     'result.disambigNotQuite': 'Not that one either. Try again.',
     'result.disambigAmbiguous': 'Right meaning, other word',
+    'result.disambigHomophone': 'Same sound, other word',
     'result.addTranslation': 'Add "{answer}" as correct answer',
     'result.added': '✓ Added',
     'result.charBreakdown': 'Character breakdown',
@@ -961,6 +965,9 @@ const I18N = {
     'result.mixup': 'That’s a different word',
     'result.skipped': 'Skipped',
     'result.ambiguousBody': 'Several words mean “{answer}”. Type the one you’re learning here.',
+    'result.homophoneBody': 'Your word sounds the same. The word you heard means “{answer}”. Type it here.',
+    'card.voiceUnavailableToTransl': 'Voice not available? Ask this and the next voice words as Chinese → Translation for the rest of this session?',
+    'card.voiceUnavailableToZh': 'Voice not available? Ask this and the next voice words as Translation → Chinese for the rest of this session?',
     'result.showAnswer': 'Show the answer',
     'result.asked': 'Asked',
     'result.youTyped': 'you typed',
@@ -1091,6 +1098,7 @@ const I18N = {
     'mode.zh_to_transl_no_sound': '中文（无声）',
     'mode.zh_pinyin_to_transl': '中文＋拼音',
     'mode.voice_to_transl': '语音',
+    'mode.voice_to_zh': '语音 → 中文',
 
     // Full quiz-mode descriptions, used in Settings dropdowns
     'settingsMode.transl_to_zh': '翻译 → 中文',
@@ -1098,6 +1106,7 @@ const I18N = {
     'settingsMode.zh_to_transl_no_sound': '中文（无声） → 翻译',
     'settingsMode.zh_pinyin_to_transl': '中文＋拼音 → 翻译',
     'settingsMode.voice_to_transl': '语音 → 翻译',
+    'settingsMode.voice_to_zh': '语音 → 中文',
     'settingsMode.mask_pinyin': '翻译 → 中文（拼音提示）',
 
     // Mode labels (result display)
@@ -1106,6 +1115,7 @@ const I18N = {
     'modeLabel.zh_to_transl_no_sound': '中文（无声）',
     'modeLabel.zh_pinyin_to_transl': '中文＋拼音',
     'modeLabel.voice_to_transl': '语音 → 翻译',
+    'modeLabel.voice_to_zh': '语音 → 中文',
     'modeLabel.new_word': '新词',
 
     // Tier/Level labels
@@ -1184,6 +1194,7 @@ const I18N = {
     'result.disambigPrompt': '多个词共享此翻译 - 请输入另一个相同意思的词',
     'result.disambigNotQuite': '也不是这个，再试一次。',
     'result.disambigAmbiguous': '意思对，词不对',
+    'result.disambigHomophone': '音对，词不对',
     'result.addTranslation': '将"{answer}"添加为正确答案',
     'result.added': '✓ 已添加',
     'result.charBreakdown': '汉字拆解',
@@ -2016,6 +2027,9 @@ const I18N = {
     'result.mixup': '这是另一个词',
     'result.skipped': '已跳过',
     'result.ambiguousBody': '好几个词都表示“{answer}”。请输入你在这里学的那个。',
+    'result.homophoneBody': '你写的词发音相同。你听到的词意思是“{answer}”。请在这里输入。',
+    'card.voiceUnavailableToTransl': '无法播放语音？本次练习中，这个词和之后的语音词改为 中文 → 翻译？',
+    'card.voiceUnavailableToZh': '无法播放语音？本次练习中，这个词和之后的语音词改为 翻译 → 中文？',
     'result.showAnswer': '显示答案',
     'result.asked': '题目',
     'result.youTyped': '你输入了',
@@ -2146,6 +2160,7 @@ const I18N = {
     'mode.zh_to_transl_no_sound': 'Chinesisch (ohne Ton)',
     'mode.zh_pinyin_to_transl': 'Chinesisch + Pinyin',
     'mode.voice_to_transl': 'Hörverständnis',
+    'mode.voice_to_zh': 'Hören → Chinesisch',
 
     // Full quiz-mode descriptions, used in Settings dropdowns
     'settingsMode.transl_to_zh': 'Übersetzung → Chinesisch',
@@ -2153,6 +2168,7 @@ const I18N = {
     'settingsMode.zh_to_transl_no_sound': 'Chinesisch (ohne Ton) → Übersetzung',
     'settingsMode.zh_pinyin_to_transl': 'Chinesisch + Pinyin → Übersetzung',
     'settingsMode.voice_to_transl': 'Hörverständnis → Übersetzung',
+    'settingsMode.voice_to_zh': 'Hörverständnis → Chinesisch',
     'settingsMode.mask_pinyin': 'Übersetzung → Chinesisch (Pinyin-Hinweis)',
 
     // Mode labels (result display)
@@ -2161,6 +2177,7 @@ const I18N = {
     'modeLabel.zh_to_transl_no_sound': 'Chinesisch (ohne Ton)',
     'modeLabel.zh_pinyin_to_transl': 'Chinesisch + Pinyin',
     'modeLabel.voice_to_transl': 'Hörverständnis → Übersetzung',
+    'modeLabel.voice_to_zh': 'Hörverständnis → Chinesisch',
     'modeLabel.new_word': 'Neues Wort',
 
     // Tier/Level labels
@@ -2239,6 +2256,7 @@ const I18N = {
     'result.disambigPrompt': 'Mehrere Wörter teilen sich diese Übersetzung — tipp ein anderes Wort mit derselben Bedeutung',
     'result.disambigNotQuite': 'Das ist es auch nicht. Versuch es noch einmal.',
     'result.disambigAmbiguous': 'Richtige Bedeutung, anderes Wort',
+    'result.disambigHomophone': 'Gleicher Klang, anderes Wort',
     'result.addTranslation': '"{answer}" als richtige Antwort hinzufügen',
     'result.added': '✓ Hinzugefügt',
     'result.charBreakdown': 'Zeichen-Zerlegung',
@@ -3071,6 +3089,9 @@ const I18N = {
     'result.mixup': 'Das ist ein anderes Wort',
     'result.skipped': 'Übersprungen',
     'result.ambiguousBody': 'Mehrere Wörter bedeuten „{answer}“. Tippe das Wort, das du hier lernst.',
+    'result.homophoneBody': 'Dein Wort klingt gleich. Das gehörte Wort bedeutet „{answer}“. Tippe es hier.',
+    'card.voiceUnavailableToTransl': 'Kein Ton möglich? Dieses und die nächsten Hör-Wörter in dieser Sitzung als Chinesisch → Übersetzung abfragen?',
+    'card.voiceUnavailableToZh': 'Kein Ton möglich? Dieses und die nächsten Hör-Wörter in dieser Sitzung als Übersetzung → Chinesisch abfragen?',
     'result.showAnswer': 'Antwort zeigen',
     'result.asked': 'Gefragt',
     'result.youTyped': 'du hast',

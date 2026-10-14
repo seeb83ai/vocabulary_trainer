@@ -73,7 +73,7 @@ test.describe('Train redesign – desktop', () => {
     await page.locator('#open-filter-overlay').click();
     const sheet = page.locator('#filter-overlay');
     await expect(sheet).toBeVisible();
-    await expect(sheet.locator('.overlay-mode-btn')).toHaveCount(8);
+    await expect(sheet.locator('.overlay-mode-btn')).toHaveCount(9);
     await expect(sheet.locator('.overlay-tier-btn')).toHaveCount(6);
     await expect(page.locator('#overlay-tags-section')).toBeVisible();
     await expect(page.locator('#overlay-tag-chips')).toContainText('greetings');
