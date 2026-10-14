@@ -191,6 +191,15 @@ func (h *QuizHandler) matchGameCandidates(ctx context.Context, userID int64, mod
 				}
 			}
 			_ = h.Store.MarkConfusionsShownInGame(ctx, pairKeys)
+			// The words of this round stay out of every game mode until a
+			// new wrong answer (issue #558).
+			var wordIDs []int64
+			for _, w := range words {
+				if w.Kind == models.ConfusionKindWord && w.ZhWordID > 0 {
+					wordIDs = append(wordIDs, w.ZhWordID)
+				}
+			}
+			_ = h.Store.MarkWordsShownInGame(ctx, userID, wordIDs, gameModeMismatch)
 		}
 		return words, markShown, nil
 	case gameModeNewest:

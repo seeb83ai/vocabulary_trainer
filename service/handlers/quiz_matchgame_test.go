@@ -892,3 +892,37 @@ func TestMatchGame_TranslationOrderMatchesQuizCard(t *testing.T) {
 	}
 	t.Fatalf("word %d missing from response: %+v", id1, resp.Words)
 }
+
+// TestMatchGame_MismatchRoundBlocksWordsInOtherModes covers issue #558: the
+// words of a mismatch round do not come back in a word mode until a new
+// wrong answer.
+func TestMatchGame_MismatchRoundBlocksWordsInOtherModes(t *testing.T) {
+	s := openTestDB(t)
+	enableOnlyGameMode(t, s, "mismatch")
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+	id3 := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	id4 := seedWord(t, s, "对不起", "duì bu qǐ", []string{"sorry"})
+	for _, id := range []int64{id1, id2, id3, id4} {
+		markWordTrained(t, s, id)
+	}
+	for _, pair := range [][2]int64{{id1, id2}, {id3, id4}} {
+		if _, err := s.ExecForTest(`INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen) VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now', '-1 minute'))`, pair[0], pair[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newRouter(s)
+
+	var resp1 models.MatchGameResponse
+	decodeJSON(t, do(t, r, "GET", "/api/quiz/match-game", nil), &resp1)
+	if len(resp1.Words) != 4 {
+		t.Fatalf("mismatch round: expected 4 words, got %+v", resp1.Words)
+	}
+
+	enableOnlyGameMode(t, s, "newest")
+	var resp2 models.MatchGameResponse
+	decodeJSON(t, do(t, r, "GET", "/api/quiz/match-game", nil), &resp2)
+	if len(resp2.Words) != 0 {
+		t.Errorf("newest round after mismatch round: expected 0 words, got %+v", resp2.Words)
+	}
+}

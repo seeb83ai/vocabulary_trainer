@@ -43,9 +43,9 @@ func TestGetHardestWordsForGame_RespectsAttemptsGuard(t *testing.T) {
 	}
 }
 
-// TestGetHardestWordsForGame_RepeatAvoidance covers issue #288 decision #4:
-// a word shown in this mode is suppressed until it has any newer attempt
-// (right or wrong) than when it was last shown.
+// TestGetHardestWordsForGame_RepeatAvoidance covers issue #558: a word shown
+// in this mode is suppressed until a new wrong answer after it was last
+// shown; a correct re-attempt alone does not bring it back.
 func TestGetHardestWordsForGame_RepeatAvoidance(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
@@ -75,15 +75,18 @@ func TestGetHardestWordsForGame_RepeatAvoidance(t *testing.T) {
 		t.Errorf("expected 0 candidates immediately after shown, got %d: %+v", len(words2), words2)
 	}
 
-	// b gets a fresh attempt (correct, doesn't matter) after being shown.
+	// a gets a correct re-attempt after being shown: still suppressed.
+	setLastAttemptOffset(t, s, a, "-30 minutes")
+	// b gets a wrong answer after being shown: eligible again.
 	setLastAttemptOffset(t, s, b, "-30 minutes")
+	setLastWrongOffset(t, s, b, "-30 minutes")
 
 	words3, err := s.GetHardestWordsForGame(ctx, int64(2), 4)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(words3) != 1 || words3[0].ZhWordID != b {
-		t.Errorf("expected only word %d re-eligible after new attempt, got %+v", b, words3)
+		t.Errorf("expected only word %d re-eligible after new wrong answer, got %+v", b, words3)
 	}
 }
 
@@ -496,5 +499,33 @@ func TestGetNewestWordsForGame_DropsBracketOnlyAndPinyinTranslations(t *testing.
 		if g == "Nan (Eig, Fam)" {
 			t.Errorf("pinyin-equal gloss must be dropped, got %v", got)
 		}
+	}
+}
+
+// TestWordGameShown_BlocksAcrossModes covers issue #558: a word shown in any
+// game mode stays out of every word mode until a new wrong answer.
+func TestWordGameShown_BlocksAcrossModes(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	a := seedWord(t, s, "一", "", []string{"one"})
+	setLastWrongOffset(t, s, a, "-2 hours")
+	setWordGameShownOffset(t, s, 2, a, "newest", "-1 hour")
+
+	words, err := s.GetLastMistakesForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 0 {
+		t.Fatalf("word shown in newest mode must not come back in last_mistakes mode, got %+v", words)
+	}
+
+	setLastWrongOffset(t, s, a, "-10 minutes")
+
+	words, err = s.GetLastMistakesForGame(ctx, int64(2), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(words) != 1 || words[0].ZhWordID != a {
+		t.Errorf("expected word %d back after a new wrong answer, got %+v", a, words)
 	}
 }

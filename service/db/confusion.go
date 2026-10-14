@@ -333,6 +333,8 @@ func (s *Store) GetConfusions(ctx context.Context, userID int64) ([]models.Confu
 
 // GetRecentMismatches returns confusion pairs with last_seen >= since that have
 // not yet been shown in a game (or have been re-confused since last shown), up to limit rows.
+// A pair also stays out while one of its words was shown in any game mode
+// after the last confusion and got no wrong answer since (issue #558).
 func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since time.Time, limit int) ([]models.ConfusionDetail, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT zh_word_id, zh_component, confused_with_id, confused_with_component, mode, count, last_seen
@@ -340,6 +342,13 @@ func (s *Store) GetRecentMismatches(ctx context.Context, userID int64, since tim
 		WHERE user_id = ?
 		  AND last_seen >= ?
 		  AND (last_shown_in_game IS NULL OR last_seen > last_shown_in_game)
+		  AND NOT EXISTS (
+		    SELECT 1 FROM word_game_shown g
+		    LEFT JOIN sm2_progress p ON p.word_id = g.word_id
+		    WHERE g.user_id = confusion_pairs.user_id
+		      AND g.word_id IN (confusion_pairs.zh_word_id, confusion_pairs.confused_with_id)
+		      AND g.last_shown_in_game > confusion_pairs.last_seen
+		      AND (p.last_wrong_at IS NULL OR p.last_wrong_at <= g.last_shown_in_game))
 		ORDER BY last_seen DESC
 		LIMIT ?`,
 		userID, since.UTC().Format("2006-01-02 15:04:05"), limit)

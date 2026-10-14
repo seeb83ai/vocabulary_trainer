@@ -1056,3 +1056,48 @@ func TestDetectConfusion_QueriesDriveFromUsersWords(t *testing.T) {
 	assertUsesWordsUserLanguageIndex(t, zhToTranslConfusionQuery, int64(2), int64(1))
 	assertUsesWordsUserLanguageIndex(t, translToZhConfusionQuery("?"), int64(2), "en", int64(1))
 }
+
+// TestGetRecentMismatches_BlockedByWordShownInGame covers issue #558: a pair
+// stays out while one of its words was shown in a game after the last
+// confusion and got no wrong answer after that. A new confusion counts as a
+// wrong answer for both words of the pair.
+func TestGetRecentMismatches_BlockedByWordShownInGame(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	id1 := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	id2 := seedWord(t, s, "再见", "zài jiàn", []string{"goodbye"})
+
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO confusion_pairs (user_id, zh_word_id, confused_with_id, mode, count, last_seen)
+		VALUES (2, ?, ?, 'zh_to_transl', 1, datetime('now', '-2 hours'))`, id1, id2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO word_game_shown (user_id, word_id, game_mode, last_shown_in_game)
+		VALUES (2, ?, 'newest', datetime('now', '-1 hour'))`, id2); err != nil {
+		t.Fatal(err)
+	}
+	since := time.Now().UTC().AddDate(0, 0, -7)
+
+	items, err := s.GetRecentMismatches(ctx, int64(2), since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("pair with a word shown in a game must be blocked, got %d items", len(items))
+	}
+
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE confusion_pairs SET last_seen = datetime('now'), count = 2
+		WHERE zh_word_id = ? AND confused_with_id = ?`, id1, id2); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err = s.GetRecentMismatches(ctx, int64(2), since, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Errorf("pair must come back after a new confusion, got %d items", len(items))
+	}
+}
