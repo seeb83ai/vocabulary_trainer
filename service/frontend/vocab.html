@@ -26,6 +26,7 @@
             <button id="download-btn" type="button" role="menuitem" class="vb-menu-item" data-i18n="download.title">Download vocabulary</button>
             <button id="csv-upload-btn" type="button" role="menuitem" class="vb-menu-item" data-i18n="vocab.uploadCsv">Upload CSV</button>
             <button id="open-tags-btn" type="button" role="menuitem" class="vb-menu-item" data-i18n="vocab.manageTags">Manage tags</button>
+            <button id="open-sentences-btn" type="button" role="menuitem" class="vb-menu-item" data-i18n="sent.menu">Generate sentences</button>
           </div>
         </div>
       </div>
@@ -132,6 +133,8 @@
           data-i18n="vocab.importWords">Import</button>
         <button id="tab-tags" type="button" role="tab" class="vb-tab"
           data-i18n="vocab.tagsTab">Tags</button>
+        <button id="tab-sentences" type="button" role="tab" class="vb-tab"
+          data-i18n="sent.tab">Sentences</button>
         <button id="tab-comp" type="button" role="tab" class="vb-tab is-disabled"
           data-i18n="vocab.editComponentTab">Edit Component</button>
       </div>
@@ -341,6 +344,46 @@
         <div id="tags-list" class="space-y-3">
           <span class="text-sm text-gray-400" data-i18n="vocab.tagsLoading">Loading tags…</span>
         </div>
+      </div>
+
+      <!-- Generate sentences panel -->
+      <div id="panel-sentences" class="hidden">
+        <p class="text-sm text-gray-500 mb-4" data-i18n="sent.desc">The AI writes example sentences that use only words you already know. Select the tags with the words to practise. Each word is used about equally often.</p>
+        <p id="sentences-no-llm" class="hidden mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-i18n="sent.noLlm">This needs a Plus account or your own AI key (Settings → API Keys).</p>
+        <div class="vb-filter-row sent-tags-row">
+          <span class="vb-filter-label"><span data-i18n="filter.tagsShort">Tags</span><span class="tag-help"><button type="button" class="tag-help-btn" aria-expanded="false" aria-label="How tag groups work" data-i18n-aria-label="tags.helpLabel">i</button><span class="tag-help-pop hidden" role="note"><span data-i18n="tags.help">Tags with the same prefix (e.g. topic-food, topic-travel) form a group. Training and the word list show words that match any tag of a group and every selected group. All hsk… tags are one group. Tags without &quot;-&quot; are one group.</span><span class="tag-help-example" data-i18n="tags.helpExample">Example: hsk3-1 + hsk3-2 + topic-food → words from HSK level 1 or 2 that are also tagged topic-food.</span></span></span></span>
+          <div id="sentences-tag-groups" class="tag-groups"></div>
+        </div>
+        <p id="sentences-tags-hint" class="tr-muted-sm mb-3" data-i18n="sent.tagsHint">No tag selected: all words you know.</p>
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <label class="flex items-center gap-2 text-sm text-gray-700">
+            <span data-i18n="sent.count">Sentences</span>
+            <select id="sentences-count" class="st-select">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="20">20</option>
+            </select>
+          </label>
+          <button id="sentences-generate-btn" type="button" class="ui-btn ui-btn-primary" data-i18n="sent.generate">Generate</button>
+        </div>
+        <p id="sentences-loading" class="hidden text-sm text-gray-500 mb-3" data-i18n="sent.loading">Writing sentences… This can take a minute.</p>
+        <div id="sentences-results" class="sent-list"></div>
+        <div id="sentences-import" class="hidden sent-import">
+          <label class="block text-sm font-medium text-gray-700 mb-1" for="sentences-tag-input" data-i18n="sent.tagLabel">Add with tag</label>
+          <input id="sentences-tag-input" type="text" list="sentences-tag-options" autocomplete="off"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="e.g. daily_s" data-i18n-placeholder="sent.tagPlaceholder">
+          <datalist id="sentences-tag-options"></datalist>
+          <p id="sentences-tag-hint" class="tr-muted-sm mt-1"></p>
+          <div class="vb-form-actions sent-actions">
+            <button id="sentences-add-btn" type="button" class="ui-btn ui-btn-primary" data-i18n="sent.add">Add selected</button>
+            <label class="sent-start" for="sentences-start-training">
+              <input type="checkbox" id="sentences-start-training">
+              <span data-i18n="vocab.startTraining">Start training immediately</span>
+            </label>
+          </div>
+        </div>
+        <p id="sentences-status" class="hidden text-sm mt-3" role="status"></p>
       </div>
 
       <!-- Edit Component panel -->

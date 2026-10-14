@@ -208,6 +208,30 @@ test.describe.serial('landing teasers', () => {
     await shot(page, '090-llm-support/02-add_word.png', [page.locator('#word-form-panel')]);
   });
 
+  test('090 generate sentences', async ({ page }) => {
+    // The screenshot server has no LLM: mock the access check and the reply.
+    await page.route('**/api/config', r => r.fulfill({
+      json: { deepl_configured: false, deepl_available: false, llm_configured: true, llm_available: true },
+    }));
+    await page.route('**/api/sentences/generate', r => r.fulfill({ json: { focus_words: [], sentences: [
+      { zh_text: '附近有银行吗？', pinyin: 'fùjìn yǒu yínháng ma?',
+        translations: { en: ['Is there a bank nearby?'], de: ['Gibt es hier in der Nähe eine Bank?'] } },
+      { zh_text: '你想喝水还是喝茶？', pinyin: 'nǐ xiǎng hē shuǐ háishi hē chá?',
+        translations: { en: ['Would you like water or tea?'], de: ['Möchtest du Wasser oder Tee?'] } },
+      { zh_text: '我朋友发烧了，在医院。', pinyin: 'wǒ péngyou fāshāo le, zài yīyuàn.',
+        translations: { en: ['My friend has a fever and is in hospital.'], de: ['Mein Freund hat Fieber und ist im Krankenhaus.'] } },
+    ] } }));
+    await page.goto('/vocab');
+    await page.locator('#vocab-menu-btn').click();
+    await page.locator('#open-sentences-btn').click();
+    await page.locator('#sentences-tag-groups button', { hasText: 'hsk2' }).click();
+    await page.locator('#sentences-generate-btn').click();
+    await expect(page.locator('#sentences-results .sentence-row')).toHaveCount(3);
+    await page.locator('#sentences-tag-input').fill('daily');
+    await expect(page.locator('#sentences-add-btn')).toBeEnabled();
+    await shot(page, '090-llm-support/03-generate_sentences.png', [page.locator('#word-form-panel')]);
+  });
+
   test('100 mismatches', async ({ page }) => {
     await page.goto('/mismatches');
     await expect(page.locator('#mismatches-list')).toBeVisible({ timeout: 10_000 });

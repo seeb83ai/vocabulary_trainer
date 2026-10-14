@@ -32,33 +32,9 @@ type llmGenerateResponse struct {
 const llmSystemPrompt = `You are a creative writing assistant for the Hanzi Movie Method, a mnemonic system for memorizing Chinese characters. Your task is to write exactly one short, vivid scene. Respond with only the scene text — no preamble, no numbering, no labels, no explanation.`
 
 func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
-	userID := UserIDFromContext(r.Context())
-
-	// Resolve which LLM client to use: per-user key takes precedence.
-	client := h.Client
-	if h.SettingsHandler != nil {
-		_, provider, userKey, localURL := h.SettingsHandler.UserAPIKeys(r, userID)
-		if provider != "" && (userKey != "" || provider == "local") {
-			if uc := llm.NewClientFromConfig(provider, userKey, localURL); uc != nil {
-				client = uc
-			}
-		}
-	}
-	if client == nil {
-		writeError(w, http.StatusServiceUnavailable, "LLM not configured")
+	client, ok := h.clientFor(w, r)
+	if !ok {
 		return
-	}
-
-	hasUserKey := h.SettingsHandler != nil && func() bool {
-		_, p, k, _ := h.SettingsHandler.UserAPIKeys(r, userID)
-		return p != "" && k != ""
-	}()
-	if !hasUserKey {
-		role, err := h.Store.GetUserRole(r.Context(), userID)
-		if err != nil || (role != "plus" && role != "admin") {
-			writeError(w, http.StatusForbidden, "feature requires plus account or a personal LLM key")
-			return
-		}
 	}
 
 	id, err := parseID(r)
@@ -142,84 +118,26 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 		propsStr,
 	)
 
-	type result struct {
-		text string
-		err  error
-	}
-	done := make(chan result, 1)
-	go func() {
+	writeLLMJSON(w, func() (any, error) {
 		text, err := client.Generate(r.Context(), llm.Request{
 			System: llmSystemPrompt,
 			User:   userMsg,
 		})
-		done <- result{text, err}
-	}()
-
-	// Flush a space byte every 5s so the WSL2→Windows TCP connection is not
-	// treated as idle and reset before the LLM finishes generating.
-	flusher, canFlush := w.(http.Flusher)
-	w.Header().Set("Content-Type", "application/json")
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	started := false
-	for {
-		select {
-		case res := <-done:
-			if res.err != nil {
-				log.Printf("Error: LLM request failed: %v\n", res.err)
-				if !started {
-					// No bytes written yet — can still set a proper 500 status.
-					writeError(w, http.StatusInternalServerError, "LLM request failed")
-				} else {
-					// Status 200 already committed via keep-alive flush; signal
-					// the error in the body so the client can detect it.
-					w.Write([]byte(`{"error":"LLM request failed"}`)) //nolint:errcheck
-				}
-				return
-			}
-			log.Printf("LLM response: %v\n", res.text)
-			json.NewEncoder(w).Encode(llmGenerateResponse{Text: res.text})
-			return
-		case <-ticker.C:
-			if canFlush {
-				started = true
-				w.Write([]byte(" ")) //nolint:errcheck
-				flusher.Flush()
-			}
+		if err != nil {
+			return nil, err
 		}
-	}
+		log.Printf("LLM response: %v\n", text)
+		return llmGenerateResponse{Text: text}, nil
+	})
 }
 
 // GenerateCompScene generates an HMM mnemonic scene for a component character.
 // Mirrors GenerateScene but resolves the character text and meaning from the
 // component definition instead of a word record.
 func (h *LLMHandler) GenerateCompScene(w http.ResponseWriter, r *http.Request) {
-	userID := UserIDFromContext(r.Context())
-
-	client := h.Client
-	if h.SettingsHandler != nil {
-		_, provider, userKey, localURL := h.SettingsHandler.UserAPIKeys(r, userID)
-		if provider != "" && (userKey != "" || provider == "local") {
-			if uc := llm.NewClientFromConfig(provider, userKey, localURL); uc != nil {
-				client = uc
-			}
-		}
-	}
-	if client == nil {
-		writeError(w, http.StatusServiceUnavailable, "LLM not configured")
+	client, ok := h.clientFor(w, r)
+	if !ok {
 		return
-	}
-
-	hasUserKey := h.SettingsHandler != nil && func() bool {
-		_, p, k, _ := h.SettingsHandler.UserAPIKeys(r, userID)
-		return p != "" && k != ""
-	}()
-	if !hasUserKey {
-		role, err := h.Store.GetUserRole(r.Context(), userID)
-		if err != nil || (role != "plus" && role != "admin") {
-			writeError(w, http.StatusForbidden, "feature requires plus account or a personal LLM key")
-			return
-		}
 	}
 
 	char := chi.URLParam(r, "char")
@@ -298,17 +216,62 @@ func (h *LLMHandler) GenerateCompScene(w http.ResponseWriter, r *http.Request) {
 		propsStr,
 	)
 
-	type result struct {
-		text string
-		err  error
-	}
-	done := make(chan result, 1)
-	go func() {
+	writeLLMJSON(w, func() (any, error) {
 		text, err := client.Generate(r.Context(), llm.Request{
 			System: llmSystemPrompt,
 			User:   userMsg,
 		})
-		done <- result{text, err}
+		if err != nil {
+			return nil, err
+		}
+		log.Printf("LLM response: %v\n", text)
+		return llmGenerateResponse{Text: text}, nil
+	})
+}
+
+// clientFor resolves the LLM client for the request's user — a personal key
+// takes precedence over the server client — and checks that the user may use
+// it (plus/admin, or a personal key). On failure it writes the error response
+// and returns false.
+func (h *LLMHandler) clientFor(w http.ResponseWriter, r *http.Request) (llm.Client, bool) {
+	userID := UserIDFromContext(r.Context())
+	client := h.Client
+	hasUserKey := false
+	if h.SettingsHandler != nil {
+		_, provider, userKey, localURL := h.SettingsHandler.UserAPIKeys(r, userID)
+		if provider != "" && (userKey != "" || provider == "local") {
+			if uc := llm.NewClientFromConfig(provider, userKey, localURL); uc != nil {
+				client = uc
+			}
+		}
+		hasUserKey = provider != "" && userKey != ""
+	}
+	if client == nil {
+		writeError(w, http.StatusServiceUnavailable, "LLM not configured")
+		return nil, false
+	}
+	if !hasUserKey {
+		role, err := h.Store.GetUserRole(r.Context(), userID)
+		if err != nil || (role != "plus" && role != "admin") {
+			writeError(w, http.StatusForbidden, "feature requires plus account or a personal LLM key")
+			return nil, false
+		}
+	}
+	return client, true
+}
+
+// writeLLMJSON runs the LLM work in run and writes its result as JSON. While
+// run is busy it flushes a space byte every 5s so the WSL2→Windows TCP
+// connection is not treated as idle and reset before the LLM finishes.
+func writeLLMJSON(w http.ResponseWriter, run func() (any, error)) {
+	type result struct {
+		body any
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		body, err := run()
+		done <- result{body, err}
 	}()
 
 	flusher, canFlush := w.(http.Flusher)
@@ -322,14 +285,16 @@ func (h *LLMHandler) GenerateCompScene(w http.ResponseWriter, r *http.Request) {
 			if res.err != nil {
 				log.Printf("Error: LLM request failed: %v\n", res.err)
 				if !started {
+					// No bytes written yet — can still set a proper 500 status.
 					writeError(w, http.StatusInternalServerError, "LLM request failed")
 				} else {
+					// Status 200 already committed via keep-alive flush; signal
+					// the error in the body so the client can detect it.
 					w.Write([]byte(`{"error":"LLM request failed"}`)) //nolint:errcheck
 				}
 				return
 			}
-			log.Printf("LLM response: %v\n", res.text)
-			json.NewEncoder(w).Encode(llmGenerateResponse{Text: res.text}) //nolint:errcheck
+			json.NewEncoder(w).Encode(res.body) //nolint:errcheck
 			return
 		case <-ticker.C:
 			if canFlush {

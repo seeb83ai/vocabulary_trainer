@@ -146,7 +146,7 @@ async function executeCsvUpload() {
 // ── Import tab ────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
-  const tabs = ['add', 'import', 'tags', 'comp'];
+  const tabs = ['add', 'import', 'tags', 'sentences', 'comp'];
   tabs.forEach(tab => {
     const active = tab === name;
     $('panel-' + tab).classList.toggle('hidden', !active);
@@ -162,6 +162,9 @@ function switchTab(name) {
   }
   if (name === 'tags' && !tagsLoaded) {
     loadTagDetails();
+  }
+  if (name === 'sentences') {
+    openSentencesPanel();
   }
 }
 

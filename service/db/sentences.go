@@ -134,29 +134,15 @@ func (s *Store) getSentenceCandidates(ctx context.Context, userID int64) ([]mode
 // least once (total_attempts > 0), excluding sentence-tagged rows — this is
 // the segmentation dictionary used to decide sentence eligibility.
 func (s *Store) getKnownWordSet(ctx context.Context, userID int64) (map[string]int64, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT w.id, w.text FROM words w
-		JOIN sm2_progress p ON p.word_id = w.id
-		WHERE w.user_id = ? AND w.language = 'zh' AND p.total_attempts > 0
-		  AND NOT EXISTS (
-		    SELECT 1 FROM word_tags wt JOIN tags tg ON tg.id = wt.tag_id
-		    WHERE wt.word_id = w.id AND tg.name LIKE '`+sentenceTagLike+`
-		  )
-	`, userID)
+	words, err := s.knownWords(ctx, userID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("get known word set: %w", err)
 	}
-	defer rows.Close()
 	known := map[string]int64{}
-	for rows.Next() {
-		var id int64
-		var text string
-		if err := rows.Scan(&id, &text); err != nil {
-			return nil, err
-		}
-		known[text] = id
+	for _, kw := range words {
+		known[kw.Text] = kw.ID
 	}
-	return known, rows.Err()
+	return known, nil
 }
 
 // dueZhWordSet returns a map of word_id → due_date for due non-sentence zh

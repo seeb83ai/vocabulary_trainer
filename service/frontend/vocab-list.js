@@ -501,6 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!$('vocab-menu').classList.contains('hidden') && !e.target.closest('.vb-menu-wrap')) toggleVocabMenu(false);
   });
   $('open-tags-btn').addEventListener('click', () => { toggleVocabMenu(false); openVocabSheet('tags'); });
+  $('open-sentences-btn').addEventListener('click', () => { toggleVocabMenu(false); openVocabSheet('sentences'); });
   for (const id of ['hmm-builder-toggle', 'components-edit-toggle']) {
     $(id).addEventListener('click', () => setEditExtraOpen(id, $(id).getAttribute('aria-expanded') !== 'true'));
   }
@@ -646,6 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('tab-add').addEventListener('click', () => switchTab('add'));
   $('tab-import').addEventListener('click', () => switchTab('import'));
   $('tab-tags').addEventListener('click', () => switchTab('tags'));
+  $('tab-sentences').addEventListener('click', () => switchTab('sentences'));
   $('tab-comp').addEventListener('click', () => { if (editingCompChar) switchTab('comp'); });
 
   $('comp-edit-save-btn').addEventListener('click', async () => {
