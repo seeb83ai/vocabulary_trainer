@@ -143,6 +143,7 @@ func (s *Store) GetNewestWordsForGame(ctx context.Context, userID int64, count i
 		LEFT JOIN `+wordGameShownJoin+` ON g.word_id = w.id
 		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_at IS NOT NULL
+		  AND p.is_known = 0
 		  AND `+wordGameShownEligible+`
 		ORDER BY w.created_at DESC, w.id DESC
 		LIMIT ?`, userID, userID, newestWordsGamePoolSize)
@@ -219,6 +220,7 @@ func (s *Store) GetHardestWordsForGame(ctx context.Context, userID int64, count 
 		LEFT JOIN `+wordGameShownJoin+` ON g.word_id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_at IS NOT NULL
+		  AND p.is_known = 0
 		  AND p.learning_new_word = 0
 		  AND p.total_attempts >= 3
 		  AND `+wordGameShownEligible+`
@@ -246,6 +248,7 @@ func (s *Store) GetLastMistakesForGame(ctx context.Context, userID int64, count 
 		JOIN words w ON w.id = p.word_id
 		LEFT JOIN `+wordGameShownJoin+` ON g.word_id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
+		  AND p.is_known = 0
 		  AND p.last_wrong_at IS NOT NULL
 		  AND `+wordGameShownEligible+`
 		ORDER BY p.last_wrong_at DESC, p.word_id ASC

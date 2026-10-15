@@ -346,7 +346,7 @@ function renderWordAnswerResult(result, answer) {
 
         const { langs: addLangs, defaultLang } = buildAddTranslationLangOptions(selectedLangs, userPrimaryLang);
         if (addLangs.length > 1) {
-          langSelect.innerHTML = addLangs.map(l => `<option value="${l}">${l.toUpperCase()}</option>`).join('');
+          langSelect.innerHTML = addLangs.map(l => `<option value="${escHtml(l)}">${escHtml(l.toUpperCase())}</option>`).join('');
           langSelect.value = defaultLang;
           show('add-translation-lang-select');
         } else {

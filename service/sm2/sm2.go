@@ -262,6 +262,38 @@ func stripParens(s string) string {
 	return s
 }
 
+// splitOutsideParens splits s on '/' and ',' that appear outside ASCII and
+// fullwidth parentheses. A comma or slash inside "(sb, sth)" is kept as-is,
+// preventing malformed fragments like "to put (sb" or "sth) in".
+func splitOutsideParens(s string) []string {
+	depth := 0
+	var parts []string
+	var cur strings.Builder
+	for _, r := range s {
+		switch r {
+		case '(', '（':
+			depth++
+			cur.WriteRune(r)
+		case ')', '）':
+			if depth > 0 {
+				depth--
+			}
+			cur.WriteRune(r)
+		case '/', ',':
+			if depth == 0 {
+				parts = append(parts, cur.String())
+				cur.Reset()
+			} else {
+				cur.WriteRune(r)
+			}
+		default:
+			cur.WriteRune(r)
+		}
+	}
+	parts = append(parts, cur.String())
+	return parts
+}
+
 // ExpandVariants returns all valid answer strings derived from a single
 // accepted answer by applying the optional-parens and slash/comma-split rules.
 func ExpandVariants(a string) []string { return expandVariants(a) }
@@ -281,9 +313,11 @@ func expandVariants(a string) []string {
 	noParens := stripParens(a)
 	add(noParens)
 
-	// Slash- or comma-split variants of both the original and the paren-stripped form
+	// Slash- or comma-split variants of both the original and the paren-stripped form.
+	// Split outside parentheses only so commas inside "(sb, sth)" don't produce
+	// malformed fragments like "to put (sb" or "sth) in".
 	for _, base := range []string{a, noParens} {
-		for _, part := range strings.FieldsFunc(base, func(r rune) bool { return r == '/' || r == ',' }) {
+		for _, part := range splitOutsideParens(base) {
 			add(part)
 			add(stripParens(part))
 		}

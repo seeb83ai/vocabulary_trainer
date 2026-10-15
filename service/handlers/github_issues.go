@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -11,9 +12,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"vocabulary_trainer/db"
 )
+
+var githubHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 const defaultGitHubAPIBaseURL = "https://api.github.com"
 
@@ -140,7 +144,7 @@ func (h *GitHubHandler) Create(w http.ResponseWriter, r *http.Request) {
 		case len(png) > maxScreenshotBytes:
 			log.Printf("github issue: drop oversized screenshot (%d bytes)", len(png))
 		default:
-			if url, uerr := h.uploadScreenshot(reportID, png); uerr != nil {
+			if url, uerr := h.uploadScreenshot(r.Context(), reportID, png); uerr != nil {
 				log.Printf("github issue: screenshot upload failed: %v", uerr)
 			} else {
 				screenshotURL = url
@@ -149,7 +153,7 @@ func (h *GitHubHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	title := "[" + validIssueCategories[req.Category] + "] " + req.Title
-	number, htmlURL, err := h.createIssue(title, buildIssueBody(req, reportID, screenshotURL), h.Labels)
+	number, htmlURL, err := h.createIssue(r.Context(), title, buildIssueBody(req, reportID, screenshotURL), h.Labels)
 	if err != nil {
 		log.Printf("github issue: create failed: %v", err)
 		writeError(w, http.StatusBadGateway, "could not create issue")
@@ -217,7 +221,7 @@ func sanitizeCell(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func (h *GitHubHandler) createIssue(title, body string, labels []string) (int, string, error) {
+func (h *GitHubHandler) createIssue(ctx context.Context, title, body string, labels []string) (int, string, error) {
 	payload := map[string]any{"title": title, "body": body}
 	if len(labels) > 0 {
 		payload["labels"] = labels
@@ -226,7 +230,7 @@ func (h *GitHubHandler) createIssue(title, body string, labels []string) (int, s
 		Number  int    `json:"number"`
 		HTMLURL string `json:"html_url"`
 	}
-	if err := h.apiDo(http.MethodPost, "/repos/"+h.Repo+"/issues", payload, &out); err != nil {
+	if err := h.apiDo(ctx, http.MethodPost, "/repos/"+h.Repo+"/issues", payload, &out); err != nil {
 		return 0, "", err
 	}
 	return out.Number, out.HTMLURL, nil
@@ -235,23 +239,23 @@ func (h *GitHubHandler) createIssue(title, body string, labels []string) (int, s
 // uploadScreenshot uploads the PNG to the assets branch via the Contents API
 // and returns the raw download URL. If the branch is missing (404) it is
 // created from the default branch head and the upload is retried once.
-func (h *GitHubHandler) uploadScreenshot(reportID string, png []byte) (string, error) {
+func (h *GitHubHandler) uploadScreenshot(ctx context.Context, reportID string, png []byte) (string, error) {
 	path := "issue-screenshots/" + reportID + ".png"
-	url, err := h.putContents(path, png)
+	url, err := h.putContents(ctx, path, png)
 	if err == nil {
 		return url, nil
 	}
 	var apiErr *githubAPIError
 	if errors.As(err, &apiErr) && apiErr.status == http.StatusNotFound {
-		if cerr := h.ensureAssetsBranch(); cerr != nil {
+		if cerr := h.ensureAssetsBranch(ctx); cerr != nil {
 			return "", cerr
 		}
-		return h.putContents(path, png)
+		return h.putContents(ctx, path, png)
 	}
 	return "", err
 }
 
-func (h *GitHubHandler) putContents(path string, content []byte) (string, error) {
+func (h *GitHubHandler) putContents(ctx context.Context, path string, content []byte) (string, error) {
 	payload := map[string]any{
 		"message": "Add issue screenshot " + path,
 		"content": base64.StdEncoding.EncodeToString(content),
@@ -262,7 +266,7 @@ func (h *GitHubHandler) putContents(path string, content []byte) (string, error)
 			DownloadURL string `json:"download_url"`
 		} `json:"content"`
 	}
-	if err := h.apiDo(http.MethodPut, "/repos/"+h.Repo+"/contents/"+path, payload, &out); err != nil {
+	if err := h.apiDo(ctx, http.MethodPut, "/repos/"+h.Repo+"/contents/"+path, payload, &out); err != nil {
 		return "", err
 	}
 	if out.Content.DownloadURL == "" {
@@ -271,11 +275,11 @@ func (h *GitHubHandler) putContents(path string, content []byte) (string, error)
 	return out.Content.DownloadURL, nil
 }
 
-func (h *GitHubHandler) ensureAssetsBranch() error {
+func (h *GitHubHandler) ensureAssetsBranch(ctx context.Context) error {
 	var repo struct {
 		DefaultBranch string `json:"default_branch"`
 	}
-	if err := h.apiDo(http.MethodGet, "/repos/"+h.Repo, nil, &repo); err != nil {
+	if err := h.apiDo(ctx, http.MethodGet, "/repos/"+h.Repo, nil, &repo); err != nil {
 		return err
 	}
 	var ref struct {
@@ -283,16 +287,16 @@ func (h *GitHubHandler) ensureAssetsBranch() error {
 			SHA string `json:"sha"`
 		} `json:"object"`
 	}
-	if err := h.apiDo(http.MethodGet, "/repos/"+h.Repo+"/git/ref/heads/"+repo.DefaultBranch, nil, &ref); err != nil {
+	if err := h.apiDo(ctx, http.MethodGet, "/repos/"+h.Repo+"/git/ref/heads/"+repo.DefaultBranch, nil, &ref); err != nil {
 		return err
 	}
 	payload := map[string]any{"ref": "refs/heads/" + h.assetsBranch(), "sha": ref.Object.SHA}
-	return h.apiDo(http.MethodPost, "/repos/"+h.Repo+"/git/refs", payload, nil)
+	return h.apiDo(ctx, http.MethodPost, "/repos/"+h.Repo+"/git/refs", payload, nil)
 }
 
 // apiDo performs an authenticated JSON request against the GitHub API. body and
 // out may be nil. Non-2xx responses return a *githubAPIError.
-func (h *GitHubHandler) apiDo(method, path string, body, out any) error {
+func (h *GitHubHandler) apiDo(ctx context.Context, method, path string, body, out any) error {
 	var rdr io.Reader
 	if body != nil {
 		bs, err := json.Marshal(body)
@@ -301,7 +305,7 @@ func (h *GitHubHandler) apiDo(method, path string, body, out any) error {
 		}
 		rdr = bytes.NewReader(bs)
 	}
-	req, err := http.NewRequest(method, h.baseURL()+path, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, h.baseURL()+path, rdr)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
@@ -311,7 +315,7 @@ func (h *GitHubHandler) apiDo(method, path string, body, out any) error {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := githubHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("http: %w", err)
 	}

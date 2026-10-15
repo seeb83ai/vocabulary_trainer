@@ -71,12 +71,12 @@ function dueTomorrowCount(dates, tomorrow) {
   return hit ? hit.count : 0;
 }
 
-// localDateStr formats today + offsetDays in the browser's local timezone,
-// matching the server-local dates used by daily stats and due scheduling.
+// localDateStr formats today + offsetDays as a UTC date (YYYY-MM-DD),
+// matching SQLite's date('now') which is always UTC.
 function localDateStr(offsetDays) {
   const d = new Date();
-  d.setDate(d.getDate() + (offsetDays || 0));
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  d.setUTCDate(d.getUTCDate() + (offsetDays || 0));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 // loadComebackInfo fills the "come back tomorrow" block on the success

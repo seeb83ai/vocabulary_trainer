@@ -23,8 +23,16 @@ const FULLWIDTH_TO_HALFWIDTH = {
   '？': '?', '！': '!', '，': ',', '。': '.', '：': ':', '；': ';',
 };
 
+// apostropheToAscii mirrors service/sm2/sm2.go's apostropheVariants Replacer
+// so curly/typographic apostrophes from mobile auto-correct compare equal to
+// the straight apostrophe stored in most translations.
+function apostropheToAscii(s) {
+  return s.replace(/[''´`]/g, "'");
+}
+
 function normalizeAnswer(s) {
   s = s.toLowerCase().trim();
+  s = apostropheToAscii(s);
   s = s.replace(/[？！，。：；]/g, ch => FULLWIDTH_TO_HALFWIDTH[ch]);
   // Mirrors service/sm2/sm2.go's reDotsRun: collapse any run of halfwidth
   // periods and/or ideographic ellipsis characters (U+2026), anywhere in the
