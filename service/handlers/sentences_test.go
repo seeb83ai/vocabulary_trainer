@@ -168,6 +168,8 @@ func TestGenerateSentences_Errors(t *testing.T) {
 		{"count too high", &mockLLMClient{text: "[]"}, 2, `{"tags":[],"count":21}`, http.StatusBadRequest},
 		{"count missing", &mockLLMClient{text: "[]"}, 2, `{"tags":[]}`, http.StatusBadRequest},
 		{"no known words in tags", &mockLLMClient{text: "[]"}, 2, `{"tags":["topic-travel"],"count":5}`, http.StatusBadRequest},
+		{"unknown focus", &mockLLMClient{text: "[]"}, 2, `{"tags":[],"count":5,"focus":"newest"}`, http.StatusBadRequest},
+		{"mix-ups focus without mix-ups", &mockLLMClient{text: "[]"}, 2, `{"tags":[],"count":5,"focus":"mixups"}`, http.StatusBadRequest},
 		{"LLM reply is not JSON", &mockLLMClient{text: "Sorry, I cannot."}, 2, `{"tags":[],"count":5}`, http.StatusInternalServerError},
 	}
 	for _, c := range cases {
@@ -178,5 +180,84 @@ func TestGenerateSentences_Errors(t *testing.T) {
 				t.Errorf("status = %d, want %d; body: %s", rec.Code, c.want, rec.Body)
 			}
 		})
+	}
+}
+
+// setProgress sets the review counts of user 2's zh word text.
+func setProgress(t *testing.T, s *db.Store, zh string, correct, attempts int) int64 {
+	t.Helper()
+	ctx := context.Background()
+	id, err := s.GetWordIDByZhText(ctx, 2, zh)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.GetSM2Progress(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.TotalAttempts, p.TotalCorrect = attempts, correct
+	if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func TestGenerateSentences_FocusOptionOrdersFocusWords(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want []string
+	}{
+		// 米饭 is the hardest word, but it is already in a sentence.
+		{"hardest, even coverage by default", `{"tags":["topic-food"],"count":5,"focus":"hardest"}`, []string{"吃", "米饭"}},
+		{"hardest without even coverage", `{"tags":["topic-food"],"count":5,"focus":"hardest","even":false}`, []string{"米饭", "吃"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r, store := buildSentenceRouter(t, &mockLLMClient{text: "[]"}, 2)
+			setProgress(t, store, "米饭", 1, 5)
+			setProgress(t, store, "吃", 5, 5)
+			if _, err := store.CreateWord(context.Background(), 2, models.CreateWordRequest{
+				ZhText: "米饭，米饭！", Translations: map[string][]string{"en": {"Rice, rice!"}}, Tags: []string{"food_s"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			rec := postGenerateSentences(t, r, c.body)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d; body: %s", rec.Code, rec.Body)
+			}
+			var got generatedSentences
+			json.NewDecoder(rec.Body).Decode(&got)
+			if strings.Join(got.FocusWords, " ") != strings.Join(c.want, " ") {
+				t.Errorf("focus_words = %v, want %v", got.FocusWords, c.want)
+			}
+		})
+	}
+}
+
+func TestGenerateSentences_MixUpsPromptAsksForBothWordsOfAPair(t *testing.T) {
+	var sent llm.Request
+	r, store := buildSentenceRouter(t, &captureLLMClient{out: &sent, text: "[]"}, 2)
+	rice := setProgress(t, store, "米饭", 1, 1)
+	eat := setProgress(t, store, "吃", 1, 1)
+	if err := store.UpsertConfusion(context.Background(), 2, rice, eat, models.ModeZhToTransl); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := postGenerateSentences(t, r, `{"tags":[],"count":5,"focus":"mixups"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body)
+	}
+	if pairs := between(sent.User, "<pairs>", "</pairs>"); pairs != "米饭/吃" {
+		t.Errorf("pairs = %q, want 米饭/吃; prompt: %s", pairs, sent.User)
+	}
+	if !strings.Contains(sent.User, "both words of a pair") {
+		t.Errorf("prompt has no pair rule: %s", sent.User)
+	}
+
+	// Other focus options have no pairs.
+	postGenerateSentences(t, r, `{"tags":[],"count":5}`)
+	if strings.Contains(sent.User, "<pairs>") || strings.Contains(sent.User, "both words of a pair") {
+		t.Errorf("prompt without mix-ups focus has pairs: %s", sent.User)
 	}
 }

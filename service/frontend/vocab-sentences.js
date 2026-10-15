@@ -110,7 +110,12 @@ async function generateSentences() {
   try {
     const data = await apiFetch('/api/sentences/generate', {
       method: 'POST',
-      body: JSON.stringify({ tags: sentTags, count: Number($('sentences-count').value) }),
+      body: JSON.stringify({
+        tags: sentTags,
+        count: Number($('sentences-count').value),
+        focus: $('sentences-focus').value,
+        even: $('sentences-even').checked,
+      }),
       timeoutMs: API_SLOW_TIMEOUT_MS,
     });
     if (data && data.error) throw new Error(data.error);

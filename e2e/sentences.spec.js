@@ -70,7 +70,7 @@ test.describe('Generate sentences', () => {
 
     const rows = page.locator('#sentences-results .sentence-row');
     await expect(rows).toHaveCount(2);
-    expect(generateBody).toEqual({ tags: ['food'], count: 5 });
+    expect(generateBody).toEqual({ tags: ['food'], count: 5, focus: 'all', even: true });
     await expect(page.locator('#panel-sentences')).not.toContainText('Practised words');
     await expect(rows.nth(0)).toContainText('我吃米饭。');
     await expect(rows.nth(0).locator('input[data-lang=en]')).toHaveValue('I eat rice.');
@@ -107,6 +107,37 @@ test.describe('Generate sentences', () => {
     const byZh = Object.fromEntries((trained.words || trained).map(w => [w.zh_text, w]));
     expect(byZh['你吃米饭吗？'].total_attempts).toBe(1);
     expect(byZh['我吃米饭。'].total_attempts).toBe(0);
+  });
+
+  test('focus words: the user picks hardest words and turns off even coverage', async ({ page }) => {
+    await registerUser(page);
+    await seed(page, '米饭', 'mǐfàn', { en: ['rice'] }, ['food']);
+    await mockConfig(page, true);
+    let generateBody = null;
+    await page.route('**/api/sentences/generate', r => {
+      generateBody = r.request().postDataJSON();
+      return r.fulfill({ json: GENERATED });
+    });
+
+    await page.goto('/vocab');
+    await page.locator('#vocab-menu-btn').click();
+    await page.locator('#open-sentences-btn').click();
+    await expect(page.locator('#sentences-focus')).toHaveValue('all');
+    await expect(page.locator('#sentences-even')).toBeChecked();
+    await expect(page.locator('#sentences-focus option')).toHaveText(['All words', 'Hardest words', 'Mix-ups', 'Most frequent words']);
+
+    await page.locator('#sentences-focus').selectOption('hardest');
+    await page.locator('#sentences-even').uncheck();
+    await captureForPR(page, 'vocab-sentences-focus');
+    await page.locator('#sentences-generate-btn').click();
+    await expect(page.locator('#sentences-results .sentence-row')).toHaveCount(2);
+    expect(generateBody).toEqual({ tags: [], count: 10, focus: 'hardest', even: false });
+
+    await page.locator('#sentences-focus').selectOption('mixups');
+    await page.locator('#sentences-even').check();
+    await page.locator('#sentences-generate-btn').click();
+    await expect.poll(() => generateBody.focus).toBe('mixups');
+    expect(generateBody.even).toBe(true);
   });
 
   test('generating waits for the slow-call timeout, then shows the timeout message', async ({ page }) => {
