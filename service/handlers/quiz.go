@@ -775,7 +775,11 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 
 	langs := req.Langs
 	if len(langs) == 0 {
-		langs = []string{"en"}
+		if userSettings != nil {
+			langs = []string{userSettings.PrimaryLang}
+		} else {
+			langs = []string{"en"}
+		}
 	}
 	var correctTexts []string
 	switch req.Mode {

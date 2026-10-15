@@ -1258,6 +1258,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				 JOIN words w ON w.id = p.word_id
 				 WHERE w.language = 'zh' AND w.user_id = ?
 				   AND p.first_seen_at IS NOT NULL
+				   AND p.is_known = 0
 				   AND p.learning_new_word = 0
 				   AND (p.total_attempts < 3 OR CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts < 0.50)`,
 				userID).Scan(&struggling); err != nil {
@@ -1300,6 +1301,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				 JOIN words w ON w.id = p.word_id
 				 WHERE w.language = 'zh' AND w.user_id = ?
 				   AND p.first_seen_at IS NOT NULL
+				   AND p.is_known = 0
 				   AND p.learning_new_word = 0
 				   AND p.total_attempts >= 3
 				   AND CAST(p.total_correct + p.streak_bonus AS REAL) / p.total_attempts >= 0.50
@@ -1319,6 +1321,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				`SELECT COUNT(*) FROM sm2_progress p
 				 JOIN words w ON w.id = p.word_id
 				 WHERE w.language = 'zh' AND w.user_id = ?
+				   AND p.is_known = 0
 				   AND p.learning_new_word = 1
 				   AND p.first_seen_at IS NOT NULL
 				   AND p.due_date <= CURRENT_TIMESTAMP`+tagFilter,

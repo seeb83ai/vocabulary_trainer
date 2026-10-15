@@ -279,6 +279,7 @@ func (s *Store) GetStats(ctx context.Context, userID int64, tags []string, bucke
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL
+		   AND p.is_known = 0
 		   AND p.due_date < date('now', '+1 day')`+tagFilter+bucketSQL, dueArgs...).Scan(&dueToday)
 	if err != nil {
 		return
@@ -341,6 +342,7 @@ func (s *Store) GetWordCountByDueDate(ctx context.Context, userID int64, tags []
 	WHERE w.language = 'zh'
 	  AND w.user_id = ?
 	  AND p.first_seen_at IS NOT NULL
+	  AND p.is_known = 0
 	  AND date(p.due_date) <= date('now', '+30 days')` + tagFilter + `
 	GROUP BY bucket_date
 	ORDER BY bucket_date`
