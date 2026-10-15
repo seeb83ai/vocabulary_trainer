@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Route-drift check: every API endpoint registered in service/main.go must be
-# documented in the README API table. Catches routes that get added in code but
+# documented in the API table in docs/api.md. Catches routes that get added in code but
 # silently left out of the docs.
 #
 # Page routes (HTML pages) and a small set of internal/sub-resource route groups
@@ -10,7 +10,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 MAIN="service/main.go"
-README="README.md"
+README="docs/api.md"
 
 # Leaf path literals from chi route registrations (handles r.With(...).Verb too).
 paths="$(grep -oE '\.(Get|Post|Put|Delete|Patch)\("/[^"]*"' "$MAIN" \
@@ -21,7 +21,7 @@ while IFS= read -r p; do
   [ -z "$p" ] && continue
   case "$p" in
     # HTML page routes and the catch-all — not part of the API table.
-    /|/vocab|/stats|/train|/mnemonics|/mismatches|/pinyin|/settings|/login|/impressum|"/*") continue ;;
+    /|/vocab|/stats|/train|/mnemonics|/mismatches|/pinyin|/settings|/login|/impressum|/admin-dashboard|"/*") continue ;;
     # Generic leaf used by multiple nested groups (list/create at a group root).
     /export|/context|/generate-scene|/hmm/generate-scene) continue ;;
     # Internal/sub-resource endpoints covered by Go handler tests, not part of
@@ -35,7 +35,7 @@ while IFS= read -r p; do
     /tags/*) continue ;;
   esac
   if ! grep -qF "$p" "$README"; then
-    echo "UNDOCUMENTED route (in $MAIN, not in $README API table): $p"
+    echo "UNDOCUMENTED route (in $MAIN, not in the API table in $README): $p"
     missing=1
   fi
 done <<< "$paths"

@@ -3,7 +3,8 @@
 ## Project overview
 
 A self-hosted Chinese–English vocabulary trainer (Go backend + vanilla JS frontend, SQLite, SM-2 spaced repetition).
-See README.md for full feature description and API reference.
+README.md is a short landing page. Details live in `docs/`: `features.md`, `scheduling.md`, `configuration.md`,
+`self-hosting.md`, `data-import.md`, `api.md` and `development.md`.
 
 ## Workflow
 
@@ -102,9 +103,9 @@ Before marking any task done:
 2. `npm test` — no failures (if JS was changed).
 3. `make test-e2e` — no failures (if a user-visible flow was added or changed).
 4. New route registered in **both** `service/main.go` and `newRouter()` in `router_test.go`.
-5. `README.md` updated if user-visible behaviour changed.
+5. The matching `docs/*.md` file updated if user-visible behaviour changed (see the README section below).
 6. No SQL outside `service/db/` package.
-7. New env var? Read in `main.go`, default documented, logged with `log.Printf`.
+7. New env var? Read in `main.go`, default documented in `docs/configuration.md`, logged with `log.Printf`.
 8. `service/frontend/` touched? PR screenshots captured and embedded in the PR description (see PR screenshots rule above).
 9. Redesign or visible restyle of existing pages? `make screenshots-readme` and `make screenshots-landing` re-run, and the new images are committed.
 
@@ -121,10 +122,17 @@ Before marking any task done:
 
 ## README
 
-Update `README.md` whenever:
-- A user-visible behaviour changes (new quiz rule, new UI element, new API endpoint).
-- A new Makefile target or CLI flag is added.
-- The deployment or configuration process changes.
+Keep `README.md` short: pitch, quick start, one-line feature list, links. Put details in the matching `docs/` file:
+
+| Change | File |
+|---|---|
+| New or changed user-visible feature | `docs/features.md` (add a one-liner to the README only for a major new feature) |
+| New-word cap, gates, tiers, quiz-mode selection | `docs/scheduling.md` |
+| New env var, auth or security behaviour, optional integration | `docs/configuration.md` (add the variable to the table) |
+| Deployment, backups, upgrades, admin tools | `docs/self-hosting.md` |
+| New CLI tool or flag | `docs/data-import.md` |
+| New or changed API endpoint | `docs/api.md` (`scripts/check-route-drift.sh` checks it in CI) |
+| New Makefile target, test or dev tooling | `docs/development.md` |
 
 ## Code style
 
