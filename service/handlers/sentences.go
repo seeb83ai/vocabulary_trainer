@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/llm"
 )
 
@@ -18,6 +19,8 @@ const (
 type generateSentencesRequest struct {
 	Tags  []string `json:"tags"`
 	Count int      `json:"count"`
+	Focus string   `json:"focus"` // db.SentenceFocus*; "" means all
+	Even  *bool    `json:"even"`  // nil means true
 }
 
 type generatedSentence struct {
@@ -63,13 +66,27 @@ func (h *LLMHandler) GenerateSentences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vocab, err := h.Store.GetSentenceVocab(r.Context(), userID, req.Tags, maxSentenceFocus)
+	switch req.Focus {
+	case "":
+		req.Focus = db.SentenceFocusAll
+	case db.SentenceFocusAll, db.SentenceFocusHardest, db.SentenceFocusMixUps, db.SentenceFocusFrequent:
+	default:
+		writeError(w, http.StatusBadRequest, "focus must be all, hardest, mixups or frequent")
+		return
+	}
+	even := req.Even == nil || *req.Even
+
+	vocab, err := h.Store.GetSentenceVocab(r.Context(), userID, req.Tags, req.Focus, even, maxSentenceFocus)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load known words")
 		return
 	}
 	if len(vocab.Focus) == 0 {
-		writeError(w, http.StatusBadRequest, "no known words in the selected tags")
+		if req.Focus == db.SentenceFocusMixUps {
+			writeError(w, http.StatusBadRequest, "no mix-ups of known words in the selected tags")
+		} else {
+			writeError(w, http.StatusBadRequest, "no known words in the selected tags")
+		}
 		return
 	}
 
@@ -81,7 +98,7 @@ func (h *LLMHandler) GenerateSentences(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	userMsg := sentencePrompt(vocab.Focus, vocab.Allowed, langs, (req.Count*3+1)/2)
+	userMsg := sentencePrompt(vocab.Focus, vocab.Allowed, vocab.Pairs, langs, (req.Count*3+1)/2)
 
 	writeLLMJSON(w, func() (any, error) {
 		text, err := client.Generate(r.Context(), llm.Request{System: sentenceSystemPrompt, User: userMsg})
@@ -124,7 +141,8 @@ func (h *LLMHandler) GenerateSentences(w http.ResponseWriter, r *http.Request) {
 
 // sentencePrompt builds the user message for GenerateSentences. Word lists
 // come from the DB and sit inside XML tags so the LLM treats them as data.
-func sentencePrompt(focus, allowed, langs []string, n int) string {
+// With pairs (mix-ups), the LLM is asked to contrast both words of a pair.
+func sentencePrompt(focus, allowed []string, pairs [][2]string, langs []string, n int) string {
 	isFocus := map[string]bool{}
 	for _, f := range focus {
 		isFocus[f] = true
@@ -148,6 +166,15 @@ func sentencePrompt(focus, allowed, langs []string, n int) string {
 		langList = append(langList, fmt.Sprintf("%q (%s)", l, name))
 		langKeys = append(langKeys, fmt.Sprintf("%q:\"…\"", l))
 	}
+	pairRule, pairData := "", ""
+	if len(pairs) > 0 {
+		var list []string
+		for _, p := range pairs {
+			list = append(list, sanitizeLLMField(p[0])+"/"+sanitizeLLMField(p[1]))
+		}
+		pairRule = "6. The learner mixes up the words of each pair in <pairs>. Where it is natural, use both words of a pair in the same sentence, so the difference becomes clear.\n"
+		pairData = "<pairs>" + strings.Join(list, " ") + "</pairs>\n"
+	}
 	return fmt.Sprintf(
 		"Write %d different Chinese sentences.\n\n"+
 			"Rules:\n"+
@@ -155,12 +182,14 @@ func sentencePrompt(focus, allowed, langs []string, n int) string {
 			"2. Every sentence contains at least one focus word. Use all focus words about equally often across the sentences: do not use a focus word again before every focus word is used.\n"+
 			"3. Every sentence is useful in day-to-day life: something people really say, read or hear (at home, shopping, eating, travel, work, small talk, signs, messages). No textbook clichés, no nonsense, no poetry.\n"+
 			"4. Keep the sentences short and natural. Mix statements, questions and requests.\n"+
-			"5. Translate every sentence naturally into %s.\n\n"+
+			"5. Translate every sentence naturally into %s.\n"+
+			"%s\n"+
 			"<focus_words>%s</focus_words>\n"+
-			"<other_words>%s</other_words>\n\n"+
+			"<other_words>%s</other_words>\n"+
+			"%s\n"+
 			"Output: a JSON array of objects {\"zh\":\"…\",\"pinyin\":\"…\",\"translations\":{%s}}.",
-		n, strings.Join(langList, " and "),
-		strings.Join(focusClean, " "), strings.Join(others, " "),
+		n, strings.Join(langList, " and "), pairRule,
+		strings.Join(focusClean, " "), strings.Join(others, " "), pairData,
 		strings.Join(langKeys, ","),
 	)
 }
