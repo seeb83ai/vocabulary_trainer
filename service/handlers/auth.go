@@ -306,6 +306,11 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		// verification. The owner of the address will receive nothing new
 		// (we deliberately don't issue another verification email), so the
 		// duplicate attempt remains a no-op.
+		//
+		// Run a dummy bcrypt comparison to match the ~100 ms cost of
+		// bcrypt.GenerateFromPassword on the fresh path, preventing timing-based
+		// email enumeration.
+		_ = bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(req.Password))
 		log.Printf("Register: duplicate attempt for %s (silently accepted)", req.Email)
 		_ = a.store.RecordAuditLog(r.Context(), existing.ID, db.AuditRegisterDuplicate, ip, "")
 		writeJSON(w, http.StatusOK, map[string]any{"pending_verification": true})

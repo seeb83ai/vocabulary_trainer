@@ -90,10 +90,14 @@ func (h *LLMHandler) GenerateScene(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// zh_text and translations come from the DB — not from the request.
-	zhText := word.ZhText
+	// Sanitize to strip control characters (including newlines) that could
+	// break the prompt structure, matching what sentences.go does for DB content.
+	zhText := sanitizeLLMField(word.ZhText)
 	var allTranslTexts []string
 	for _, texts := range word.Translations {
-		allTranslTexts = append(allTranslTexts, texts...)
+		for _, t := range texts {
+			allTranslTexts = append(allTranslTexts, sanitizeLLMField(t))
+		}
 	}
 	enTexts := strings.Join(allTranslTexts, ", ")
 	if enTexts == "" {
@@ -193,8 +197,8 @@ func (h *LLMHandler) GenerateCompScene(w http.ResponseWriter, r *http.Request) {
 
 	var defParts []string
 	for _, v := range defs {
-		if v != "" {
-			defParts = append(defParts, v)
+		if s := sanitizeLLMField(v); s != "" {
+			defParts = append(defParts, s)
 		}
 	}
 	meaning := strings.Join(defParts, ", ")
