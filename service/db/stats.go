@@ -42,7 +42,7 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 		    THEN 1 ELSE 0 END), 0)
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.user_id = ? AND w.language = 'zh' AND p.first_seen_at IS NOT NULL`, userID).Scan(
+		WHERE w.user_id = ? AND w.language = 'zh' AND p.first_seen_at IS NOT NULL AND p.is_known = 0`, userID).Scan(
 		&bNew, &bStruggling, &bLearning, &bPracticing, &bMastered,
 	); err != nil {
 		return 0, fmt.Errorf("count buckets: %w", err)
@@ -109,6 +109,7 @@ func (s *Store) EnsureDueTodaySnapshot(ctx context.Context, userID int64) (int, 
 		`SELECT COUNT(*) FROM sm2_progress p
 		 JOIN words w ON w.id = p.word_id
 		 WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL
+		   AND p.is_known = 0
 		   AND p.due_date <= date('now', '+1 day')`,
 		userID).Scan(&dueCount); err != nil {
 		return 0, fmt.Errorf("count due today: %w", err)
@@ -246,7 +247,7 @@ func (s *Store) wordAccBucketsForTags(ctx context.Context, userID int64, tags []
 		SELECT p.total_correct, p.total_attempts, p.streak_bonus, p.learning_new_word
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL`+tagFilter,
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL AND p.is_known = 0`+tagFilter,
 		append([]any{userID}, tagArgs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("get word acc buckets for tags: %w", err)
@@ -303,7 +304,7 @@ func (s *Store) GetWordStats(ctx context.Context, userID int64, tags []string) (
 		       p.learning_new_word
 		FROM sm2_progress p
 		JOIN words w ON w.id = p.word_id
-		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL
+		WHERE w.language = 'zh' AND w.user_id = ? AND p.first_seen_at IS NOT NULL AND p.is_known = 0
 		ORDER BY p.total_attempts DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get word stats: %w", err)
@@ -487,6 +488,7 @@ func (s *Store) GetTodaySessionInfo(ctx context.Context, userID int64) (attempts
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_at IS NOT NULL
+		  AND p.is_known = 0
 		  AND p.due_date > CURRENT_TIMESTAMP`, userID).Scan(&availableToAdvance)
 	if err != nil {
 		err = fmt.Errorf("count available to advance: %w", err)
@@ -507,6 +509,7 @@ func (s *Store) AdvanceDueDates(ctx context.Context, userID int64, n int) (int, 
 		JOIN words w ON w.id = p.word_id
 		WHERE w.language = 'zh' AND w.user_id = ?
 		  AND p.first_seen_at IS NOT NULL
+		  AND p.is_known = 0
 		  AND p.due_date > CURRENT_TIMESTAMP
 		ORDER BY p.due_date ASC
 		LIMIT ?`, userID, n)

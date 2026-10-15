@@ -360,6 +360,56 @@ func TestCheckAnswer_Comma_SecondPart(t *testing.T) {
 	}
 }
 
+func TestCheckAnswer_CommaInsideParens_NoMalformedFragments(t *testing.T) {
+	// "to put (sb, sth) in": comma is inside parens; splitting must not produce
+	// malformed fragments "to put (sb" or "sth) in". The bare form "to put in"
+	// must still be accepted.
+	accepted := []string{"to put (sb, sth) in"}
+	if !CheckAnswer("to put (sb, sth) in", accepted) {
+		t.Error("full form should be accepted")
+	}
+	if !CheckAnswer("to put in", accepted) {
+		t.Error("paren-stripped form should be accepted")
+	}
+	if CheckAnswer("to put (sb", accepted) {
+		t.Error("malformed left fragment must not be accepted")
+	}
+	if CheckAnswer("sth) in", accepted) {
+		t.Error("malformed right fragment must not be accepted")
+	}
+}
+
+func TestSplitOutsideParens_NoParens(t *testing.T) {
+	got := splitOutsideParens("a / b, c")
+	want := []string{"a ", " b", " c"}
+	if len(got) != len(want) {
+		t.Fatalf("len=%d, want %d: %v", len(got), len(want), got)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("[%d] got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestSplitOutsideParens_CommaInsideParens(t *testing.T) {
+	// The comma inside (sb, sth) must not cause a split.
+	got := splitOutsideParens("to put (sb, sth) in")
+	if len(got) != 1 {
+		t.Fatalf("expected 1 part, got %d: %v", len(got), got)
+	}
+	if got[0] != "to put (sb, sth) in" {
+		t.Errorf("got %q, want %q", got[0], "to put (sb, sth) in")
+	}
+}
+
+func TestSplitOutsideParens_SlashOutsideParens(t *testing.T) {
+	got := splitOutsideParens("Essen / Gericht")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 parts, got %d: %v", len(got), got)
+	}
+}
+
 func TestCheckAnswer_SlashAndParens_Combined(t *testing.T) {
 	// "(das) Essen / Gericht":
 	//   - full form:               "(das) essen / gericht"

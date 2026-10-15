@@ -646,6 +646,9 @@ func (s *Store) ImportedLists(ctx context.Context, userID int64) ([]models.Impor
 		}
 		have[text] = true
 	}
+	if err := textRows.Err(); err != nil {
+		return nil, fmt.Errorf("load learner words: %w", err)
+	}
 	textRows.Close()
 	stones, err := s.TombstonedLibraryWords(ctx, userID)
 	if err != nil {

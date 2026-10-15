@@ -634,3 +634,72 @@ func TestGetWordStats_OnlyUnseenWordsStillReturnsBuckets(t *testing.T) {
 		t.Errorf("unseen bucket: want 1, got %d", resp.AccBuckets["unseen"])
 	}
 }
+
+// R3-A1 regression: wordAccBucketsForTags must exclude known words from AccBuckets.
+func TestGetWordStats_AccBuckets_ExcludesKnownWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	active := seedWord(t, s, "猫", "", []string{"cat"})
+	known := seedWord(t, s, "狗", "", []string{"dog"})
+
+	// Both words seen, known one pushed into "new" bucket (learning_new_word=1).
+	for _, id := range []int64{active, known} {
+		if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sm2_progress SET is_known = 1 WHERE word_id = ?`, known); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := s.GetWordStats(ctx, int64(2), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the active (non-known) word should appear in AccBuckets.
+	total := 0
+	for k, v := range stats.AccBuckets {
+		if k != "unseen" {
+			total += v
+		}
+	}
+	if total != 1 {
+		t.Errorf("AccBuckets total seen (non-unseen): want 1, got %d (%v)", total, stats.AccBuckets)
+	}
+}
+
+// R3-A2 regression: RecordDailyStat bucket snapshot must exclude known words.
+func TestRecordDailyStat_BucketExcludesKnownWords(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	active := seedWord(t, s, "猫", "", []string{"cat"})
+	known := seedWord(t, s, "狗", "", []string{"dog"})
+
+	// Mark both as seen in the learning phase (learning_new_word = 1 → bucket_new).
+	for _, id := range []int64{active, known} {
+		if err := s.AcknowledgeWord(ctx, int64(2), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE sm2_progress SET is_known = 1 WHERE word_id = ?`, known); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
+		t.Fatal(err)
+	}
+
+	hist, err := s.GetDailyStatsHistory(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hist) == 0 {
+		t.Fatal("expected daily_stats row")
+	}
+	// bucket_new must count only the active word, not the known one.
+	if hist[0].BucketNew != 1 {
+		t.Errorf("bucket_new: want 1, got %d (known word must be excluded)", hist[0].BucketNew)
+	}
+}
