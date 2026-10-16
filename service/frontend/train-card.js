@@ -696,7 +696,18 @@ async function submitAnswer(e) {
 // and advanced the word's tier (gated by the celebrate_bucket_change
 // setting) — so it appears BEFORE the correct/wrong result screen, not
 // after it. Otherwise renders the result screen immediately.
-function maybeCelebrateThenShow(result, showFn) {
+function maybeCelebrateThenShow(result, render) {
+  // The answer is already saved here: if the result screen fails to draw,
+  // show the error and go on to the next card instead of leaving a
+  // half-drawn screen (issue #581).
+  const showFn = (r) => {
+    try {
+      render(r);
+    } catch (err) {
+      showToastError(err.message);
+      loadNextCard(true);
+    }
+  };
   const wrongInARow = recordWrongStreak(wrongStreaks, cardStreakKey(currentCard), result.correct);
   $('result-skip-today-row').classList.toggle('hidden', wrongInARow < SKIP_AFTER_WRONG);
   const tierAdvanced = result.correct && result.tier && result.prev_tier && result.prev_tier !== result.tier;
