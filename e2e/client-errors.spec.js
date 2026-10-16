@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { syncNewWordMode } from './helpers/mode.js';
 import { seedReviewWord } from './helpers/db.js';
+import { captureForPR } from './helpers/screenshot.js';
 
 // Issue #581: when the result screen fails to draw, the app shows the error
 // and goes on to the next card instead of leaving a half-drawn screen.
@@ -53,5 +54,55 @@ test.describe('Result screen errors', () => {
     await expect(page.locator('#result-area')).not.toBeVisible();
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('#answer-input')).toHaveValue('');
+
+    // The report dialog offers the script error with its stack.
+    await page.locator('#nav-report').click();
+    await expect(page.locator('#issue-error-text')).toContainText('Stack:');
+    await expect(page.locator('#issue-error-text')).not.toContainText('Request:');
+  });
+});
+
+test.describe('Last error in the bug report', () => {
+  test('the report dialog offers the last error with its failed request', async ({ page }) => {
+    await setup(page);
+    await page.route('**/api/quiz/answer', route => route.fulfill({
+      status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'database is locked' }),
+    }));
+    await page.locator('#answer-input').fill('wrong');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.getByTestId('toast')).toContainText('database is locked');
+
+    await page.locator('#nav-report').click();
+    await expect(page.locator('#issue-modal')).toBeVisible({ timeout: 10_000 });
+    const includeError = page.locator('#issue-include-error');
+    await expect(includeError).toBeChecked();
+    const errorText = page.locator('#issue-error-text');
+    await expect(errorText).toContainText('database is locked');
+    await expect(errorText).toContainText('POST /api/quiz/answer → 500');
+    await expect(errorText).not.toHaveAttribute('contenteditable');
+    await captureForPR(page, 'report-last-error');
+
+    // Unchecked: the text is hidden and not sent.
+    await page.locator('label[for="issue-include-error"]').click();
+    await expect(errorText).not.toBeVisible();
+    await page.locator('label[for="issue-include-error"]').click();
+    await expect(errorText).toBeVisible();
+
+    await page.locator('#issue-include-screenshot').uncheck();
+    await page.locator('#issue-title').fill('Answer failed');
+    await page.locator('#issue-description').fill('The answer did not save.');
+    const sent = page.waitForRequest('**/api/github/issues');
+    await page.locator('#issue-submit').click();
+    const body = (await sent).postDataJSON();
+    expect(body.client_error).toContain('database is locked');
+    expect(body.client_error).toContain('POST /api/quiz/answer → 500');
+    await expect(page.locator('#issue-success')).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('without a recent error the report dialog has no error option', async ({ page }) => {
+    await setup(page);
+    await page.locator('#nav-report').click();
+    await expect(page.locator('#issue-modal')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('#issue-include-error')).not.toBeVisible();
   });
 });

@@ -704,7 +704,7 @@ function maybeCelebrateThenShow(result, render) {
     try {
       render(r);
     } catch (err) {
-      showToastError(err.message);
+      showToastError(err.message, err);
       loadNextCard(true);
     }
   };

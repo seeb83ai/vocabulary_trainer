@@ -619,3 +619,98 @@ describe('timeoutSignal', () => {
     expect(signal.aborted).toBe(true);
   });
 });
+
+// ── Last client error for bug reports (issue #581) ────────────────────────────
+
+const CLIENT_ERROR_MAX_AGE_MS = 30 * 60 * 1000;
+
+function clientErrorEntry(message, err, page, now) {
+  const call = err?.call || null;
+  return {
+    message: String(message || err?.message || ''),
+    time: now.toISOString(),
+    page,
+    call,
+    stack: !call && err?.stack ? String(err.stack).split('\n').slice(0, 6).join('\n') : '',
+  };
+}
+
+function formatClientError(entry) {
+  const lines = [`Error: ${entry.message}`];
+  if (entry.call) lines.push(`Request: ${entry.call.method} ${entry.call.path} → ${entry.call.status}`);
+  lines.push(`Page: ${entry.page}`, `Time: ${entry.time}`);
+  if (entry.stack) lines.push('Stack:', entry.stack);
+  return lines.join('\n');
+}
+
+function recentClientError(entry, nowMs) {
+  if (!entry || !entry.time) return null;
+  const age = nowMs - Date.parse(entry.time);
+  return age >= 0 && age <= CLIENT_ERROR_MAX_AGE_MS ? entry : null;
+}
+
+describe('clientErrorEntry', () => {
+  const now = new Date('2026-10-16T06:49:24.291Z');
+
+  it('keeps the failed request of an API error and drops its stack', () => {
+    const err = new Error('database is locked');
+    err.call = { method: 'POST', path: '/api/quiz/answer', status: 500 };
+    expect(clientErrorEntry(err.message, err, '/train', now)).toEqual({
+      message: 'database is locked', time: '2026-10-16T06:49:24.291Z', page: '/train',
+      call: { method: 'POST', path: '/api/quiz/answer', status: 500 }, stack: '',
+    });
+  });
+
+  it('keeps the first stack lines of a script error', () => {
+    const err = new TypeError("Cannot set properties of null (setting 'textContent')");
+    err.stack = ['TypeError: x', 'at a', 'at b', 'at c', 'at d', 'at e', 'at f', 'at g'].join('\n');
+    const entry = clientErrorEntry(err.message, err, '/train', now);
+    expect(entry.call).toBeNull();
+    expect(entry.stack.split('\n')).toEqual(['TypeError: x', 'at a', 'at b', 'at c', 'at d', 'at e']);
+  });
+
+  it('works with a message only', () => {
+    expect(clientErrorEntry('Saving failed', undefined, '/settings', now)).toMatchObject({
+      message: 'Saving failed', call: null, stack: '',
+    });
+  });
+});
+
+describe('formatClientError', () => {
+  it('lists the error, the failed request, page and time', () => {
+    expect(formatClientError({
+      message: 'database is locked', time: '2026-10-16T06:49:24.291Z', page: '/train',
+      call: { method: 'POST', path: '/api/quiz/answer', status: 500 }, stack: '',
+    })).toBe([
+      'Error: database is locked',
+      'Request: POST /api/quiz/answer → 500',
+      'Page: /train',
+      'Time: 2026-10-16T06:49:24.291Z',
+    ].join('\n'));
+  });
+
+  it('adds the stack of a script error', () => {
+    expect(formatClientError({
+      message: 'boom', time: '2026-10-16T06:49:24.291Z', page: '/train', call: null, stack: 'TypeError: boom\nat a',
+    })).toBe('Error: boom\nPage: /train\nTime: 2026-10-16T06:49:24.291Z\nStack:\nTypeError: boom\nat a');
+  });
+});
+
+describe('recentClientError', () => {
+  const entry = { message: 'x', time: '2026-10-16T06:00:00.000Z' };
+  const at = iso => Date.parse(iso);
+
+  it('returns an error from the last 30 minutes', () => {
+    expect(recentClientError(entry, at('2026-10-16T06:30:00.000Z'))).toBe(entry);
+  });
+
+  it('drops an older error', () => {
+    expect(recentClientError(entry, at('2026-10-16T06:30:00.001Z'))).toBeNull();
+  });
+
+  it('drops a missing or broken entry', () => {
+    expect(recentClientError(null, Date.now())).toBeNull();
+    expect(recentClientError({ message: 'x' }, Date.now())).toBeNull();
+    expect(recentClientError({ message: 'x', time: 'nonsense' }, Date.now())).toBeNull();
+  });
+});

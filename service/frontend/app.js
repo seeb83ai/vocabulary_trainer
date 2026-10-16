@@ -75,8 +75,68 @@ function getModeLabel(mode) {
 const API_TIMEOUT_MS = 15000;
 const API_SLOW_TIMEOUT_MS = 60000;
 
+// ── Last client error for bug reports (issue #581) ──────────────────────────
+// The last error shown to the user, with its failed API call, is kept in
+// sessionStorage so the report dialog can offer to add it to an issue.
+
+const CLIENT_ERROR_KEY = 'lastClientError';
+const CLIENT_ERROR_MAX_AGE_MS = 30 * 60 * 1000;
+
+// The last failed apiFetch call, matched to the toast by its message.
+let lastApiError = null;
+
+// clientErrorEntry builds the stored record. Pure for unit testing. An API
+// error keeps its failed call; a script error keeps its first stack lines.
+function clientErrorEntry(message, err, page, now) {
+  const call = err?.call || null;
+  return {
+    message: String(message || err?.message || ''),
+    time: now.toISOString(),
+    page,
+    call,
+    stack: !call && err?.stack ? String(err.stack).split('\n').slice(0, 6).join('\n') : '',
+  };
+}
+
+// formatClientError turns a stored record into the read-only report text.
+function formatClientError(entry) {
+  const lines = [`Error: ${entry.message}`];
+  if (entry.call) lines.push(`Request: ${entry.call.method} ${entry.call.path} → ${entry.call.status}`);
+  lines.push(`Page: ${entry.page}`, `Time: ${entry.time}`);
+  if (entry.stack) lines.push('Stack:', entry.stack);
+  return lines.join('\n');
+}
+
+// recentClientError returns the record if it is from the last 30 minutes.
+function recentClientError(entry, nowMs) {
+  if (!entry || !entry.time) return null;
+  const age = nowMs - Date.parse(entry.time);
+  return age >= 0 && age <= CLIENT_ERROR_MAX_AGE_MS ? entry : null;
+}
+
+function recordClientError(message, err) {
+  if (!err && lastApiError && lastApiError.message === message) err = lastApiError;
+  const entry = clientErrorEntry(message, err, location.pathname, new Date());
+  try { sessionStorage.setItem(CLIENT_ERROR_KEY, JSON.stringify(entry)); } catch (_) {}
+}
+
+function readRecentClientError() {
+  try {
+    return recentClientError(JSON.parse(sessionStorage.getItem(CLIENT_ERROR_KEY)), Date.now());
+  } catch (_) {
+    return null;
+  }
+}
+
+window.addEventListener('error', e => recordClientError(e.message, e.error));
+window.addEventListener('unhandledrejection', e => {
+  if (!isAbortError(e.reason)) recordClientError(e.reason?.message || String(e.reason), e.reason);
+});
+
 async function apiFetch(path, options = {}) {
   const { timeoutMs = API_TIMEOUT_MS, signal, ...rest } = options;
+  // The query string is left out: it can hold search text.
+  const call = { method: (rest.method || 'GET').toUpperCase(), path: path.split('?')[0] };
   const ctrl = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
@@ -99,7 +159,9 @@ async function apiFetch(path, options = {}) {
         const body = await res.json();
         if (body.error) errMsg = body.error;
       } catch (_) {}
-      throw new Error(errMsg);
+      const httpErr = new Error(errMsg);
+      httpErr.call = { ...call, status: res.status };
+      throw httpErr;
     }
     if (res.status === 204) return null;
     return await res.json();
@@ -107,7 +169,13 @@ async function apiFetch(path, options = {}) {
     if (timedOut) {
       const timeoutErr = new Error(t('api.timeout'));
       timeoutErr.name = 'TimeoutError';
+      timeoutErr.call = { ...call, status: 'timeout' };
+      lastApiError = timeoutErr;
       throw timeoutErr;
+    }
+    if (!isAbortError(err)) {
+      if (!err.call) err.call = { ...call, status: 'failed' };
+      lastApiError = err;
     }
     throw err;
   } finally {
@@ -480,6 +548,8 @@ async function initIssueReporter() {
   const descEl = $('issue-description');
   const includeEl = $('issue-include-screenshot');
   const fullPageEl = $('issue-fullpage-screenshot');
+  const includeErrorEl = $('issue-include-error');
+  let clientErrorText = '';
 
   function setCategory(cat) {
     $('issue-category').value = cat;
@@ -555,9 +625,20 @@ async function initIssueReporter() {
     hide('issue-modal');
   }
 
+  // "Add the last error": only offered after an error in the last 30 min.
+  function syncClientError() {
+    const entry = readRecentClientError();
+    clientErrorText = entry ? formatClientError(entry) : '';
+    includeErrorEl.checked = !!entry;
+    setText('issue-error-text', clientErrorText);
+    $('issue-error-wrap').classList.toggle('hidden', !entry);
+    $('issue-error-text').classList.toggle('hidden', !entry);
+  }
+
   async function openReport() {
     closeMoreSheet();
     clearErrors();
+    syncClientError();
     setSubmitState('idle');
     show('issue-form-view');
     hide('issue-success');
@@ -584,6 +665,9 @@ async function initIssueReporter() {
     if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeReport();
   });
   includeEl.addEventListener('change', refreshScreenshot);
+  includeErrorEl.addEventListener('change', () => {
+    $('issue-error-text').classList.toggle('hidden', !includeErrorEl.checked);
+  });
   $('issue-shot-visible').addEventListener('click', () => {
     if (!fullPageEl.checked) return;
     fullPageEl.checked = false;
@@ -615,6 +699,9 @@ async function initIssueReporter() {
     };
     if (includeEl.checked && screenshotDataUrl) {
       payload.screenshot_png_b64 = screenshotDataUrl;
+    }
+    if (includeErrorEl.checked && clientErrorText) {
+      payload.client_error = clientErrorText;
     }
     submitting = true;
     setSubmitState('busy');
