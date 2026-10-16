@@ -639,7 +639,7 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     await expect(page.locator('#result-icon')).toHaveText('Right meaning, other word');
     await expect(page.locator('#disambig-input')).toBeVisible();
 
-    return { quizZh, wrongAnswer };
+    return { quizZh, wrongAnswer, idToZh };
   }
 
   // Issue #245: after the user resolves an ambiguous answer correctly, the inline
@@ -738,6 +738,29 @@ test.describe('Quiz – ambiguous answer (shared translation)', () => {
     // A second Next click then actually advances.
     await page.locator('#next-btn').click();
     await expect(page.locator('#result-area')).not.toBeVisible({ timeout: 8_000 });
+  });
+
+  // Issue #581: leaving an unresolved ambiguous result without Next (here by
+  // closing the session sheet) kept the question recap inside the result
+  // breakdown. The next result screen then deleted it and failed with
+  // "Cannot set properties of null", over the old result screen.
+  test('a second ambiguous result after leaving the first one via the session sheet (issue #581)', async ({ page }) => {
+    const { idToZh } = await setupAmbiguousResult(page);
+
+    const nextCard = page.waitForResponse(r => r.url().includes('/api/quiz/next'));
+    await page.locator('#open-filter-overlay').click();
+    await page.locator('#filter-overlay-close').click();
+    const card = await (await nextCard).json();
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 8_000 });
+
+    const opposite = { '知道': '认识', '认识': '知道' }[idToZh[card.word_id]];
+    await page.locator('#answer-input').fill(opposite);
+    await page.locator('#answer-form button[type="submit"]').click();
+
+    await expect(page.locator('#disambig-input')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#result-question')).toBeVisible();
+    await expect(page.locator('#result-question-word')).toHaveText('know');
+    await expect(page.getByTestId('toast')).not.toBeVisible();
   });
 
   // Issue #194: continuing past an unresolved ambiguous result must fall back

@@ -273,6 +273,7 @@ async function loadNextCard(trackCurrent = false) {
   }
   isSubmitted = false;
   ambiguousUnresolved = null;
+  restoreResultQuestion();
   hide('card-area');
   hide('result-area');
   hide('celebration-screen');
