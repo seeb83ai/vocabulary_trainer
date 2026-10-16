@@ -269,7 +269,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 ### Frontend (`service/frontend/`)
 | Path | Purpose |
 |---|---|
-| `service/frontend/app.js` | `apiFetch` (15 s timeout, `timeoutMs` option, caller `signal`), request guards (`latestRequest`, `withBusyButton`, `timeoutSignal`, `isAbortError`, `isTimeoutError`), `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`), app shell (More sheet, fullscreen), UI-language sync (`changeUILang`, `syncUILang`), report-issue dialog, tag groups (`tagGroupKey`, `groupTags`, `renderTagGroups`, ⓘ `.tag-help` pop) |
+| `service/frontend/app.js` | `apiFetch` (15 s timeout, `timeoutMs` option, caller `signal`), request guards (`latestRequest`, `withBusyButton`, `timeoutSignal`, `isAbortError`, `isTimeoutError`), `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`), app shell (More sheet, fullscreen), UI-language sync (`changeUILang`, `syncUILang`), report-issue dialog (with the last client error from `recordClientError`), tag groups (`tagGroupKey`, `groupTags`, `renderTagGroups`, ⓘ `.tag-help` pop) |
 | `service/frontend/i18n.js` | Internationalisation helpers |
 | `service/frontend/demo.js` | Landing-page demo quiz widget |
 | `service/frontend/train-answer.js` | Answer-checking/normalization helpers |
@@ -340,6 +340,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/answer-buckets.spec.js` | Browser tests: answer and help buckets from pinyin seen/tapped and sound played/pressed, autoplay (and autoplay blocked by blurred pinyin), accept-correct removes the error |
 | `e2e/request-guards.spec.js` | Browser tests: one request per double tap (Train, Vocabulary Save, Add prop, demo), newest result wins after fast filter/search changes (Train, Vocabulary, Stats, Pinyin), settings saves kept in order, timeouts with a fake clock (toast, error card, slow-call timeout, registration) |
 | `e2e/sentences.spec.js` | Browser tests: Vocabulary → Generate sentences (tag selection, focus words and even coverage, pick and add with a `_s` tag, no-LLM hint, phone layout); LLM endpoint mocked |
+| `e2e/client-errors.spec.js` | Browser tests: a result screen that fails to draw shows the error and loads the next card; the report dialog offers the last error (message, failed API call or stack) |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
 | `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |

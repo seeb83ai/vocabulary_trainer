@@ -85,6 +85,9 @@ function showSaved(message) {
   showToast(message || 'Saved.', 'success');
 }
 
-function showToastError(message) {
+// err is optional: it adds the stack (script errors) to the error kept for
+// bug reports. API errors are matched by message (recordClientError).
+function showToastError(message, err) {
+  if (typeof recordClientError === 'function') recordClientError(message, err);
   showToast(message || 'Something went wrong.', 'error');
 }

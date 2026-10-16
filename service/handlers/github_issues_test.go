@@ -97,6 +97,60 @@ func TestGitHubIssue_CreateValid(t *testing.T) {
 	}
 }
 
+// postIssueBody files a report through the handler and returns the issue
+// body sent to GitHub.
+func postIssueBody(t *testing.T, payload map[string]any) string {
+	t.Helper()
+	s := openTestDB(t)
+	var gotBody map[string]any
+	srv := mockGitHub(t, &gotBody)
+	prev := testGitHubAPIBaseURL
+	testGitHubAPIBaseURL = srv.URL
+	defer func() { testGitHubAPIBaseURL = prev }()
+
+	rec := do(t, newRouter(s), http.MethodPost, "/api/github/issues", payload)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body: %s)", rec.Code, rec.Body.String())
+	}
+	body, _ := gotBody["body"].(string)
+	return body
+}
+
+// Issue #581: the last client error is added as a folded code block.
+func TestGitHubIssue_ClientError(t *testing.T) {
+	body := postIssueBody(t, map[string]any{
+		"category":     "bug",
+		"title":        "Answer failed",
+		"description":  "It broke.",
+		"client_error": "Error: database is locked\nRequest: POST /api/quiz/answer → 500\n```\n# not a heading",
+	})
+	start := strings.Index(body, "<details><summary>Last error</summary>")
+	end := strings.Index(body, "</details>")
+	if start < 0 || end < start {
+		t.Fatalf("issue body has no folded error block: %s", body)
+	}
+	block := body[start:end]
+	if !strings.Contains(block, "database is locked") || !strings.Contains(block, "POST /api/quiz/answer → 500") {
+		t.Fatalf("error block misses the error text: %s", block)
+	}
+	// Backticks in the error text cannot close the code fence early: the
+	// fence is longer than any backtick run in the text.
+	if !strings.Contains(block, "\n````\n") {
+		t.Fatalf("code fence is not longer than the backticks in the error text: %s", block)
+	}
+}
+
+func TestGitHubIssue_NoClientError(t *testing.T) {
+	body := postIssueBody(t, map[string]any{
+		"category":    "bug",
+		"title":       "Something broke",
+		"description": "It broke.",
+	})
+	if strings.Contains(body, "<details>") {
+		t.Fatalf("issue body has an error block without a client error: %s", body)
+	}
+}
+
 func TestGitHubIssue_MissingTitle(t *testing.T) {
 	s := openTestDB(t)
 	srv := mockGitHub(t, nil)

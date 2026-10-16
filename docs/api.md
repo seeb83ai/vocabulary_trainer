@@ -55,7 +55,7 @@ All endpoints are under `/api` and use JSON. Except for the demo endpoints, they
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
 | `POST` | `/api/translate` | Translate text: free local CC-CEDICT/HanDeDict lookup first (zh→translation direction only), then DeepL fallback + generate pinyin (DeepL only available when `DEEPL_API_KEY` is set) |
 | `GET` | `/api/github/config` | Whether in-app issue reporting is enabled (`{"enabled":bool}`) |
-| `POST` | `/api/github/issues` | Create a GitHub issue from an in-app report (only available when `GITHUB_TOKEN` + `GITHUB_ISSUE_REPO` are set; rate-limited per user and per IP) |
+| `POST` | `/api/github/issues` | Create a GitHub issue from an in-app report (only available when `GITHUB_TOKEN` + `GITHUB_ISSUE_REPO` are set; rate-limited per user and per IP). Optional `client_error` text is added as a folded *Last error* block |
 | `GET` | `/api/mismatches` | List all recorded confusion pairs (wrong answers that matched a different known word or hanzi component) |
 | `GET` | `/api/hanzi/decompose` | Decompose Chinese characters into radicals and components (`chars` query param, max 20) |
 | `GET` | `/api/hmm/actors` | List all HMM actor mappings (pinyin initial → person) |

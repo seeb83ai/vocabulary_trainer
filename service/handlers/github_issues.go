@@ -25,6 +25,9 @@ const defaultGitHubAPIBaseURL = "https://api.github.com"
 // (the issue is still created) rather than rejected.
 const maxScreenshotBytes = 3 << 20
 
+// maxClientErrorRunes caps the client error text added to an issue.
+const maxClientErrorRunes = 4000
+
 // GitHubHandler creates GitHub issues from in-app bug/idea reports. It is an
 // optional feature, gated like DeepL/LLM: when Token or Repo is empty, Create
 // returns 503 and the frontend hides the report button.
@@ -58,6 +61,9 @@ type issueRequest struct {
 		Timestamp string `json:"timestamp"`
 	} `json:"meta"`
 	ScreenshotPNGB64 string `json:"screenshot_png_b64"`
+	// ClientError is the last error the app showed, with its failed request
+	// (issue #581). Optional.
+	ClientError string `json:"client_error"`
 }
 
 type issueResponse struct {
@@ -205,6 +211,18 @@ func buildIssueBody(req issueRequest, reportID, screenshotURL string) string {
 	fmt.Fprintf(&b, "| Viewport | %s |\n", sanitizeCell(req.Meta.Viewport))
 	fmt.Fprintf(&b, "| Locale | %s |\n", sanitizeCell(req.Meta.Locale))
 	fmt.Fprintf(&b, "| Timestamp | %s |\n", sanitizeCell(req.Meta.Timestamp))
+	clientErr := req.ClientError
+	if runes := []rune(clientErr); len(runes) > maxClientErrorRunes {
+		clientErr = string(runes[:maxClientErrorRunes])
+	}
+	if clientErr = strings.TrimSpace(clientErr); clientErr != "" {
+		// A fence longer than any backtick run keeps the text in the block.
+		fence := "```"
+		for strings.Contains(clientErr, fence) {
+			fence += "`"
+		}
+		fmt.Fprintf(&b, "\n<details><summary>Last error</summary>\n\n%s\n%s\n%s\n\n</details>\n", fence, clientErr, fence)
+	}
 	if screenshotURL != "" {
 		fmt.Fprintf(&b, "\n![screenshot](%s)\n", screenshotURL)
 	}

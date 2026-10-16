@@ -210,6 +210,16 @@ function renderStatusRow(result) {
   setText('next-due-info', nextDueText(result));
 }
 
+// restoreResultQuestion moves the question recap back from the ambiguous
+// screen's #disambig-area to its place under the subtitle. Every way off
+// that screen must call it: the next result replaces #word-breakdown and
+// would delete the recap with it (issue #581).
+function restoreResultQuestion() {
+  const el = $('result-question');
+  const anchor = $('result-subtitle');
+  if (el.parentElement !== anchor.parentElement) anchor.after(el);
+}
+
 function renderWordAnswerResult(result, answer) {
   hide('card-area');
   show('result-area');
@@ -464,11 +474,6 @@ function renderWordAnswerResult(result, answer) {
       hide('accept-correct-btn');
       // Continuing without resolving falls back to the normal wrong-answer
       // screen instead of silently advancing (issue #194).
-      const restoreResultQuestion = () => {
-        const el = $('result-question');
-        const anchor = $('result-subtitle');
-        if (el.parentElement !== anchor.parentElement) anchor.after(el);
-      };
       ambiguousUnresolved = () => { restoreResultQuestion(); renderWrongResult(); };
       $('disambig-give-up').addEventListener('click', () => {
         const fallback = ambiguousUnresolved;

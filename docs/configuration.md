@@ -93,6 +93,8 @@ The app supports both free-tier (`:fx`) and pro API keys automatically. It gener
 
 When you configure this feature, **Report an issue** appears in the sidebar and a **Report** tab appears in the phone tab bar on every authenticated page. The report opens as a centred dialog on wide screens and as a bottom sheet on phones. The app hides the dialog while it takes the screenshot. When a user clicks the button, the app captures the current page: the URL, a screenshot, and non-sensitive client context (user agent, viewport, locale, timestamp). The user picks a type — **bug**, **idea**, **question**, or **misc** — and writes a title and description. On submit, the app creates a GitHub issue server-side.
 
+If the app showed an error in the last 30 minutes, the dialog also shows **Add the last error**. This option is on by default. The dialog shows the error text, which the user cannot change: the message, the failed API call (method, path without the query string, status), the page and the time. For a script error, it shows the first lines of the stack. The browser keeps only the last error, in session storage for that tab. The issue shows the error as a folded *Last error* block.
+
 ```bash
 GITHUB_TOKEN=github_pat_...      # fine-grained PAT; required to enable the feature
 GITHUB_ISSUE_REPO=owner/repo     # target repository; required to enable the feature
