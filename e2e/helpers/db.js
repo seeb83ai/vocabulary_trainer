@@ -152,3 +152,29 @@ export function getWordDueDate(email, zhText) {
     db.close();
   }
 }
+
+/**
+ * Give the user a component that is due now, with an English definition, so
+ * the Train page can serve and check it. hanzi_decomposition is shared by all
+ * users; the rows are only inserted when missing.
+ * @param {string} email
+ * @param {string} character
+ * @param {string} definition
+ */
+export function seedDueComponent(email, character, definition) {
+  const db = new DatabaseSync(getDbPath());
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    const userRow = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (!userRow) throw new Error(`seedDueComponent: no user found for email ${email}`);
+    db.prepare('INSERT OR IGNORE INTO hanzi_decomposition (character, definition) VALUES (?, ?)').run(character, definition);
+    db.prepare(`INSERT INTO hanzi_decomposition_translation (character, lang, definition)
+      SELECT ?, 'EN', ? WHERE NOT EXISTS (
+        SELECT 1 FROM hanzi_decomposition_translation WHERE character = ? AND lang = 'EN' AND user_id IS NULL)`)
+      .run(character, definition, character);
+    db.prepare(`INSERT OR REPLACE INTO component_progress (user_id, character, due_date)
+      VALUES (?, ?, datetime('now', '-1 minute'))`).run(userRow.id, character);
+  } finally {
+    db.close();
+  }
+}

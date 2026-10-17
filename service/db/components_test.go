@@ -1041,6 +1041,38 @@ func TestRecordComponentStat_IncreasesCount(t *testing.T) {
 	}
 }
 
+// "Accept as correct" moves today's wrong component answer to correct
+// (issue #583).
+func TestAcceptComponentStat_MovesWrongToCorrect(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.RecordComponentStat(ctx, int64(2), false); err != nil {
+		t.Fatalf("RecordComponentStat: %v", err)
+	}
+	if err := s.AcceptComponentStat(ctx, int64(2)); err != nil {
+		t.Fatalf("AcceptComponentStat: %v", err)
+	}
+	var correct, wrong int
+	s.db.QueryRow(`SELECT correct, wrong FROM component_stats WHERE user_id = 2 AND date = date('now')`).Scan(&correct, &wrong)
+	if correct != 1 || wrong != 0 {
+		t.Errorf("want correct/wrong 1/0, got %d/%d", correct, wrong)
+	}
+}
+
+// Without a wrong answer today (it was before midnight), the accepted answer
+// counts as one correct answer today.
+func TestAcceptComponentStat_NoWrongToday(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.AcceptComponentStat(context.Background(), int64(2)); err != nil {
+		t.Fatalf("AcceptComponentStat: %v", err)
+	}
+	var correct, wrong int
+	s.db.QueryRow(`SELECT correct, wrong FROM component_stats WHERE user_id = 2 AND date = date('now')`).Scan(&correct, &wrong)
+	if correct != 1 || wrong != 0 {
+		t.Errorf("want correct/wrong 1/0, got %d/%d", correct, wrong)
+	}
+}
+
 func TestGetComponentCounts_ReturnsCorrectCounts(t *testing.T) {
 	s := openTestDB(t)
 	seedHanziDef(t, s, "女", "woman")

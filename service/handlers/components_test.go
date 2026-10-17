@@ -1140,6 +1140,31 @@ func TestComponentAcceptCorrect_RestoresProgress(t *testing.T) {
 	}
 }
 
+// A wrong component answer and its "Accept as correct" count as one attempt
+// without a mistake in today's session (issue #583).
+func TestComponentAcceptCorrect_CountsCardOnce(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", time.Now().Add(-time.Hour))
+	s.SetComponentSeenForTest(ctx, int64(2), "女")
+
+	r := newRouter(s)
+	do(t, r, "POST", "/api/component/answer", map[string]string{"character": "女", "answer": "wman"})
+	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": "女"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	var stats map[string]int
+	decodeJSON(t, do(t, r, "GET", "/api/quiz/stats", nil), &stats)
+	if stats["today_attempts"] != 1 || stats["today_mistakes"] != 0 {
+		t.Errorf("today attempts/mistakes = %d/%d, want 1/0", stats["today_attempts"], stats["today_mistakes"])
+	}
+}
+
 func TestComponentAcceptCorrect_MissingCharacter(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/component/accept-correct", map[string]string{"character": ""})
