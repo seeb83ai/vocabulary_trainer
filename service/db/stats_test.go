@@ -292,6 +292,111 @@ func TestGetTodaySessionInfo_WithData(t *testing.T) {
 	}
 }
 
+// Component answers count as attempts and wrong ones as mistakes, next to
+// word answers (issue #583).
+func TestGetTodaySessionInfo_CountsComponentAnswers(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordComponentStat(ctx, int64(2), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordComponentStat(ctx, int64(2), false); err != nil {
+		t.Fatal(err)
+	}
+
+	attempts, mistakes, _, err := s.GetTodaySessionInfo(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 || mistakes != 1 {
+		t.Errorf("expected 3 attempts / 1 mistake, got %d/%d", attempts, mistakes)
+	}
+}
+
+// Mnemonic scene answers count like component answers (issue #583).
+func TestGetTodaySessionInfo_CountsMnemonicAnswers(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if err := s.RecordHMMStat(ctx, int64(2), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHMMStat(ctx, int64(2), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RecordHMMStat(ctx, int64(2), false); err != nil {
+		t.Fatal(err)
+	}
+
+	attempts, mistakes, _, err := s.GetTodaySessionInfo(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 || mistakes != 2 {
+		t.Errorf("expected 3 attempts / 2 mistakes, got %d/%d", attempts, mistakes)
+	}
+
+	// Another user's answers are not counted.
+	attempts, mistakes, _, err = s.GetTodaySessionInfo(ctx, int64(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 || mistakes != 0 {
+		t.Errorf("user 1: expected 0/0, got %d/%d", attempts, mistakes)
+	}
+}
+
+// "Accept as correct" turns today's wrong answer into a correct one: the
+// card stays one attempt and the mistake is gone (issue #583).
+func TestAcceptDailyStat_UndoesMistake(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if _, err := s.RecordDailyStat(ctx, int64(2), true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordDailyStat(ctx, int64(2), false); err != nil {
+		t.Fatal(err)
+	}
+	streak, err := s.AcceptDailyStat(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if streak != 1 {
+		t.Errorf("streak after accept = %d, want 1", streak)
+	}
+
+	attempts, mistakes, _, err := s.GetTodaySessionInfo(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 || mistakes != 0 {
+		t.Errorf("expected 2 attempts / 0 mistakes, got %d/%d", attempts, mistakes)
+	}
+}
+
+// Without a row for today (the wrong answer was before midnight), the
+// accepted answer counts as one correct answer today.
+func TestAcceptDailyStat_NoRowToday(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	if _, err := s.AcceptDailyStat(ctx, int64(2)); err != nil {
+		t.Fatal(err)
+	}
+	attempts, mistakes, _, err := s.GetTodaySessionInfo(ctx, int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 || mistakes != 0 {
+		t.Errorf("expected 1 attempt / 0 mistakes, got %d/%d", attempts, mistakes)
+	}
+}
+
 func TestRecordTrainingTime_Accumulates(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

@@ -224,6 +224,21 @@ func (s *Store) SkipHMM(ctx context.Context, userID int64, entityType, entityKey
 	return nil
 }
 
+// RecordHMMStat counts one mnemonic scene answer in today's hmm_stats row.
+func (s *Store) RecordHMMStat(ctx context.Context, userID int64, correct bool) error {
+	c, w := 0, 1
+	if correct {
+		c, w = 1, 0
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO hmm_stats (user_id, date, correct, wrong) VALUES (?, date('now'), ?, ?)
+		 ON CONFLICT(user_id, date) DO UPDATE SET correct = correct + excluded.correct, wrong = wrong + excluded.wrong`,
+		userID, c, w); err != nil {
+		return fmt.Errorf("record hmm stat: %w", err)
+	}
+	return nil
+}
+
 // UpdateHMMProgress saves updated progress for an HMM entity.
 func (s *Store) UpdateHMMProgress(ctx context.Context, p models.HMMProgress) error {
 	learningInt := 0

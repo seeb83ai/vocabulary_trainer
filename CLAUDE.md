@@ -223,7 +223,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/answer_stats.go` | Answer-bucket counters — `RecordAnswerBuckets` (daily + monthly upsert, prunes daily rows > 30 days), `AcceptAnswerBuckets` |
 | `service/db/drill.go` | Difficult-word drill flagging (`FlagDifficultWords`, `GetNextDrillCard`) |
 | `service/db/match_game.go` | Match-game candidate word queries |
-| `service/db/stats.go` | `RecordDailyStat`, `GetDailyStatsHistory`, `GetWordStats`, `AdvanceDueDates` |
+| `service/db/stats.go` | `RecordDailyStat`, `AcceptDailyStat`, `GetTodaySessionInfo` (today's answers over words, components and mnemonic scenes), `GetDailyStatsHistory`, `GetWordStats`, `AdvanceDueDates` |
 | `service/db/hanzi.go` | Hanzi decomposition queries, zh-text translation lookups, `StoreTranslationForZhChar` |
 | `service/db/components.go` | Component (hanzi) core CRUD/progress, `GetNextComponentCard`, `GetComponentList` |
 | `service/db/components_hmm.go` | Component HMM mnemonic scene storage |
@@ -318,7 +318,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/global-setup.js` | Builds Go binary, starts server on port 18080 with temp SQLite, seeds test user + words |
 | `e2e/global-teardown.js` | Kills server, removes temp SQLite file |
 | `e2e/helpers/api.js` | `seedWord()`, `parseSetCookieHeaders()` helpers for setup scripts |
-| `e2e/helpers/db.js` | Direct-SQLite seeding the REST API can't do (`seedYesterdayBucketSnapshot`, `seedReviewWord`, `getWordProgress`, `getTodayAnswerBuckets`, `makeWordDueNow`, `getWordDueDate`) |
+| `e2e/helpers/db.js` | Direct-SQLite seeding the REST API can't do (`seedYesterdayBucketSnapshot`, `seedReviewWord`, `getWordProgress`, `getTodayAnswerBuckets`, `makeWordDueNow`, `getWordDueDate`, `seedDueComponent`) |
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
@@ -341,6 +341,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/request-guards.spec.js` | Browser tests: one request per double tap (Train, Vocabulary Save, Add prop, demo), newest result wins after fast filter/search changes (Train, Vocabulary, Stats, Pinyin), settings saves kept in order, timeouts with a fake clock (toast, error card, slow-call timeout, registration) |
 | `e2e/sentences.spec.js` | Browser tests: Vocabulary → Generate sentences (tag selection, focus words and even coverage, pick and add with a `_s` tag, no-LLM hint, phone layout); LLM endpoint mocked |
 | `e2e/client-errors.spec.js` | Browser tests: a result screen that fails to draw shows the error and loads the next card; the report dialog offers the last error (message, failed API call or stack) |
+| `e2e/session-progress.spec.js` | Browser tests: Train session bar "X of Y today" counts component and mnemonic scene answers; *Accept as correct* counts a word or component card once |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
 | `e2e-screenshots/landing.spec.js` | On-demand (`make screenshots-landing`): regenerates the landing-page teaser crops in `service/frontend/landing/teasers/` (not the GitHub or terminal ones) |
