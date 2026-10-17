@@ -113,6 +113,36 @@ func TestHMMQuizAnswer_Wrong(t *testing.T) {
 	}
 }
 
+// Every scene answer counts in today's session attempts, a wrong one also as
+// a mistake (issue #583).
+func TestHMMQuizAnswer_CountsInTodaySession(t *testing.T) {
+	store := openTestDB(t)
+	h := &handlers.HMMQuizHandler{Store: store}
+	router := chi.NewRouter()
+	router.Use(handlers.WithUserID(2))
+	router.Post("/api/hmm-quiz/answer", h.Answer)
+	seedHMMActorEntry(t, h, "b", "Bruce Lee")
+
+	for _, answer := range []string{"Bruce Lee", "Jackie Chan"} {
+		rec := do(t, router, "POST", "/api/hmm-quiz/answer", models.HMMAnswerRequest{
+			EntityType: models.HMMEntityActor,
+			EntityKey:  "b",
+			Answer:     answer,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+		}
+	}
+
+	attempts, mistakes, _, err := store.GetTodaySessionInfo(context.Background(), int64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 2 || mistakes != 1 {
+		t.Errorf("today attempts/mistakes = %d/%d, want 2/1", attempts, mistakes)
+	}
+}
+
 func TestHMMQuizAnswer_Wrong_IncludesTier(t *testing.T) {
 	router, h := hmmQuizRouter(t)
 	seedHMMActorEntry(t, h, "b", "Bruce Lee")

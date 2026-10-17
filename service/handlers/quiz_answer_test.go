@@ -777,6 +777,30 @@ func TestAcceptCorrectNoState(t *testing.T) {
 	}
 }
 
+// A wrong answer and its "Accept as correct" count as one attempt without a
+// mistake in today's session (issue #583).
+func TestAcceptCorrect_CountsCardOnce(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+
+	do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+		WordID: id, Mode: models.ModeZhToTransl, Answer: "helo",
+	})
+	rec := do(t, r, "POST", "/api/quiz/accept-correct", models.AcceptCorrectRequest{
+		WordID: id, Mode: models.ModeZhToTransl,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+
+	var stats map[string]int
+	decodeJSON(t, do(t, r, "GET", "/api/quiz/stats", nil), &stats)
+	if stats["today_attempts"] != 1 || stats["today_mistakes"] != 0 {
+		t.Errorf("today attempts/mistakes = %d/%d, want 1/0", stats["today_attempts"], stats["today_mistakes"])
+	}
+}
+
 func TestAcceptCorrectRestoresProgress(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

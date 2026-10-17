@@ -175,6 +175,11 @@ func (h *HMMQuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.Store.RecordHMMStat(r.Context(), UserIDFromContext(r.Context()), correct); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	resp := models.HMMAnswerResponse{
 		Correct:       correct,
 		CorrectAnswer: correctName,

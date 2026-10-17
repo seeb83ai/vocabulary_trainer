@@ -771,7 +771,7 @@ func (h *QuizHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sessionStreak, _ := h.Store.RecordDailyStat(ctx, userID, true)
+	sessionStreak, _ := h.Store.AcceptDailyStat(ctx, userID)
 
 	langs := req.Langs
 	if len(langs) == 0 {

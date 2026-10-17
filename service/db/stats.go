@@ -11,6 +11,23 @@ import (
 // RecordDailyStat upserts today's daily_stats row after an answer submission.
 // It returns the updated session streak (consecutive correct answers today).
 func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool) (int, error) {
+	mistakeInc := 0
+	if !correct {
+		mistakeInc = 1
+	}
+	return s.recordDailyStat(ctx, userID, correct, 1, mistakeInc)
+}
+
+// AcceptDailyStat records "Accept as correct" for today's last wrong answer:
+// the card stays one attempt and its mistake is removed. Without a row for
+// today it counts as one correct answer. It returns the updated session streak.
+func (s *Store) AcceptDailyStat(ctx context.Context, userID int64) (int, error) {
+	return s.recordDailyStat(ctx, userID, true, 0, -1)
+}
+
+// recordDailyStat adds attemptInc and mistakeInc to today's daily_stats row
+// (a new row starts at one attempt) and refreshes the word and bucket counts.
+func (s *Store) recordDailyStat(ctx context.Context, userID int64, correct bool, attemptInc, mistakeInc int) (int, error) {
 	var wordsSeen int
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM sm2_progress p
@@ -48,12 +65,14 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 		return 0, fmt.Errorf("count buckets: %w", err)
 	}
 
-	mistakeInc := 0
+	insertMistakes := 0
 	streakInit := 0
+	wrong := 1
 	if correct {
 		streakInit = 1
+		wrong = 0
 	} else {
-		mistakeInc = 1
+		insertMistakes = 1
 	}
 
 	_, err := s.db.ExecContext(ctx, `
@@ -63,8 +82,8 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 		VALUES (?, date('now'), 1, ?, ?, ?, ?,
 			?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, date) DO UPDATE SET
-			attempts         = attempts + 1,
-			mistakes         = mistakes + ?,
+			attempts         = attempts + ?,
+			mistakes         = MAX(mistakes + ?, 0),
 			words_seen       = ?,
 			current_streak   = CASE WHEN ? = 0 THEN current_streak + 1 ELSE 0 END,
 			correct_streak   = CASE WHEN ? = 0 THEN MAX(correct_streak, current_streak + 1) ELSE correct_streak END,
@@ -75,10 +94,10 @@ func (s *Store) RecordDailyStat(ctx context.Context, userID int64, correct bool)
 			bucket_mastered  = ?`,
 		// INSERT values
 		userID,
-		mistakeInc, wordsSeen, streakInit, streakInit,
+		insertMistakes, wordsSeen, streakInit, streakInit,
 		bNew, bStruggling, bLearning, bPracticing, bMastered,
 		// UPDATE values
-		mistakeInc, wordsSeen, mistakeInc, mistakeInc,
+		attemptInc, mistakeInc, wordsSeen, wrong, wrong,
 		bNew, bStruggling, bLearning, bPracticing, bMastered,
 	)
 	if err != nil {
@@ -469,16 +488,21 @@ func (s *Store) GetWordStats(ctx context.Context, userID int64, tags []string) (
 	return resp, nil
 }
 
-// GetTodaySessionInfo returns today's attempt and mistake counts from daily_stats,
-// and the number of seen zh words whose due date is still in the future.
+// GetTodaySessionInfo returns today's attempt and mistake counts over
+// everything trained (words from daily_stats, components from
+// component_stats, mnemonic scenes from hmm_stats), and the number of seen
+// zh words whose due date is still in the future.
 func (s *Store) GetTodaySessionInfo(ctx context.Context, userID int64) (attempts, mistakes, availableToAdvance int, err error) {
-	err = s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(attempts, 0), COALESCE(mistakes, 0) FROM daily_stats WHERE user_id = ? AND date = date('now')`, userID).
+	err = s.db.QueryRowContext(ctx, `
+		SELECT
+		  COALESCE((SELECT attempts FROM daily_stats WHERE user_id = ? AND date = date('now')), 0)
+		  + COALESCE((SELECT correct + wrong FROM component_stats WHERE user_id = ? AND date = date('now')), 0)
+		  + COALESCE((SELECT correct + wrong FROM hmm_stats WHERE user_id = ? AND date = date('now')), 0),
+		  COALESCE((SELECT mistakes FROM daily_stats WHERE user_id = ? AND date = date('now')), 0)
+		  + COALESCE((SELECT wrong FROM component_stats WHERE user_id = ? AND date = date('now')), 0)
+		  + COALESCE((SELECT wrong FROM hmm_stats WHERE user_id = ? AND date = date('now')), 0)`,
+		userID, userID, userID, userID, userID, userID).
 		Scan(&attempts, &mistakes)
-	if err == sql.ErrNoRows {
-		err = nil
-		attempts, mistakes = 0, 0
-	}
 	if err != nil {
 		err = fmt.Errorf("get today session info: %w", err)
 		return

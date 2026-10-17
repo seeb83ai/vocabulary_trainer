@@ -282,7 +282,7 @@ func (h *ComponentHandler) AcceptCorrect(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.Store.RecordComponentStat(ctx, userID, true); err != nil {
+	if err := h.Store.AcceptComponentStat(ctx, userID); err != nil {
 		internalError(w, err)
 		return
 	}
