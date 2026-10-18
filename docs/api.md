@@ -13,7 +13,7 @@ All endpoints are under `/api` and use JSON. Except for the demo endpoints, they
 | `GET` | `/api/verify-email` | Verify an email address with the token from the email |
 | `POST` | `/api/change-password` | Change the password of the signed-in user |
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
-| `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag). Send `drill: true` in the difficult-words drill, so the answer does not count as a review. Send `pinyin_seen`, `audio_played` and `play_pressed` to tell what help the user had before the answer. The server counts the answer in its [answer buckets](development.md#answer-buckets). The response has `leech_lapses` when the answer is a lapse that reaches the leech threshold (or a multiple of it), and `homophone: true` on a wrong `voice_to_zh` answer with the same pinyin and tones as the word |
+| `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag). Send `drill: true` in the difficult-words drill, so the answer does not count as a review. Send `pinyin_seen`, `audio_played` and `play_pressed` to tell what help the user had before the answer. The server counts the answer in its [answer buckets](development.md#answer-buckets). The response has `leech_lapses` when the answer is a lapse that reaches the leech threshold (or a multiple of it), `homophone: true` on a wrong `voice_to_zh` answer with the same pinyin and tones as the word, and `needs_review: true` when the word is flagged for review |
 | `GET` | `/api/quiz/match-game` | Get a round of words for the match mini-game, picked at random among the user's enabled game modes (mismatch / newest / hardest / last-mistakes) that currently have enough eligible words; empty `words` if none qualify. Mismatch tiles may be words or hanzi components; other modes are word-only |
 | `POST` | `/api/quiz/match-answer` | Submit a match-game result — `{zh_word_id, correct}` for a word tile, or `{kind: "component", character, correct}` for a component tile — updates SM-2 or component progress |
 | `POST` | `/api/quiz/accept-correct` | Accept a wrong answer as correct (typo), restoring pre-answer SM-2 progress. Send the same `drill`, `pinyin_seen`, `audio_played` and `play_pressed` values as with the answer, so the server removes the error from the same answer buckets |
@@ -44,6 +44,7 @@ All endpoints are under `/api` and use JSON. Except for the demo endpoints, they
 | `DELETE` | `/api/words/{id}` | Delete a word |
 | `POST` | `/api/words/{id}/translations` | Add a single English translation to an existing word |
 | `POST` | `/api/words/{id}/review` | Flag a word for review |
+| `DELETE` | `/api/words/{id}/review` | Remove the review flag from a word |
 | `POST` | `/api/words/{id}/reset` | Reset a word's SM-2 progress to unseen — removes it from every bucket and reintroduces it as new. Also erases its lapses and removes it from today's mistakes |
 | `GET` | `/api/words/{id}/library-diff` | What a reset to the library changes on a library word: `remove` and `restore` (translations per language) and `pinyin` (`mine`, `library`; only when they differ). Empty for your own words |
 | `POST` | `/api/words/{id}/reset-library` | Reset a library word to the library version (removes your added and deleted translations, takes the library pinyin; progress and tags stay). Returns the word, `404` if it is not a library word |
@@ -70,6 +71,8 @@ All endpoints are under `/api` and use JSON. Except for the demo endpoints, they
 | `GET` | `/api/words/{id}/hmm/context` | Get HMM scene context for a word (parsed pinyin, radicals, library lookups) |
 | `PUT` | `/api/words/{id}/hmm` | Save mnemonic scene and auto-update library |
 | `DELETE` | `/api/words/{id}/hmm` | Delete mnemonic scene |
+| `POST` | `/api/components/{char}/review` | Flag a component for review |
+| `DELETE` | `/api/components/{char}/review` | Remove the review flag from a component |
 | `GET` | `/api/components/{char}/hmm-scene` | Get the saved mnemonic scene text for a component character |
 | `PUT` | `/api/components/{char}/hmm-scene` | Save (or replace) a mnemonic scene text for a component character |
 | `DELETE` | `/api/components/{char}/hmm-scene` | Delete the mnemonic scene for a component character |

@@ -314,6 +314,24 @@ func (h *WordsHandler) MarkReview(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ClearReview removes the review flag from a word.
+func (h *WordsHandler) ClearReview(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.Store.ClearWordReview(r.Context(), UserIDFromContext(r.Context()), id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "word not found")
+			return
+		}
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // SetKnown flags a word as known (never quizzed) or returns it to training.
 func (h *WordsHandler) SetKnown(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)

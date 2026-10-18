@@ -442,6 +442,33 @@ func TestMarkReview_NotFound(t *testing.T) {
 	}
 }
 
+func TestClearReview_ClearsFlag(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	r := newRouter(s)
+	do(t, r, "POST", fmt.Sprintf("/api/words/%d/review", id), nil)
+
+	rec := do(t, r, "DELETE", fmt.Sprintf("/api/words/%d/review", id), nil)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("want 204, got %d: %s", rec.Code, rec.Body)
+	}
+
+	rec2 := do(t, r, "GET", fmt.Sprintf("/api/words/%d", id), nil)
+	var wd models.WordDetail
+	decodeJSON(t, rec2, &wd)
+	if wd.NeedsReview {
+		t.Error("expected needs_review = false after DELETE /review")
+	}
+}
+
+func TestClearReview_NotFound(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "DELETE", "/api/words/9999/review", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("want 404, got %d", rec.Code)
+	}
+}
+
 func TestMarkReview_ClearedOnUpdate(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})

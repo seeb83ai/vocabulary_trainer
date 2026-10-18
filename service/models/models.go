@@ -340,6 +340,8 @@ type AnswerResponse struct {
 	// LeechLapses is set when this answer was a lapse that reached the
 	// user's leech threshold (or a multiple of it): the number of lapses in a row.
 	LeechLapses int `json:"leech_lapses,omitempty"`
+	// NeedsReview tells the result screen that the word is flagged for review.
+	NeedsReview bool `json:"needs_review,omitempty"`
 }
 
 // TranslationSources, when present, parallels Translations[lang] index-for-index:
@@ -559,6 +561,7 @@ type ComponentProgress struct {
 	TotalCorrect  int     `json:"total_correct"`
 	TotalAttempts int     `json:"total_attempts"`
 	FirstSeenDate *string `json:"first_seen_date,omitempty"`
+	NeedsReview   bool    `json:"needs_review,omitempty"`
 }
 
 type ComponentDailyStat struct {
@@ -598,6 +601,7 @@ type ComponentAnswerResponse struct {
 	Tier           string            `json:"tier,omitempty"`
 	PrevTier       string            `json:"prev_tier,omitempty"`
 	ConfusedWith   *ConfusionDetail  `json:"confused_with,omitempty"`
+	NeedsReview    bool              `json:"needs_review,omitempty"`
 }
 
 type HanziDecomposition struct {

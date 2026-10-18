@@ -31,6 +31,7 @@ type WordStore interface {
 	AddTranslation(ctx context.Context, userID int64, zhID int64, lang, text string) error
 	DeleteWord(ctx context.Context, userID, id int64) error
 	MarkWordForReview(ctx context.Context, userID, id int64) error
+	ClearWordReview(ctx context.Context, userID, id int64) error
 	SetWordKnown(ctx context.Context, userID, id int64, known bool) error
 	GetTranslationLanguages(ctx context.Context) ([]string, error)
 	GetTranslationsForWord(ctx context.Context, wordID int64, targetLang string) ([]models.Word, error)
@@ -155,6 +156,7 @@ type ComponentStore interface {
 	StoreComponentTranslation(ctx context.Context, userID int64, character, lang, definition string) error
 	GetComponentTranslations(ctx context.Context, userID int64, character string) (map[string]string, error)
 	MarkComponentForReview(userID int64, character string) error
+	ClearComponentReview(userID int64, character string) error
 	MarkComponentSeen(ctx context.Context, userID int64, character string) error
 	SkipComponent(ctx context.Context, userID int64, character string, days int) error
 	GetComponentProgress(ctx context.Context, userID int64, character string) (*models.ComponentProgress, error)

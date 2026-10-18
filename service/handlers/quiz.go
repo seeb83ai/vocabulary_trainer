@@ -618,6 +618,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		LearningNewWord:   updated.LearningNewWord,
 		Graduated:         graduated,
 		LeechLapses:       leechLapses,
+		NeedsReview:       zhWord.NeedsReview,
 	}
 
 	if sceneText, err := h.Store.GetHMMSceneText(r.Context(), req.WordID); err != nil {
