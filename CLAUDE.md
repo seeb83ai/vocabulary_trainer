@@ -332,6 +332,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/shell.spec.js` | Browser tests: app shell (desktop sidebar, phone tab bar + More sheet, 4-tab variant), app language in Settings |
 | `e2e/csv-upload.spec.js` | Browser tests: CSV upload dialog — default translation source, per-row `source` column, invalid rows skipped |
 | `e2e/skip-after-wrong.spec.js` | Browser tests: *Skip for today* on the wrong-answer screen after 3 wrong answers in a row on a card; a correct or accepted answer resets the count |
+| `e2e/flag-review.spec.js` | Browser tests: *Flag for review* on the result screen shows a flag set before and removes it on a second click |
 | `e2e/leech.spec.js` | Browser tests: leech warning on the wrong-answer screen (keep training, back to unseen), leech threshold setting |
 | `e2e/new-word-pause.spec.js` | Browser tests: new words paused by the lapsed-words baseline and by a bad session today (accuracy baseline), lapsed baseline setting |
 | `e2e/vocab-lapsed.spec.js` | Browser tests: Vocabulary *Failed last review* chip and reset from the edit sheet |

@@ -476,6 +476,15 @@ func (s *Store) MarkComponentForReview(userID int64, character string) error {
 	return err
 }
 
+// ClearComponentReview sets needs_review = 0 for a component_progress row.
+func (s *Store) ClearComponentReview(userID int64, character string) error {
+	_, err := s.db.Exec(
+		`UPDATE component_progress SET needs_review = 0 WHERE user_id = ? AND character = ?`,
+		userID, character,
+	)
+	return err
+}
+
 // backfillComponentsCollidingWithKnownWords handles issue #448: a component
 // must not get its own "new component" introduction when a same-text zh word
 // is already introduced (known) for this user — that would double-introduce
@@ -552,9 +561,9 @@ func (s *Store) SkipComponent(ctx context.Context, userID int64, character strin
 func (s *Store) GetComponentProgress(ctx context.Context, userID int64, character string) (*models.ComponentProgress, error) {
 	var p models.ComponentProgress
 	err := s.db.QueryRowContext(ctx,
-		`SELECT total_correct, total_attempts FROM component_progress WHERE user_id = ? AND character = ?`,
+		`SELECT total_correct, total_attempts, needs_review FROM component_progress WHERE user_id = ? AND character = ?`,
 		userID, character,
-	).Scan(&p.TotalCorrect, &p.TotalAttempts)
+	).Scan(&p.TotalCorrect, &p.TotalAttempts, &p.NeedsReview)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

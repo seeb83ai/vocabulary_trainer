@@ -185,11 +185,13 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	userID := UserIDFromContext(r.Context())
 
 	prevTier := ""
+	needsReview := false
 	if prevProgress, err := h.Store.GetComponentProgress(r.Context(), userID, req.Character); err != nil {
 		internalError(w, err)
 		return
 	} else if prevProgress != nil {
 		prevTier = componentTier(*prevProgress)
+		needsReview = prevProgress.NeedsReview
 	}
 
 	progress, nextDue, err := h.Store.RecordComponentAnswer(r.Context(), userID, req.Character, correct)
@@ -213,6 +215,7 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		TotalAttempts:  progress.TotalAttempts,
 		Repetitions:    progress.Repetitions,
 		SceneText:      sceneText,
+		NeedsReview:    needsReview,
 	}
 	resp.Tier = componentTier(progress)
 	if prevTier != "" && prevTier != resp.Tier {
@@ -469,6 +472,20 @@ func (h *ComponentHandler) Review(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Store.MarkComponentForReview(UserIDFromContext(r.Context()), char); err != nil {
+		internalError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ClearReview removes the review flag from a component.
+func (h *ComponentHandler) ClearReview(w http.ResponseWriter, r *http.Request) {
+	char := chi.URLParam(r, "char")
+	if char == "" {
+		writeError(w, http.StatusBadRequest, "character is required")
+		return
+	}
+	if err := h.Store.ClearComponentReview(UserIDFromContext(r.Context()), char); err != nil {
 		internalError(w, err)
 		return
 	}

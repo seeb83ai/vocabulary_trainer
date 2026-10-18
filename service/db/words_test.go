@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -1594,6 +1595,34 @@ func TestMarkWordForReview_NotFound(t *testing.T) {
 	err := s.MarkWordForReview(context.Background(), int64(2), 9999)
 	if err == nil {
 		t.Error("expected error for missing word, got nil")
+	}
+}
+
+func TestClearWordReview_ClearsFlag(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+	if err := s.MarkWordForReview(context.Background(), int64(2), id); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.ClearWordReview(context.Background(), int64(2), id); err != nil {
+		t.Fatalf("ClearWordReview: %v", err)
+	}
+
+	wd, err := s.GetWordByID(context.Background(), int64(2), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wd.NeedsReview {
+		t.Error("expected NeedsReview = false after clearing")
+	}
+}
+
+func TestClearWordReview_NotFound(t *testing.T) {
+	s := openTestDB(t)
+	err := s.ClearWordReview(context.Background(), int64(2), 9999)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("want sql.ErrNoRows for missing word, got %v", err)
 	}
 }
 

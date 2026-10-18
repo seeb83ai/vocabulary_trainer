@@ -1194,6 +1194,38 @@ func TestQuizAnswer_EllipsisEquivalence(t *testing.T) {
 	}
 }
 
+// TestQuizAnswer_ReportsReviewFlag: the result screen shows whether the word
+// is flagged for review (issue #585).
+func TestQuizAnswer_ReportsReviewFlag(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id := seedWord(t, s, "你好", "nǐ hǎo", []string{"hello"})
+
+	answer := func() bool {
+		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": id, "mode": "zh_to_transl", "answer": "hello",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var resp struct {
+			NeedsReview bool `json:"needs_review"`
+		}
+		decodeJSON(t, rec, &resp)
+		return resp.NeedsReview
+	}
+
+	if answer() {
+		t.Error("want needs_review = false for a word that is not flagged")
+	}
+	if err := s.MarkWordForReview(context.Background(), int64(2), id); err != nil {
+		t.Fatal(err)
+	}
+	if !answer() {
+		t.Error("want needs_review = true for a flagged word")
+	}
+}
+
 // TestQuizAnswer_TranslationRanking_CapsResultTranslations is a regression
 // test for issue #431/#432/#433: the answer-result screen used to show
 // every linked translation unconditionally, ignoring max_translations_shown

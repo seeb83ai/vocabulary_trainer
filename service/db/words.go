@@ -802,6 +802,20 @@ func (s *Store) MarkWordForReview(ctx context.Context, userID, id int64) error {
 	return nil
 }
 
+// ClearWordReview sets needs_review = 0 for the given zh word ID.
+func (s *Store) ClearWordReview(ctx context.Context, userID, id int64) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE words SET needs_review = 0 WHERE id = ? AND language = 'zh' AND user_id = ?`, id, userID)
+	if err != nil {
+		return fmt.Errorf("clear review flag: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // SetWordKnown flags a zh word as known (or clears the flag). Known words are
 // never returned as quiz prompts; they stay in the vocabulary and can still
 // appear as distractors and in mismatch detection.

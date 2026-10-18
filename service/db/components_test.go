@@ -1608,6 +1608,36 @@ func TestMarkComponentForReview_SetsFlag(t *testing.T) {
 	}
 }
 
+func TestClearComponentReview_ClearsFlag(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "女", "woman")
+	past := time.Now().Add(-time.Hour)
+	s.InsertComponentProgressForTest(ctx, int64(2), "女", past)
+	if err := s.MarkComponentForReview(int64(2), "女"); err != nil {
+		t.Fatalf("MarkComponentForReview: %v", err)
+	}
+	p, err := s.GetComponentProgress(ctx, int64(2), "女")
+	if err != nil {
+		t.Fatalf("GetComponentProgress: %v", err)
+	}
+	if !p.NeedsReview {
+		t.Fatal("want NeedsReview = true after marking")
+	}
+
+	if err := s.ClearComponentReview(int64(2), "女"); err != nil {
+		t.Fatalf("ClearComponentReview: %v", err)
+	}
+
+	p, err = s.GetComponentProgress(ctx, int64(2), "女")
+	if err != nil {
+		t.Fatalf("GetComponentProgress: %v", err)
+	}
+	if p.NeedsReview {
+		t.Error("want NeedsReview = false after clearing")
+	}
+}
+
 func TestGetComponentList_ReviewOnly(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()

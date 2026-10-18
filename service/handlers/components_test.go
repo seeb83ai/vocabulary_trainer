@@ -31,6 +31,47 @@ func TestComponentAnswer_CorrectAnswer(t *testing.T) {
 	}
 }
 
+// TestComponentAnswer_ReportsReviewFlag: the result screen shows whether the
+// component is flagged for review (issue #585).
+func TestComponentAnswer_ReportsReviewFlag(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "女", time.Now().Add(-time.Hour))
+	r := newRouter(s)
+
+	answer := func() bool {
+		rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+			"character": "女",
+			"answer":    "woman",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var resp map[string]any
+		decodeJSON(t, rec, &resp)
+		flagged, _ := resp["needs_review"].(bool)
+		return flagged
+	}
+
+	if answer() {
+		t.Error("want needs_review = false for a component that is not flagged")
+	}
+	if rec := do(t, r, http.MethodPost, "/api/components/女/review", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("flag: want 204, got %d", rec.Code)
+	}
+	if !answer() {
+		t.Error("want needs_review = true for a flagged component")
+	}
+	if rec := do(t, r, http.MethodDelete, "/api/components/女/review", nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("clear flag: want 204, got %d", rec.Code)
+	}
+	if answer() {
+		t.Error("want needs_review = false after the flag was removed")
+	}
+}
+
 func TestComponentAnswer_WrongAnswer(t *testing.T) {
 	s := openTestDB(t)
 	if err := s.SeedHanziDecompositionForTest(context.Background(), "女", "woman; female"); err != nil {

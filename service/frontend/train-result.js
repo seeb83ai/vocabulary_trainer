@@ -45,6 +45,28 @@ function renderFlagButton(btn, flagged) {
   const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4h11l-2 4 2 4H5"/></svg>';
   btn.innerHTML = `${icon}<span>${escHtml(t(flagged ? 'result.flagged' : 'result.flagReview'))}</span>`;
   btn.classList.toggle('is-flagged', flagged);
+  btn.setAttribute('aria-pressed', String(flagged));
+  if (flagged) btn.title = t('result.flaggedHint');
+  else btn.removeAttribute('title');
+}
+
+// bindFlagButton shows the review flag of the card and toggles it on click:
+// POST to url flags it, DELETE removes the flag (issue #585).
+function bindFlagButton(btn, flagged, url) {
+  renderFlagButton(btn, flagged);
+  btn.disabled = false;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      await apiFetch(url, { method: flagged ? 'DELETE' : 'POST' });
+      flagged = !flagged;
+      renderFlagButton(btn, flagged);
+    } catch (err) {
+      showToastError(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  };
 }
 
 // tierChipHTML renders the coloured tier chip (icon + label). The icon pops
@@ -531,19 +553,7 @@ function renderWordAnswerResult(result, answer) {
 
   renderStatusRow(result);
 
-  const reviewBtn = $('needs-review-btn');
-  renderFlagButton(reviewBtn, false);
-  reviewBtn.disabled = false;
-  reviewBtn.onclick = async () => {
-    reviewBtn.disabled = true;
-    try {
-      await apiFetch(`/api/words/${currentCard.word_id}/review`, { method: 'POST' });
-      renderFlagButton(reviewBtn, true);
-    } catch (err) {
-      reviewBtn.disabled = false;
-      showToastError(err.message);
-    }
-  };
+  bindFlagButton($('needs-review-btn'), !!result.needs_review, `/api/words/${currentCard.word_id}/review`);
 
   const editBtn = $('edit-card-btn');
   editBtn.onclick = () => window.open(`/vocab?edit=${currentCard.word_id}`, '_blank');
@@ -897,19 +907,8 @@ function showComponentResult(resp) {
   renderResultMnemonic(resp.correct && resp.scene_text, !resp.scene_text,
     `/vocab?editComp=${encodeURIComponent(currentCard.prompt)}`);
 
-  const reviewBtn = $('needs-review-btn');
-  renderFlagButton(reviewBtn, false);
-  reviewBtn.disabled = false;
-  reviewBtn.onclick = async () => {
-    reviewBtn.disabled = true;
-    try {
-      await apiFetch(`/api/components/${encodeURIComponent(currentCard.prompt)}/review`, { method: 'POST' });
-      renderFlagButton(reviewBtn, true);
-    } catch (err) {
-      reviewBtn.disabled = false;
-      showToastError(err.message);
-    }
-  };
+  bindFlagButton($('needs-review-btn'), !!resp.needs_review,
+    `/api/components/${encodeURIComponent(currentCard.prompt)}/review`);
 
   const editBtn = $('edit-card-btn');
   editBtn.onclick = () => window.open(`/vocab?editComp=${encodeURIComponent(currentCard.prompt)}`, '_blank');
