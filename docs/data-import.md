@@ -236,6 +236,15 @@ make import-topics
 | `-dir` | `data/topics` | Directory with the `<topic>.csv` files |
 | `-dry-run` | false | Show what would change without writing |
 
+## Grammar examples (migration)
+
+A database migration (`v20261018200000_add_grammar_examples.go`) adds the examples from the tables of the [studycli.org Chinese grammar guide](https://studycli.org/learn-chinese/chinese-grammar/) to the shared library (user 1). There is no tool to run. The list has about 35 example sentences and about 80 words and short phrases (time words, pronouns, question words, possessives, measure words and grammar terms).
+
+- Each entry gets the importable tag `grammar`. Sentences also get `grammar_s`. Users import the list in onboarding or in Vocabulary → Import.
+- If the library already has a word, the migration only adds the tag. It does not change the translations of the word.
+- A new word gets the pinyin from the page and an English and a German translation. A later library refresh replaces these translations with the CC-CEDICT/HanDeDict ones when the dictionary has the word. Sentences keep their translations.
+- The migration runs only when the library already has translations (a server with imported dictionaries and HSK lists). On a new or empty database, it does nothing, and the list does not come later.
+
 ## Pinyin audio import
 
 This tool imports pinyin pronunciation audio files from the public-domain [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound) collection. It enables the `/pinyin` listening training page.
