@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Credits and licenses · Vocab Trainer</title>
+  <script src="/tailwind.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <main class="max-w-2xl mx-auto px-4 py-12">
+    <div class="flex items-center justify-between gap-4">
+      <a href="/" class="text-sm text-blue-600 hover:underline" data-i18n="credits.back">&larr; Back to Vocab Trainer</a>
+      <select id="lang-select" aria-label="Language" class="text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white text-gray-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="en">🇬🇧</option>
+        <option value="zh">🇨🇳</option>
+        <option value="de">🇩🇪</option>
+      </select>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow p-6 sm:p-8 mt-4 text-sm text-gray-700">
+      <h1 id="credits-title" class="text-2xl font-bold text-gray-900 mb-2" data-i18n="credits.title">Credits and licenses</h1>
+      <p class="mb-6" data-i18n="credits.intro">This app uses free data, fonts and code from other projects. Thank you to their authors. Each entry shows the source and its license.</p>
+
+      <h2 class="text-lg font-semibold text-gray-900 mb-3" data-i18n="credits.dataHeading">Dictionaries and word lists</h2>
+      <ul class="space-y-4 mb-8">
+        <li data-credit="cc-cedict">
+          <a href="https://www.mdbg.net/chinese/dictionary?page=cedict" class="font-semibold text-blue-600 hover:underline">CC-CEDICT</a>
+          · <a href="https://creativecommons.org/licenses/by-sa/4.0/" class="text-blue-600 hover:underline">CC BY-SA 4.0</a>
+          <p data-i18n="credits.useCedict">English translations and dictionary lookup.</p>
+        </li>
+        <li data-credit="handedict">
+          <a href="https://handedict.zydeo.net/" class="font-semibold text-blue-600 hover:underline">HanDeDict</a>
+          · <a href="https://creativecommons.org/licenses/by-sa/2.0/de/" class="text-blue-600 hover:underline">CC BY-SA 2.0 DE</a>
+          <p data-i18n="credits.useHandedict">German translations and dictionary lookup.</p>
+        </li>
+        <li data-credit="makemeahanzi">
+          <a href="https://github.com/skishore/makemeahanzi" class="font-semibold text-blue-600 hover:underline">Make Me a Hanzi</a>
+          · <a href="https://www.gnu.org/licenses/lgpl-3.0.html" class="text-blue-600 hover:underline">LGPL-3.0</a>
+          <p data-i18n="credits.useMakemeahanzi">Character breakdown: radicals, components and etymology.</p>
+        </li>
+        <li data-credit="complete-hsk-vocabulary">
+          <a href="https://github.com/drkameleon/complete-hsk-vocabulary" class="font-semibold text-blue-600 hover:underline">complete-hsk-vocabulary</a>
+          · <a href="https://github.com/drkameleon/complete-hsk-vocabulary/blob/main/LICENSE" class="text-blue-600 hover:underline">MIT</a>
+          <p data-i18n="credits.useHsk">HSK 2.0 and HSK 3.0 word lists.</p>
+        </li>
+        <li data-credit="frequencywords">
+          <a href="https://github.com/hermitdave/FrequencyWords" class="font-semibold text-blue-600 hover:underline">FrequencyWords</a>
+          · <a href="/licenses/cc-by-sa-4.0.txt" class="license-link text-blue-600 hover:underline">CC BY-SA 4.0</a>
+          <p data-i18n="credits.useFrequency">Word frequency: the order of new words and the ranking of translations. The lists come from OpenSubtitles. We filtered the Chinese, English and German lists and use the first 8,000 entries of each. Our changed lists also have the CC BY-SA 4.0 license.</p>
+        </li>
+        <li data-credit="pinyin-sounds">
+          <a href="https://github.com/davinfifield/mp3-chinese-pinyin-sound" class="font-semibold text-blue-600 hover:underline">mp3-chinese-pinyin-sound</a>
+          · <a href="https://unlicense.org/" class="text-blue-600 hover:underline">Public domain (Unlicense)</a>
+          <p data-i18n="credits.usePinyin">Recordings of the pinyin syllables.</p>
+        </li>
+        <li data-credit="studycli-grammar">
+          <a href="https://studycli.org/learn-chinese/chinese-grammar/" class="font-semibold text-blue-600 hover:underline">studycli.org Chinese grammar guide</a>
+          · <span>© studycli.org</span>
+          <p data-i18n="credits.useGrammar">Example sentences of the grammar list.</p>
+        </li>
+      </ul>
+
+      <h2 class="text-lg font-semibold text-gray-900 mb-3" data-i18n="credits.codeHeading">Code and fonts</h2>
+      <ul class="space-y-4 mb-8">
+        <li data-credit="chartjs">
+          <a href="https://www.chartjs.org/" class="font-semibold text-blue-600 hover:underline">Chart.js</a>
+          · <a href="/licenses/chartjs-mit.txt" class="license-link text-blue-600 hover:underline">MIT</a>
+          <p data-i18n="credits.useChartjs">Charts on the Stats page.</p>
+        </li>
+        <li data-credit="html2canvas">
+          <a href="https://html2canvas.hertzen.com/" class="font-semibold text-blue-600 hover:underline">html2canvas</a>
+          · <a href="/licenses/html2canvas-mit.txt" class="license-link text-blue-600 hover:underline">MIT</a>
+          <p data-i18n="credits.useHtml2canvas">Screenshots in the issue report dialog.</p>
+        </li>
+        <li data-credit="tailwindcss">
+          <a href="https://tailwindcss.com/" class="font-semibold text-blue-600 hover:underline">Tailwind CSS</a>
+          · <a href="/licenses/tailwindcss-mit.txt" class="license-link text-blue-600 hover:underline">MIT</a>
+          <p data-i18n="credits.useTailwind">Page styles.</p>
+        </li>
+        <li data-credit="plus-jakarta-sans">
+          <a href="https://github.com/tokotype/PlusJakartaSans" class="font-semibold text-blue-600 hover:underline">Plus Jakarta Sans</a>
+          · <a href="/licenses/plus-jakarta-sans-ofl.txt" class="license-link text-blue-600 hover:underline">OFL-1.1</a>
+          <p data-i18n="credits.useJakarta">Font for Latin text.</p>
+        </li>
+        <li data-credit="noto-sans-sc">
+          <a href="https://github.com/notofonts/noto-cjk" class="font-semibold text-blue-600 hover:underline">Noto Sans SC</a>
+          · <a href="/licenses/noto-sans-sc-ofl.txt" class="license-link text-blue-600 hover:underline">OFL-1.1</a>
+          <p data-i18n="credits.useNoto">Font for Chinese text. We use a subset of the characters.</p>
+        </li>
+      </ul>
+
+      <h2 class="text-lg font-semibold text-gray-900 mb-3" data-i18n="credits.appHeading">This app</h2>
+      <p data-credit="app">
+        <a href="https://github.com/seeb83ai/vocabulary_trainer" class="font-semibold text-blue-600 hover:underline">vocabulary_trainer</a>
+        · <a href="https://github.com/seeb83ai/vocabulary_trainer/blob/main/LICENSE" class="text-blue-600 hover:underline">MIT</a>
+      </p>
+      <p class="mt-1" data-i18n="credits.appNotice">The repository has the full list in THIRD_PARTY_NOTICES.md.</p>
+    </div>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="credits.js"></script>
+</body>
+</html>
