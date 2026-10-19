@@ -1263,6 +1263,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 			}
 			if snap >= baselines.DueTodayValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
+				newWordsBlocked = true
 			}
 		}
 		if newWordFilter == "" && baselines.StrugglingEnabled {

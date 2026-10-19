@@ -1239,6 +1239,45 @@ func TestGetNextCard_BaselineDueToday_BlocksNewWords(t *testing.T) {
 	}
 }
 
+// Regression: the due-today gate must also block new words when no New-bucket
+// card is due, i.e. the only due word has already graduated.
+func TestGetNextCard_BaselineDueToday_BlocksNewWordsWithGraduatedDueWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE sm2_progress
+		SET first_seen_at = datetime('now', '-5 days'), learning_new_word = 0,
+		    total_attempts = 5, total_correct = 5, due_date = datetime('now', '-1 hour')
+		WHERE word_id = ?`, wordID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	baselines := &NewWordBaselines{DueTodayEnabled: true, DueTodayValue: 1}
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected the due word 水, got nil")
+	}
+	if w.Text != "水" {
+		t.Errorf("baseline due-today should have blocked the unseen word, got %q", w.Text)
+	}
+}
+
 func TestGetNextCard_BaselineNewBucket_BlocksNewWords(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
