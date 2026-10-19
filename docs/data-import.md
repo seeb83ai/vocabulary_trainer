@@ -104,24 +104,24 @@ Re-running the import updates the rank of any word already present for that lang
 
 This tool imports character decomposition data from the [makemeahanzi](https://github.com/skishore/makemeahanzi) project's `dictionary.txt` file. It enables the "Character breakdown" feature on the training screen.
 
-1. Download `dictionary.txt` from the makemeahanzi repository into the project root.
-2. Run the import:
+The tool downloads `dictionary.txt` from a fixed makemeahanzi commit, so the data does not change without notice. This repository does not include the file. `dictionary.txt` uses the [LGPL-3.0](https://github.com/skishore/makemeahanzi/blob/master/COPYING) license.
 
 ```bash
-make import-hanzi                          # uses dictionary.txt in project root
-make import-hanzi FILE=/path/to/dictionary.txt  # custom path
+make import-hanzi                               # download and import
+make import-hanzi FILE=/path/to/dictionary.txt  # import a local copy, no download
 ```
 
 Or directly:
 
 ```bash
-cd service && go run ./cmd/import-hanzi -db ../data/vocab.db -file ../dictionary.txt
+cd service && go run ./cmd/import-hanzi -db ../data/vocab.db
 ```
 
 | Flag | Default | Description |
 |---|---|---|
 | `-db` | `data/vocab.db` | Path to SQLite database |
-| `-file` | *(required)* | Path to makemeahanzi `dictionary.txt` |
+| `-file` | *(empty: download)* | Read makemeahanzi `dictionary.txt` from this file instead of downloading it |
+| `-url` | fixed makemeahanzi commit | Download URL of `dictionary.txt` |
 | `-dry-run` | false | Parse and validate without writing |
 
 ## Bilingual dictionary import (CC-CEDICT / HanDeDict)

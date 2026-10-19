@@ -15,6 +15,9 @@ fill-hanzi-translations
 # Database
 data/
 
+# makemeahanzi data (import-hanzi downloads it)
+/dictionary.txt
+
 # Go
 *.test
 *.out

@@ -363,7 +363,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 
 | File | Why to skip |
 |---|---|
-| `dictionary.txt` | 2.5 MB hanzi dataset; only needed by `service/cmd/import-hanzi` |
+| `dictionary.txt` | 2.5 MB hanzi dataset (not in the repo, only a local copy for `import-hanzi -file`); only needed by `service/cmd/import-hanzi` |
 | `cedict_ts.u8` / HanDeDict data file | Large CEDICT-format dictionaries; only needed by `service/cmd/import-cedict` |
 | `package-lock.json` | npm lockfile; never needed for code tasks |
 
