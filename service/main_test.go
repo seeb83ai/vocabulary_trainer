@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -155,5 +156,23 @@ func TestRenderTemplate_UnknownName(t *testing.T) {
 	renderTemplate(rr, "nonexistent", PageData{})
 	if rr.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rr.Code)
+	}
+}
+
+// Every license link on /credits must point to a license text that is
+// embedded in the binary: the text is part of the attribution we owe.
+func TestCreditsLicenseLinksAreEmbedded(t *testing.T) {
+	page, err := fs.ReadFile(frontendFS, "frontend/credits.html")
+	if err != nil {
+		t.Fatalf("read credits.html: %v", err)
+	}
+	links := regexp.MustCompile(`href="/licenses/([^"]+)"`).FindAllStringSubmatch(string(page), -1)
+	if len(links) == 0 {
+		t.Fatal("credits.html has no /licenses/ links")
+	}
+	for _, m := range links {
+		if _, err := fs.Stat(frontendFS, "frontend/licenses/"+m[1]); err != nil {
+			t.Errorf("credits.html links /licenses/%s, but the file is not embedded: %v", m[1], err)
+		}
 	}
 }

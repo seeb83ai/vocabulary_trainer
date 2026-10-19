@@ -65,7 +65,7 @@ Bug reports and ideas are welcome as GitHub issues. For code changes, read [Deve
 
 ## Credits
 
-Word lists, dictionaries and audio come from [complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary) (MIT), [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict) (CC BY-SA 4.0), [HanDeDict](https://handedict.zydeo.net/en/) (CC BY-SA 2.0 DE), [makemeahanzi](https://github.com/skishore/makemeahanzi), [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (MIT) and [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound).
+Word lists, dictionaries and audio come from [complete-hsk-vocabulary](https://github.com/drkameleon/complete-hsk-vocabulary) (MIT), [CC-CEDICT](https://www.mdbg.net/chinese/dictionary?page=cedict) (CC BY-SA 4.0), [HanDeDict](https://handedict.zydeo.net/en/) (CC BY-SA 2.0 DE), [makemeahanzi](https://github.com/skishore/makemeahanzi), [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (CC BY-SA 4.0) and [mp3-chinese-pinyin-sound](https://github.com/davinfifield/mp3-chinese-pinyin-sound). The app lists all sources and licenses at `/credits`. For the files in this repository, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License
 

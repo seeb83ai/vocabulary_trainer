@@ -164,7 +164,9 @@ func RequireProductionSecret(sessionSecret, appEnv string) error {
 func (a *AuthHandler) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p := r.URL.Path
-		if p == "/" || p == "/login" || p == "/impressum" ||
+		if p == "/" || p == "/login" || p == "/impressum" || p == "/credits" ||
+			// License texts linked from /credits (attribution for CC BY-SA data).
+			strings.HasPrefix(p, "/licenses/") ||
 			strings.HasPrefix(p, "/api/login") ||
 			strings.HasPrefix(p, "/api/register") ||
 			strings.HasPrefix(p, "/api/verify-email") ||
