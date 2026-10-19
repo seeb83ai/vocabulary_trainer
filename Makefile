@@ -47,10 +47,10 @@ import:
 	mkdir -p data
 	cd service && go run ./cmd/import -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../voc.txt)
 
-## import-hanzi: import makemeahanzi dictionary.txt for character decomposition (FILE=dictionary.txt DB=data/vocab.db)
+## import-hanzi: download and import makemeahanzi dictionary.txt for character decomposition (FILE=local copy DB=data/vocab.db)
 import-hanzi:
 	mkdir -p data
-	cd service && go run ./cmd/import-hanzi -db $(or $(DB),../data/vocab.db) -file $(or $(FILE),../dictionary.txt)
+	cd service && go run ./cmd/import-hanzi -db $(or $(DB),../data/vocab.db) $(if $(FILE),-file $(FILE))
 
 ## import-cedict: import (replace) CC-CEDICT for segmentation, EN lookups and the shared library; refreshes the library (FILE=cedict_ts.u8 DB=data/vocab.db APPEND=1 adds a partial file, FORCE=1 skips the size check)
 import-cedict:
@@ -133,7 +133,6 @@ release: generate-landing
 	cd service && GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-w -s" -o ../refresh-library ./cmd/refresh-library
 	rsync -avz --progress \
 	    Makefile \
-	    dictionary.txt \
 		vocab-trainer \
 		import-hsk \
 		import-hanzi \
