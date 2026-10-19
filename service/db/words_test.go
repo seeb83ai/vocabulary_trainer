@@ -1190,9 +1190,19 @@ func TestGetNextCard_BaselineStruggling_BlocksNewWords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Struggling count is 1; threshold is 1 → block new words.
+	// Struggling count is 1; threshold is 1 (the max allowed) → new word still introducible.
 	baselines := &NewWordBaselines{StrugglingEnabled: true, StrugglingValue: 1}
 	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.Text != "火" {
+		t.Fatalf("at the limit: want 火, got %+v", w)
+	}
+
+	// Struggling count is 1; threshold is 0 → block new words.
+	baselines = &NewWordBaselines{StrugglingEnabled: true, StrugglingValue: 0}
+	w, _, _, err = s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1228,14 +1238,64 @@ func TestGetNextCard_BaselineDueToday_BlocksNewWords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Threshold is 1 — due_at_day_start (1) >= 1 → block new words.
-	baselines := &NewWordBaselines{DueTodayEnabled: true, DueTodayValue: 1}
+	// Threshold is 0 — due_at_day_start (1) > 0 → block new words.
+	baselines := &NewWordBaselines{DueTodayEnabled: true, DueTodayValue: 0}
 	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w != nil && w.Text == "火" {
 		t.Error("baseline due-today should have blocked the unseen word 火")
+	}
+}
+
+// Regression: the due-today gate must also block new words when no New-bucket
+// card is due, i.e. the only due word has already graduated.
+func TestGetNextCard_BaselineDueToday_BlocksNewWordsWithGraduatedDueWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(`UPDATE sm2_progress
+		SET first_seen_at = datetime('now', '-5 days'), learning_new_word = 0,
+		    total_attempts = 5, total_correct = 5, due_date = datetime('now', '-1 hour')
+		WHERE word_id = ?`, wordID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// due_at_day_start (1) is at the threshold (1, the max allowed) → new word still introducible.
+	baselines := &NewWordBaselines{DueTodayEnabled: true, DueTodayValue: 1}
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.Text != "火" {
+		t.Fatalf("at the limit: want 火, got %+v", w)
+	}
+
+	// Threshold 0 → block new words.
+	baselines = &NewWordBaselines{DueTodayEnabled: true, DueTodayValue: 0}
+	w, _, _, err = s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil {
+		t.Fatal("expected the due word 水, got nil")
+	}
+	if w.Text != "水" {
+		t.Errorf("baseline due-today should have blocked the unseen word, got %q", w.Text)
 	}
 }
 
@@ -1263,8 +1323,8 @@ func TestGetNextCard_BaselineNewBucket_BlocksNewWords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// New-bucket count is 1; threshold is 1 → block new words.
-	baselines := &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 1}
+	// New-bucket count is 1; threshold is 0 → block new words.
+	baselines := &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 0}
 	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, nil, true)
 	if err != nil {
 		t.Fatal(err)
@@ -1325,6 +1385,98 @@ func TestGetNextCard_BaselineNewBucket_NotYetDueDoesNotBlockNewWords(t *testing.
 	}
 	if w.Text != "火" {
 		t.Errorf("expected unseen word 火 to still be introducible since the stuck new-bucket word isn't due, got %s", w.Text)
+	}
+}
+
+func TestGetNextCard_BaselineLearning(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	// A Learning-bucket word (60% accuracy over 5 attempts), due tomorrow, and one unseen word.
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET first_seen_at = date('now', '-5 days'), learning_new_word = 0,
+		 total_attempts = 5, total_correct = 3, due_date = datetime('now', '+1 day')
+		 WHERE word_id = ?`, wordID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Learning count is 1; threshold is 1 (the max allowed) → new word still introducible.
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, &NewWordBaselines{LearningEnabled: true, LearningValue: 1}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.Text != "火" {
+		t.Fatalf("at the limit: want 火, got %+v", w)
+	}
+
+	// Threshold 0 → new words blocked. Nothing else is due today, so no card is served.
+	w, _, _, err = s.GetNextCard(ctx, userID, nil, 100, "", false, &NewWordBaselines{LearningEnabled: true, LearningValue: 0}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w != nil {
+		t.Errorf("over the limit: the unseen word 火 must be blocked, got %+v", w)
+	}
+}
+
+// The threshold is the max allowed: a due New-bucket count equal to it does not
+// block new words. The New-bucket word is excluded (as if just answered) so it
+// does not win as the most overdue card.
+func TestGetNextCard_BaselineNewBucket_AtThreshold_StillShowsNewWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	userID := int64(2)
+
+	wordID, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "水", Translations: map[string][]string{"en": {"water"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AcknowledgeWord(ctx, userID, wordID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE sm2_progress SET due_date = datetime('now', '-1 hour') WHERE word_id = ?`, wordID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.CreateWord(ctx, userID, models.CreateWordRequest{
+		ZhText: "火", Translations: map[string][]string{"en": {"fire"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// New-bucket count is 1; threshold is 1 → new word still introducible.
+	baselines := &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 1}
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, []int64{wordID}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.Text != "火" {
+		t.Fatalf("at the limit: want 火, got %+v", w)
+	}
+
+	// Threshold 0 → new words blocked; only the excluded New-bucket word is left.
+	baselines = &NewWordBaselines{NewBucketEnabled: true, NewBucketValue: 0}
+	w, _, _, err = s.GetNextCard(ctx, userID, nil, 100, "", false, baselines, []int64{wordID}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w == nil || w.Text != "水" {
+		t.Errorf("over the limit: want 水, got %+v", w)
 	}
 }
 
@@ -2776,23 +2928,23 @@ func TestGetNextCard_BaselineLapsed_BlocksNewWords(t *testing.T) {
 		t.Errorf("CountLapsedWords: want 2, got %d", n)
 	}
 
-	// 2 lapsed words, limit 3: the unseen word is served.
-	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, &NewWordBaselines{LapsedEnabled: true, LapsedValue: 3}, nil, true)
+	// 2 lapsed words, limit 2: the limit is the max allowed, so the unseen word is served.
+	w, _, _, err := s.GetNextCard(ctx, userID, nil, 100, "", false, &NewWordBaselines{LapsedEnabled: true, LapsedValue: 2}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w == nil || w.Text != "火" {
-		t.Fatalf("below the limit: want 火, got %+v", w)
+		t.Fatalf("at the limit: want 火, got %+v", w)
 	}
 
-	// 2 lapsed words, limit 2: new words are blocked. Nothing else is due
+	// 2 lapsed words, limit 1: new words are blocked. Nothing else is due
 	// today, so no card at all is served.
-	w, _, _, err = s.GetNextCard(ctx, userID, nil, 100, "", false, &NewWordBaselines{LapsedEnabled: true, LapsedValue: 2}, nil, true)
+	w, _, _, err = s.GetNextCard(ctx, userID, nil, 100, "", false, &NewWordBaselines{LapsedEnabled: true, LapsedValue: 1}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if w != nil {
-		t.Errorf("at the limit: the unseen word 火 must be blocked, got %+v", w)
+		t.Errorf("over the limit: the unseen word 火 must be blocked, got %+v", w)
 	}
 }
 

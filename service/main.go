@@ -516,6 +516,9 @@ func main() {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})
 	r.Get("/impressum", impressumHandler)
+	r.Get("/credits", func(w http.ResponseWriter, r *http.Request) {
+		serveFileFromFS(w, r, sub, "credits.html")
+	})
 	r.With(handlers.RequireAdmin(store)).Get("/admin-dashboard", func(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, "admin-dashboard", PageData{
 			Title:       "Admin Dashboard — Vocab Trainer",

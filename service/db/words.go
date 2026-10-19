@@ -1261,8 +1261,9 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 			if err != nil {
 				return nil, nil, false, fmt.Errorf("due today snapshot: %w", err)
 			}
-			if snap >= baselines.DueTodayValue {
+			if snap > baselines.DueTodayValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
+				newWordsBlocked = true
 			}
 		}
 		if newWordFilter == "" && baselines.StrugglingEnabled {
@@ -1278,7 +1279,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				userID).Scan(&struggling); err != nil {
 				return nil, nil, false, fmt.Errorf("count struggling: %w", err)
 			}
-			if struggling >= baselines.StrugglingValue {
+			if struggling > baselines.StrugglingValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}
@@ -1323,7 +1324,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				userID).Scan(&learning); err != nil {
 				return nil, nil, false, fmt.Errorf("count learning: %w", err)
 			}
-			if learning >= baselines.LearningValue {
+			if learning > baselines.LearningValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}
@@ -1342,7 +1343,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 				newBucketArgs...).Scan(&newBucket); err != nil {
 				return nil, nil, false, fmt.Errorf("count new bucket: %w", err)
 			}
-			if newBucket >= baselines.NewBucketValue {
+			if newBucket > baselines.NewBucketValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}
@@ -1362,7 +1363,7 @@ func (s *Store) GetNextCard(ctx context.Context, userID int64, tags []string, ma
 			if err != nil {
 				return nil, nil, false, err
 			}
-			if lapsed >= baselines.LapsedValue {
+			if lapsed > baselines.LapsedValue {
 				newWordFilter = " AND p.first_seen_at IS NOT NULL"
 				newWordsBlocked = true
 			}

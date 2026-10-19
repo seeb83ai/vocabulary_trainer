@@ -45,6 +45,12 @@ func newAuthRouter(t *testing.T) http.Handler {
 	r.Get("/landing/teasers/10-training/01-question.png", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	r.Get("/credits", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	r.Get("/licenses/chartjs-mit.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	return r
 }
 
@@ -848,6 +854,19 @@ func TestMiddleware_LandingTeaserImagesAccessibleWithoutSession(t *testing.T) {
 	rec := do(t, r, "GET", "/landing/teasers/10-training/01-question.png", nil)
 	if rec.Code != http.StatusOK {
 		t.Errorf("want 200 on a landing teaser image without session, got %d", rec.Code)
+	}
+}
+
+// The credits page and the license texts it links to are the attribution
+// that CC BY-SA data (CC-CEDICT, HanDeDict, FrequencyWords) requires, so a
+// visitor without an account must be able to open them.
+func TestMiddleware_CreditsAndLicensesAccessibleWithoutSession(t *testing.T) {
+	r := newAuthRouter(t)
+	for _, p := range []string{"/credits", "/licenses/chartjs-mit.txt"} {
+		rec := do(t, r, "GET", p, nil)
+		if rec.Code != http.StatusOK {
+			t.Errorf("want 200 on %s without session, got %d", p, rec.Code)
+		}
 	}
 }
 
