@@ -32,7 +32,7 @@ test.describe('Lapsed-words baseline', () => {
     seedReviewWord(email, '水', 1);
     seedReviewWord(email, '山', 1);
     const st = await (await page.request.get('/api/settings')).json();
-    const patch = await page.request.patch('/api/settings', { data: { ...st, baseline_lapsed_value: 2 } });
+    const patch = await page.request.patch('/api/settings', { data: { ...st, baseline_lapsed_value: 1 } });
     expect(patch.ok()).toBeTruthy();
     await page.request.patch('/api/training-filters', {
       data: { mode: 'zh_to_transl', langs: ['en'], bucket: '', mnemonics: false, components: false, tags: [] },
@@ -48,7 +48,7 @@ test.describe('Lapsed-words baseline', () => {
     await hint.click();
     const notice = page.locator('#stats-new-paused');
     await expect(notice).toBeVisible();
-    await expect(notice).toHaveText('New words paused: 2 words failed their last review (limit 2)');
+    await expect(notice).toHaveText('New words paused: 2 words failed their last review (limit 1)');
     await captureForPR(page, 'train-lapsed-paused');
   });
 
