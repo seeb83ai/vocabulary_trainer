@@ -37,6 +37,24 @@ func (s *Store) RecordComponentStat(ctx context.Context, userID int64, correct b
 	return err
 }
 
+// AcceptComponentStat records "Accept as correct" for today's last wrong
+// component answer: it moves one wrong answer to correct. Without a wrong
+// answer today it counts as one correct answer.
+func (s *Store) AcceptComponentStat(ctx context.Context, userID int64) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE component_stats SET wrong = wrong - 1, correct = correct + 1
+		 WHERE user_id = ? AND date = date('now') AND wrong > 0`,
+		userID,
+	)
+	if err != nil {
+		return fmt.Errorf("accept component stat: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return s.RecordComponentStat(ctx, userID, true)
+	}
+	return nil
+}
+
 // GetComponentStatsHistory returns daily component training stats for a user.
 func (s *Store) GetComponentStatsHistory(ctx context.Context, userID int64) ([]models.ComponentDailyStat, error) {
 	rows, err := s.db.QueryContext(ctx,

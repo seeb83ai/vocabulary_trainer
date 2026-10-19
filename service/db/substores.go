@@ -77,6 +77,7 @@ type QuizStore interface {
 	GetCyclePinMode(ctx context.Context, wordID int64) (string, error)
 	ClearCyclePinMode(ctx context.Context, wordID int64) error
 	RecordDailyStat(ctx context.Context, userID int64, correct bool) (int, error)
+	AcceptDailyStat(ctx context.Context, userID int64) (int, error)
 	EnsureDueTodaySnapshot(ctx context.Context, userID int64) (int, error)
 	RecordTrainingTime(ctx context.Context, userID int64, seconds int) error
 	GetDailyStatsHistory(ctx context.Context, userID int64) ([]models.DailyStat, error)
@@ -122,6 +123,7 @@ type MnemonicStore interface {
 	GetHMMProgress(ctx context.Context, userID int64, entityType, entityKey string) (*models.HMMProgress, error)
 	SkipHMM(ctx context.Context, userID int64, entityType, entityKey string, days int) error
 	UpdateHMMProgress(ctx context.Context, p models.HMMProgress) error
+	RecordHMMStat(ctx context.Context, userID int64, correct bool) error
 	GetHMMStats(ctx context.Context, userID int64, types []string) (models.HMMQuizStats, error)
 	GetHMMBreakdown(ctx context.Context, userID int64) ([]HMMEntityBreakdown, error)
 }
@@ -162,6 +164,7 @@ type ComponentStore interface {
 	GetComponentProgress(ctx context.Context, userID int64, character string) (*models.ComponentProgress, error)
 	RecordComponentAnswer(ctx context.Context, userID int64, character string, correct bool) (models.ComponentProgress, time.Time, error)
 	RecordComponentStat(ctx context.Context, userID int64, correct bool) error
+	AcceptComponentStat(ctx context.Context, userID int64) error
 	DetectComponentConfusion(ctx context.Context, userID int64, character, answer string, langs []string) (confusedWordID int64, confusedComponent string, found bool, err error)
 	UpsertComponentConfusion(ctx context.Context, userID int64, zhComponent string, confusedWithID int64, confusedWithComponent, mode string) error
 	GetComponentConfusionDetail(ctx context.Context, userID int64, zhComponent string, confusedWithID int64, confusedWithComponent, mode string, langs []string) (*models.ConfusionDetail, error)
