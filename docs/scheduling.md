@@ -25,16 +25,20 @@ Both rules only reorder *which* new word is shown next — they never change the
 
 ### Baseline gates
 
-In **Settings → Daily Learning**, each user can enable optional gates. These gates pause new-word introductions when the review load is high. You enable each gate independently, with its own numeric threshold. All active gates must pass before the app shows a new word. When you train a specific tag filter, each gate's count only includes words matching that filter — words tagged outside your current session (for example, an untrained HSK level) never count against the threshold.
+In **Settings → Daily Learning**, each user can enable optional gates. These gates pause new-word introductions when the review load is high. You enable each gate independently, with its own numeric threshold. All active gates must pass before the app shows a new word.
+
+The threshold of a "Max" gate is the highest count that you can have. The gate blocks when the count is more than the threshold. For example, with a threshold of 10, you can have 10 words, and the gate blocks at 11. A threshold of 0 blocks new words when the count is 1 or more.
+
+Only the **Max New bucket words** gate uses your current tag filter. It counts only the words that match the filter. All other gates count all your words, also words outside the filter (for example, an untrained HSK level).
 
 | Gate | Blocks new words when… |
 |---|---|
-| **Max due words at day start** | The number of review cards due when you first opened the app today is ≥ the threshold |
-| **Max Struggling words** | Your current Struggling bucket count is ≥ the threshold |
-| **Max Learning words** | Your current Learning bucket count is ≥ the threshold |
-| **Max New bucket words** | Your current New bucket count (already-introduced words that haven't graduated past the initial learning phase yet) is ≥ the threshold |
+| **Max due words at day start** | The number of review cards due when you first opened the app today is more than the threshold |
+| **Max Struggling words** | Your current Struggling bucket count is more than the threshold |
+| **Max Learning words** | Your current Learning bucket count is more than the threshold |
+| **Max New bucket words** | Your current New bucket count (already-introduced words that haven't graduated past the initial learning phase yet) is more than the threshold |
 | **Min. accuracy of the last 3 days** | Your accuracy over the 3 days before today (all answers of these days together) is below the threshold in %. Today counts too when it has at least 20 answers, so a bad session pauses new words on the same day. Days without answers are not counted. If there are no answers, the gate does not block. Default: off, 70%. When this gate blocks, the Train page shows a small "!" right of the progress bar. Tap it to read "New words paused: accuracy X% < Y%". |
-| **Max words that failed their last review** | The number of words whose last review was a [lapse](#lapses-and-leech-words) is ≥ the threshold. This gate counts all your words, not only the current tag filter. A word leaves the count when you answer its next review correctly. Default: **on**, 10. When this gate blocks, the "!" reads "New words paused: N words failed their last review (limit M)". If the accuracy gate also blocks, the accuracy message shows. |
+| **Max words that failed their last review** | The number of words whose last review was a [lapse](#lapses-and-leech-words) is more than the threshold. A word leaves the count when you answer its next review correctly. Default: **on**, 10. When this gate blocks, the "!" reads "New words paused: N words failed their last review (limit M)". If the accuracy gate also blocks, the accuracy message shows. |
 
 ### Cooldown between new words
 

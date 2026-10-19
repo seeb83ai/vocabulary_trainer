@@ -130,7 +130,7 @@ func (h *QuizHandler) Stats(w http.ResponseWriter, r *http.Request) {
 			internalError(w, err)
 			return
 		}
-		if n >= userSettings.BaselineLapsedValue {
+		if n > userSettings.BaselineLapsedValue {
 			lapsedPause = n
 			newAvailable = 0
 		}

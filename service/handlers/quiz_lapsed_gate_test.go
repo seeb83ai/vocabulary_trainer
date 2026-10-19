@@ -63,15 +63,15 @@ func TestLapsedBaseline_PausesNewWords(t *testing.T) {
 	seedLapsedWord(t, s, "水")
 	seedLapsedWord(t, s, "山")
 	seedWord(t, s, "火", "", []string{"fire"})
-	if rec := patchSettingsFromCurrent(t, r, func(st map[string]any) { st["baseline_lapsed_value"] = 2 }); rec.Code != 200 {
+	if rec := patchSettingsFromCurrent(t, r, func(st map[string]any) { st["baseline_lapsed_value"] = 1 }); rec.Code != 200 {
 		t.Fatalf("patch: %d %s", rec.Code, rec.Body)
 	}
 
 	rec := do(t, r, "GET", "/api/quiz/stats", nil)
 	var stats map[string]any
 	decodeJSON(t, rec, &stats)
-	if stats["lapsed_pause_count"] != float64(2) || stats["lapsed_pause_max"] != float64(2) {
-		t.Errorf("stats pause fields: want 2/2, got %v/%v", stats["lapsed_pause_count"], stats["lapsed_pause_max"])
+	if stats["lapsed_pause_count"] != float64(2) || stats["lapsed_pause_max"] != float64(1) {
+		t.Errorf("stats pause fields: want 2/1, got %v/%v", stats["lapsed_pause_count"], stats["lapsed_pause_max"])
 	}
 	if stats["new_available"] != float64(0) {
 		t.Errorf("new_available: want 0, got %v", stats["new_available"])
@@ -84,6 +84,24 @@ func TestLapsedBaseline_PausesNewWords(t *testing.T) {
 		if card["prompt"] == "火" {
 			t.Errorf("the unseen word 火 must not be served while new words are paused")
 		}
+	}
+}
+
+func TestLapsedBaseline_AtLimitNoPause(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	seedLapsedWord(t, s, "水")
+	seedLapsedWord(t, s, "山")
+	seedWord(t, s, "火", "", []string{"fire"})
+	if rec := patchSettingsFromCurrent(t, r, func(st map[string]any) { st["baseline_lapsed_value"] = 2 }); rec.Code != 200 {
+		t.Fatalf("patch: %d %s", rec.Code, rec.Body)
+	}
+
+	rec := do(t, r, "GET", "/api/quiz/stats", nil)
+	var stats map[string]any
+	decodeJSON(t, rec, &stats)
+	if _, ok := stats["lapsed_pause_count"]; ok {
+		t.Errorf("2 lapsed words, limit 2: want no lapsed_pause_count, got %v", stats["lapsed_pause_count"])
 	}
 }
 
