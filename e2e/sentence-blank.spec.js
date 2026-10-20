@@ -256,6 +256,7 @@ test.describe('Sentence-blank training mode', () => {
     await expect(block).toBeVisible();
     await expect(block.locator('.tr-sentence-zh')).toHaveText('我买牛奶');
     await expect(block.locator('.tr-sentence-zh mark')).toHaveText(correctZh);
+    await expect(block.locator('.tr-sentence-pinyin')).toHaveText('wǒ mǎi niú nǎi');
     await expect(block.locator('.tr-sentence-transl')).toHaveText('I buy milk');
     // The sentence sits above the answer word.
     const blockBox = await block.boundingBox();
@@ -278,6 +279,7 @@ test.describe('Sentence-blank training mode', () => {
 
     await expect(page.locator('#result-sentence')).toBeVisible();
     await expect(page.locator('#result-sentence .tr-sentence-zh')).toHaveText('我买牛奶');
+    await expect(page.locator('#result-sentence .tr-sentence-pinyin')).toHaveText('wǒ mǎi niú nǎi');
     await expect(page.locator('#result-sentence .tr-sentence-transl')).toHaveText('I buy milk');
     await captureForPR(page, 'sentence-result-wrong');
   });

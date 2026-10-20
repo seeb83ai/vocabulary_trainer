@@ -293,6 +293,9 @@ func assertFullSentence(t *testing.T, card *models.QuizCard, sentenceID int64) {
 	if card.SentenceTranslation != "I buy milk" {
 		t.Errorf("want sentence_translation %q, got %q", "I buy milk", card.SentenceTranslation)
 	}
+	if card.SentencePinyin != "wǒ mǎi niú nǎi" {
+		t.Errorf("want sentence_pinyin %q, got %q", "wǒ mǎi niú nǎi", card.SentencePinyin)
+	}
 }
 
 func TestNextSentenceBlankCard_TranslationBlankDirection(t *testing.T) {

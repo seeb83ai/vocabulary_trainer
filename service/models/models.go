@@ -260,11 +260,13 @@ type QuizCard struct {
 	// the target word/substring replaced by "___".
 	SentenceContext string `json:"sentence_context,omitempty"`
 	SentenceBlank   string `json:"sentence_blank,omitempty"`
-	// SentenceID, SentenceText and SentenceTranslation describe the full
-	// sentence (zh word ID, zh text, joined translations) for the result
-	// screen, whichever side was blanked (issue #557).
+	// SentenceID, SentenceText, SentencePinyin and SentenceTranslation
+	// describe the full sentence (zh word ID, zh text, stored pinyin, joined
+	// translations) for the result screen, whichever side was blanked
+	// (issues #557, #615).
 	SentenceID          int64  `json:"sentence_id,omitempty"`
 	SentenceText        string `json:"sentence_text,omitempty"`
+	SentencePinyin      string `json:"sentence_pinyin,omitempty"`
 	SentenceTranslation string `json:"sentence_translation,omitempty"`
 	// IsAlsoComponent is set on word cards whose zh text is also tracked as a
 	// hanzi component — the reciprocal of IsAlsoWord.

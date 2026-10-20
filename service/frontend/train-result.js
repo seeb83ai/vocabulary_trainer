@@ -168,20 +168,23 @@ function sentenceHighlightHTML(sentence, word) {
     escHtml(sentence.slice(i + word.length));
 }
 
-// renderResultSentence shows the full sentence, its translation and a
-// speaker button above the answer word on sentence-blank results (issue
-// #557); hidden for every other card.
+// renderResultSentence shows the full sentence, its pinyin, its translation
+// and a speaker button above the answer word on sentence-blank results
+// (issues #557, #615); hidden for every other card.
 function renderResultSentence(zhText) {
   if (currentCard.card_type !== 'sentence' || !currentCard.sentence_text) {
     hide('result-sentence');
     return;
   }
   const el = $('result-sentence');
+  const pinyin = currentCard.sentence_pinyin
+    ? `<div class="tr-sentence-pinyin">${escHtml(currentCard.sentence_pinyin)}</div>` : '';
   const transl = currentCard.sentence_translation
     ? `<div class="tr-sentence-transl">${escHtml(currentCard.sentence_translation)}</div>` : '';
   el.innerHTML = `<div class="tr-word-row">
       <div class="tr-word-main">
         <div class="tr-sentence-zh font-hanzi">${sentenceHighlightHTML(currentCard.sentence_text, zhText)}</div>
+        ${pinyin}
         ${transl}
       </div>
       ${speakerButtonHTML('result-sentence-play', true)}
