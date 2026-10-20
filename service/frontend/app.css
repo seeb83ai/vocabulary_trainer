@@ -451,6 +451,7 @@ label.st-text { cursor: pointer; }
 .tr-sentence-box { margin-bottom: 14px; padding: 12px 14px; border-radius: 16px; background: #f9fafb; border: 1px solid #e5e7eb; }
 .tr-sentence-zh { font-size: 22px; line-height: 1.45; color: #111827; overflow-wrap: anywhere; }
 .tr-sentence-zh mark { background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 0 2px; }
+.tr-sentence-pinyin { margin-top: 2px; font-size: 15px; line-height: 1.5; color: #6b7280; overflow-wrap: anywhere; }
 .tr-sentence-transl { margin-top: 4px; font-size: 15px; line-height: 1.5; color: #4b5563; }
 .tr-answer-form { margin-top: 26px; display: flex; flex-direction: column; gap: 10px; }
 .tr-input { flex: 1; min-width: 0; width: 100%; border: 1.5px solid #d1d5db; border-radius: 12px; padding: 12px 14px; font-size: 16px; color: #111827; background: #fff; font-family: inherit; }

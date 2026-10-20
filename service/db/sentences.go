@@ -28,10 +28,11 @@ type wordSegment struct {
 // sentenceBlankMatch is the result of findSentenceBlank: which due word was
 // found inside which eligible sentence, and the exact substring to blank.
 type sentenceBlankMatch struct {
-	SentenceID   int64
-	SentenceText string
-	TargetWordID int64
-	TargetText   string
+	SentenceID     int64
+	SentenceText   string
+	SentencePinyin string
+	TargetWordID   int64
+	TargetText     string
 }
 
 // sentencePunctuationCutset is trailing sentence-ending punctuation stripped
@@ -207,11 +208,16 @@ func (s *Store) findSentenceBlank(ctx context.Context, userID int64, tags []stri
 				continue
 			}
 			if best == nil || dueDate.Before(bestDue) {
+				var pinyin string
+				if c.Pinyin != nil {
+					pinyin = *c.Pinyin
+				}
 				best = &sentenceBlankMatch{
-					SentenceID:   c.ID,
-					SentenceText: c.Text,
-					TargetWordID: seg.WordID,
-					TargetText:   seg.Text,
+					SentenceID:     c.ID,
+					SentenceText:   c.Text,
+					SentencePinyin: pinyin,
+					TargetWordID:   seg.WordID,
+					TargetText:     seg.Text,
 				}
 				bestDue = dueDate
 			}
@@ -282,6 +288,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 			SentenceBlank:       strings.Replace(match.SentenceText, match.TargetText, sentenceBlankToken, 1),
 			SentenceID:          match.SentenceID,
 			SentenceText:        match.SentenceText,
+			SentencePinyin:      match.SentencePinyin,
 			SentenceTranslation: sentenceTranslation,
 			DueDate:             progress.DueDate,
 			IntervalDays:        progress.IntervalDays,
@@ -312,6 +319,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 				SentenceBlank:       blanked,
 				SentenceID:          match.SentenceID,
 				SentenceText:        match.SentenceText,
+				SentencePinyin:      match.SentencePinyin,
 				SentenceTranslation: sentenceTranslation,
 				DueDate:             progress.DueDate,
 				IntervalDays:        progress.IntervalDays,
