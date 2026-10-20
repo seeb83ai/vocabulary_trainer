@@ -739,6 +739,54 @@ func TestDetectConfusion_TranslToZh_SlashVariant(t *testing.T) {
 	}
 }
 
+// TestDetectConfusion_TranslToZh_GenericGlossNotFlagged reproduces #444:
+// quizzing transl_to_zh for 等 ("wait"), the user types "sofort" — a generic
+// gloss that 就 also has, but which is shared by many other unrelated words
+// too. This must not be reported as ambiguous/confused with 就.
+func TestDetectConfusion_TranslToZh_GenericGlossNotFlagged(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+
+	targetID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "等",
+		Pinyin:       "děng",
+		Translations: map[string][]string{"de": {"warten", "sofort"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherID, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+		ZhText:       "就",
+		Pinyin:       "jiù",
+		Translations: map[string][]string{"de": {"je nachdem", "sofort"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	markWordTrained(t, s, otherID)
+
+	fillerZh := []string{"马上", "立刻", "即刻", "随即"}
+	for i, zh := range fillerZh {
+		fid, err := s.CreateWord(ctx, int64(2), models.CreateWordRequest{
+			ZhText:       zh,
+			Pinyin:       "filler",
+			Translations: map[string][]string{"de": {"sofort"}},
+		})
+		if err != nil {
+			t.Fatalf("seed filler word %d: %v", i, err)
+		}
+		markWordTrained(t, s, fid)
+	}
+
+	_, found, err := s.DetectConfusion(ctx, int64(2), targetID, "sofort", "transl_to_zh", []string{"de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		t.Error("expected no confusion: 'sofort' is a generic gloss shared by many unrelated words (#444)")
+	}
+}
+
 func TestGetRecentMismatches_Empty(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
