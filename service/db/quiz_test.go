@@ -652,84 +652,85 @@ func TestAcknowledgeRandomWords_AtomicAndConsolidated(t *testing.T) {
 	}
 }
 
-func TestSharesTranslation_SharedEnTranslation(t *testing.T) {
+func TestSharedTranslation_SharedEnTranslation(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
 	id2 := seedWord(t, s, "认识", "rènshi", []string{"know", "recognize"})
 
-	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	shared, err := s.SharedTranslation(context.Background(), id1, id2, []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !shared {
-		t.Error("expected shared=true for two words with common EN translation 'know'")
+	if shared != "know" {
+		t.Errorf("shared = %q; want %q (the common EN translation)", shared, "know")
 	}
 }
 
-func TestSharesTranslation_NoOverlap(t *testing.T) {
+func TestSharedTranslation_NoOverlap(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "书", "shū", []string{"book"})
 	id2 := seedWord(t, s, "鱼", "yú", []string{"fish"})
 
-	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	shared, err := s.SharedTranslation(context.Background(), id1, id2, []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shared {
-		t.Error("expected shared=false for words with distinct translations")
+	if shared != "" {
+		t.Errorf("shared = %q; want empty for words with distinct translations", shared)
 	}
 }
 
-func TestSharesTranslation_WrongLang(t *testing.T) {
+func TestSharedTranslation_WrongLang(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
 	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
 
-	// Translations are EN, but we query DE — should return false
-	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"de"})
+	// Translations are EN, but we query DE — nothing is shared
+	shared, err := s.SharedTranslation(context.Background(), id1, id2, []string{"de"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shared {
-		t.Error("expected shared=false when querying a language with no translations")
+	if shared != "" {
+		t.Errorf("shared = %q; want empty when querying a language with no translations", shared)
 	}
 }
 
-func TestSharesTranslation_EmptyLangs_FallsBackToEn(t *testing.T) {
+func TestSharedTranslation_EmptyLangs_FallsBackToEn(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"know"})
 	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
 
-	shared, err := s.SharesTranslation(context.Background(), id1, id2, nil)
+	shared, err := s.SharedTranslation(context.Background(), id1, id2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !shared {
-		t.Error("expected shared=true with empty langs (should fall back to 'en')")
+	if shared != "know" {
+		t.Errorf("shared = %q; want %q with empty langs (should fall back to 'en')", shared, "know")
 	}
 }
 
-func TestSharesTranslation_CaseInsensitive(t *testing.T) {
+// The match is case-insensitive, but the result is the first word's own text.
+func TestSharedTranslation_CaseInsensitive(t *testing.T) {
 	s := openTestDB(t)
 	id1 := seedWord(t, s, "知道", "zhīdào", []string{"Know"})
 	id2 := seedWord(t, s, "认识", "rènshi", []string{"know"})
 
-	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en"})
+	shared, err := s.SharedTranslation(context.Background(), id1, id2, []string{"en"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !shared {
-		t.Error("expected shared=true for case-insensitive translation match")
+	if shared != "Know" {
+		t.Errorf("shared = %q; want %q (first word's text)", shared, "Know")
 	}
 }
 
-// TestSharesTranslation_SlashVariantOverlap covers the real-world "Nudeln"
+// TestSharedTranslation_SlashVariantOverlap covers the real-world "Nudeln"
 // scenario (issue #188): 面 has DE translation "Nudeln" while 面条 has DE
 // translation "Nudeln / Pasta" — a single multi-gloss entry rather than a
 // separate row. Plain string equality misses the overlap; the same
 // slash-alternative expansion CheckAnswer already applies (sm2.ExpandVariants)
 // must be used so "Nudeln" is recognised as one of 面条's valid variants.
-func TestSharesTranslation_SlashVariantOverlap(t *testing.T) {
+func TestSharedTranslation_SlashVariantOverlap(t *testing.T) {
 	s := openTestDB(t)
 	id1, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
 		ZhText:       "面",
@@ -748,12 +749,57 @@ func TestSharesTranslation_SlashVariantOverlap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	shared, err := s.SharesTranslation(context.Background(), id1, id2, []string{"en", "de"})
+	shared, err := s.SharedTranslation(context.Background(), id1, id2, []string{"en", "de"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !shared {
-		t.Error("expected shared=true: 面条's 'Nudeln / Pasta' includes the 'Nudeln' variant that 面 has")
+	if shared != "Nudeln" {
+		t.Errorf("shared = %q; want %q: 面条's 'Nudeln / Pasta' includes the 'Nudeln' variant that 面 has", shared, "Nudeln")
+	}
+	shared, err = s.SharedTranslation(context.Background(), id2, id1, []string{"en", "de"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shared != "Nudeln / Pasta" {
+		t.Errorf("reversed shared = %q; want %q (first word's text)", shared, "Nudeln / Pasta")
+	}
+}
+
+// Issue #617: the shared meaning comes from the first language in langs
+// that has one, so the user sees it in their primary language.
+func TestSharedTranslation_PrefersFirstLang(t *testing.T) {
+	s := openTestDB(t)
+	id1, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
+		ZhText:       "寻找",
+		Pinyin:       "xúnzhǎo",
+		Translations: map[string][]string{"en": {"look for"}, "de": {"suchen"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id2, err := s.CreateWord(context.Background(), int64(2), models.CreateWordRequest{
+		ZhText:       "找",
+		Pinyin:       "zhǎo",
+		Translations: map[string][]string{"en": {"look for"}, "de": {"suchen"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		langs []string
+		want  string
+	}{
+		{[]string{"de", "en"}, "suchen"},
+		{[]string{"en", "de"}, "look for"},
+	} {
+		shared, err := s.SharedTranslation(context.Background(), id1, id2, tc.langs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if shared != tc.want {
+			t.Errorf("langs %v: shared = %q; want %q", tc.langs, shared, tc.want)
+		}
 	}
 }
 

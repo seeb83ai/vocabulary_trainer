@@ -439,13 +439,17 @@ function renderWordAnswerResult(result, answer) {
       // Several words share the typed meaning, or (voice_to_zh) the typed
       // word sounds the same (issue #571) — ask for the word being learned.
       // For both modes currentCard.prompt is the word's first translation.
+      // A sentence card has no prompt: it shows the shared meaning and the
+      // word's translations from the result instead (issue #617).
+      const isSentence = currentCard.card_type === 'sentence';
+      const meaning = isSentence ? (result.ambiguous_meaning || '') : currentCard.prompt;
       setResultHead(result.homophone ? 'homophone' : 'ambiguous');
       const subtitle = $('result-subtitle');
-      subtitle.textContent = t(result.homophone ? 'result.homophoneBody' : 'result.ambiguousBody', { answer: currentCard.prompt });
+      subtitle.textContent = t(result.homophone ? 'result.homophoneBody' : 'result.ambiguousBody', { answer: meaning });
       show('result-subtitle');
 
       $('result-question-label').textContent = getModeLabel(currentCard.mode);
-      $('result-question-word').textContent = currentCard.prompt;
+      $('result-question-word').textContent = meaning;
       if (currentCard.pinyin) {
         $('result-question-pinyin').textContent = currentCard.pinyin;
         show('result-question-pinyin');
@@ -456,8 +460,9 @@ function renderWordAnswerResult(result, answer) {
         // Show all translations across all languages except the one already shown as prompt.
         // Example-sentence noise is dropped, as on the question screen: the user
         // still has to type the zh answer here (issue #465).
+        const source = isSentence ? result : currentCard;
         const { shown: others, collapsed: extraTexts } =
-          groupTranslationsByLang(currentCard.translations, currentCard.translations_extra, langs, currentCard.prompt, true);
+          groupTranslationsByLang(source.translations, source.translations_extra, langs, meaning, true);
         const all = [...others, ...extraTexts];
         if (all.length > 0) {
           $('result-question-translations').textContent = t('card.also', { list: all.join(' · ') });

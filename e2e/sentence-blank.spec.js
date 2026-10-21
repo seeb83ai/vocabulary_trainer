@@ -16,7 +16,7 @@ import { captureForPR } from './helpers/screenshot.js';
 // blanked, and the sentence's English translation is shown as context.
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function registerUserWithSentence(page) {
+async function registerUserWithSentence(page, translations = {}) {
   const email = `e2e-sentence-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
   const regRes = await page.request.post('/api/register', {
     data: { email, password: 'SentenceTest123!' },
@@ -31,7 +31,7 @@ async function registerUserWithSentence(page) {
   const idToZh = {};
   for (const w of words) {
     const res = await page.request.post('/api/words', {
-      data: { zh_text: w.zh, pinyin: w.pinyin, translations: { en: w.en }, tags: [], start_training: true },
+      data: { zh_text: w.zh, pinyin: w.pinyin, translations: { en: translations[w.zh] || w.en }, tags: [], start_training: true },
     });
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
@@ -305,6 +305,39 @@ test.describe('Sentence-blank training mode', () => {
 
     await expect.poll(() => audioRequests.length, { timeout: 5_000 }).toBeGreaterThan(0);
     expect(audioRequests[0]).toBe(`/api/audio/${sentenceId}`);
+  });
+
+  // issue #617: typing another word with the same meaning on a sentence card
+  // opens the "Right meaning, other word" screen. A sentence card has no
+  // prompt, so the screen must name the shared meaning itself: in the subtitle
+  // and as the recap word, with the word's other meanings below it.
+  test('the ambiguous screen names the shared meaning on a sentence card (issue #617)', async ({ page }) => {
+    const { idToZh } = await registerUserWithSentence(page, {
+      '我': ['I', 'me'], '买': ['buy', 'purchase'], '牛奶': ['milk', 'cow milk'],
+    });
+    const synonyms = {
+      '我': ['吾', 'I', 'me', 'wú'], '买': ['购买', 'buy', 'purchase', 'gòumǎi'], '牛奶': ['鲜乳', 'milk', 'cow milk', 'xiānrǔ'],
+    };
+    for (const [zh, meaning, , pinyin] of Object.values(synonyms)) {
+      const res = await page.request.post('/api/words', {
+        data: { zh_text: zh, pinyin, translations: { en: [meaning] }, tags: [], start_training: true },
+      });
+      expect(res.ok()).toBeTruthy();
+    }
+    const card = await (await page.request.get('/api/quiz/next?langs=en')).json();
+    expect(card.card_type).toBe('sentence');
+    const [typed, meaning, other] = synonyms[idToZh[card.word_id]];
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await page.locator('#answer-input').fill(typed);
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Right meaning, other word', { timeout: 8_000 });
+
+    await expect(page.locator('#result-subtitle')).toHaveText(`Several words mean “${meaning}”. Type the one you’re learning here.`);
+    await expect(page.locator('#result-question-word')).toHaveText(meaning);
+    await expect(page.locator('#result-question-translations')).toHaveText(`Also: ${other}`);
+    await captureForPR(page, 'sentence-ambiguous-meaning');
   });
 
   test('a normal word card result shows no sentence block (issue #557)', async ({ page }) => {

@@ -180,9 +180,9 @@ func TestLibraryReference_ReadPathsUseOverlay(t *testing.T) {
 	}
 
 	// Shared translation between two references.
-	shared, err := s.SharesTranslation(ctx, refEat, refDevour, []string{"en"})
-	if err != nil || !shared {
-		t.Errorf("SharesTranslation = %v, %v; want true", shared, err)
+	shared, err := s.SharedTranslation(ctx, refEat, refDevour, []string{"en"})
+	if err != nil || shared == "" {
+		t.Errorf("SharedTranslation = %q, %v; want a shared translation", shared, err)
 	}
 
 	// Confusion: answering "to swallow" for 吃 points at the 吞 reference
