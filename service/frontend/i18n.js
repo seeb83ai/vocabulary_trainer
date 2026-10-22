@@ -572,6 +572,9 @@ const I18N = {
     'landing.cta.haveAccount': 'Already have an account?',
 
     'landing.signin.welcome': 'Welcome back',
+    'landing.pwned.warning': 'Your password is in a list of leaked passwords. Change it to keep your account safe.',
+    'landing.pwned.change': 'Change password',
+    'landing.pwned.continue': 'Continue',
     'landing.signin.newHere': 'New here?',
     'landing.signin.createOne': 'Create an account',
 
@@ -1682,6 +1685,9 @@ const I18N = {
     'landing.cta.haveAccount': '已经有账户了？',
 
     'landing.signin.welcome': '欢迎回来',
+    'landing.pwned.warning': '你的密码出现在泄露密码列表中。请更改密码，以保护你的账户安全。',
+    'landing.pwned.change': '更改密码',
+    'landing.pwned.continue': '继续',
     'landing.signin.newHere': '刚来？',
     'landing.signin.createOne': '创建账户',
 
@@ -2792,6 +2798,9 @@ const I18N = {
     'landing.cta.haveAccount': 'Schon ein Konto?',
 
     'landing.signin.welcome': 'Willkommen zurück',
+    'landing.pwned.warning': 'Dein Passwort steht in einer Liste geleakter Passwörter. Ändere es, damit dein Konto sicher bleibt.',
+    'landing.pwned.change': 'Passwort ändern',
+    'landing.pwned.continue': 'Weiter',
     'landing.signin.newHere': 'Neu hier?',
     'landing.signin.createOne': 'Konto erstellen',
 

@@ -9,9 +9,9 @@ All endpoints are under `/api` and use JSON. Except for the demo endpoints, they
 | `GET` | `/api/demo/cards` | Public demo card list for the landing page (no auth, translations omitted) |
 | `POST` | `/api/demo/answer` | Check a demo answer statelessly (no auth; returns `correct` + accepted translations) |
 | `POST` | `/api/login` | Sign in with email and password; sets the session cookie. Five wrong passwords lock the account for 15 minutes |
-| `POST` | `/api/register` | Create an account; sends a verification email when SMTP is configured |
+| `POST` | `/api/register` | Create an account; sends a verification email when SMTP is configured. Returns `400` for a [leaked password](configuration.md#leaked-passwords-have-i-been-pwned) |
 | `GET` | `/api/verify-email` | Verify an email address with the token from the email |
-| `POST` | `/api/change-password` | Change the password of the signed-in user |
+| `POST` | `/api/change-password` | Change the password of the signed-in user. Returns `400` for a [leaked password](configuration.md#leaked-passwords-have-i-been-pwned) |
 | `GET` | `/api/quiz/next` | Get the next card to study (`mode`, `tags` query params; `difficult=true` serves only flagged difficult-drill words) |
 | `POST` | `/api/quiz/answer` | Submit an answer (a correct answer clears the word's difficult-drill flag). Send `drill: true` in the difficult-words drill, so the answer does not count as a review. Send `pinyin_seen`, `audio_played` and `play_pressed` to tell what help the user had before the answer. The server counts the answer in its [answer buckets](development.md#answer-buckets). The response has `leech_lapses` when the answer is a lapse that reaches the leech threshold (or a multiple of it), `homophone: true` on a wrong `voice_to_zh` answer with the same pinyin and tones as the word, and `needs_review: true` when the word is flagged for review |
 | `GET` | `/api/quiz/match-game` | Get a round of words for the match mini-game, picked at random among the user's enabled game modes (mismatch / newest / hardest / last-mistakes) that currently have enough eligible words; empty `words` if none qualify. Mismatch tiles may be words or hanzi components; other modes are word-only |

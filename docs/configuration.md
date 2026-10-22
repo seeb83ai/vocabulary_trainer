@@ -20,6 +20,7 @@ All configuration is read from environment variables (or a `.env` file). Copy `.
 | `DEEPL_API_KEY`, `DEEPL_TARGET_LANGUAGE`, `DEEPL_API_BASE_URL` | – | [DeepL translation](#auto-translate-free-dictionary-lookup--deepl) |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `LOCAL_LLM_*` | – | [LLM features](#llm-scene-and-sentence-generation) |
 | `GITHUB_TOKEN`, `GITHUB_ISSUE_*`, `GITHUB_ASSETS_BRANCH`, `GITHUB_API_BASE_URL` | – | [In-app issue reporting](#in-app-issue-reporting-github) |
+| `HIBP_API_URL` | `https://api.pwnedpasswords.com/range/` | [Leaked-password check](#leaked-passwords-have-i-been-pwned); `off` turns it off |
 | `IMPRESSUM_NAME`, `IMPRESSUM_ADDRESS`, `IMPRESSUM_EMAIL`, `IMPRESSUM_PHONE` | – | Legal notice at `/impressum` |
 | `RSYNC_DEST` | – | Target of `make release` |
 
@@ -28,6 +29,22 @@ All configuration is read from environment variables (or a `.env` file). Copy `.
 Every page and API endpoint, except the landing page, the demo quiz and login/registration, requires a session. The app redirects unauthenticated page requests to `/login`. Unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours.
 
 Users register with an email address. When SMTP is configured, the app sends a verification email with a link to `APP_URL`. The first migration can create an admin and a regular account from `ADMIN_EMAIL`/`ADMIN_PASSWORD` and `USER_EMAIL`/`USER_PASSWORD`.
+
+### Leaked passwords (Have I Been Pwned)
+
+The app does not accept a leaked password when you create an account or change your password. It checks the password against the [Have I Been Pwned](https://haveibeenpwned.com/Passwords) Pwned Passwords list. Only the first 5 characters of the password's SHA-1 hash leave the device (k-anonymity), with padding turned on.
+
+- The browser checks first and shows the error at once.
+- The server checks again in `/api/register` and `/api/change-password` and returns `400`. So a client that skips the browser check cannot set a leaked password.
+- When you log in with a leaked password, the login is successful, but a warning shows. *Change password* opens the password form in **Settings**. *Continue* goes to training.
+- When HIBP does not answer in 2 seconds or returns an error, the check is skipped and the password is accepted. The server writes a log line.
+
+```bash
+HIBP_API_URL=https://api.pwnedpasswords.com/range/  # default; the server check calls it
+HIBP_API_URL=off                                    # no server check, for example without internet access
+```
+
+`HIBP_API_URL` changes only the server check. The browser always calls `api.pwnedpasswords.com`, which the `Content-Security-Policy` allows in `connect-src`.
 
 ## Production hardening
 

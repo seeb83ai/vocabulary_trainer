@@ -109,6 +109,10 @@ var (
 	testGitHubAPIBaseURL = ""
 )
 
+// HIBP range API used by newRouter for the leaked-password check. Empty
+// turns the check off; tests point it at a mock with startMockHIBP.
+var testPwnedPasswordsURL = ""
+
 func newRouter(s *db.Store) http.Handler {
 	return newRouterWithUserID(s, 2)
 }
@@ -120,6 +124,7 @@ func newRouterWithUserID(s *db.Store, userID int64) http.Handler {
 	importH := &handlers.ImportHandler{Store: s, Worker: handlers.NewImportWorker(s)}
 	tagsH := &handlers.TagsHandler{Store: s}
 	authH, _ := handlers.NewAuthHandlerWithEnv(s, nil, "http://localhost:8080", "", "dev")
+	authH.PwnedPasswordsURL = testPwnedPasswordsURL
 	settingsH := handlers.NewSettingsHandler(s, authH.Secret())
 	translateH := &handlers.TranslateHandler{Store: s, APIKey: "test-key", TargetLang: "EN", SettingsHandler: settingsH}
 	componentH := &handlers.ComponentHandler{Store: s}

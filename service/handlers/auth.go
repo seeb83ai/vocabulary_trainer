@@ -97,6 +97,9 @@ type AuthHandler struct {
 	// sessionCache caches per-user sessions-invalidated-at cutoffs so session
 	// validation avoids a DB lookup on every request. Invalidated on password change.
 	sessionCache *invalidationCache
+	// PwnedPasswordsURL is the HIBP range API used to block leaked passwords
+	// on registration and password change. Empty turns the check off.
+	PwnedPasswordsURL string
 }
 
 // sessionCacheTTL bounds how long a stale invalidation cutoff may be served.
@@ -294,6 +297,10 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
 		return
 	}
+	if isPasswordPwned(r.Context(), a.PwnedPasswordsURL, req.Password) {
+		writeError(w, http.StatusBadRequest, errPwnedPassword)
+		return
+	}
 
 	existing, err := a.store.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
@@ -453,6 +460,10 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)) != nil {
 		writeError(w, http.StatusForbidden, "current password is incorrect")
+		return
+	}
+	if isPasswordPwned(r.Context(), a.PwnedPasswordsURL, req.NewPassword) {
+		writeError(w, http.StatusBadRequest, errPwnedPassword)
 		return
 	}
 

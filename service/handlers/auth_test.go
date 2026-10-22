@@ -2,7 +2,10 @@ package handlers_test
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -911,6 +914,120 @@ func TestRegister_ShortPassword(t *testing.T) {
 	}
 }
 
+// startMockHIBP serves the HIBP range API and reports the passwords in leaked
+// as leaked (and every other password as clean). newRouter uses the mock
+// until the test ends.
+func startMockHIBP(t *testing.T, leaked ...string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		prefix := strings.ToUpper(strings.TrimPrefix(r.URL.Path, "/range/"))
+		for _, pw := range leaked {
+			sum := sha1.Sum([]byte(pw))
+			h := strings.ToUpper(hex.EncodeToString(sum[:]))
+			if strings.HasPrefix(h, prefix) {
+				fmt.Fprintf(w, "%s:42\r\n", h[5:])
+			}
+		}
+	}))
+	t.Cleanup(srv.Close)
+	setPwnedPasswordsURL(t, srv.URL+"/range/")
+	return srv
+}
+
+func setPwnedPasswordsURL(t *testing.T, url string) {
+	t.Helper()
+	prev := testPwnedPasswordsURL
+	testPwnedPasswordsURL = url
+	t.Cleanup(func() { testPwnedPasswordsURL = prev })
+}
+
+func TestRegister_LeakedPassword_Rejected(t *testing.T) {
+	startMockHIBP(t, "testtest")
+	s := openTestDB(t)
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "leaked@example.com", "password": "testtest",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "data breach") {
+		t.Errorf("want data breach error, got %s", rec.Body)
+	}
+	if u, _ := s.GetUserByEmail(context.Background(), "leaked@example.com"); u != nil {
+		t.Error("account must not be created for a leaked password")
+	}
+}
+
+// A HIBP outage must never block a registration.
+func TestRegister_HIBPUnavailable_Allowed(t *testing.T) {
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(down.Close)
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+
+	for name, url := range map[string]string{
+		"error reply": down.URL + "/range/",
+		"unreachable": closed.URL + "/range/",
+	} {
+		t.Run(name, func(t *testing.T) {
+			setPwnedPasswordsURL(t, url)
+			r := newRouter(openTestDB(t))
+			rec := do(t, r, "POST", "/api/register", map[string]string{
+				"email": "outage@example.com", "password": "testtest",
+			})
+			if rec.Code != http.StatusOK {
+				t.Errorf("want 200, got %d: %s", rec.Code, rec.Body)
+			}
+		})
+	}
+}
+
+// Only the first five characters of the SHA-1 hash go to HIBP (k-anonymity),
+// with padding turned on.
+func TestRegister_HIBPGetsOnlyHashPrefix(t *testing.T) {
+	var gotPath, gotPadding string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotPadding = r.URL.Path, r.Header.Get("Add-Padding")
+	}))
+	t.Cleanup(srv.Close)
+	setPwnedPasswordsURL(t, srv.URL+"/range/")
+
+	r := newRouter(openTestDB(t))
+	do(t, r, "POST", "/api/register", map[string]string{
+		"email": "prefix@example.com", "password": "testtest",
+	})
+	sum := sha1.Sum([]byte("testtest"))
+	want := "/range/" + strings.ToUpper(hex.EncodeToString(sum[:]))[:5]
+	if gotPath != want {
+		t.Errorf("want path %q, got %q", want, gotPath)
+	}
+	if gotPadding != "true" {
+		t.Errorf("want Add-Padding: true, got %q", gotPadding)
+	}
+}
+
+// HIBP padding lines have a count of 0. They are not breach entries.
+func TestRegister_HIBPPaddingEntry_NotLeaked(t *testing.T) {
+	sum := sha1.Sum([]byte("testtest"))
+	suffix := strings.ToUpper(hex.EncodeToString(sum[:]))[5:]
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s:0\r\n", suffix)
+	}))
+	t.Cleanup(srv.Close)
+	setPwnedPasswordsURL(t, srv.URL+"/range/")
+
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/register", map[string]string{
+		"email": "padding@example.com", "password": "testtest",
+	})
+	if rec.Code != http.StatusOK {
+		t.Errorf("want 200, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
 func TestRegister_InvalidEmail(t *testing.T) {
 	r := newRouter(openTestDB(t))
 	rec := do(t, r, "POST", "/api/register", map[string]string{
@@ -1024,6 +1141,29 @@ func TestChangePassword_WrongCurrent(t *testing.T) {
 	})
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("want 403, got %d: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestChangePassword_LeakedNew_Rejected(t *testing.T) {
+	startMockHIBP(t, "testtest")
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/change-password", map[string]string{
+		"current_password": "I learn zh",
+		"new_password":     "testtest",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "data breach") {
+		t.Errorf("want data breach error, got %s", rec.Body)
+	}
+	// The old password still works.
+	rec = do(t, r, "POST", "/api/change-password", map[string]string{
+		"current_password": "I learn zh",
+		"new_password":     "newpassword123",
+	})
+	if rec.Code != http.StatusOK {
+		t.Errorf("old password must stay valid, got %d: %s", rec.Code, rec.Body)
 	}
 }
 
