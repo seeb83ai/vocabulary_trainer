@@ -48,18 +48,13 @@ function isAutoPlayBlockedByBlur(currentCard, noAutoVoiceOnBlur, blurPinyin) {
 }
 
 // autoPlayCard plays audio for the current card when the auto-play toggle is
-// on and the card is eligible, cutting off any still-playing previous clip.
+// on and the card is eligible (playAudio cuts off the previous clip).
 function autoPlayCard(currentCard) {
   if (!autoPlayEnabled || !shouldAutoPlay(currentCard)) return;
   if (isAutoPlayBlockedByBlur(currentCard, noAutoVoiceOnBlur, blurPinyin)) return;
-  if (currentAutoPlayAudio) {
-    currentAutoPlayAudio.pause();
-    currentAutoPlayAudio = null;
-  }
   questionAutoPlayed = true;
-  currentAutoPlayAudio = currentCard.card_type === 'component'
-    ? playComponentAudio(currentCard.prompt)
-    : playAudio(currentCard.word_id, currentCard.zh_text || currentCard.prompt);
+  if (currentCard.card_type === 'component') playComponentAudio(currentCard.prompt);
+  else playAudio(currentCard.word_id, currentCard.zh_text || currentCard.prompt);
 }
 
 // shouldAutoPlayResult decides whether the result screen should read out the
@@ -89,18 +84,13 @@ function resultAudioTarget(currentCard, zhText) {
 
 // autoPlayResultAudio plays the solved word's/component's Chinese audio (the
 // full sentence for sentence-blank cards) on the result screen when eligible
-// (see shouldAutoPlayResult), cutting off any still-playing previous clip.
+// (see shouldAutoPlayResult); playAudio cuts off the previous clip.
 function autoPlayResultAudio(currentCard, result) {
   if (!shouldAutoPlayResult(currentCard, autoPlayEnabled, questionAutoPlayed)) return;
-  if (currentAutoPlayAudio) {
-    currentAutoPlayAudio.pause();
-    currentAutoPlayAudio = null;
-  }
   questionAutoPlayed = true; // avoid double-firing if called again for the same card
   const target = resultAudioTarget(currentCard, result.zh_text);
-  currentAutoPlayAudio = currentCard.card_type === 'component'
-    ? playComponentAudio(currentCard.prompt)
-    : playAudio(target.id, target.text);
+  if (currentCard.card_type === 'component') playComponentAudio(currentCard.prompt);
+  else playAudio(target.id, target.text);
 }
 
 // applyPinyinBlur blurs the pinyin hint (if the user enabled the setting)

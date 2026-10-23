@@ -269,7 +269,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 ### Frontend (`service/frontend/`)
 | Path | Purpose |
 |---|---|
-| `service/frontend/app.js` | `apiFetch` (15 s timeout, `timeoutMs` option, caller `signal`), request guards (`latestRequest`, `withBusyButton`, `timeoutSignal`, `isAbortError`, `isTimeoutError`), `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`), app shell (More sheet, fullscreen), UI-language sync (`changeUILang`, `syncUILang`), report-issue dialog (with the last client error from `recordClientError`), tag groups (`tagGroupKey`, `groupTags`, `renderTagGroups`, ⓘ `.tag-help` pop) |
+| `service/frontend/app.js` | `apiFetch` (15 s timeout, `timeoutMs` option, caller `signal`), request guards (`latestRequest`, `withBusyButton`, `timeoutSignal`, `isAbortError`, `isTimeoutError`), `escHtml`, DOM helpers (`$`, `show`, `hide`, `setText`), app shell (More sheet, fullscreen), UI-language sync (`changeUILang`, `syncUILang`), report-issue dialog (with the last client error from `recordClientError`), audio (`playAudio`, `playComponentAudio`, `stopAudio` — one clip at a time), tag groups (`tagGroupKey`, `groupTags`, `renderTagGroups`, ⓘ `.tag-help` pop) |
 | `service/frontend/i18n.js` | Internationalisation helpers |
 | `service/frontend/demo.js` | Landing-page demo quiz widget |
 | `service/frontend/credits.html`, `service/frontend/credits.js` | Public `/credits` page (sources and licenses, EN/DE/ZH); license texts in `service/frontend/licenses/` (served at `/licenses/`, checked by `TestCreditsLicenseLinksAreEmbedded`). Keep it and `THIRD_PARTY_NOTICES.md` up to date when you add a data source, font or library |
@@ -344,6 +344,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/sentences.spec.js` | Browser tests: Vocabulary → Generate sentences (tag selection, focus words and even coverage, pick and add with a `_s` tag, no-LLM hint, phone layout); LLM endpoint mocked |
 | `e2e/client-errors.spec.js` | Browser tests: a result screen that fails to draw shows the error and loads the next card; the report dialog offers the last error (message, failed API call or stack) |
 | `e2e/session-progress.spec.js` | Browser tests: Train session bar "X of Y today" counts component and mnemonic scene answers; *Accept as correct* counts a word or component card once |
+| `e2e/audio-stop.spec.js` | Browser tests: audio that still loads does not play on the next card; a second tap on play while the clip loads plays it only once (issue #620) |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e/credits.spec.js` | Browser tests: landing footer and Settings link to `/credits`, sources with licenses, license text opens, page language |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |
