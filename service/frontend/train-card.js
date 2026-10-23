@@ -155,7 +155,6 @@ let latestStats = null;
 // on page load/reload so it doesn't surprise the user across sessions.
 let autoPlayEnabled = false;
 let autofocusInput = true;
-let currentAutoPlayAudio = null;
 // Tracks whether audio actually started playing for the current card via
 // autoPlayCard, so the result screen knows whether to play it there instead
 // (issue #272). Reset whenever loadNextCard replaces currentCard.
@@ -258,6 +257,8 @@ const nextCardRequest = latestRequest();
 async function loadNextCard(trackCurrent = false) {
   const signal = nextCardRequest();
   _noCardsPaused = true;  // pause until we confirm a card is ready
+  // A clip of the card we leave must not play on the next screen (#620).
+  stopAudio();
   // Every way off a result screen (Next, accept as correct, add translation)
   // ends here; only renderWordAnswerResult shows the leech box again.
   hide('leech-box');

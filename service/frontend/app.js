@@ -367,35 +367,56 @@ function setText(id, text) {
   if (el) el.textContent = text;
 }
 
-// playAudio plays the server-cached MP3 for wordId.
-// Falls back silently to the Web Speech API if the MP3 is unavailable.
-// Returns the Audio element so callers can track/stop it (e.g. auto-play).
-function playAudio(wordId, zhText) {
-  const audio = new Audio(`/api/audio/${wordId}`);
-  audio.play().catch(() => {
+// Only one clip plays at a time (issue #620). currentClip is the clip that
+// plays or still loads: { audio, url, loading, stopped }.
+let currentClip = null;
+
+// isClipLoading is true while the clip for url has not started to play yet.
+function isClipLoading(clip, url) {
+  return !!clip && clip.loading && !clip.stopped && clip.url === url;
+}
+
+// stopAudio stops the current clip and any speech fallback. A stopped clip
+// that still loads never plays and never falls back to speech. Call it when
+// the screen changes.
+function stopAudio() {
+  if (currentClip) {
+    currentClip.stopped = true;
+    currentClip.audio.pause();
+    currentClip = null;
+  }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+}
+
+// playClip plays the MP3 at url and stops the previous clip. A tap while the
+// same clip still loads does nothing. Falls back silently to the Web Speech
+// API (speaking text) if the MP3 is unavailable.
+function playClip(url, text) {
+  if (isClipLoading(currentClip, url)) return;
+  stopAudio();
+  const clip = { audio: new Audio(url), url, loading: true, stopped: false };
+  currentClip = clip;
+  clip.audio.play().then(() => { clip.loading = false; }, () => {
+    clip.loading = false;
+    if (clip.stopped) return;
     if ('speechSynthesis' in window) {
-      const u = new SpeechSynthesisUtterance(zhText);
+      const u = new SpeechSynthesisUtterance(text);
       u.lang = 'zh-CN';
       speechSynthesis.speak(u);
     }
   });
-  return audio;
+}
+
+// playAudio plays the server-cached MP3 for wordId.
+function playAudio(wordId, zhText) {
+  playClip(`/api/audio/${wordId}`, zhText);
 }
 
 // playComponentAudio plays TTS audio for a single component character.
 // Uses a dedicated endpoint (/api/audio/component/{char}) whose cached files
 // are named c_{hex}.mp3, distinct from word audio files ({word_id}.mp3).
-// Returns the Audio element so callers can track/stop it (e.g. auto-play).
 function playComponentAudio(char) {
-  const audio = new Audio(`/api/audio/component/${encodeURIComponent(char)}`);
-  audio.play().catch(() => {
-    if ('speechSynthesis' in window) {
-      const u = new SpeechSynthesisUtterance(char);
-      u.lang = 'zh-CN';
-      speechSynthesis.speak(u);
-    }
-  });
-  return audio;
+  playClip(`/api/audio/component/${encodeURIComponent(char)}`, char);
 }
 
 // Tag groups: tags with the same prefix (text before the first "-") form a

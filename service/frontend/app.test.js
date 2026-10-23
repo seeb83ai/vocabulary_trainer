@@ -714,3 +714,33 @@ describe('recentClientError', () => {
     expect(recentClientError({ message: 'x', time: 'nonsense' }, Date.now())).toBeNull();
   });
 });
+
+// ── isClipLoading (issue #620) ────────────────────────────────────────────────
+
+function isClipLoading(clip, url) {
+  return !!clip && clip.loading && !clip.stopped && clip.url === url;
+}
+
+describe('isClipLoading', () => {
+  const clip = (over = {}) => ({ url: '/api/audio/1', loading: true, stopped: false, ...over });
+
+  it('is true while the same clip still loads', () => {
+    expect(isClipLoading(clip(), '/api/audio/1')).toBe(true);
+  });
+
+  it('is false for another clip', () => {
+    expect(isClipLoading(clip(), '/api/audio/2')).toBe(false);
+  });
+
+  it('is false once the clip plays or failed', () => {
+    expect(isClipLoading(clip({ loading: false }), '/api/audio/1')).toBe(false);
+  });
+
+  it('is false for a stopped clip', () => {
+    expect(isClipLoading(clip({ stopped: true }), '/api/audio/1')).toBe(false);
+  });
+
+  it('is false when there is no clip', () => {
+    expect(isClipLoading(null, '/api/audio/1')).toBe(false);
+  });
+});
