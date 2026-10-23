@@ -176,6 +176,34 @@ test.describe('Sentence-blank training mode', () => {
     expect(card.sentence_blank).toContain('___');
   });
 
+  // issue #621: a "sentence" that is only one known word would leave nothing
+  // but the blank (prompt "___", context "从来"). It is not used.
+  test('a one-word sentence is never served as a sentence-blank card (issue #621)', async ({ page }) => {
+    const email = `e2e-sentence-oneword-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'SentenceTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    const wordRes = await page.request.post('/api/words', {
+      data: { zh_text: '从来', pinyin: 'cóng lái', translations: { en: ['always'] }, tags: [], start_training: true },
+    });
+    expect(wordRes.ok()).toBeTruthy();
+    const sentenceRes = await page.request.post('/api/words', {
+      data: { zh_text: '从来！', pinyin: 'cóng lái!', translations: { en: ['Always!'] }, tags: ['test_s'], start_training: false },
+    });
+    expect(sentenceRes.ok()).toBeTruthy();
+
+    const settings = await (await page.request.get('/api/settings')).json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...settings, sentence_blank_enabled: true, sentence_blank_ratio: 100 },
+    });
+    expect(patchRes.ok()).toBeTruthy();
+
+    const card = await (await page.request.get('/api/quiz/next?langs=en')).json();
+    expect(card.card_type).not.toBe('sentence');
+  });
+
   // issue #446: sentence-blank cards stay silent on the question screen (the
   // audio would give away the blanked word), but once the answer is revealed
   // on the result screen auto-play must read it out, same as every other

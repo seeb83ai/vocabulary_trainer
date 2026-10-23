@@ -195,6 +195,24 @@ func TestFindSentenceBlank_SentenceNotFullyCovered_NotEligible(t *testing.T) {
 	}
 }
 
+func TestFindSentenceBlank_OneWordSentence_NotEligible(t *testing.T) {
+	// Issue #621: a sentence that is only the due word would be blanked
+	// completely ("___"). At least one other word must stay next to the blank.
+	s := openTestDB(t)
+	ctx := context.Background()
+	conglai := seedWord(t, s, "从来", "cóng lái", []string{"always"})
+	seedWordWithTags(t, s, "从来！", "cóng lái!", []string{"Always!"}, []string{"test_s"})
+	markReviewed(t, s, conglai, 1, 1, time.Now().UTC().Add(-1*time.Hour))
+
+	match, err := s.findSentenceBlank(ctx, testUserID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match != nil {
+		t.Errorf("expected nil match for a one-word sentence, got %+v", match)
+	}
+}
+
 func TestFindSentenceBlank_TagFilterRestrictsToTrainedWords(t *testing.T) {
 	// Verify that the tag filter is applied: a due word in an untrained tag
 	// must not be selected as the blank target, even when it appears in an
@@ -368,6 +386,36 @@ func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *test
 	}
 	if card.SentenceBlank != "我___牛奶" {
 		t.Errorf("want blanked sentence 我___牛奶, got %q", card.SentenceBlank)
+	}
+}
+
+func TestNextSentenceBlankCard_TranslationAllBlank_FallsBackToZhBlank(t *testing.T) {
+	// Issue #621: the word's translation is the whole sentence translation,
+	// so the translation blank would be "___" alone. The zh side keeps 你.
+	s := openTestDB(t)
+	ctx := context.Background()
+	xiexie := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	ni := seedWord(t, s, "你", "nǐ", []string{"you"})
+	seedWordWithTags(t, s, "谢谢你。", "xiè xie nǐ.", []string{"Thank you."}, []string{"test_s"})
+
+	now := time.Now().UTC()
+	markReviewed(t, s, xiexie, 10, 10, now.Add(-1*time.Hour))
+	markReviewed(t, s, ni, 1, 1, now.Add(2*time.Hour))
+
+	cfg := defaultProgCfg()
+	cfg.Mastered = models.ModeZhToTransl
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, defaultNWCfg(), []string{"en"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card == nil {
+		t.Fatal("expected a card")
+	}
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("want fallback mode=transl_to_zh, got %q", card.Mode)
+	}
+	if card.SentenceBlank != "___你。" {
+		t.Errorf("want blanked sentence ___你。, got %q", card.SentenceBlank)
 	}
 }
 
