@@ -106,3 +106,28 @@ test.describe('Last error in the bug report', () => {
     await expect(page.locator('#issue-include-error')).not.toBeVisible();
   });
 });
+
+// Issue #621: an expired session (401) sends the user to /login. The page that
+// made the call must stop there, not run on with an empty reply and record
+// "Cannot read properties of undefined" as the last error.
+test.describe('Expired session', () => {
+  test('a 401 on the next card goes to login without a script error', async ({ page }) => {
+    await setup(page);
+    // Only once: the test session is still valid, so /login sends the
+    // browser back to the app, which must then load normally.
+    await page.route('**/api/quiz/next*', route => route.fulfill({
+      status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'unauthorized' }),
+    }), { times: 1 });
+    const toLogin = page.waitForRequest(r => r.isNavigationRequest() && new URL(r.url()).pathname === '/login');
+    await page.locator('#answer-input').fill('wrong');
+    await page.locator('#answer-form button[type="submit"]').click();
+    await expect(page.locator('#next-btn')).toBeVisible({ timeout: 8_000 });
+    await page.locator('#next-btn').click();
+
+    await toLogin;
+    await expect(page).toHaveURL(/\/train$/, { timeout: 10_000 });
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    const lastError = await page.evaluate(() => sessionStorage.getItem('lastClientError'));
+    expect(lastError).toBeNull();
+  });
+});

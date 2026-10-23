@@ -195,6 +195,49 @@ func TestFindSentenceBlank_SentenceNotFullyCovered_NotEligible(t *testing.T) {
 	}
 }
 
+func TestFindSentenceBlank_OneWordSentence_NotEligible(t *testing.T) {
+	// Issue #621: a sentence that is only the due word would be blanked
+	// completely ("___"). At least one other word must stay next to the blank.
+	s := openTestDB(t)
+	ctx := context.Background()
+	conglai := seedWord(t, s, "从来", "cóng lái", []string{"always"})
+	seedWordWithTags(t, s, "从来！", "cóng lái!", []string{"Always!"}, []string{"test_s"})
+	markReviewed(t, s, conglai, 1, 1, time.Now().UTC().Add(-1*time.Hour))
+
+	match, err := s.findSentenceBlank(ctx, testUserID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match != nil {
+		t.Errorf("expected nil match for a one-word sentence, got %+v", match)
+	}
+}
+
+func TestFindSentenceBlank_DictionaryWordSentence_NotEligible(t *testing.T) {
+	// Issue #621: 从来 from an old HSK "sentence" list is one dictionary word.
+	// With 从 and 来 known it splits into two characters, but it is still not
+	// a sentence and must not be used.
+	s := openTestDB(t)
+	ctx := context.Background()
+	cong := seedWord(t, s, "从", "cóng", []string{"from", "ever"})
+	lai := seedWord(t, s, "来", "lái", []string{"to come"})
+	seedWordWithTags(t, s, "从来", "cóng lái", []string{"always", "ever"}, []string{"hsk2-1_s"})
+	if err := s.SeedCedictEntryForTest(ctx, "从来", "en", "cong2 lai2", "always/at all times"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	markReviewed(t, s, cong, 1, 1, now.Add(-1*time.Hour))
+	markReviewed(t, s, lai, 1, 1, now.Add(-1*time.Hour))
+
+	match, err := s.findSentenceBlank(ctx, testUserID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match != nil {
+		t.Errorf("expected nil match for a dictionary word tagged as a sentence, got %+v", match)
+	}
+}
+
 func TestFindSentenceBlank_TagFilterRestrictsToTrainedWords(t *testing.T) {
 	// Verify that the tag filter is applied: a due word in an untrained tag
 	// must not be selected as the blank target, even when it appears in an
@@ -277,6 +320,9 @@ func TestNextSentenceBlankCard_ZhBlankDirection(t *testing.T) {
 	if card.SentenceContext != "I buy milk" {
 		t.Errorf("want context %q, got %q", "I buy milk", card.SentenceContext)
 	}
+	if card.AnswerLang != "zh" {
+		t.Errorf("want answer_lang=zh, got %q", card.AnswerLang)
+	}
 	assertFullSentence(t, card, sentence)
 }
 
@@ -331,7 +377,50 @@ func TestNextSentenceBlankCard_TranslationBlankDirection(t *testing.T) {
 	if card.SentenceContext != "我买牛奶" {
 		t.Errorf("want context 我买牛奶, got %q", card.SentenceContext)
 	}
+	if card.AnswerLang != "en" {
+		t.Errorf("want answer_lang=en, got %q", card.AnswerLang)
+	}
 	assertFullSentence(t, card, sentence)
+}
+
+func TestNextSentenceBlankCard_TranslationBlankInSecondLanguage_AnswerLangDE(t *testing.T) {
+	// Issue #621: with EN and DE selected, only the DE translation has the
+	// word, so the card asks for German.
+	s := openTestDB(t)
+	ctx := context.Background()
+	create := func(zh, pinyin string, tr map[string][]string, tags []string) int64 {
+		t.Helper()
+		id, err := s.CreateWord(ctx, testUserID, models.CreateWordRequest{ZhText: zh, Pinyin: pinyin, Translations: tr, Tags: tags})
+		if err != nil {
+			t.Fatalf("create %q: %v", zh, err)
+		}
+		return id
+	}
+	wo := create("我", "wǒ", map[string][]string{"en": {"I"}, "de": {"ich"}}, nil)
+	mai := create("买", "mǎi", map[string][]string{"en": {"buy"}, "de": {"kaufen"}}, nil)
+	niunai := create("牛奶", "niú nǎi", map[string][]string{"en": {"cow's milk"}, "de": {"Milch"}}, nil)
+	create("我买牛奶", "wǒ mǎi niú nǎi", map[string][]string{"en": {"I buy milk"}, "de": {"Ich kaufe Milch"}}, []string{"test_s"})
+
+	now := time.Now().UTC()
+	markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))
+	markReviewed(t, s, mai, 1, 1, now.Add(2*time.Hour))
+	markReviewed(t, s, niunai, 10, 10, now.Add(-1*time.Hour))
+
+	cfg := defaultProgCfg()
+	cfg.Mastered = models.ModeZhToTransl
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, defaultNWCfg(), []string{"en", "de"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card == nil {
+		t.Fatal("expected a card")
+	}
+	if card.SentenceBlank != "Ich kaufe ___" {
+		t.Errorf("want blanked translation 'Ich kaufe ___', got %q", card.SentenceBlank)
+	}
+	if card.AnswerLang != "de" {
+		t.Errorf("want answer_lang=de, got %q", card.AnswerLang)
+	}
 }
 
 func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *testing.T) {
@@ -368,6 +457,36 @@ func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *test
 	}
 	if card.SentenceBlank != "我___牛奶" {
 		t.Errorf("want blanked sentence 我___牛奶, got %q", card.SentenceBlank)
+	}
+}
+
+func TestNextSentenceBlankCard_TranslationAllBlank_FallsBackToZhBlank(t *testing.T) {
+	// Issue #621: the word's translation is the whole sentence translation,
+	// so the translation blank would be "___" alone. The zh side keeps 你.
+	s := openTestDB(t)
+	ctx := context.Background()
+	xiexie := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
+	ni := seedWord(t, s, "你", "nǐ", []string{"you"})
+	seedWordWithTags(t, s, "谢谢你。", "xiè xie nǐ.", []string{"Thank you."}, []string{"test_s"})
+
+	now := time.Now().UTC()
+	markReviewed(t, s, xiexie, 10, 10, now.Add(-1*time.Hour))
+	markReviewed(t, s, ni, 1, 1, now.Add(2*time.Hour))
+
+	cfg := defaultProgCfg()
+	cfg.Mastered = models.ModeZhToTransl
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, defaultNWCfg(), []string{"en"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card == nil {
+		t.Fatal("expected a card")
+	}
+	if card.Mode != models.ModeTranslToZh {
+		t.Errorf("want fallback mode=transl_to_zh, got %q", card.Mode)
+	}
+	if card.SentenceBlank != "___你。" {
+		t.Errorf("want blanked sentence ___你。, got %q", card.SentenceBlank)
 	}
 }
 

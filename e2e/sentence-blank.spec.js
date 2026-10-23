@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { captureForPR } from './helpers/screenshot.js';
+import { seedCedictEntry } from './helpers/db.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sentence fill-in-the-blank training mode.
@@ -94,9 +95,9 @@ test.describe('Sentence-blank training mode', () => {
     await expect(page.locator('#sentence-context')).toBeVisible();
     await expect(page.locator('#sentence-context')).toContainText('I buy milk');
     await expect(page.locator('#prompt-word')).toContainText('___');
-    // Issue #445: the shared answer input's placeholder must say "type the
-    // missing word" for sentence-blank cards, not the generic answer prompt.
-    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the missing word…');
+    // Issue #621: the placeholder names the language to type (here the zh
+    // sentence has the blank).
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type Chinese');
     await captureForPR(page, 'sentence-placeholder');
 
     await page.locator('#answer-input').fill(correctZh);
@@ -104,6 +105,25 @@ test.describe('Sentence-blank training mode', () => {
 
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('#result-icon')).toHaveText('Correct');
+  });
+
+  test('a translation blank names the language of the blanked sentence (issue #621)', async ({ page }) => {
+    const { idToZh } = await registerUserWithSentence(page);
+    const wordID = Number(Object.keys(idToZh).find(id => idToZh[id] === '买'));
+    await page.route('**/api/quiz/next*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        card_type: 'sentence', word_id: wordID, mode: 'zh_to_transl', answer_lang: 'de',
+        sentence_blank: 'Ich ___ Milch', sentence_context: '我买牛奶',
+      }),
+    }));
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('Ich ___ Milch');
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type German');
+    await captureForPR(page, 'sentence-placeholder-german');
   });
 
   test('a wrong answer to a sentence-blank card shows Wrong and the correct word', async ({ page }) => {
@@ -174,6 +194,42 @@ test.describe('Sentence-blank training mode', () => {
     expect(card.card_type).toBe('sentence');
     expect(Object.keys(idToZh).map(Number)).toContain(card.word_id);
     expect(card.sentence_blank).toContain('___');
+  });
+
+  // issue #621: an old HSK "sentence" list had single words such as 从来.
+  // With 从 and 来 known, it split into two characters, and the card blanked
+  // the whole sentence (prompt "___", context "从来"). A sentence that the
+  // dictionary has as one entry is a word, not a sentence: it is not used.
+  test('a sentence that is one dictionary word is never served (issue #621)', async ({ page }) => {
+    const email = `e2e-sentence-oneword-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
+    const regRes = await page.request.post('/api/register', {
+      data: { email, password: 'SentenceTest123!' },
+    });
+    expect(regRes.ok()).toBeTruthy();
+
+    for (const w of [
+      { zh: '从', pinyin: 'cóng', en: ['from', 'ever'] },
+      { zh: '来', pinyin: 'lái', en: ['to come'] },
+    ]) {
+      const res = await page.request.post('/api/words', {
+        data: { zh_text: w.zh, pinyin: w.pinyin, translations: { en: w.en }, tags: [], start_training: true },
+      });
+      expect(res.ok()).toBeTruthy();
+    }
+    const sentenceRes = await page.request.post('/api/words', {
+      data: { zh_text: '从来', pinyin: 'cóng lái', translations: { en: ['always', 'ever'] }, tags: ['test_s'], start_training: false },
+    });
+    expect(sentenceRes.ok()).toBeTruthy();
+    seedCedictEntry('从来', 'en', 'cong2 lai2', 'always/at all times/never (if used in negative sentence)');
+
+    const settings = await (await page.request.get('/api/settings')).json();
+    const patchRes = await page.request.patch('/api/settings', {
+      data: { ...settings, sentence_blank_enabled: true, sentence_blank_ratio: 100 },
+    });
+    expect(patchRes.ok()).toBeTruthy();
+
+    const card = await (await page.request.get('/api/quiz/next?langs=en')).json();
+    expect(card.card_type).not.toBe('sentence');
   });
 
   // issue #446: sentence-blank cards stay silent on the question screen (the

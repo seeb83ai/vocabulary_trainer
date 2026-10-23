@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
@@ -194,12 +195,26 @@ func (s *Store) findSentenceBlank(ctx context.Context, userID int64, tags []stri
 	if err != nil || len(candidates) == 0 {
 		return nil, err
 	}
+	// A "sentence" that the dictionary has as one entry is a word, e.g. 从来
+	// from an old HSK sentence list (issue #621).
+	texts := make([]string, len(candidates))
+	for i, c := range candidates {
+		texts[i] = stripSentencePunctuation(c.Text)
+	}
+	dictWords, err := s.LookupDictionaryBatch(ctx, texts, []string{"en", "de"})
+	if err != nil {
+		return nil, err
+	}
 
 	var best *sentenceBlankMatch
 	var bestDue time.Time
-	for _, c := range candidates {
-		segs, ok := segmentSentence(stripSentencePunctuation(c.Text), known)
-		if !ok || len(segs) == 0 {
+	for i, c := range candidates {
+		if dictWords[texts[i]] != nil {
+			continue
+		}
+		segs, ok := segmentSentence(texts[i], known)
+		// One word only would leave nothing but the blank (issue #621).
+		if !ok || len(segs) < 2 {
 			continue
 		}
 		for _, seg := range segs {
@@ -228,7 +243,8 @@ func (s *Store) findSentenceBlank(ctx context.Context, userID int64, tags []stri
 
 // locateTranslationBlank looks for any of wordTranslations as a
 // case-insensitive substring of sentenceTranslation and, if found, returns
-// sentenceTranslation with that substring replaced by the blank token.
+// sentenceTranslation with that substring replaced by the blank token. A match
+// that leaves no other word next to the blank does not count.
 func locateTranslationBlank(sentenceTranslation string, wordTranslations []string) (blanked string, found bool) {
 	lower := strings.ToLower(sentenceTranslation)
 	for _, wt := range wordTranslations {
@@ -238,6 +254,11 @@ func locateTranslationBlank(sentenceTranslation string, wordTranslations []strin
 		}
 		idx := strings.Index(lower, strings.ToLower(wt))
 		if idx == -1 {
+			continue
+		}
+		// Keep at least one other word next to the blank (issue #621).
+		rest := sentenceTranslation[:idx] + sentenceTranslation[idx+len(wt):]
+		if !strings.ContainsFunc(rest, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }) {
 			continue
 		}
 		return sentenceTranslation[:idx] + sentenceBlankToken + sentenceTranslation[idx+len(wt):], true
@@ -269,13 +290,16 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, cfg)
 	}
 
-	var sentenceTransTexts []string
+	var sentenceTransTexts, sentenceTransLangs []string
 	for _, lang := range langs {
 		texts, err := s.getTranslationTextsForZhWord(ctx, match.SentenceID, lang)
 		if err != nil {
 			return nil, err
 		}
 		sentenceTransTexts = append(sentenceTransTexts, texts...)
+		for range texts {
+			sentenceTransLangs = append(sentenceTransLangs, lang)
+		}
 	}
 
 	sentenceTranslation := strings.Join(sentenceTransTexts, " · ")
@@ -286,6 +310,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 			Mode:                models.ModeTranslToZh,
 			SentenceContext:     sentenceTranslation,
 			SentenceBlank:       strings.Replace(match.SentenceText, match.TargetText, sentenceBlankToken, 1),
+			AnswerLang:          "zh",
 			SentenceID:          match.SentenceID,
 			SentenceText:        match.SentenceText,
 			SentencePinyin:      match.SentencePinyin,
@@ -309,7 +334,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 		}
 		wordTransTexts = append(wordTransTexts, texts...)
 	}
-	for _, sentenceTrans := range sentenceTransTexts {
+	for i, sentenceTrans := range sentenceTransTexts {
 		if blanked, ok := locateTranslationBlank(sentenceTrans, wordTransTexts); ok {
 			return &models.QuizCard{
 				CardType:            "sentence",
@@ -317,6 +342,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 				Mode:                mode,
 				SentenceContext:     match.SentenceText,
 				SentenceBlank:       blanked,
+				AnswerLang:          sentenceTransLangs[i],
 				SentenceID:          match.SentenceID,
 				SentenceText:        match.SentenceText,
 				SentencePinyin:      match.SentencePinyin,
