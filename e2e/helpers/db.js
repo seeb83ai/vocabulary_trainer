@@ -178,3 +178,21 @@ export function seedDueComponent(email, character, definition) {
     db.close();
   }
 }
+
+/**
+ * Add a dictionary entry (cedict_entries), as import-cedict would.
+ * @param {string} simplified
+ * @param {string} lang 'en' or 'de'
+ * @param {string} pinyin
+ * @param {string} definition
+ */
+export function seedCedictEntry(simplified, lang, pinyin, definition) {
+  const db = new DatabaseSync(getDbPath());
+  try {
+    db.exec('PRAGMA busy_timeout = 5000');
+    db.prepare('INSERT INTO cedict_entries (simplified, lang, pinyin, definition) VALUES (?, ?, ?, ?)')
+      .run(simplified, lang, pinyin, definition);
+  } finally {
+    db.close();
+  }
+}

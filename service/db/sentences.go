@@ -195,11 +195,24 @@ func (s *Store) findSentenceBlank(ctx context.Context, userID int64, tags []stri
 	if err != nil || len(candidates) == 0 {
 		return nil, err
 	}
+	// A "sentence" that the dictionary has as one entry is a word, e.g. 从来
+	// from an old HSK sentence list (issue #621).
+	texts := make([]string, len(candidates))
+	for i, c := range candidates {
+		texts[i] = stripSentencePunctuation(c.Text)
+	}
+	dictWords, err := s.LookupDictionaryBatch(ctx, texts, []string{"en", "de"})
+	if err != nil {
+		return nil, err
+	}
 
 	var best *sentenceBlankMatch
 	var bestDue time.Time
-	for _, c := range candidates {
-		segs, ok := segmentSentence(stripSentencePunctuation(c.Text), known)
+	for i, c := range candidates {
+		if dictWords[texts[i]] != nil {
+			continue
+		}
+		segs, ok := segmentSentence(texts[i], known)
 		// One word only would leave nothing but the blank (issue #621).
 		if !ok || len(segs) < 2 {
 			continue

@@ -213,6 +213,31 @@ func TestFindSentenceBlank_OneWordSentence_NotEligible(t *testing.T) {
 	}
 }
 
+func TestFindSentenceBlank_DictionaryWordSentence_NotEligible(t *testing.T) {
+	// Issue #621: 从来 from an old HSK "sentence" list is one dictionary word.
+	// With 从 and 来 known it splits into two characters, but it is still not
+	// a sentence and must not be used.
+	s := openTestDB(t)
+	ctx := context.Background()
+	cong := seedWord(t, s, "从", "cóng", []string{"from", "ever"})
+	lai := seedWord(t, s, "来", "lái", []string{"to come"})
+	seedWordWithTags(t, s, "从来", "cóng lái", []string{"always", "ever"}, []string{"hsk2-1_s"})
+	if err := s.SeedCedictEntryForTest(ctx, "从来", "en", "cong2 lai2", "always/at all times"); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	markReviewed(t, s, cong, 1, 1, now.Add(-1*time.Hour))
+	markReviewed(t, s, lai, 1, 1, now.Add(-1*time.Hour))
+
+	match, err := s.findSentenceBlank(ctx, testUserID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if match != nil {
+		t.Errorf("expected nil match for a dictionary word tagged as a sentence, got %+v", match)
+	}
+}
+
 func TestFindSentenceBlank_TagFilterRestrictsToTrainedWords(t *testing.T) {
 	// Verify that the tag filter is applied: a due word in an untrained tag
 	// must not be selected as the blank target, even when it appears in an

@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import { captureForPR } from './helpers/screenshot.js';
+import { seedCedictEntry } from './helpers/db.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sentence fill-in-the-blank training mode.
@@ -195,23 +196,31 @@ test.describe('Sentence-blank training mode', () => {
     expect(card.sentence_blank).toContain('___');
   });
 
-  // issue #621: a "sentence" that is only one known word would leave nothing
-  // but the blank (prompt "___", context "从来"). It is not used.
-  test('a one-word sentence is never served as a sentence-blank card (issue #621)', async ({ page }) => {
+  // issue #621: an old HSK "sentence" list had single words such as 从来.
+  // With 从 and 来 known, it split into two characters, and the card blanked
+  // the whole sentence (prompt "___", context "从来"). A sentence that the
+  // dictionary has as one entry is a word, not a sentence: it is not used.
+  test('a sentence that is one dictionary word is never served (issue #621)', async ({ page }) => {
     const email = `e2e-sentence-oneword-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`;
     const regRes = await page.request.post('/api/register', {
       data: { email, password: 'SentenceTest123!' },
     });
     expect(regRes.ok()).toBeTruthy();
 
-    const wordRes = await page.request.post('/api/words', {
-      data: { zh_text: '从来', pinyin: 'cóng lái', translations: { en: ['always'] }, tags: [], start_training: true },
-    });
-    expect(wordRes.ok()).toBeTruthy();
+    for (const w of [
+      { zh: '从', pinyin: 'cóng', en: ['from', 'ever'] },
+      { zh: '来', pinyin: 'lái', en: ['to come'] },
+    ]) {
+      const res = await page.request.post('/api/words', {
+        data: { zh_text: w.zh, pinyin: w.pinyin, translations: { en: w.en }, tags: [], start_training: true },
+      });
+      expect(res.ok()).toBeTruthy();
+    }
     const sentenceRes = await page.request.post('/api/words', {
-      data: { zh_text: '从来！', pinyin: 'cóng lái!', translations: { en: ['Always!'] }, tags: ['test_s'], start_training: false },
+      data: { zh_text: '从来', pinyin: 'cóng lái', translations: { en: ['always', 'ever'] }, tags: ['test_s'], start_training: false },
     });
     expect(sentenceRes.ok()).toBeTruthy();
+    seedCedictEntry('从来', 'en', 'cong2 lai2', 'always/at all times/never (if used in negative sentence)');
 
     const settings = await (await page.request.get('/api/settings')).json();
     const patchRes = await page.request.patch('/api/settings', {
