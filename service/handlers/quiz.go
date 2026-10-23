@@ -651,8 +651,9 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 				resp.ConfusedWith = confusions
 			}
 			if req.Mode == models.ModeTranslToZh {
-				if shared, shareErr := h.Store.SharesTranslation(r.Context(), req.WordID, confusedWithID, langs); shareErr == nil && shared {
+				if shared, shareErr := h.Store.SharedTranslation(r.Context(), req.WordID, confusedWithID, langs); shareErr == nil && shared != "" {
 					resp.Ambiguous = true
+					resp.AmbiguousMeaning = shared
 				}
 			}
 		}

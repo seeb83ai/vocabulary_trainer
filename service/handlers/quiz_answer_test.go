@@ -663,6 +663,11 @@ func TestAnswerAmbiguous_TranslToZh_SetsAmbiguousFlag(t *testing.T) {
 	if !resp.Ambiguous {
 		t.Error("expected ambiguous=true when typed word shares a translation with the quiz word")
 	}
+	// Issue #617: sentence cards have no prompt, so the result names the
+	// shared meaning itself.
+	if resp.AmbiguousMeaning != "know" {
+		t.Errorf("ambiguous_meaning = %q; want %q", resp.AmbiguousMeaning, "know")
+	}
 	if resp.ConfusedWith == nil {
 		t.Error("expected confused_with to be populated")
 	}
@@ -695,6 +700,9 @@ func TestAnswerAmbiguous_NonSharedTranslation_NotAmbiguous(t *testing.T) {
 	}
 	if resp.Ambiguous {
 		t.Error("expected ambiguous=false when typed word does not share a translation")
+	}
+	if resp.AmbiguousMeaning != "" {
+		t.Errorf("ambiguous_meaning = %q; want empty", resp.AmbiguousMeaning)
 	}
 }
 
@@ -760,6 +768,9 @@ func TestAnswerAmbiguous_MultiGlossTranslation_SetsAmbiguousFlag(t *testing.T) {
 	}
 	if !resp.Ambiguous {
 		t.Error("expected ambiguous=true: 面条's 'Nudeln / Pasta' shares the 'Nudeln' meaning with 面")
+	}
+	if resp.AmbiguousMeaning != "Nudeln" {
+		t.Errorf("ambiguous_meaning = %q; want %q (the quiz word's own text)", resp.AmbiguousMeaning, "Nudeln")
 	}
 }
 

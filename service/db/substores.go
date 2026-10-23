@@ -86,7 +86,7 @@ type QuizStore interface {
 	GetRecentAccuracy(ctx context.Context, userID int64, days int) (pct float64, ok bool, err error)
 	CountLapsedWords(ctx context.Context, userID int64) (int, error)
 	AdvanceDueDates(ctx context.Context, userID int64, n int) (int, error)
-	SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error)
+	SharedTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (string, error)
 	FlagDifficultWords(ctx context.Context, userID int64, count int) (int, error)
 	GetWordsWrongToday(ctx context.Context, userID int64, langs []string) ([]models.WrongTodayWord, error)
 	MakeWordsWrongTodayDue(ctx context.Context, userID int64) (int, error)

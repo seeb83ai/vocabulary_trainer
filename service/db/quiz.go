@@ -475,13 +475,15 @@ func (s *Store) ClearCyclePinMode(ctx context.Context, wordID int64) error {
 	return err
 }
 
-// SharesTranslation returns true when zhWordID1 and zhWordID2 share at least
-// one translation in the given languages. If langs is empty it falls back to
-// ["en"]. Matching is done in Go using sm2.ExpandVariants (the same
-// slash-alternative / optional-parens expansion CheckAnswer applies) rather
-// than raw string equality, so a multi-gloss entry like "Nudeln / Pasta"
-// correctly overlaps with a plain "Nudeln" translation on another word.
-func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (bool, error) {
+// SharedTranslation returns a translation of wordID1 that wordID2 shares in
+// the given languages, or "" when they share none. If langs is empty it falls
+// back to ["en"]. Languages are tried in langs order, so the user's primary
+// language wins (issue #617). Matching is done in Go using sm2.ExpandVariants
+// (the same slash-alternative / optional-parens expansion CheckAnswer applies)
+// rather than raw string equality, so a multi-gloss entry like
+// "Nudeln / Pasta" correctly overlaps with a plain "Nudeln" translation on
+// another word. The result is wordID1's own text, not the normalised variant.
+func (s *Store) SharedTranslation(ctx context.Context, wordID1, wordID2 int64, langs []string) (string, error) {
 	if len(langs) == 0 {
 		langs = []string{"en"}
 	}
@@ -493,43 +495,45 @@ func (s *Store) SharesTranslation(ctx context.Context, wordID1, wordID2 int64, l
 	}
 	langList := strings.Join(placeholders, ",")
 
-	fetchVariants := func(wordID int64) (map[string]struct{}, error) {
-		rows, err := s.db.QueryContext(ctx, `
-			SELECT w.text FROM words w
-			JOIN user_translations t ON t.translation_word_id = w.id
-			WHERE t.zh_word_id = ? AND w.language IN (`+langList+`)`,
-			append([]any{wordID}, args...)...)
-		if err != nil {
-			return nil, fmt.Errorf("shares translation: %w", err)
-		}
-		defer rows.Close()
-		variants := map[string]struct{}{}
-		for rows.Next() {
-			var text string
-			if err := rows.Scan(&text); err != nil {
-				return nil, fmt.Errorf("shares translation: %w", err)
-			}
-			for _, v := range sm2.ExpandVariants(text) {
-				variants[v] = struct{}{}
-			}
-		}
-		return variants, rows.Err()
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT w.text FROM words w
+		JOIN user_translations t ON t.translation_word_id = w.id
+		WHERE t.zh_word_id = ? AND w.language IN (`+langList+`)`,
+		append([]any{wordID2}, args...)...)
+	if err != nil {
+		return "", fmt.Errorf("shared translation: %w", err)
 	}
+	variants2 := map[string]struct{}{}
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			rows.Close()
+			return "", fmt.Errorf("shared translation: %w", err)
+		}
+		for _, v := range sm2.ExpandVariants(text) {
+			variants2[v] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return "", fmt.Errorf("shared translation: %w", err)
+	}
+	rows.Close()
 
-	variants1, err := fetchVariants(wordID1)
-	if err != nil {
-		return false, err
-	}
-	variants2, err := fetchVariants(wordID2)
-	if err != nil {
-		return false, err
-	}
-	for v := range variants1 {
-		if _, ok := variants2[v]; ok {
-			return true, nil
+	for _, lang := range langs {
+		texts, err := s.getTranslationTextsForZhWord(ctx, wordID1, lang)
+		if err != nil {
+			return "", fmt.Errorf("shared translation: %w", err)
+		}
+		for _, text := range texts {
+			for _, v := range sm2.ExpandVariants(text) {
+				if _, ok := variants2[v]; ok {
+					return text, nil
+				}
+			}
 		}
 	}
-	return false, nil
+	return "", nil
 }
 
 // wrongTodayFilter selects the user's zh words that are not known and have a

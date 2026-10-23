@@ -335,6 +335,10 @@ type AnswerResponse struct {
 	PrevTier          string              `json:"prev_tier,omitempty"`
 	SceneText         string              `json:"scene_text,omitempty"`
 	Ambiguous         bool                `json:"ambiguous,omitempty"`
+	// AmbiguousMeaning is the translation the word shares with the typed
+	// word, set with Ambiguous. Sentence cards have no prompt, so the result
+	// screen shows this meaning instead (issue #617).
+	AmbiguousMeaning string `json:"ambiguous_meaning,omitempty"`
 	// Homophone is set on a wrong voice_to_zh answer with the same pinyin
 	// and tones as the word (issue #571).
 	Homophone        bool    `json:"homophone,omitempty"`
