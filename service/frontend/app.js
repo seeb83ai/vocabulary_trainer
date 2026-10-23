@@ -150,8 +150,10 @@ async function apiFetch(path, options = {}) {
       signal: ctrl.signal,
     });
     if (res.status === 401) {
+      // The page is leaving. Never settle, so the caller doesn't run on with
+      // an empty reply (issue #621).
       window.location.href = '/login';
-      return;
+      return new Promise(() => {});
     }
     if (!res.ok) {
       let errMsg = res.statusText;
