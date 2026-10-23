@@ -492,8 +492,12 @@ function translPlaceholderKey(answerLang) {
   return ANSWER_LANG_PLACEHOLDERS.includes(answerLang) ? `card.placeholderTransl.${answerLang}` : 'card.placeholder';
 }
 
+// Sentence cards name the language of the blanked side (issue #621).
 function placeholderKeyForCard(cardType, mode, answerLang) {
-  if (cardType === 'sentence') return 'card.placeholderSentence';
+  if (cardType === 'sentence') {
+    if (answerLang === 'zh') return 'card.placeholderZh';
+    return ANSWER_LANG_PLACEHOLDERS.includes(answerLang) ? translPlaceholderKey(answerLang) : 'card.placeholderSentence';
+  }
   if (!cardType && isZhAnswerMode(mode)) return 'card.placeholderZh';
   if (!cardType || cardType === 'component') return translPlaceholderKey(answerLang);
   return 'card.placeholder';
@@ -506,7 +510,8 @@ function currentAnswerLang() {
 
 function showCard() {
   show('card-area');
-  $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type, currentCard.mode, currentAnswerLang()));
+  const answerLang = currentCard.card_type === 'sentence' ? currentCard.answer_lang : currentAnswerLang();
+  $('answer-input').placeholder = t(placeholderKeyForCard(currentCard.card_type, currentCard.mode, answerLang));
   // Prompt size: Hanzi prompts are larger, sentence prompts smaller.
   const promptEl = $('prompt-word');
   const zhPrompt = currentCard.card_type === 'component' ||

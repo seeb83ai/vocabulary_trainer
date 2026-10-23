@@ -94,9 +94,9 @@ test.describe('Sentence-blank training mode', () => {
     await expect(page.locator('#sentence-context')).toBeVisible();
     await expect(page.locator('#sentence-context')).toContainText('I buy milk');
     await expect(page.locator('#prompt-word')).toContainText('___');
-    // Issue #445: the shared answer input's placeholder must say "type the
-    // missing word" for sentence-blank cards, not the generic answer prompt.
-    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type the missing word…');
+    // Issue #621: the placeholder names the language to type (here the zh
+    // sentence has the blank).
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type Chinese');
     await captureForPR(page, 'sentence-placeholder');
 
     await page.locator('#answer-input').fill(correctZh);
@@ -104,6 +104,25 @@ test.describe('Sentence-blank training mode', () => {
 
     await expect(page.locator('#result-icon')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('#result-icon')).toHaveText('Correct');
+  });
+
+  test('a translation blank names the language of the blanked sentence (issue #621)', async ({ page }) => {
+    const { idToZh } = await registerUserWithSentence(page);
+    const wordID = Number(Object.keys(idToZh).find(id => idToZh[id] === '买'));
+    await page.route('**/api/quiz/next*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        card_type: 'sentence', word_id: wordID, mode: 'zh_to_transl', answer_lang: 'de',
+        sentence_blank: 'Ich ___ Milch', sentence_context: '我买牛奶',
+      }),
+    }));
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#prompt-word')).toHaveText('Ich ___ Milch');
+    await expect(page.locator('#answer-input')).toHaveAttribute('placeholder', 'Type German');
+    await captureForPR(page, 'sentence-placeholder-german');
   });
 
   test('a wrong answer to a sentence-blank card shows Wrong and the correct word', async ({ page }) => {

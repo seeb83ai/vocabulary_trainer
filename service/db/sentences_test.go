@@ -295,6 +295,9 @@ func TestNextSentenceBlankCard_ZhBlankDirection(t *testing.T) {
 	if card.SentenceContext != "I buy milk" {
 		t.Errorf("want context %q, got %q", "I buy milk", card.SentenceContext)
 	}
+	if card.AnswerLang != "zh" {
+		t.Errorf("want answer_lang=zh, got %q", card.AnswerLang)
+	}
 	assertFullSentence(t, card, sentence)
 }
 
@@ -349,7 +352,50 @@ func TestNextSentenceBlankCard_TranslationBlankDirection(t *testing.T) {
 	if card.SentenceContext != "我买牛奶" {
 		t.Errorf("want context 我买牛奶, got %q", card.SentenceContext)
 	}
+	if card.AnswerLang != "en" {
+		t.Errorf("want answer_lang=en, got %q", card.AnswerLang)
+	}
 	assertFullSentence(t, card, sentence)
+}
+
+func TestNextSentenceBlankCard_TranslationBlankInSecondLanguage_AnswerLangDE(t *testing.T) {
+	// Issue #621: with EN and DE selected, only the DE translation has the
+	// word, so the card asks for German.
+	s := openTestDB(t)
+	ctx := context.Background()
+	create := func(zh, pinyin string, tr map[string][]string, tags []string) int64 {
+		t.Helper()
+		id, err := s.CreateWord(ctx, testUserID, models.CreateWordRequest{ZhText: zh, Pinyin: pinyin, Translations: tr, Tags: tags})
+		if err != nil {
+			t.Fatalf("create %q: %v", zh, err)
+		}
+		return id
+	}
+	wo := create("我", "wǒ", map[string][]string{"en": {"I"}, "de": {"ich"}}, nil)
+	mai := create("买", "mǎi", map[string][]string{"en": {"buy"}, "de": {"kaufen"}}, nil)
+	niunai := create("牛奶", "niú nǎi", map[string][]string{"en": {"cow's milk"}, "de": {"Milch"}}, nil)
+	create("我买牛奶", "wǒ mǎi niú nǎi", map[string][]string{"en": {"I buy milk"}, "de": {"Ich kaufe Milch"}}, []string{"test_s"})
+
+	now := time.Now().UTC()
+	markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))
+	markReviewed(t, s, mai, 1, 1, now.Add(2*time.Hour))
+	markReviewed(t, s, niunai, 10, 10, now.Add(-1*time.Hour))
+
+	cfg := defaultProgCfg()
+	cfg.Mastered = models.ModeZhToTransl
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, defaultNWCfg(), []string{"en", "de"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card == nil {
+		t.Fatal("expected a card")
+	}
+	if card.SentenceBlank != "Ich kaufe ___" {
+		t.Errorf("want blanked translation 'Ich kaufe ___', got %q", card.SentenceBlank)
+	}
+	if card.AnswerLang != "de" {
+		t.Errorf("want answer_lang=de, got %q", card.AnswerLang)
+	}
 }
 
 func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *testing.T) {

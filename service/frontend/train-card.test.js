@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ── Answer input placeholder ───────────────────────────────────────────────
 // Mirrors the i18n key selection in showCard(): sentence fill-in-the-blank
-// cards get a placeholder telling the user to type the missing word;
+// cards name the language of the blanked side, sent as answer_lang (issue
+// #621), and fall back to "type the missing word" without one;
 // transl_to_zh word cards ask for the Chinese; other word cards and component
 // cards name the answer language (issue #542); hmm cards keep the generic
 // answer placeholder.
@@ -14,7 +15,10 @@ function translPlaceholderKey(answerLang) {
 }
 
 function placeholderKeyForCard(cardType, mode, answerLang) {
-  if (cardType === 'sentence') return 'card.placeholderSentence';
+  if (cardType === 'sentence') {
+    if (answerLang === 'zh') return 'card.placeholderZh';
+    return ANSWER_LANG_PLACEHOLDERS.includes(answerLang) ? translPlaceholderKey(answerLang) : 'card.placeholderSentence';
+  }
   if (!cardType && (mode === 'transl_to_zh' || mode === 'voice_to_zh')) return 'card.placeholderZh';
   if (!cardType || cardType === 'component') return translPlaceholderKey(answerLang);
   return 'card.placeholder';
@@ -34,8 +38,18 @@ describe('translPlaceholderKey', () => {
 });
 
 describe('placeholderKeyForCard', () => {
-  it('uses the sentence-specific placeholder key for sentence cards', () => {
-    expect(placeholderKeyForCard('sentence', 'zh_to_transl', 'de')).toBe('card.placeholderSentence');
+  it('asks for the Chinese on sentence cards with a Chinese blank (issue #621)', () => {
+    expect(placeholderKeyForCard('sentence', 'transl_to_zh', 'zh')).toBe('card.placeholderZh');
+  });
+
+  it('names the language of the blanked translation on sentence cards (issue #621)', () => {
+    expect(placeholderKeyForCard('sentence', 'zh_to_transl', 'de')).toBe('card.placeholderTransl.de');
+    expect(placeholderKeyForCard('sentence', 'zh_to_transl', 'en')).toBe('card.placeholderTransl.en');
+  });
+
+  it('falls back to "type the missing word" on sentence cards without a known answer language', () => {
+    expect(placeholderKeyForCard('sentence', 'zh_to_transl', undefined)).toBe('card.placeholderSentence');
+    expect(placeholderKeyForCard('sentence', 'zh_to_transl', 'fr')).toBe('card.placeholderSentence');
   });
 
   it('asks for the Chinese on transl_to_zh word cards', () => {

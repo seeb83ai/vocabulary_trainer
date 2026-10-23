@@ -260,6 +260,9 @@ type QuizCard struct {
 	// the target word/substring replaced by "___".
 	SentenceContext string `json:"sentence_context,omitempty"`
 	SentenceBlank   string `json:"sentence_blank,omitempty"`
+	// AnswerLang is the language of the blanked side ("zh", or the language
+	// of the translation with the blank) for the input placeholder (#621).
+	AnswerLang string `json:"answer_lang,omitempty"`
 	// SentenceID, SentenceText, SentencePinyin and SentenceTranslation
 	// describe the full sentence (zh word ID, zh text, stored pinyin, joined
 	// translations) for the result screen, whichever side was blanked

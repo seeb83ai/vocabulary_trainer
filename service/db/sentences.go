@@ -277,13 +277,16 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, cfg)
 	}
 
-	var sentenceTransTexts []string
+	var sentenceTransTexts, sentenceTransLangs []string
 	for _, lang := range langs {
 		texts, err := s.getTranslationTextsForZhWord(ctx, match.SentenceID, lang)
 		if err != nil {
 			return nil, err
 		}
 		sentenceTransTexts = append(sentenceTransTexts, texts...)
+		for range texts {
+			sentenceTransLangs = append(sentenceTransLangs, lang)
+		}
 	}
 
 	sentenceTranslation := strings.Join(sentenceTransTexts, " · ")
@@ -294,6 +297,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 			Mode:                models.ModeTranslToZh,
 			SentenceContext:     sentenceTranslation,
 			SentenceBlank:       strings.Replace(match.SentenceText, match.TargetText, sentenceBlankToken, 1),
+			AnswerLang:          "zh",
 			SentenceID:          match.SentenceID,
 			SentenceText:        match.SentenceText,
 			SentencePinyin:      match.SentencePinyin,
@@ -317,7 +321,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 		}
 		wordTransTexts = append(wordTransTexts, texts...)
 	}
-	for _, sentenceTrans := range sentenceTransTexts {
+	for i, sentenceTrans := range sentenceTransTexts {
 		if blanked, ok := locateTranslationBlank(sentenceTrans, wordTransTexts); ok {
 			return &models.QuizCard{
 				CardType:            "sentence",
@@ -325,6 +329,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 				Mode:                mode,
 				SentenceContext:     match.SentenceText,
 				SentenceBlank:       blanked,
+				AnswerLang:          sentenceTransLangs[i],
 				SentenceID:          match.SentenceID,
 				SentenceText:        match.SentenceText,
 				SentencePinyin:      match.SentencePinyin,
