@@ -155,6 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const pwned = await isPasswordPwned(password);
       if (pwned) {
+        document.getElementById('hibp-continue').href = data.redirect || '/train';
         document.getElementById('hibp-warning').classList.remove('hidden');
         btn.disabled = false;
         btn.textContent = 'Sign In';

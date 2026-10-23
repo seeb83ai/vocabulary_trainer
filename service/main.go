@@ -158,6 +158,19 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialise auth: %v", err)
 	}
+	// Leaked-password check (HIBP) on registration and password change.
+	// HIBP_API_URL=off turns it off, for example on a server without
+	// internet access.
+	hibpURL := os.Getenv("HIBP_API_URL")
+	if hibpURL == "" {
+		hibpURL = handlers.DefaultPwnedPasswordsURL
+	}
+	if strings.EqualFold(hibpURL, "off") {
+		log.Printf("Leaked-password check disabled (HIBP_API_URL=off)")
+	} else {
+		authH.PwnedPasswordsURL = hibpURL
+		log.Printf("Leaked-password check enabled: %s", hibpURL)
+	}
 
 	settingsH := handlers.NewSettingsHandler(store, authH.Secret())
 

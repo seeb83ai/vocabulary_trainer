@@ -454,9 +454,12 @@
       </div>
 
       <!-- HIBP warning banner (shown after login with compromised password) -->
-      <div id="hibp-warning" class="hidden mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4">
-        <p class="text-amber-800 text-sm font-medium mb-2">⚠️ Your password has appeared in a data breach. We recommend changing it.</p>
-        <a href="/settings" class="inline-block text-sm bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-1.5 rounded-lg transition">Change Password</a>
+      <div id="hibp-warning" class="hidden mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4" role="alert">
+        <p class="text-amber-800 text-sm font-medium mb-3">⚠️ <span data-i18n="landing.pwned.warning">Your password is in a list of leaked passwords. Change it to keep your account safe.</span></p>
+        <div class="flex flex-wrap gap-2">
+          <a id="hibp-change" href="/settings#change-password" class="inline-block text-sm bg-amber-600 hover:bg-amber-700 text-white font-medium px-4 py-1.5 rounded-lg transition" data-i18n="landing.pwned.change">Change password</a>
+          <a id="hibp-continue" href="/train" class="inline-block text-sm bg-white border border-amber-300 hover:bg-amber-100 text-amber-800 font-medium px-4 py-1.5 rounded-lg transition" data-i18n="landing.pwned.continue">Continue</a>
+        </div>
       </div>
 
       <div class="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6">

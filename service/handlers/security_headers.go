@@ -14,7 +14,9 @@ import "net/http"
 //     <style> block. 'unsafe-inline' is the standard exception for
 //     Tailwind-style apps; it does not weaken script execution.
 //   - img-src 'self' data: — allow data: URIs for SVG icons.
-//   - connect-src 'self' — XHR/fetch only to same origin.
+//   - connect-src 'self' https://api.pwnedpasswords.com — XHR/fetch only to
+//     same origin, plus the HIBP range API for the browser-side
+//     leaked-password check.
 //
 // HSTS is intentionally absent here: it must be issued only over HTTPS,
 // which is the reverse proxy's responsibility (see deploy/nginx.conf).
@@ -22,7 +24,7 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"script-src 'self'; " +
 	"style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data:; " +
-	"connect-src 'self'; " +
+	"connect-src 'self' https://api.pwnedpasswords.com; " +
 	"font-src 'self' data:; " +
 	"frame-ancestors 'none'; " +
 	"base-uri 'self'; " +

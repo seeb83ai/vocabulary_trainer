@@ -252,6 +252,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/handlers/components.go` | Component (hanzi) quiz handlers |
 | `service/handlers/tags.go` | Tag detail and meta handlers |
 | `service/handlers/auth.go` | Registration, login, email verification, password change |
+| `service/handlers/pwned.go` | `isPasswordPwned` — HIBP k-anonymity leaked-password check for registration and password change (fails open) |
 | `service/handlers/pinyin_quiz.go` | `PinyinQuizHandler`: `Next`, `Answer`, `Stats`, `ServeAudio` |
 | `service/handlers/hmm.go` | HMM library (actors, locations, rooms, props) handlers |
 | `service/handlers/hmm_quiz.go` | HMM quiz `Next`, `Answer`, `Stats` handlers |
@@ -321,6 +322,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/helpers/api.js` | `seedWord()`, `parseSetCookieHeaders()` helpers for setup scripts |
 | `e2e/helpers/db.js` | Direct-SQLite seeding the REST API can't do (`seedYesterdayBucketSnapshot`, `seedReviewWord`, `getWordProgress`, `getTodayAnswerBuckets`, `makeWordDueNow`, `getWordDueDate`, `seedDueComponent`) |
 | `e2e/auth.spec.js` | Browser tests: login page, registration, wrong password, auth redirect |
+| `e2e/pwned-password.spec.js` | Browser tests: leaked password blocked on registration and password change (browser and server check), login warning with *Change password* / *Continue* |
 | `e2e/vocab.spec.js` | Browser tests: word list, add word, delete word |
 | `e2e/quiz.spec.js` | Browser tests: quiz card display, answer submission, next card |
 | `e2e/onboarding.spec.js` | Browser tests: setup wizard (4 steps, topics, known/review below-start words, saved settings), shared-library picker (any/all tags), training starts while the import runs |

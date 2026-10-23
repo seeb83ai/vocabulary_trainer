@@ -41,6 +41,9 @@ func TestSecurityHeaders_SetsAllExpected(t *testing.T) {
 		"frame-ancestors 'none'",
 		"base-uri 'self'",
 		"form-action 'self'",
+		// The browser-side leaked-password check (index.js, settings.js)
+		// calls the HIBP range API directly.
+		"connect-src 'self' https://api.pwnedpasswords.com",
 	} {
 		if !strings.Contains(csp, frag) {
 			t.Errorf("CSP missing %q (got %q)", frag, csp)

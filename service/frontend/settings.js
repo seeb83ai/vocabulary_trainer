@@ -898,6 +898,10 @@ document.getElementById('pw-toggle')?.addEventListener('click', e => {
   if (open) document.getElementById('pw-current')?.focus();
 });
 
+// /settings#change-password (from the leaked-password warning at login)
+// opens the password form.
+if (location.hash === '#change-password') document.getElementById('pw-toggle')?.click();
+
 // App language (Settings → Languages): stored on the server via changeUILang.
 function syncUILangButtons() {
   document.querySelectorAll('[data-ui-lang]').forEach(b => {

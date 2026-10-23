@@ -172,6 +172,7 @@ Save confirmations and error messages appear as a small hovering toast in the bo
 ## Self-hosting
 
 - User accounts with registration and email verification. See [Configuration](configuration.md#accounts-and-authentication).
+- Leaked passwords are not accepted when you create an account or change your password. A login with a leaked password shows a warning with a link to change it. See [Leaked passwords](configuration.md#leaked-passwords-have-i-been-pwned).
 - The app stores its SQLite database on the host filesystem.
 - The app runs in Docker or natively. The static frontend is embedded in the Go binary, so the app needs no Python or other external tools.
 - Deploy to a Raspberry Pi with `make release` (see [Self-hosting](self-hosting.md#deploy-to-raspberry-pi)). This target cross-compiles for `linux/arm64` and rsyncs the binary over SSH.

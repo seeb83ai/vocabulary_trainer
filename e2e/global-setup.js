@@ -11,6 +11,7 @@
  */
 
 import { execSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,6 +30,25 @@ export const MOCK_GITHUB_URL = `http://localhost:${MOCK_GITHUB_PORT}`;
 // stub via DEEPL_API_BASE_URL instead of api.deepl.com.
 export const MOCK_DEEPL_PORT = 18082;
 export const MOCK_DEEPL_URL = `http://localhost:${MOCK_DEEPL_PORT}`;
+
+// Mock HIBP Pwned Passwords range API (port 18083) for the server-side
+// leaked-password check. It reports SERVER_LEAKED_PASSWORD as leaked and all
+// other passwords as clean, so no E2E run sends hashes to the real API.
+export const MOCK_HIBP_PORT = 18083;
+export const MOCK_HIBP_URL = `http://localhost:${MOCK_HIBP_PORT}/range/`;
+export const SERVER_LEAKED_PASSWORD = 'testtest';
+
+function startMockHIBP() {
+  const hash = createHash('sha1').update(SERVER_LEAKED_PASSWORD).digest('hex').toUpperCase();
+  const server = createServer((req, res) => {
+    const prefix = (req.url || '').split('/').pop().toUpperCase();
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end(hash.startsWith(prefix) ? `${hash.slice(5)}:12345\r\n` : '');
+  });
+  server.listen(MOCK_HIBP_PORT);
+  server.unref();
+  console.log(`[E2E] Mock HIBP API listening on ${MOCK_HIBP_URL}`);
+}
 
 /**
  * Start a minimal mock of the DeepL /v2/translate endpoint. Returns
@@ -144,6 +164,7 @@ export default async function globalSetup() {
   // ── 0. Start the mock GitHub API and mock DeepL API ─────────────────────────
   startMockGitHub();
   startMockDeepL();
+  startMockHIBP();
 
   // ── 1. Build Go binary ──────────────────────────────────────────────────────
   console.log('[E2E] Building Go server binary…');
@@ -249,6 +270,8 @@ export default async function globalSetup() {
       // Enable Auto-translate against the mock DeepL API (no real key needed).
       DEEPL_API_KEY: 'e2e-test-deepl-key',
       DEEPL_API_BASE_URL: MOCK_DEEPL_URL,
+      // Server-side leaked-password check against the mock HIBP API.
+      HIBP_API_URL: MOCK_HIBP_URL,
     },
     stdio: 'pipe',
     detached: false,
