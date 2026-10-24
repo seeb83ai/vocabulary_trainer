@@ -1087,6 +1087,41 @@ func TestQuizAnswer_VoiceToZh(t *testing.T) {
 	}
 }
 
+// TestQuizAnswer_VoiceToTranslHomophone covers issue #624: on a voice_to_transl
+// card, a meaning of another word with the same pinyin and tones is flagged as
+// a homophone; a meaning of a word with other pinyin is not.
+func TestQuizAnswer_VoiceToTranslHomophone(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "角", "jiǎo", []string{"corner"})
+	markWordTrained(t, s, seedWord(t, s, "脚", "jiǎo", []string{"foot"}))
+	markWordTrained(t, s, seedWord(t, s, "叫", "jiào", []string{"call"}))
+	r := newRouter(s)
+
+	cases := []struct {
+		answer             string
+		correct, homophone bool
+	}{
+		{"corner", true, false},
+		{"foot", false, true},
+		{"call", false, false}, // other tone
+		{"table", false, false},
+	}
+	for _, c := range cases {
+		rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+			WordID: id, Mode: models.ModeVoiceToTransl, Answer: c.answer, Langs: []string{"en"},
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: want 200, got %d: %s", c.answer, rec.Code, rec.Body)
+		}
+		var resp models.AnswerResponse
+		decodeJSON(t, rec, &resp)
+		if resp.Correct != c.correct || resp.Homophone != c.homophone {
+			t.Errorf("%s: want correct=%v homophone=%v, got correct=%v homophone=%v",
+				c.answer, c.correct, c.homophone, resp.Correct, resp.Homophone)
+		}
+	}
+}
+
 func TestQuizAcceptCorrect_VoiceToZh(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "他", "tā", []string{"he"})

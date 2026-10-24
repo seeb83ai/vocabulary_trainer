@@ -649,6 +649,10 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 					confusions.ConfusedWithTranslationsExtra = extra
 				}
 				resp.ConfusedWith = confusions
+				// A meaning of a word with the same sound (issue #624).
+				if req.Mode == models.ModeVoiceToTransl {
+					resp.Homophone = sm2.SamePinyin(derefPinyin(confusions.ConfusedWithPinyin), derefPinyin(zhWord.Pinyin))
+				}
 			}
 			if req.Mode == models.ModeTranslToZh {
 				if shared, shareErr := h.Store.SharedTranslation(r.Context(), req.WordID, confusedWithID, langs); shareErr == nil && shared != "" {
