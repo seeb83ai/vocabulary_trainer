@@ -194,6 +194,14 @@ function isZhAnswerMode(mode) {
   return mode === 'transl_to_zh' || mode === 'voice_to_zh';
 }
 
+// isDisambigCorrect checks the answer typed again on the "Other word" and
+// "Same sound, other word" screens: the hanzi, or on a voice_to_transl card
+// a meaning of the word (issue #624).
+function isDisambigCorrect(typed, mode, zhText, translations) {
+  if (mode === 'voice_to_transl') return isTransCorrect(typed, translations);
+  return typed.trim().toLowerCase() === (zhText || '').toLowerCase();
+}
+
 function wrongRetypeFieldsForCard(retryMode, cardMode) {
   if (retryMode === 'both') return { requireZh: true, requireTrans: true };
   if (isZhAnswerMode(cardMode)) return { requireZh: true, requireTrans: false };

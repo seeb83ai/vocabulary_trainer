@@ -85,6 +85,41 @@ test.describe('Voice → Chinese (issue #571)', () => {
     await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
   });
 
+  // Issue #624: on a Voice → Translation card, the meaning of another word
+  // with the same sound shows the homophone screen with only a replay button.
+  test('Voice → Translation: a homophone\'s meaning shows a replay button and lets the user type again', async ({ page }) => {
+    const ids = await setupUser(page, 'voice_to_transl', [
+      { zh: '角', pinyin: 'jiǎo', en: ['corner'] },
+      { zh: '脚', pinyin: 'jiǎo', en: ['foot'] },
+    ]);
+    const word = await nextCard(page, 'voice_to_transl', ids);
+    const other = word.zh === '角' ? 'foot' : 'corner';
+    await page.route('**/api/audio/**', route => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) }));
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await submit(page, other);
+
+    await expect(page.locator('#result-icon')).toHaveText('Same sound, other word');
+    await expect(page.locator('#result-subtitle')).not.toContainText(word.en[0]);
+    await expect(page.locator('#result-question')).not.toContainText(word.en[0]);
+    await expect(page.locator('#result-question .result-question-play')).toBeVisible();
+    await expect(page.locator('#disambig-input')).toHaveAttribute('placeholder', 'Type English');
+    await captureForPR(page, 'train-voice-to-transl-homophone');
+
+    const audio = page.waitForRequest(req => req.url().includes('/api/audio/'));
+    await page.locator('#result-question .result-question-play').click();
+    await audio;
+
+    await page.locator('#disambig-input').fill(other);
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#disambig-feedback')).toBeVisible();
+
+    await page.locator('#disambig-input').fill(word.en[0]);
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
+  });
+
   test('a wrong word with other pinyin is a normal wrong answer', async ({ page }) => {
     await setupUser(page, 'voice_to_zh', [{ zh: '水', pinyin: 'shuǐ', en: ['water'] }]);
     await page.goto('/train');

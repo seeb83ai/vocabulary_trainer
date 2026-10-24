@@ -1037,3 +1037,26 @@ describe('isZhAnswerMode', () => {
     expect(isZhAnswerMode('voice_to_transl')).toBe(false);
   });
 });
+
+// ── isDisambigCorrect (issue #624) ──────────────────────────────────────────
+// Mirrors train-answer.js: the answer typed again on the "Other word" and
+// "Same sound, other word" screens.
+function isDisambigCorrect(typed, mode, zhText, translations) {
+  if (mode === 'voice_to_transl') return isTransCorrect(typed, translations);
+  return typed.trim().toLowerCase() === (zhText || '').toLowerCase();
+}
+
+describe('isDisambigCorrect', () => {
+  it('compares the hanzi on transl_to_zh and voice_to_zh cards', () => {
+    expect(isDisambigCorrect('角', 'voice_to_zh', '角', { en: ['corner'] })).toBe(true);
+    expect(isDisambigCorrect('脚', 'voice_to_zh', '角', { en: ['corner'] })).toBe(false);
+    expect(isDisambigCorrect('corner', 'transl_to_zh', '角', { en: ['corner'] })).toBe(false);
+  });
+  it('checks the meaning on voice_to_transl cards (issue #624)', () => {
+    const tr = { en: ['corner', 'angle'], de: ['Ecke'] };
+    expect(isDisambigCorrect('Corner ', 'voice_to_transl', '角', tr)).toBe(true);
+    expect(isDisambigCorrect('ecke', 'voice_to_transl', '角', tr)).toBe(true);
+    expect(isDisambigCorrect('foot', 'voice_to_transl', '角', tr)).toBe(false);
+    expect(isDisambigCorrect('角', 'voice_to_transl', '角', tr)).toBe(false);
+  });
+});

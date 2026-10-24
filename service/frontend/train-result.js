@@ -442,15 +442,26 @@ function renderWordAnswerResult(result, answer) {
       // A sentence card has no prompt: it shows the shared meaning and the
       // word's translations from the result instead (issue #617).
       const isSentence = currentCard.card_type === 'sentence';
+      // On a voice_to_transl card the meaning is the answer: the screen
+      // offers only the sound again (issue #624).
+      const isVoiceTransl = currentCard.mode === 'voice_to_transl';
       const meaning = isSentence ? (result.ambiguous_meaning || '') : currentCard.prompt;
       setResultHead(result.homophone ? 'homophone' : 'ambiguous');
       const subtitle = $('result-subtitle');
-      subtitle.textContent = t(result.homophone ? 'result.homophoneBody' : 'result.ambiguousBody', { answer: meaning });
+      subtitle.textContent = isVoiceTransl
+        ? t('result.homophoneTranslBody')
+        : t(result.homophone ? 'result.homophoneBody' : 'result.ambiguousBody', { answer: meaning });
       show('result-subtitle');
 
       $('result-question-label').textContent = getModeLabel(currentCard.mode);
-      $('result-question-word').textContent = meaning;
-      if (currentCard.pinyin) {
+      const questionWord = $('result-question-word');
+      if (isVoiceTransl) {
+        questionWord.innerHTML = speakerButtonHTML('result-question-play');
+        questionWord.querySelector('.result-question-play').addEventListener('click', playWord);
+      } else {
+        questionWord.textContent = meaning;
+      }
+      if (currentCard.pinyin && !isVoiceTransl) {
         $('result-question-pinyin').textContent = currentCard.pinyin;
         show('result-question-pinyin');
       } else {
@@ -485,7 +496,7 @@ function renderWordAnswerResult(result, answer) {
           <div class="tr-box tr-box-orange tr-disambig">
             <form id="disambig-form" class="tr-disambig-form">
               <input id="disambig-input" type="text" autocomplete="off" autocorrect="off" autocapitalize="off"
-                class="tr-input font-hanzi" placeholder="${escHtml(t('card.placeholderZh'))}" />
+                class="tr-input${isVoiceTransl ? '' : ' font-hanzi'}" placeholder="${escHtml(isVoiceTransl ? $('answer-input').placeholder : t('card.placeholderZh'))}" />
               <button type="submit" class="ui-btn tr-btn-orange">${escHtml(t('card.submit'))}</button>
             </form>
             <div id="disambig-feedback" class="tr-disambig-feedback hidden"></div>
@@ -519,7 +530,7 @@ function renderWordAnswerResult(result, answer) {
         ev.preventDefault();
         const typed = disambigInput.value.trim();
         if (!typed) return;
-        if (typed.toLowerCase() === result.zh_text.toLowerCase()) {
+        if (isDisambigCorrect(typed, currentCard.mode, result.zh_text, mergeTranslationMaps(result.translations, result.translations_extra))) {
           // Correct — upgrade to correct via AcceptCorrect. One request at a
           // time: a second submit would render the correct screen twice.
           if (ev.target.dataset.busy) return;
