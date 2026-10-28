@@ -8,7 +8,6 @@ import (
 	"unicode"
 
 	"vocabulary_trainer/models"
-	"vocabulary_trainer/sm2"
 )
 
 // sentenceBlankToken is the placeholder inserted where the target word or
@@ -267,10 +266,13 @@ func locateTranslationBlank(sentenceTranslation string, wordTranslations []strin
 }
 
 // NextSentenceBlankCard finds the next due word reachable through an
-// eligible sentence and builds the fill-in-the-blank card for it, resolving
-// direction via the same progressive-mode logic normal word cards use.
-// Returns (nil, nil) when no eligible sentence/due-word pair exists.
-func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg models.ProgressiveModeConfig, nwCfg models.NewWordModeConfig, langs []string, tags []string) (*models.QuizCard, error) {
+// eligible sentence and builds the fill-in-the-blank card for it. selectMode
+// picks the direction from the word's progress, as for a word card (issue
+// #626): a mode that asks for Chinese blanks the Chinese sentence, any other
+// mode blanks the translation. Returns (nil, nil) when no eligible
+// sentence/due-word pair exists, or when the translation has no blank for
+// the word.
+func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, langs []string, tags []string, selectMode func(models.SM2Progress) string) (*models.QuizCard, error) {
 	match, err := s.findSentenceBlank(ctx, userID, tags)
 	if err != nil || match == nil {
 		return nil, err
@@ -283,12 +285,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 		return nil, nil
 	}
 
-	var mode string
-	if progress.LearningNewWord {
-		mode = sm2.SelectNewWordMode(progress.TotalCorrect, nwCfg)
-	} else {
-		mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, cfg)
-	}
+	mode := selectMode(*progress)
 
 	var sentenceTransTexts, sentenceTransLangs []string
 	for _, lang := range langs {
@@ -303,7 +300,8 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 	}
 
 	sentenceTranslation := strings.Join(sentenceTransTexts, " · ")
-	zhBlankCard := func() *models.QuizCard {
+	switch mode {
+	case models.ModeTranslToZh, models.ModeMaskPinyin, models.ModeVoiceToZh:
 		return &models.QuizCard{
 			CardType:            "sentence",
 			WordID:              match.TargetWordID,
@@ -317,11 +315,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 			SentenceTranslation: sentenceTranslation,
 			DueDate:             progress.DueDate,
 			IntervalDays:        progress.IntervalDays,
-		}
-	}
-
-	if mode == models.ModeTranslToZh {
-		return zhBlankCard(), nil
+		}, nil
 	}
 
 	// Translation-blank direction: locate the blanked word's own translation
@@ -339,7 +333,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 			return &models.QuizCard{
 				CardType:            "sentence",
 				WordID:              match.TargetWordID,
-				Mode:                mode,
+				Mode:                models.ModeZhToTransl,
 				SentenceContext:     match.SentenceText,
 				SentenceBlank:       blanked,
 				AnswerLang:          sentenceTransLangs[i],
@@ -353,8 +347,7 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, cfg mod
 		}
 	}
 
-	// No substring match for direction (b) — fall back to direction (a),
-	// which never fails since the target text was derived from the sentence
-	// text itself.
-	return zhBlankCard(), nil
+	// No blank on the translation side. The Chinese side would change the
+	// direction, so the caller shows a word card instead (issue #626).
+	return nil, nil
 }

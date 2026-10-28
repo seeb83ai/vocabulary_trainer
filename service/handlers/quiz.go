@@ -129,6 +129,8 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 
 	langs := parseLangs(r, primaryLang)
 
+	requestedMode := r.URL.Query().Get("mode")
+
 	// Sentence fill-in-the-blank: when enabled, roll against the user's
 	// configured ratio to decide whether to attempt serving a sentence-blank
 	// card this turn instead of a normal word/HMM/component card. It shares
@@ -136,7 +138,9 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 	// the HMM/component candidate selection below entirely on a hit.
 	if !difficult && userSettings != nil && userSettings.SentenceBlankEnabled &&
 		rand.Intn(100) < userSettings.SentenceBlankRatio {
-		card, err := h.Store.NextSentenceBlankCard(r.Context(), userID, progCfg, nwCfg, langs, tags)
+		card, err := h.Store.NextSentenceBlankCard(r.Context(), userID, langs, tags, func(p models.SM2Progress) string {
+			return h.selectWordMode(r.Context(), p, requestedMode, userSettings, progCfg, nwCfg, randCfg)
+		})
 		if err != nil {
 			internalError(w, err)
 			return
@@ -270,8 +274,6 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	requestedMode := r.URL.Query().Get("mode")
-
 	// Progressive mode: new words (total_attempts==0) are shown as introductions
 	if progress.TotalAttempts == 0 {
 		card := models.QuizCard{
@@ -303,54 +305,7 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var mode string
-	if progress.LearningNewWord {
-		// The new-word introduction phase always follows the configured
-		// new_word_mode_0/1/2 ladder, regardless of the user's overall training
-		// mode (fixed mode, progressive, cycle, ...) — issue #435.
-		mode = sm2.SelectNewWordMode(progress.TotalCorrect, nwCfg)
-	} else {
-		switch requestedMode {
-		case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl, models.ModeVoiceToZh:
-			mode = requestedMode
-		case models.ModeProgressive:
-			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
-		case models.ModeCycle:
-			// Under advance-only-if-known/success, a wrong answer leaves the cycle
-			// position counter unchanged but can still shift the word's accuracy-tier
-			// bucket, which would otherwise re-filter the configured sequence into a
-			// different mode at the same position. Pin to the exact mode last shown
-			// (set by Answer on a wrong submission, cleared once the position actually
-			// advances) so the unresolved encounter keeps repeating the same question.
-			var pinnedMode string
-			if userSettings != nil && (userSettings.CycleAdvanceOnKnownOnly || userSettings.CycleAdvanceOnSuccessOnly) {
-				pinnedMode, err = h.Store.GetCyclePinMode(r.Context(), word.ID)
-				if err != nil {
-					log.Printf("quiz next: GetCyclePinMode word %d: %v", word.ID, err)
-					pinnedMode = ""
-				}
-			}
-			if pinnedMode != "" {
-				mode = pinnedMode
-			} else {
-				seqStr := sm2.DefaultCycleSequence
-				if userSettings != nil && userSettings.CycleSequence != "" {
-					seqStr = userSettings.CycleSequence
-				}
-				cycleCounter := progress.TotalAttempts
-				if userSettings != nil && userSettings.CycleAdvanceOnKnownOnly {
-					cycleCounter = progress.KnownCorrectCount
-				} else if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
-					cycleCounter = progress.TotalCorrect
-				}
-				bucket := sm2.ClassifyTier(*progress).BucketKey()
-				mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), bucket, randCfg)
-			}
-		default:
-			bucket := sm2.ClassifyTier(*progress).BucketKey()
-			mode = sm2.SelectMode(bucket, randCfg)
-		}
-	}
+	mode := h.selectWordMode(r.Context(), *progress, requestedMode, userSettings, progCfg, nwCfg, randCfg)
 
 	// mask_pinyin resolves to transl_to_zh with the pinyin hint forced on.
 	forceMaskPinyin := mode == models.ModeMaskPinyin
@@ -672,6 +627,62 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// selectWordMode picks the quiz direction for a seen zh word: the new-word
+// ladder, a fixed mode, Progressive, Cycle (with the mode pinned by a wrong
+// answer) or Random. Word cards and sentence cards share it (issue #626).
+func (h *QuizHandler) selectWordMode(ctx context.Context, progress models.SM2Progress, requestedMode string, userSettings *models.UserSettings, progCfg sm2.ProgressiveModeConfig, nwCfg sm2.NewWordModeConfig, randCfg sm2.RandomModeConfig) string {
+	var mode string
+	if progress.LearningNewWord {
+		// The new-word introduction phase always follows the configured
+		// new_word_mode_0/1/2 ladder, regardless of the user's overall training
+		// mode (fixed mode, progressive, cycle, ...) — issue #435.
+		mode = sm2.SelectNewWordMode(progress.TotalCorrect, nwCfg)
+	} else {
+		switch requestedMode {
+		case models.ModeTranslToZh, models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeMaskPinyin, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl, models.ModeVoiceToZh:
+			mode = requestedMode
+		case models.ModeProgressive:
+			mode = sm2.SelectProgressiveMode(progress.TotalCorrect, progress.TotalAttempts, progress.StreakBonus, progCfg)
+		case models.ModeCycle:
+			// Under advance-only-if-known/success, a wrong answer leaves the cycle
+			// position counter unchanged but can still shift the word's accuracy-tier
+			// bucket, which would otherwise re-filter the configured sequence into a
+			// different mode at the same position. Pin to the exact mode last shown
+			// (set by Answer on a wrong submission, cleared once the position actually
+			// advances) so the unresolved encounter keeps repeating the same question.
+			var pinnedMode string
+			if userSettings != nil && (userSettings.CycleAdvanceOnKnownOnly || userSettings.CycleAdvanceOnSuccessOnly) {
+				var err error
+				pinnedMode, err = h.Store.GetCyclePinMode(ctx, progress.WordID)
+				if err != nil {
+					log.Printf("quiz next: GetCyclePinMode word %d: %v", progress.WordID, err)
+					pinnedMode = ""
+				}
+			}
+			if pinnedMode != "" {
+				mode = pinnedMode
+			} else {
+				seqStr := sm2.DefaultCycleSequence
+				if userSettings != nil && userSettings.CycleSequence != "" {
+					seqStr = userSettings.CycleSequence
+				}
+				cycleCounter := progress.TotalAttempts
+				if userSettings != nil && userSettings.CycleAdvanceOnKnownOnly {
+					cycleCounter = progress.KnownCorrectCount
+				} else if userSettings != nil && userSettings.CycleAdvanceOnSuccessOnly {
+					cycleCounter = progress.TotalCorrect
+				}
+				bucket := sm2.ClassifyTier(progress).BucketKey()
+				mode = sm2.SelectCycleMode(cycleCounter, sm2.ParseCycleSequence(seqStr), bucket, randCfg)
+			}
+		default:
+			bucket := sm2.ClassifyTier(progress).BucketKey()
+			mode = sm2.SelectMode(bucket, randCfg)
+		}
+	}
+	return mode
 }
 
 // isHomophone reports whether the typed hanzi has the same pinyin and tones

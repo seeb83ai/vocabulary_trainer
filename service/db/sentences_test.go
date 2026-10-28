@@ -286,19 +286,21 @@ func TestFindSentenceBlank_TagFilterRestrictsToTrainedWords(t *testing.T) {
 
 // ── NextSentenceBlankCard ────────────────────────────────────────────────────
 
+// fixedMode is a NextSentenceBlankCard mode selector that always returns mode.
+func fixedMode(mode string) func(models.SM2Progress) string {
+	return func(models.SM2Progress) string { return mode }
+}
+
 func TestNextSentenceBlankCard_ZhBlankDirection(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	wo, mai, niunai, sentence := seedSentenceScenario(t, s)
 	now := time.Now().UTC()
 	markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))
-	// totalAttempts=1 (<3) → SelectProgressiveMode returns cfg.New → default transl_to_zh.
 	markReviewed(t, s, mai, 0, 1, now.Add(-1*time.Hour))
 	markReviewed(t, s, niunai, 1, 1, now.Add(2*time.Hour))
 
-	cfg := defaultProgCfg()
-	nwCfg := defaultNWCfg()
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"}, nil)
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, []string{"en"}, nil, fixedMode(models.ModeTranslToZh))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,6 +328,76 @@ func TestNextSentenceBlankCard_ZhBlankDirection(t *testing.T) {
 	assertFullSentence(t, card, sentence)
 }
 
+// TestNextSentenceBlankCard_SelectModeGetsTargetProgress checks that the
+// caller picks the direction from the blanked word's own progress, so the
+// sentence card follows the same training mode as a word card (issue #626).
+func TestNextSentenceBlankCard_SelectModeGetsTargetProgress(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	wo, mai, niunai, _ := seedSentenceScenario(t, s)
+	now := time.Now().UTC()
+	markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))
+	markReviewed(t, s, mai, 2, 3, now.Add(-1*time.Hour))
+	markReviewed(t, s, niunai, 1, 1, now.Add(2*time.Hour))
+
+	var got models.SM2Progress
+	_, err := s.NextSentenceBlankCard(ctx, testUserID, []string{"en"}, nil, func(p models.SM2Progress) string {
+		got = p
+		return models.ModeTranslToZh
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.WordID != mai || got.TotalCorrect != 2 || got.TotalAttempts != 3 {
+		t.Errorf("want progress of 买 (id %d, 2/3), got id %d, %d/%d", mai, got.WordID, got.TotalCorrect, got.TotalAttempts)
+	}
+}
+
+// TestNextSentenceBlankCard_ModeMapsByAnswerLanguage covers issue #626: a
+// sentence card has two forms only. Each mode keeps its answer language:
+// modes that ask for Chinese blank the Chinese sentence, all others blank
+// the translation.
+func TestNextSentenceBlankCard_ModeMapsByAnswerLanguage(t *testing.T) {
+	tests := []struct {
+		mode      string
+		wantMode  string
+		wantBlank string
+	}{
+		{models.ModeTranslToZh, models.ModeTranslToZh, "我买___"},
+		{models.ModeMaskPinyin, models.ModeTranslToZh, "我买___"},
+		{models.ModeVoiceToZh, models.ModeTranslToZh, "我买___"},
+		{models.ModeZhToTransl, models.ModeZhToTransl, "I buy ___"},
+		{models.ModeZhPinyinToTransl, models.ModeZhToTransl, "I buy ___"},
+		{models.ModeZhToTranslNoSound, models.ModeZhToTransl, "I buy ___"},
+		{models.ModeVoiceToTransl, models.ModeZhToTransl, "I buy ___"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.mode, func(t *testing.T) {
+			s := openTestDB(t)
+			ctx := context.Background()
+			wo, mai, niunai, _ := seedSentenceScenario(t, s)
+			now := time.Now().UTC()
+			markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))
+			markReviewed(t, s, mai, 1, 1, now.Add(2*time.Hour))
+			markReviewed(t, s, niunai, 10, 10, now.Add(-1*time.Hour))
+
+			card, err := s.NextSentenceBlankCard(ctx, testUserID, []string{"en"}, nil, fixedMode(tc.mode))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if card == nil {
+				t.Fatal("expected a card")
+			}
+			if card.Mode != tc.wantMode {
+				t.Errorf("want mode=%s, got %q", tc.wantMode, card.Mode)
+			}
+			if card.SentenceBlank != tc.wantBlank {
+				t.Errorf("want blank %q, got %q", tc.wantBlank, card.SentenceBlank)
+			}
+		})
+	}
+}
+
 // assertFullSentence checks the full-sentence fields the result screen shows
 // above the answer word (issue #557), whichever side was blanked.
 func assertFullSentence(t *testing.T, card *models.QuizCard, sentenceID int64) {
@@ -351,14 +423,10 @@ func TestNextSentenceBlankCard_TranslationBlankDirection(t *testing.T) {
 	now := time.Now().UTC()
 	markReviewed(t, s, wo, 1, 1, now.Add(1*time.Hour))
 	markReviewed(t, s, mai, 1, 1, now.Add(2*time.Hour))
-	// High accuracy, >=10 attempts → Mastered tier → cfg.Mastered. Earliest
-	// due date of the three, so it's the target word.
+	// Earliest due date of the three, so it's the target word.
 	markReviewed(t, s, niunai, 10, 10, now.Add(-1*time.Hour))
 
-	cfg := defaultProgCfg()
-	cfg.Mastered = models.ModeZhToTransl // pin instead of "random" for a deterministic test
-	nwCfg := defaultNWCfg()
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"}, nil)
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, []string{"en"}, nil, fixedMode(models.ModeZhToTransl))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,9 +474,7 @@ func TestNextSentenceBlankCard_TranslationBlankInSecondLanguage_AnswerLangDE(t *
 	markReviewed(t, s, mai, 1, 1, now.Add(2*time.Hour))
 	markReviewed(t, s, niunai, 10, 10, now.Add(-1*time.Hour))
 
-	cfg := defaultProgCfg()
-	cfg.Mastered = models.ModeZhToTransl
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, defaultNWCfg(), []string{"en", "de"}, nil)
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, []string{"en", "de"}, nil, fixedMode(models.ModeZhToTransl))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,12 +489,14 @@ func TestNextSentenceBlankCard_TranslationBlankInSecondLanguage_AnswerLangDE(t *
 	}
 }
 
-func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *testing.T) {
+// TestNextSentenceBlankCard_TranslationUnsupported_ReturnsNil covers issue
+// #626: when the translation side has no blank, the card must not switch to
+// the Chinese side — the caller shows a word card in the chosen direction.
+func TestNextSentenceBlankCard_TranslationUnsupported_ReturnsNil(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	// Sentence translation uses a conjugated form ("bought") that never
-	// appears verbatim in the word's own translation ("buy"), so direction
-	// (b) has no substring match and must fall back to direction (a).
+	// appears verbatim in the word's own translation ("buy").
 	wo := seedWord(t, s, "我", "wǒ", []string{"I"})
 	mai := seedWord(t, s, "买", "mǎi", []string{"buy"})
 	niunai := seedWord(t, s, "牛奶", "niú nǎi", []string{"milk"})
@@ -439,30 +507,19 @@ func TestNextSentenceBlankCard_TranslationUnsupported_FallsBackToZhBlank(t *test
 	markReviewed(t, s, mai, 10, 10, now.Add(-1*time.Hour))
 	markReviewed(t, s, niunai, 1, 1, now.Add(2*time.Hour))
 
-	cfg := defaultProgCfg()
-	cfg.Mastered = models.ModeZhToTransl
-	nwCfg := defaultNWCfg()
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, nwCfg, []string{"en"}, nil)
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, []string{"en"}, nil, fixedMode(models.ModeZhToTransl))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if card == nil {
-		t.Fatal("expected a card")
-	}
-	if card.WordID != mai {
-		t.Errorf("want word_id=%d (买), got %d", mai, card.WordID)
-	}
-	if card.Mode != models.ModeTranslToZh {
-		t.Errorf("want fallback mode=transl_to_zh, got %q", card.Mode)
-	}
-	if card.SentenceBlank != "我___牛奶" {
-		t.Errorf("want blanked sentence 我___牛奶, got %q", card.SentenceBlank)
+	if card != nil {
+		t.Errorf("want no sentence card, got mode %q blank %q", card.Mode, card.SentenceBlank)
 	}
 }
 
-func TestNextSentenceBlankCard_TranslationAllBlank_FallsBackToZhBlank(t *testing.T) {
+func TestNextSentenceBlankCard_TranslationAllBlank_ReturnsNil(t *testing.T) {
 	// Issue #621: the word's translation is the whole sentence translation,
-	// so the translation blank would be "___" alone. The zh side keeps 你.
+	// so the translation blank would be "___" alone. Issue #626: no switch
+	// to the Chinese side either.
 	s := openTestDB(t)
 	ctx := context.Background()
 	xiexie := seedWord(t, s, "谢谢", "xiè xie", []string{"thank you"})
@@ -473,20 +530,12 @@ func TestNextSentenceBlankCard_TranslationAllBlank_FallsBackToZhBlank(t *testing
 	markReviewed(t, s, xiexie, 10, 10, now.Add(-1*time.Hour))
 	markReviewed(t, s, ni, 1, 1, now.Add(2*time.Hour))
 
-	cfg := defaultProgCfg()
-	cfg.Mastered = models.ModeZhToTransl
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, cfg, defaultNWCfg(), []string{"en"}, nil)
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, []string{"en"}, nil, fixedMode(models.ModeZhToTransl))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if card == nil {
-		t.Fatal("expected a card")
-	}
-	if card.Mode != models.ModeTranslToZh {
-		t.Errorf("want fallback mode=transl_to_zh, got %q", card.Mode)
-	}
-	if card.SentenceBlank != "___你。" {
-		t.Errorf("want blanked sentence ___你。, got %q", card.SentenceBlank)
+	if card != nil {
+		t.Errorf("want no sentence card, got mode %q blank %q", card.Mode, card.SentenceBlank)
 	}
 }
 
@@ -496,30 +545,12 @@ func TestNextSentenceBlankCard_NoEligibleSentence_ReturnsNil(t *testing.T) {
 	id := seedWord(t, s, "水", "shuǐ", []string{"water"})
 	markReviewed(t, s, id, 1, 1, time.Now().UTC().Add(-1*time.Hour))
 
-	card, err := s.NextSentenceBlankCard(ctx, testUserID, defaultProgCfg(), defaultNWCfg(), []string{"en"}, nil)
+	card, err := s.NextSentenceBlankCard(ctx, testUserID, []string{"en"}, nil, fixedMode(models.ModeTranslToZh))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if card != nil {
 		t.Errorf("expected nil card when no sentence exists, got %+v", card)
-	}
-}
-
-func defaultProgCfg() models.ProgressiveModeConfig {
-	return models.ProgressiveModeConfig{
-		New:        models.ModeTranslToZh,
-		Struggling: models.ModeTranslToZh,
-		Learning:   models.ModeZhPinyinToTransl,
-		Practicing: models.ModeZhToTransl,
-		Mastered:   models.ModeZhToTransl,
-	}
-}
-
-func defaultNWCfg() models.NewWordModeConfig {
-	return models.NewWordModeConfig{
-		Step0: models.ModeTranslToZh,
-		Step1: models.ModeTranslToZh,
-		Step2: models.ModeZhToTransl,
 	}
 }
 
