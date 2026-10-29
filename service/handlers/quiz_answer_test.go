@@ -1087,6 +1087,50 @@ func TestQuizAnswer_VoiceToZh(t *testing.T) {
 	}
 }
 
+// TestQuizAnswer_VoiceOneDiffHomophone covers issue #628: on both voice cards,
+// an answer that differs from the word in one word (voice_to_transl) or one
+// character (voice_to_zh) with the same pinyin is a homophone, also when the
+// typed text is not a word of the user.
+func TestQuizAnswer_VoiceOneDiffHomophone(t *testing.T) {
+	s := openTestDB(t)
+	id := seedWord(t, s, "她有孩子", "tā yǒu háizi", []string{"she has a child"})
+	seedWord(t, s, "他", "tā", []string{"he"})
+	seedWord(t, s, "她", "tā", []string{"she"})
+	seedWord(t, s, "你", "nǐ", []string{"you"})
+	if _, err := s.ExecForTest(`INSERT INTO cedict_entries (simplified, pinyin, definition, lang) VALUES ('它', 'tā', 'it', 'en')`); err != nil {
+		t.Fatal(err)
+	}
+	r := newRouter(s)
+
+	cases := []struct {
+		mode, answer string
+		homophone    bool
+	}{
+		{models.ModeVoiceToTransl, "He has a child", true},
+		{models.ModeVoiceToTransl, "you has a child", false}, // other pinyin
+		{models.ModeVoiceToTransl, "it has a child", false},  // "it" is no word of the user
+		{models.ModeVoiceToTransl, "he has a dog", false},    // two words differ
+		{models.ModeVoiceToZh, "他有孩子", true},
+		{models.ModeVoiceToZh, "它有孩子", true}, // 它 from the dictionary
+		{models.ModeVoiceToZh, "你有孩子", false},
+		{models.ModeVoiceToZh, "他有孩们", false}, // two characters differ
+	}
+	for _, c := range cases {
+		rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+			WordID: id, Mode: c.mode, Answer: c.answer, Langs: []string{"en"},
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: want 200, got %d: %s", c.answer, rec.Code, rec.Body)
+		}
+		var resp models.AnswerResponse
+		decodeJSON(t, rec, &resp)
+		if resp.Correct || resp.Homophone != c.homophone {
+			t.Errorf("%s %q: want correct=false homophone=%v, got correct=%v homophone=%v",
+				c.mode, c.answer, c.homophone, resp.Correct, resp.Homophone)
+		}
+	}
+}
+
 // TestQuizAnswer_VoiceToTranslHomophone covers issue #624: on a voice_to_transl
 // card, a meaning of another word with the same pinyin and tones is flagged as
 // a homophone; a meaning of a word with other pinyin is not.

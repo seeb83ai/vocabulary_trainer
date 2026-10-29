@@ -58,6 +58,7 @@ type QuizStore interface {
 	CountLearningNewWords(ctx context.Context, userID int64, tags []string) (int, error)
 	GetWordCountByDueDate(ctx context.Context, userID int64, tags []string) ([]models.DueDateCount, error)
 	DetectConfusion(ctx context.Context, userID, zhWordID int64, answer, mode string, langs []string) (int64, bool, error)
+	TranslationPinyins(ctx context.Context, userID int64, texts []string) (map[string][]string, error)
 	UpsertConfusion(ctx context.Context, userID, zhWordID, confusedWithID int64, mode string) error
 	GetConfusionDetail(ctx context.Context, userID, zhWordID, confusedWithID int64, mode string, langs []string) (*models.ConfusionDetail, error)
 	GetConfusions(ctx context.Context, userID int64) ([]models.ConfusionDetail, error)

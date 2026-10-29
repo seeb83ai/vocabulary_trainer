@@ -33,6 +33,19 @@ async function setupUser(page, mode, words) {
   return ids;
 }
 
+// addKnownWords adds words that are never a quiz prompt, so the card under
+// test stays the only one.
+async function addKnownWords(page, words) {
+  for (const w of words) {
+    const res = await page.request.post('/api/words', {
+      data: { zh_text: w.zh, pinyin: w.pinyin, translations: { en: w.en }, tags: [] },
+    });
+    expect(res.ok()).toBeTruthy();
+    const known = await page.request.post(`/api/words/${(await res.json()).id}/known`, { data: { known: true } });
+    expect(known.ok()).toBeTruthy();
+  }
+}
+
 async function nextCard(page, mode, ids) {
   const res = await page.request.get(`/api/quiz/next?mode=${mode}&langs=en`);
   expect(res.ok()).toBeTruthy();
@@ -85,9 +98,55 @@ test.describe('Voice → Chinese (issue #571)', () => {
     await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
   });
 
+  // Issue #628: a typed word that differs from the word in one character with
+  // the same pinyin (他 for 她) is a homophone, also when the typed text is
+  // not a word of the user.
+  test('one character with the same sound shows the meaning and lets the user type again', async ({ page }) => {
+    const ids = await setupUser(page, 'voice_to_zh', [{ zh: '她有孩子', pinyin: 'tā yǒu háizi', en: ['she has a child'] }]);
+    await addKnownWords(page, [{ zh: '他', pinyin: 'tā', en: ['he'] }, { zh: '她', pinyin: 'tā', en: ['she'] }]);
+    expect(await nextCard(page, 'voice_to_zh', ids)).toBeTruthy();
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await submit(page, '他有孩子');
+
+    await expect(page.locator('#result-icon')).toHaveText('Same sound, other word');
+    await expect(page.locator('#result-question')).toContainText('she has a child');
+
+    await page.locator('#disambig-input').fill('她有孩子');
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
+  });
+
+  // Issue #628: on a Voice → Translation card, a meaning with one other word
+  // of the same sound ("he" for "she") shows the homophone screen with the
+  // hanzi and a replay button.
+  test('Voice → Translation: one other word with the same sound shows the hanzi and lets the user type again', async ({ page }) => {
+    const ids = await setupUser(page, 'voice_to_transl', [{ zh: '她有孩子', pinyin: 'tā yǒu háizi', en: ['she has a child'] }]);
+    await addKnownWords(page, [{ zh: '他', pinyin: 'tā', en: ['he'] }, { zh: '她', pinyin: 'tā', en: ['she'] }]);
+    expect(await nextCard(page, 'voice_to_transl', ids)).toBeTruthy();
+    await page.route('**/api/audio/**', route => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) }));
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await submit(page, 'He has a child');
+
+    await expect(page.locator('#result-icon')).toHaveText('Same sound, other word');
+    await expect(page.locator('#result-subtitle')).toHaveText('Your word sounds the same. Look at the Chinese and type the meaning again.');
+    await expect(page.locator('#result-question')).toContainText('她有孩子');
+    await expect(page.locator('#result-question')).not.toContainText('she has a child');
+    await expect(page.locator('#result-question .result-question-play')).toBeVisible();
+    await captureForPR(page, 'train-voice-to-transl-homophone-one-word');
+
+    await page.locator('#disambig-input').fill('she has a child');
+    await page.locator('#disambig-form button[type="submit"]').click();
+    await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
+  });
+
   // Issue #624: on a Voice → Translation card, the meaning of another word
-  // with the same sound shows the homophone screen with only a replay button.
-  test('Voice → Translation: a homophone\'s meaning shows a replay button and lets the user type again', async ({ page }) => {
+  // with the same sound shows the homophone screen with the hanzi (issue
+  // #628) and a replay button.
+  test('Voice → Translation: a homophone\'s meaning shows the hanzi and a replay button and lets the user type again', async ({ page }) => {
     const ids = await setupUser(page, 'voice_to_transl', [
       { zh: '角', pinyin: 'jiǎo', en: ['corner'] },
       { zh: '脚', pinyin: 'jiǎo', en: ['foot'] },
@@ -103,6 +162,7 @@ test.describe('Voice → Chinese (issue #571)', () => {
     await expect(page.locator('#result-icon')).toHaveText('Same sound, other word');
     await expect(page.locator('#result-subtitle')).not.toContainText(word.en[0]);
     await expect(page.locator('#result-question')).not.toContainText(word.en[0]);
+    await expect(page.locator('#result-question')).toContainText(word.zh);
     await expect(page.locator('#result-question .result-question-play')).toBeVisible();
     await expect(page.locator('#disambig-input')).toHaveAttribute('placeholder', 'Type English');
     await captureForPR(page, 'train-voice-to-transl-homophone');
