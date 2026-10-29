@@ -1,6 +1,7 @@
 package sm2
 
 import (
+	"reflect"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
@@ -1366,5 +1367,51 @@ func TestCheckHMMAnswer_SlashPartsMustAllMatch(t *testing.T) {
 	}
 	if CheckHMMAnswer("Wohnzimmer / Schlafzimmer / Küche", "Schlafzimmer / Wohnzimmer") {
 		t.Error("an extra part should not match")
+	}
+}
+
+// TestOneWordDiffs covers issue #628: an answer that differs from a correct
+// translation in exactly one word gives that pair of words.
+func TestOneWordDiffs(t *testing.T) {
+	cases := []struct {
+		answer       string
+		translations []string
+		want         [][2]string
+	}{
+		{"Er hat ein Kind", []string{"Sie hat ein Kind"}, [][2]string{{"er", "sie"}}},
+		{"he", []string{"she / her"}, [][2]string{{"he", "her"}, {"he", "she"}}},
+		{"he has a child.", []string{"she has a child"}, [][2]string{{"he", "she"}}},
+		{"he has two children", []string{"she has a child"}, nil},
+		{"he has", []string{"she has a child"}, nil},
+		{"she has a child", []string{"she has a child"}, nil},
+		{"", []string{"she"}, nil},
+	}
+	for _, c := range cases {
+		if got := OneWordDiffs(c.answer, c.translations); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("OneWordDiffs(%q, %q) = %q, want %q", c.answer, c.translations, got, c.want)
+		}
+	}
+}
+
+// TestOneCharDiff covers issue #628: typed hanzi that differ from the word in
+// exactly one character give that pair of characters.
+func TestOneCharDiff(t *testing.T) {
+	cases := []struct {
+		answer, word string
+		got, want    string
+		ok           bool
+	}{
+		{"他有孩子", "她有孩子", "他", "她", true},
+		{"他", "她", "他", "她", true},
+		{"他有子", "她有孩子", "", "", false},
+		{"他有孩们", "她有孩子", "", "", false},
+		{"她有孩子", "她有孩子", "", "", false},
+		{" 他有孩子 ", "她有孩子", "他", "她", true},
+	}
+	for _, c := range cases {
+		got, want, ok := OneCharDiff(c.answer, c.word)
+		if got != c.got || want != c.want || ok != c.ok {
+			t.Errorf("OneCharDiff(%q, %q) = %q, %q, %v; want %q, %q, %v", c.answer, c.word, got, want, ok, c.got, c.want, c.ok)
+		}
 	}
 }

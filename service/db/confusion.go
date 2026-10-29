@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"vocabulary_trainer/models"
@@ -135,6 +136,58 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 	default:
 		return 0, false, nil
 	}
+}
+
+// TranslationPinyins returns, for each of texts, the sorted pinyins of the
+// user's own zh words (trained or not) that have it as a translation in any
+// language, keyed by the normalised text. Texts with no such word are left
+// out. Used for the one-word homophone check on voice_to_transl (issue #628).
+func (s *Store) TranslationPinyins(ctx context.Context, userID int64, texts []string) (map[string][]string, error) {
+	wanted := map[string]bool{}
+	for _, t := range texts {
+		if n := sm2.NormalizeAnswer(t); n != "" {
+			wanted[n] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT wz.pinyin, w.text FROM words wz
+		JOIN user_translations t ON t.zh_word_id = wz.id
+		JOIN words w ON w.id = t.translation_word_id
+		WHERE wz.user_id = ? AND wz.language = 'zh' AND wz.pinyin IS NOT NULL AND wz.pinyin != ''`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("translation pinyins: %w", err)
+	}
+	defer rows.Close()
+	seen := map[string]map[string]bool{}
+	for rows.Next() {
+		var pinyin, text string
+		if err := rows.Scan(&pinyin, &text); err != nil {
+			return nil, fmt.Errorf("scan translation pinyins: %w", err)
+		}
+		for _, v := range sm2.ExpandVariants(text) {
+			if !wanted[v] {
+				continue
+			}
+			if seen[v] == nil {
+				seen[v] = map[string]bool{}
+			}
+			seen[v][pinyin] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("translation pinyins: %w", err)
+	}
+	out := make(map[string][]string, len(seen))
+	for text, pinyins := range seen {
+		for p := range pinyins {
+			out[text] = append(out[text], p)
+		}
+		slices.Sort(out[text])
+	}
+	return out, nil
 }
 
 // upsertConfusion records or increments a confusion pair. Exactly one of

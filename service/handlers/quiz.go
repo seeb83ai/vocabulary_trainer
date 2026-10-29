@@ -668,6 +668,13 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Mode == models.ModeVoiceToZh {
 			resp.Homophone = h.isHomophone(r.Context(), req.Answer, derefPinyin(zhWord.Pinyin))
+			// One other character with the same sound, e.g. 他 for 她 (issue #628).
+			if typed, want, ok := sm2.OneCharDiff(req.Answer, zhWord.ZhText); ok && !resp.Homophone {
+				resp.Homophone = h.isHomophone(r.Context(), typed, h.zhPinyin(r.Context(), want))
+			}
+		}
+		if req.Mode == models.ModeVoiceToTransl && !resp.Homophone {
+			resp.Homophone = h.isOneWordHomophone(r.Context(), req.Answer, correctTexts)
 		}
 	}
 
@@ -681,20 +688,52 @@ func (h *QuizHandler) isHomophone(ctx context.Context, answer, wordPinyin string
 	if answer == "" || wordPinyin == "" {
 		return false
 	}
-	var answerPinyin string
-	if p, err := h.Store.GetPinyinByZhText(ctx, UserIDFromContext(ctx), answer); err != nil {
-		log.Printf("answer: GetPinyinByZhText %q: %v", answer, err)
+	return sm2.SamePinyin(h.zhPinyin(ctx, answer), wordPinyin)
+}
+
+// zhPinyin returns the pinyin of the hanzi text from the user's own words, else
+// from the dictionary, or "" when neither has it.
+func (h *QuizHandler) zhPinyin(ctx context.Context, text string) string {
+	if p, err := h.Store.GetPinyinByZhText(ctx, UserIDFromContext(ctx), text); err != nil {
+		log.Printf("answer: GetPinyinByZhText %q: %v", text, err)
 	} else if p != nil {
-		answerPinyin = *p
+		return *p
 	}
-	if answerPinyin == "" {
-		p, err := h.Store.LookupPinyin(ctx, answer)
-		if err != nil {
-			log.Printf("answer: LookupPinyin %q: %v", answer, err)
+	p, err := h.Store.LookupPinyin(ctx, text)
+	if err != nil {
+		log.Printf("answer: LookupPinyin %q: %v", text, err)
+	}
+	return p
+}
+
+// isOneWordHomophone reports whether the typed meaning differs from one of the
+// correct translations in exactly one word, and the typed and the correct word
+// are translations of the user's words with the same pinyin and tones, e.g.
+// "he has a child" for "she has a child" (他/她 tā, issue #628).
+func (h *QuizHandler) isOneWordHomophone(ctx context.Context, answer string, translations []string) bool {
+	pairs := sm2.OneWordDiffs(answer, translations)
+	if len(pairs) == 0 {
+		return false
+	}
+	var texts []string
+	for _, p := range pairs {
+		texts = append(texts, p[0], p[1])
+	}
+	pinyins, err := h.Store.TranslationPinyins(ctx, UserIDFromContext(ctx), texts)
+	if err != nil {
+		log.Printf("answer: TranslationPinyins: %v", err)
+		return false
+	}
+	for _, p := range pairs {
+		for _, typed := range pinyins[p[0]] {
+			for _, want := range pinyins[p[1]] {
+				if sm2.SamePinyin(typed, want) {
+					return true
+				}
+			}
 		}
-		answerPinyin = p
 	}
-	return sm2.SamePinyin(answerPinyin, wordPinyin)
+	return false
 }
 
 // AcceptCorrect handles POST /api/quiz/accept-correct. It restores the pre-answer

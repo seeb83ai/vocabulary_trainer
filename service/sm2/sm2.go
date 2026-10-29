@@ -330,6 +330,75 @@ func expandVariants(a string) []string {
 	return out
 }
 
+// OneWordDiffs returns the (typed word, correct word) pairs for every variant
+// of translations that has as many words as the answer and differs from it in
+// exactly one word, e.g. "he has a child" vs "she has a child" gives
+// ("he", "she"). The pairs are sorted (issue #628).
+func OneWordDiffs(answer string, translations []string) [][2]string {
+	words := strings.Fields(normalize(answer))
+	if len(words) == 0 {
+		return nil
+	}
+	seen := map[[2]string]bool{}
+	var out [][2]string
+	for _, tr := range translations {
+		for _, v := range expandVariants(tr) {
+			correct := strings.Fields(v)
+			if len(correct) != len(words) {
+				continue
+			}
+			diff := -1
+			for i := range words {
+				if words[i] != correct[i] {
+					if diff >= 0 {
+						diff = -2
+						break
+					}
+					diff = i
+				}
+			}
+			if diff < 0 {
+				continue
+			}
+			pair := [2]string{words[diff], correct[diff]}
+			if !seen[pair] {
+				seen[pair] = true
+				out = append(out, pair)
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b [2]string) int {
+		if c := strings.Compare(a[0], b[0]); c != 0 {
+			return c
+		}
+		return strings.Compare(a[1], b[1])
+	})
+	return out
+}
+
+// OneCharDiff reports whether the typed hanzi have as many characters as
+// word and differ from it in exactly one, and returns that typed and correct
+// character, e.g. 他有孩子 vs 她有孩子 gives 他, 她 (issue #628).
+func OneCharDiff(answer, word string) (typed, correct string, ok bool) {
+	a, w := []rune(strings.TrimSpace(answer)), []rune(strings.TrimSpace(word))
+	if len(a) != len(w) {
+		return "", "", false
+	}
+	diff := -1
+	for i := range a {
+		if a[i] != w[i] {
+			if diff >= 0 {
+				return "", "", false
+			}
+			diff = i
+		}
+	}
+	if diff < 0 {
+		return "", "", false
+	}
+	return string(a[diff]), string(w[diff]), true
+}
+
 // CheckComponentAnswer checks whether the user's answer matches any part of a
 // hanzi component definition. The definition is split on ';' and ',' — each
 // resulting part is a valid answer after normalisation. Parenthesised segments

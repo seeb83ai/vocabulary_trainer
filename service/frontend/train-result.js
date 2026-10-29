@@ -443,7 +443,8 @@ function renderWordAnswerResult(result, answer) {
       // word's translations from the result instead (issue #617).
       const isSentence = currentCard.card_type === 'sentence';
       // On a voice_to_transl card the meaning is the answer: the screen
-      // offers only the sound again (issue #624).
+      // shows the hanzi, which the sound cannot tell apart, and the sound
+      // again (issues #624, #628).
       const isVoiceTransl = currentCard.mode === 'voice_to_transl';
       const meaning = isSentence ? (result.ambiguous_meaning || '') : currentCard.prompt;
       setResultHead(result.homophone ? 'homophone' : 'ambiguous');
@@ -456,7 +457,7 @@ function renderWordAnswerResult(result, answer) {
       $('result-question-label').textContent = getModeLabel(currentCard.mode);
       const questionWord = $('result-question-word');
       if (isVoiceTransl) {
-        questionWord.innerHTML = speakerButtonHTML('result-question-play');
+        questionWord.innerHTML = `<span class="tr-recap-row"><span class="font-hanzi">${escHtml(result.zh_text)}</span>${speakerButtonHTML('result-question-play', true)}</span>`;
         questionWord.querySelector('.result-question-play').addEventListener('click', playWord);
       } else {
         questionWord.textContent = meaning;

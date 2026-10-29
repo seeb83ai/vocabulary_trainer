@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1116,5 +1117,30 @@ func TestDetectConfusion_VoiceToZh_Found(t *testing.T) {
 	}
 	if !found || confusedWithID != sheID {
 		t.Errorf("want confusion with %d, got found=%v id=%d", sheID, found, confusedWithID)
+	}
+}
+
+// TestTranslationPinyins covers issue #628: each typed translation word gives
+// the pinyin of the user's own zh words with that translation, trained or not;
+// words of another user do not count.
+func TestTranslationPinyins(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedWord(t, s, "他", "tā", []string{"he / him"})
+	seedWord(t, s, "她", "tā", []string{"she"})
+	seedWord(t, s, "他们", "tāmen", []string{"they", "she (plural)"})
+	if _, err := s.CreateWord(ctx, int64(1), models.CreateWordRequest{
+		ZhText: "鬼", Pinyin: "guǐ", Translations: map[string][]string{"en": {"ghost"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.TranslationPinyins(ctx, int64(2), []string{"He", "she", "ghost", "table"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]string{"he": {"tā"}, "she": {"tā", "tāmen"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("TranslationPinyins = %q, want %q", got, want)
 	}
 }
