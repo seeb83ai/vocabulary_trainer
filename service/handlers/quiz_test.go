@@ -1398,6 +1398,89 @@ func TestQuizAnswer_SentenceCard_IncludesZhText(t *testing.T) {
 	}
 }
 
+// TestQuizNext_SentenceCard_CycleWrongAnswerKeepsDirection is a regression
+// test for issue #626: sentence cards picked their direction with the
+// Progressive mode rules only, so under Cycle mode with "advance only on
+// success" a wrong answer on a "type Chinese" sentence card came back as a
+// "type the translation" card. The sentence card must use the Cycle step and
+// the pinned mode, like a word card.
+func TestQuizNext_SentenceCard_CycleWrongAnswerKeepsDirection(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	r := newRouter(s)
+
+	rec := do(t, r, http.MethodPatch, "/api/settings", map[string]interface{}{
+		"primary_lang":                  "en",
+		"secondary_lang":                "",
+		"prog_new":                      "zh_to_transl",
+		"prog_tier_struggling":          "zh_to_transl",
+		"prog_tier_learning":            "zh_to_transl",
+		"prog_tier_practicing":          "zh_to_transl",
+		"prog_tier_mastered":            "zh_to_transl",
+		"new_word_mode_0":               "transl_to_zh",
+		"new_word_mode_1":               "transl_to_zh",
+		"new_word_mode_2":               "zh_to_transl",
+		"cycle_sequence":                "transl_to_zh,zh_to_transl",
+		"cycle_advance_on_success_only": true,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PATCH settings: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	wo, mai, niunai := seedSentenceScenario(t, s, 2)
+	enableSentenceBlank(t, s, 2, true, 100)
+
+	setProgress := func(id int64, correct, attempts int, due time.Time) {
+		t.Helper()
+		p, err := s.GetSM2Progress(ctx, id)
+		if err != nil || p == nil {
+			t.Fatalf("GetSM2Progress %d: %v / %v", id, err, p)
+		}
+		p.LearningNewWord = false
+		p.TotalCorrect = correct
+		p.TotalAttempts = attempts
+		p.DueDate = due
+		if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+			t.Fatalf("UpdateSM2Progress %d: %v", id, err)
+		}
+	}
+	now := time.Now().UTC()
+	setProgress(wo, 5, 5, now.Add(24*time.Hour))
+	setProgress(niunai, 5, 5, now.Add(24*time.Hour))
+	// TotalCorrect=1 → cycle step 0 → transl_to_zh.
+	setProgress(mai, 1, 1, now.Add(-time.Hour))
+
+	for i := 0; i < 2; i++ {
+		rec = do(t, r, "GET", "/api/quiz/next?mode=cycle&langs=en", nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("next %d: want 200, got %d: %s", i, rec.Code, rec.Body)
+		}
+		var card models.QuizCard
+		decodeJSON(t, rec, &card)
+		if card.CardType != "sentence" || card.WordID != mai {
+			t.Fatalf("next %d: want a sentence card for 买, got %+v", i, card)
+		}
+		if card.Mode != models.ModeTranslToZh || card.AnswerLang != "zh" {
+			t.Fatalf("next %d: want the Chinese blank (transl_to_zh), got mode %q answer_lang %q", i, card.Mode, card.AnswerLang)
+		}
+
+		rec = do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": card.WordID, "mode": card.Mode, "answer": "wrong-on-purpose",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer %d: want 200, got %d: %s", i, rec.Code, rec.Body)
+		}
+		// The next encounter: 买 is due again.
+		p, err := s.GetSM2Progress(ctx, mai)
+		if err != nil || p == nil {
+			t.Fatalf("GetSM2Progress: %v / %v", err, p)
+		}
+		p.DueDate = now.Add(-time.Hour)
+		if err := s.UpdateSM2Progress(ctx, *p); err != nil {
+			t.Fatalf("UpdateSM2Progress: %v", err)
+		}
+	}
+}
+
 // TestQuizNext_TranslToZh_PromptSkipsExampleSentence covers issue #475: a
 // dictionary example sentence ("Bsp.: …") or a CL:/ZEW: annotation must never
 // become the transl_to_zh prompt, even when it is the first translation.
