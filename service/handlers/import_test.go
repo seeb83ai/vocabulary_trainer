@@ -339,6 +339,40 @@ func TestImport_ExistingWordGetsImportTags(t *testing.T) {
 	}
 }
 
+// Issue #631: the library writes 花（动词） with full-width brackets, the
+// learner's own word is 花 (动词). Both are the same word.
+func TestImport_ExistingWordWithOtherBracketsGetsImportTags(t *testing.T) {
+	s := openTestDB(t)
+	seedWordFull(t, s, 1, "花（动词）", "huā", []string{"spend"}, nil, []string{"hsk2-3"})
+	seedWordFull(t, s, 2, "花 (动词)", "huā (dòng cí)", []string{"spend"}, nil, nil)
+
+	r := newRouter(s)
+	resp := runImport(t, s, r, map[string]any{
+		"tag":          "hsk2-3",
+		"import_langs": []string{"en"},
+		"apply_tags":   []string{"hsk2-3"},
+	})
+	if resp.Imported != 0 || resp.Tagged != 1 {
+		t.Errorf("want imported=0 tagged=1, got %+v", resp)
+	}
+
+	listRec := do(t, r, "GET", "/api/words/", nil)
+	var listResp struct {
+		Total int `json:"total"`
+		Words []struct {
+			ZhText string   `json:"zh_text"`
+			Tags   []string `json:"tags"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &listResp)
+	if listResp.Total != 1 {
+		t.Fatalf("want one word, got %d: %+v", listResp.Total, listResp.Words)
+	}
+	if w := listResp.Words[0]; w.ZhText != "花 (动词)" || len(w.Tags) != 1 || w.Tags[0] != "hsk2-3" {
+		t.Errorf("want 花 (动词) with tag hsk2-3, got %+v", w)
+	}
+}
+
 func TestImport_ExistingWordWithoutApplyTagsIsSkipped(t *testing.T) {
 	s := openTestDB(t)
 	seedWordFull(t, s, 1, "你好", "nǐ hǎo", nil, nil, []string{"hsk3-1"})
