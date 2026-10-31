@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
@@ -187,6 +188,13 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	var ttsTasks []ttsTask
 	skipped := 0
+	// A variant of a word the learner has (花（动词） for 花 (动词)) updates
+	// that word and keeps its spelling (issue #631).
+	existing, err := h.Store.ZhWordTextsByMatchKey(ctx, userID)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
 
 	for _, row := range rows {
 		if len(row) < langStart+1 {
@@ -203,6 +211,11 @@ func (h *UploadCSVHandler) UploadCSV(w http.ResponseWriter, r *http.Request) {
 		if zhText == "" {
 			skipped++
 			continue
+		}
+		if text, ok := existing[db.ZhMatchKey(zhText)]; ok {
+			zhText = text
+		} else {
+			existing[db.ZhMatchKey(zhText)] = zhText
 		}
 
 		rowSource := defaultSource

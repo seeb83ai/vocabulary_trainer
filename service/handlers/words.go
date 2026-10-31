@@ -137,6 +137,16 @@ func (h *WordsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Translations = cleaned
 	req.TranslationSources = cleanedSources
+	// A variant of a word the learner has (花（动词） for 花 (动词)) updates
+	// that word and keeps its spelling (issue #631).
+	existing, err := h.Store.ZhWordTextsByMatchKey(r.Context(), UserIDFromContext(r.Context()))
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if text, ok := existing[db.ZhMatchKey(req.ZhText)]; ok {
+		req.ZhText = text
+	}
 
 	// CreateWord handles StartTraining (acknowledge + component init) atomically
 	// inside its transaction; the handler only fires async TTS afterwards.

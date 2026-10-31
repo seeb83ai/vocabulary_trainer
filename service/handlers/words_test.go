@@ -79,6 +79,42 @@ func TestWordsCreate_Valid(t *testing.T) {
 	}
 }
 
+// Issue #631: adding 花（动词） when the learner has 花 (动词) updates that
+// word and keeps its spelling.
+func TestWordsCreate_VariantOfExistingWordKeepsExistingSpelling(t *testing.T) {
+	s := openTestDB(t)
+	existingID := seedWord(t, s, "花 (动词)", "huā (dòng cí)", []string{"spend"})
+	r := newRouter(s)
+	rec := do(t, r, "POST", "/api/words", models.CreateWordRequest{
+		ZhText:       "花（动词）",
+		Pinyin:       "huā",
+		Translations: map[string][]string{"en": {"spend money"}},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("want 201, got %d: %s", rec.Code, rec.Body)
+	}
+	var resp map[string]int64
+	decodeJSON(t, rec, &resp)
+	if resp["id"] != existingID {
+		t.Errorf("want id %d of the existing word, got %d", existingID, resp["id"])
+	}
+	listRec := do(t, r, "GET", "/api/words/", nil)
+	var list struct {
+		Total int `json:"total"`
+		Words []struct {
+			ZhText       string              `json:"zh_text"`
+			Translations map[string][]string `json:"translations"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &list)
+	if list.Total != 1 {
+		t.Fatalf("want one word, got %d: %+v", list.Total, list.Words)
+	}
+	if w := list.Words[0]; w.ZhText != "花 (动词)" || len(w.Translations["en"]) != 2 {
+		t.Errorf("want 花 (动词) with both translations, got %+v", w)
+	}
+}
+
 func TestWordsCreate_TranslationSourcesSurviveBlankEntryFiltering(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

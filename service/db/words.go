@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"vocabulary_trainer/models"
 	"vocabulary_trainer/sm2"
 )
@@ -378,6 +379,43 @@ func (s *Store) IsZhWordForUser(ctx context.Context, userID int64, text string) 
 		`SELECT COUNT(*) FROM words WHERE user_id = ? AND text = ? AND language = 'zh'`,
 		userID, text).Scan(&count)
 	return count > 0, err
+}
+
+// ZhMatchKey returns the text that finds a word the learner already has:
+// full-width brackets count as ASCII brackets and white space is ignored, so
+// 花 (动词) and 花（动词） are the same word (issue #631).
+func ZhMatchKey(text string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '（':
+			return '('
+		case r == '）':
+			return ')'
+		case unicode.IsSpace(r):
+			return -1
+		}
+		return r
+	}, text)
+}
+
+// ZhWordTextsByMatchKey returns ZhMatchKey → text for every zh word of the
+// user, so a caller can use the learner's own spelling of a word.
+func (s *Store) ZhWordTextsByMatchKey(ctx context.Context, userID int64) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT text FROM words WHERE user_id = ? AND language = 'zh'`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("zh word texts: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			return nil, fmt.Errorf("scan zh word text: %w", err)
+		}
+		out[ZhMatchKey(text)] = text
+	}
+	return out, rows.Err()
 }
 
 // IsComponentForUser reports whether text is tracked as a hanzi component in

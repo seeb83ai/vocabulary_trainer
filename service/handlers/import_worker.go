@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
@@ -101,7 +102,7 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 	}
 	existingZhTexts := make(map[string]int64, len(existingWords))
 	for _, ew := range existingWords {
-		existingZhTexts[ew.ZhText] = ew.ID
+		existingZhTexts[db.ZhMatchKey(ew.ZhText)] = ew.ID
 	}
 
 	p := models.ImportJob{Total: len(sourceWords)}
@@ -116,7 +117,7 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 	for _, sw := range sourceWords {
 		// A word the user already has is never imported twice; it only gets
 		// the import's tags added, so it also shows up under the new list.
-		existingID, exists := existingZhTexts[sw.ZhText]
+		existingID, exists := existingZhTexts[db.ZhMatchKey(sw.ZhText)]
 		if !exists && removed[sw.ID] {
 			// The user deleted this word earlier: skip it unless asked.
 			p.Done++
