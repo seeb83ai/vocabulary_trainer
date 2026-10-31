@@ -378,9 +378,11 @@ func OneWordDiffs(answer string, translations []string) [][2]string {
 
 // OneCharDiff reports whether the typed hanzi have as many characters as
 // word and differ from it in exactly one, and returns that typed and correct
-// character, e.g. 他有孩子 vs 她有孩子 gives 他, 她 (issue #628).
+// character, e.g. 他有孩子 vs 她有孩子 gives 他, 她 (issue #628). Trailing
+// punctuation is ignored, e.g. 她喜欢什么？ (issue #630).
 func OneCharDiff(answer, word string) (typed, correct string, ok bool) {
-	a, w := []rune(strings.TrimSpace(answer)), []rune(strings.TrimSpace(word))
+	a := []rune(strings.TrimSpace(reTrailingPunct.ReplaceAllString(answer, "")))
+	w := []rune(strings.TrimSpace(reTrailingPunct.ReplaceAllString(word, "")))
 	if len(a) != len(w) {
 		return "", "", false
 	}
