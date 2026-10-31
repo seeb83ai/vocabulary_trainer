@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
-	"strings"
-	"unicode"
+	"vocabulary_trainer/db"
 	"vocabulary_trainer/models"
 )
 
@@ -103,7 +102,7 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 	}
 	existingZhTexts := make(map[string]int64, len(existingWords))
 	for _, ew := range existingWords {
-		existingZhTexts[zhMatchKey(ew.ZhText)] = ew.ID
+		existingZhTexts[db.ZhMatchKey(ew.ZhText)] = ew.ID
 	}
 
 	p := models.ImportJob{Total: len(sourceWords)}
@@ -118,7 +117,7 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 	for _, sw := range sourceWords {
 		// A word the user already has is never imported twice; it only gets
 		// the import's tags added, so it also shows up under the new list.
-		existingID, exists := existingZhTexts[zhMatchKey(sw.ZhText)]
+		existingID, exists := existingZhTexts[db.ZhMatchKey(sw.ZhText)]
 		if !exists && removed[sw.ID] {
 			// The user deleted this word earlier: skip it unless asked.
 			p.Done++
@@ -185,22 +184,4 @@ func (w *ImportWorker) runJob(ctx context.Context, job models.ImportJob) (err er
 		}
 	}
 	return nil
-}
-
-// zhMatchKey returns the text an import compares to find a word the learner
-// already has: full-width brackets count as ASCII brackets and white space
-// is ignored, so the learner's 花 (动词) matches the library's 花（动词）
-// (issue #631).
-func zhMatchKey(text string) string {
-	return strings.Map(func(r rune) rune {
-		switch {
-		case r == '（':
-			return '('
-		case r == '）':
-			return ')'
-		case unicode.IsSpace(r):
-			return -1
-		}
-		return r
-	}, text)
 }

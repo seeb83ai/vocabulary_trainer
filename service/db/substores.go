@@ -20,6 +20,7 @@ import (
 type WordStore interface {
 	GetWords(ctx context.Context, userID int64, q string, page, perPage int, sortBy, sortDir string, tags []string, reviewOnly bool, hideUnseen bool, bucket string, dueFilter string, missingLang string) ([]models.WordDetail, int, error)
 	IsZhWordForUser(ctx context.Context, userID int64, text string) (bool, error)
+	ZhWordTextsByMatchKey(ctx context.Context, userID int64) (map[string]string, error)
 	GetWordIDByZhText(ctx context.Context, userID int64, text string) (int64, error)
 	GetSentenceVocab(ctx context.Context, userID int64, tags []string, focus string, even bool, maxFocus int) (*SentenceVocab, error)
 	GetPinyinByZhText(ctx context.Context, userID int64, text string) (*string, error)

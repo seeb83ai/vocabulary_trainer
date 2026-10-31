@@ -120,6 +120,58 @@ func TestUploadCSV_DuplicateCallsUpdate(t *testing.T) {
 	}
 }
 
+// Issue #631: a CSV row for 花（动词） updates the learner's 花 (动词) and
+// keeps its spelling.
+func TestUploadCSV_VariantOfExistingWordUpdatesIt(t *testing.T) {
+	s := openTestDB(t)
+	seedWord(t, s, "花 (动词)", "huā (dòng cí)", []string{"old translation"})
+	csv := "chinese,pinyin,en\n花（动词）,huā,spend"
+	r := newRouter(s)
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 0 || resp["updated"] != 1 {
+		t.Errorf("want imported=0 updated=1, got %v", resp)
+	}
+	assertOnlyWord(t, r, "花 (动词)")
+}
+
+// Two spellings of one word in the same file make one word.
+func TestUploadCSV_VariantsInOneFileMakeOneWord(t *testing.T) {
+	csv := "chinese,pinyin,en\n花 (动词),huā (dòng cí),spend\n花（动词）,huā,spend money"
+	r := newRouter(openTestDB(t))
+	rec := doMultipart(t, r, "/api/words/upload-csv",
+		map[string]string{"tags": "test", "start_training_count": "0"}, csv)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	decodeJSON(t, rec, &resp)
+	if resp["imported"] != 1 || resp["updated"] != 1 {
+		t.Errorf("want imported=1 updated=1, got %v", resp)
+	}
+	assertOnlyWord(t, r, "花 (动词)")
+}
+
+func assertOnlyWord(t *testing.T, r http.Handler, zhText string) {
+	t.Helper()
+	listRec := do(t, r, "GET", "/api/words/", nil)
+	var list struct {
+		Total int `json:"total"`
+		Words []struct {
+			ZhText string `json:"zh_text"`
+		} `json:"words"`
+	}
+	decodeJSON(t, listRec, &list)
+	if list.Total != 1 || list.Words[0].ZhText != zhText {
+		t.Errorf("want only %q, got %+v", zhText, list.Words)
+	}
+}
+
 func TestUploadCSV_MultipleLanguages(t *testing.T) {
 	csv := "chinese,pinyin,en,de\n你好,nǐ hǎo,hello,Hallo"
 	r := newRouter(openTestDB(t))
