@@ -1407,6 +1407,10 @@ func TestOneCharDiff(t *testing.T) {
 		{"他有孩们", "她有孩子", "", "", false},
 		{"她有孩子", "她有孩子", "", "", false},
 		{" 他有孩子 ", "她有孩子", "他", "她", true},
+		// Trailing sentence punctuation is ignored (issue #630).
+		{"他喜欢什么", "她喜欢什么？", "他", "她", true},
+		{"他喜欢什么?", "她喜欢什么", "他", "她", true},
+		{"她喜欢什么", "她喜欢什么？", "", "", false},
 	}
 	for _, c := range cases {
 		got, want, ok := OneCharDiff(c.answer, c.word)
