@@ -153,7 +153,9 @@ When you configure a local model, it takes precedence over any cloud API keys th
 
 ## Text-to-speech (TTS)
 
-The app generates audio with the Microsoft Edge neural TTS WebSocket API, using the `zh-CN-XiaoxiaoNeural` voice. This is implemented directly in Go, with no Python dependency or API key required. The app caches MP3 files in `AUDIO_DIR` (default: `data/audio/`) and serves them from the Go server.
+The app generates audio with the Google Translate TTS endpoint (`translate.google.com/translate_tts`, Mandarin `zh-CN`). This is the audio of the speaker button on Google Translate. It needs no API key, but it is not an official API: Google can limit or block it at any time. If the request fails (error status, no audio, timeout after 10 s), the app logs the error and uses the Microsoft Edge neural TTS WebSocket API with the `zh-CN-XiaoxiaoNeural` voice. Both clients are written in Go, with no Python dependency or API key. The app caches MP3 files in `AUDIO_DIR` (default: `data/audio/`) and serves them from the Go server.
+
+The app keeps cached MP3 files. Audio made with Edge before the change to Google stays until you delete it. To make all audio again with Google, delete the files in `AUDIO_DIR`. The app makes each file again when a user plays it.
 
 TTS is always enabled. Set `AUDIO_DIR` to control where the app stores cached MP3 files:
 
