@@ -26,7 +26,7 @@ service/
 │   └── migrate/     # timestamp-versioned schema migrations
 ├── sm2/             # SM-2 algorithm, answer checking, pinyin helpers
 ├── models/          # shared structs and mode constants
-├── tts/             # Microsoft Edge TTS client
+├── tts/             # Google Translate TTS client, Microsoft Edge TTS fallback
 ├── cmd/             # CLI tools (imports, funnel, …)
 └── frontend/        # HTML, JS and CSS pages
 e2e/                 # Playwright tests

@@ -1,5 +1,6 @@
-// Package tts generates MP3 audio for Chinese text using the Microsoft Edge TTS
-// WebSocket API (the same backend used by edge-tts / edge-playback).
+// Package tts generates MP3 audio for Chinese text. It uses Google Translate
+// TTS first and falls back to the Microsoft Edge TTS WebSocket API (the same
+// backend used by edge-tts / edge-playback).
 package tts
 
 import (
@@ -8,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -25,7 +27,21 @@ const (
 )
 
 // Synthesize synthesizes zhText to MP3 and returns the raw bytes.
+// It tries Google Translate TTS first and falls back to Edge TTS if that fails.
 func Synthesize(zhText string) ([]byte, error) {
+	audio, err := synthesizeGoogle(zhText)
+	if err == nil {
+		return audio, nil
+	}
+	log.Printf("tts: %v; falling back to edge tts", err)
+	return edgeSynth(zhText)
+}
+
+// edgeSynth is the fallback synthesizer; tests replace it.
+var edgeSynth = synthesizeEdge
+
+// synthesizeEdge synthesizes zhText to MP3 with Microsoft Edge TTS.
+func synthesizeEdge(zhText string) ([]byte, error) {
 	connID := newUUID()
 	secGEC, secGECVer := generateSecMsGEC()
 
