@@ -64,7 +64,7 @@ test.describe('Result screen shows the answer the server checked', () => {
 
     await expect(page.locator('#result-area')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('.result-your-answer .tr-struck')).toHaveText('spo');
-    await captureForPR(page, 'submitted-answer-component');
+    await captureForPR(page, 'train-submitted-answer');
   });
 
   test('word card: shows the answer the server received', async ({ page }) => {
