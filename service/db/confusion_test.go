@@ -170,6 +170,35 @@ func TestDetectConfusion_ZhToTranslVariants_Found(t *testing.T) {
 	}
 }
 
+// TestDetectConfusion_TrickyTranslations_Found guards the cheap pre-check in
+// DetectConfusion: upper-case umlauts, parenthesised parts, curly apostrophes
+// and full-width punctuation in the stored text still match the typed answer.
+func TestDetectConfusion_TrickyTranslations_Found(t *testing.T) {
+	cases := []struct{ translation, answer string }{
+		{"Übung (S)", "übung"},
+		{"to put (sb, sth) in", "to put in"},
+		{"Don’t worry", "don't worry"},
+		{"Wie heißt sie？", "Wie heißt sie"},
+		{"dog / hound", "hound"},
+	}
+	for _, c := range cases {
+		t.Run(c.translation, func(t *testing.T) {
+			s := openTestDB(t)
+			shoeID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
+			otherID := seedWord(t, s, "书", "shū", []string{c.translation})
+			markWordTrained(t, s, otherID)
+
+			confusedWith, found, err := s.DetectConfusion(context.Background(), int64(2), shoeID, c.answer, models.ModeZhToTransl, []string{"en"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !found || confusedWith != otherID {
+				t.Errorf("DetectConfusion(%q) = %d, %v, want %d, true", c.answer, confusedWith, found, otherID)
+			}
+		})
+	}
+}
+
 func TestUpsertConfusion_IncrementsCount(t *testing.T) {
 	s := openTestDB(t)
 	idA := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
