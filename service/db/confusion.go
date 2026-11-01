@@ -72,6 +72,9 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			if sErr := rows.Scan(&zhID, &text); sErr != nil {
 				return 0, false, fmt.Errorf("scan confusion: %w", sErr)
 			}
+			if !sm2.MayMatch(text, normalized) {
+				continue
+			}
 			for _, v := range sm2.ExpandVariants(text) {
 				if v == normalized {
 					_ = rows.Close()
@@ -124,6 +127,9 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			if sErr := rows.Scan(&zhID, &text); sErr != nil {
 				return 0, false, fmt.Errorf("scan confusion: %w", sErr)
 			}
+			if !sm2.MayMatch(text, normalized) {
+				continue
+			}
 			for _, v := range sm2.ExpandVariants(text) {
 				if v == normalized {
 					_ = rows.Close()
@@ -166,6 +172,16 @@ func (s *Store) TranslationPinyins(ctx context.Context, userID int64, texts []st
 		var pinyin, text string
 		if err := rows.Scan(&pinyin, &text); err != nil {
 			return nil, fmt.Errorf("scan translation pinyins: %w", err)
+		}
+		mayMatch := false
+		for w := range wanted {
+			if sm2.MayMatch(text, w) {
+				mayMatch = true
+				break
+			}
+		}
+		if !mayMatch {
+			continue
 		}
 		for _, v := range sm2.ExpandVariants(text) {
 			if !wanted[v] {

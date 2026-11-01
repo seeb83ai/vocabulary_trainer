@@ -1419,3 +1419,47 @@ func TestOneCharDiff(t *testing.T) {
 		}
 	}
 }
+
+// ── MayMatch ──────────────────────────────────────────────────────────────────
+
+// TestMayMatch_KeepsEveryVariant checks that MayMatch never rejects a text for
+// an answer that is one of its expanded variants.
+func TestMayMatch_KeepsEveryVariant(t *testing.T) {
+	texts := []string{
+		"to eat",
+		"Übung (S)",
+		"Höhe",
+		"to put (sb, sth) in",
+		"dog / hound",
+		"lesen, vorlesen (V)",
+		"Don’t worry",
+		"Wie heißt sie？",
+		"well…then",
+		"U.S.A.",
+		"abc(x)def",
+		"to (be) eat",
+		"（Anzahl） mal",
+		"Bsp.: 我是中國人。 我是中国人。 -- Ich bin Chinese.",
+		"  SPACES   inside  ",
+	}
+	for _, text := range texts {
+		for _, v := range ExpandVariants(text) {
+			if !MayMatch(text, v) {
+				t.Errorf("MayMatch(%q, %q) = false, want true", text, v)
+			}
+		}
+	}
+}
+
+func TestMayMatch_RejectsUnrelatedText(t *testing.T) {
+	cases := []struct{ text, answer string }{
+		{"to eat", "drink"},
+		{"Mond (S)", "in"},
+		{"to put (sb, sth) in", "to take"},
+	}
+	for _, c := range cases {
+		if MayMatch(c.text, c.answer) {
+			t.Errorf("MayMatch(%q, %q) = true, want false", c.text, c.answer)
+		}
+	}
+}

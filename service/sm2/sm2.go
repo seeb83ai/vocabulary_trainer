@@ -294,6 +294,20 @@ func splitOutsideParens(s string) []string {
 	return parts
 }
 
+// MayMatch is a cheap pre-check for ExpandVariants: it reports false only when
+// none of text's variants can equal answer, which must already be normalized
+// (NormalizeAnswer). Normalizing only removes characters or turns them into
+// spaces, so every word of a variant is part of the lowercased text.
+func MayMatch(text, answer string) bool {
+	text = apostropheVariants.Replace(fullwidthToHalfwidth.Replace(strings.ToLower(text)))
+	for _, w := range strings.Fields(answer) {
+		if !strings.Contains(text, w) {
+			return false
+		}
+	}
+	return true
+}
+
 // ExpandVariants returns all valid answer strings derived from a single
 // accepted answer by applying the optional-parens and slash/comma-split rules.
 func ExpandVariants(a string) []string { return expandVariants(a) }
