@@ -347,6 +347,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/client-errors.spec.js` | Browser tests: a result screen that fails to draw shows the error and loads the next card; the report dialog offers the last error (message, failed API call or stack) |
 | `e2e/session-progress.spec.js` | Browser tests: Train session bar "X of Y today" counts component and mnemonic scene answers; *Accept as correct* counts a word or component card once |
 | `e2e/audio-stop.spec.js` | Browser tests: audio that still loads does not play on the next card; a second tap on play while the clip loads plays it only once (issue #620) |
+| `e2e/submitted-answer.spec.js` | Browser tests: the result screen shows the answer the server checked (`your_answer`), not text typed while the answer is checked (component card, word card, landing-page demo) |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e/credits.spec.js` | Browser tests: landing footer and Settings link to `/credits`, sources with licenses, license text opens, page language |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |

@@ -839,10 +839,13 @@ function showComponentResult(resp) {
   const cw = resp.confused_with;
   setResultHead(resp.correct ? 'correct' : (cw ? 'mixup' : 'wrong'));
 
-  const yourAnswerHtml = (!resp.correct && $('answer-input').value.trim()) ? `
+  // The answer the server checked: the answer field can change while the
+  // request runs.
+  const answer = resp.your_answer || '';
+  const yourAnswerHtml = (!resp.correct && answer.trim()) ? `
     <div class="tr-box tr-box-red tr-your-answer result-your-answer">
       <div class="tr-box-label">${escHtml(t('result.yourAnswer'))}</div>
-      <div class="tr-struck">${escHtml($('answer-input').value)}</div>
+      <div class="tr-struck">${escHtml(answer)}</div>
     </div>` : '';
 
   const answers = resp.correct_answers || {};
@@ -853,7 +856,6 @@ function showComponentResult(resp) {
   // "Belongs to" mismatch box (issue #280) — mirrors renderWordAnswerResult's
   // confusedHtml, adapted for a component result where the confused-with
   // entity may itself be a word or another component.
-  const answer = $('answer-input').value;
   const cwHtml = (!resp.correct && cw) ? `
       <div class="tr-mixup-connector"><span>${escHtml(t('result.youTyped'))} <b>“${escHtml(answer)}”</b>${escHtml(t('result.whichIs'))}</span></div>
       <div class="tr-box tr-box-amber mixup-other">

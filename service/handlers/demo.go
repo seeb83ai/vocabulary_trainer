@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"vocabulary_trainer/db"
 	"vocabulary_trainer/sm2"
@@ -61,6 +62,7 @@ func (h *DemoHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card := demoCardSet[req.CardID]
+	req.Answer = strings.TrimSpace(req.Answer)
 	correct := sm2.CheckAnswer(req.Answer, card.Translations)
 
 	detail := fmt.Sprintf("card_id=%d correct=%v", card.ID, correct)
@@ -68,6 +70,7 @@ func (h *DemoHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"correct":      correct,
+		"your_answer":  req.Answer,
 		"translations": card.Translations,
 	})
 }

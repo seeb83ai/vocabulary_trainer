@@ -691,7 +691,8 @@ async function submitAnswer(e) {
         ...answerHelp,
       }),
     });
-    maybeCelebrateThenShow(result, (r) => renderWordAnswerResult(r, answer));
+    // Show the answer the server checked (your_answer), not the field.
+    maybeCelebrateThenShow(result, (r) => renderWordAnswerResult(r, r.your_answer || ''));
   } catch (err) {
     isSubmitted = false;
     showToastError(err.message);

@@ -1172,3 +1172,33 @@ func TestComponentAcceptCorrect_MissingCharacter(t *testing.T) {
 		t.Errorf("want 400 for empty character, got %d", rec.Code)
 	}
 }
+
+// TestComponentAnswer_ReturnsCheckedAnswer: the result screen shows the
+// answer the server checked, not the answer field, which can change while
+// the request runs.
+func TestComponentAnswer_ReturnsCheckedAnswer(t *testing.T) {
+	s := openTestDB(t)
+	if err := s.SeedHanziDecompositionForTest(context.Background(), "匕", "spoon, ladle; knife, dirk"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	s.InsertComponentProgressForTest(context.Background(), int64(2), "匕", time.Now().Add(-time.Hour))
+
+	r := newRouter(s)
+	for _, tc := range []struct{ answer, want string }{
+		{" spo ", "spo"},
+		{"spoon", "spoon"},
+	} {
+		rec := do(t, r, http.MethodPost, "/api/component/answer", map[string]string{
+			"character": "匕",
+			"answer":    tc.answer,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var resp models.ComponentAnswerResponse
+		decodeJSON(t, rec, &resp)
+		if resp.YourAnswer != tc.want {
+			t.Errorf("answer %q: your_answer = %q, want %q", tc.answer, resp.YourAnswer, tc.want)
+		}
+	}
+}

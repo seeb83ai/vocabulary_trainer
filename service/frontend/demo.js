@@ -85,7 +85,7 @@
       const data = await res.json();
       answered = true;
       if (data.correct) score++;
-      showResult(data.correct, answer, data.translations || []);
+      showResult(data.correct, data.your_answer || '', data.translations || []);
     } catch {
       // Network error: leave the form usable so the visitor can retry.
     } finally {
