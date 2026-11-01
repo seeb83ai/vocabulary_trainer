@@ -65,6 +65,23 @@ func TestDemoAnswer_CorrectWrongAndNormalized(t *testing.T) {
 	}
 }
 
+// TestDemoAnswer_ReturnsCheckedAnswer: the demo result shows the answer the
+// server checked, not the answer field.
+func TestDemoAnswer_ReturnsCheckedAnswer(t *testing.T) {
+	r := newRouter(openTestDB(t))
+	rec := do(t, r, "POST", "/api/demo/answer", map[string]any{"card_id": 0, "answer": " goodbye "})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	var body struct {
+		YourAnswer string `json:"your_answer"`
+	}
+	decodeJSON(t, rec, &body)
+	if body.YourAnswer != "goodbye" {
+		t.Errorf("your_answer = %q, want %q", body.YourAnswer, "goodbye")
+	}
+}
+
 func TestDemoAnswer_InvalidRequests(t *testing.T) {
 	r := newRouter(openTestDB(t))
 

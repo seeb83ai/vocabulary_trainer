@@ -1194,6 +1194,32 @@ func TestQuizAnswer_EllipsisEquivalence(t *testing.T) {
 	}
 }
 
+// TestQuizAnswer_ReturnsCheckedAnswer: the result screen shows the answer the
+// server checked, not the answer field, which can change while the request
+// runs.
+func TestQuizAnswer_ReturnsCheckedAnswer(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	id := seedWord(t, s, "橙子", "chéngzi", []string{"orange"})
+
+	for _, tc := range []struct{ answer, want string }{
+		{" lemon ", "lemon"},
+		{"orange", "orange"},
+	} {
+		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": id, "mode": "zh_to_transl", "answer": tc.answer,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var resp models.AnswerResponse
+		decodeJSON(t, rec, &resp)
+		if resp.YourAnswer != tc.want {
+			t.Errorf("answer %q: your_answer = %q, want %q", tc.answer, resp.YourAnswer, tc.want)
+		}
+	}
+}
+
 // TestQuizAnswer_ReportsReviewFlag: the result screen shows whether the word
 // is flagged for review (issue #585).
 func TestQuizAnswer_ReportsReviewFlag(t *testing.T) {

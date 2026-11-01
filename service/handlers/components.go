@@ -208,6 +208,7 @@ func (h *ComponentHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	sceneText, _ := h.Store.GetComponentHMMSceneText(r.Context(), userID, req.Character)
 	resp := models.ComponentAnswerResponse{
 		Correct:        correct,
+		YourAnswer:     req.Answer,
 		CorrectAnswers: defs,
 		NextDue:        nextDue,
 		IntervalDays:   progress.IntervalDays,

@@ -315,6 +315,7 @@ type ComponentAcceptCorrectRequest struct {
 
 type AnswerResponse struct {
 	Correct        bool                `json:"correct"`
+	YourAnswer     string              `json:"your_answer"`
 	CorrectAnswers []string            `json:"correct_answers"`
 	ZhText         string              `json:"zh_text"`
 	Pinyin         *string             `json:"pinyin"`
@@ -600,6 +601,7 @@ type SkipRevealResponse struct {
 
 type ComponentAnswerResponse struct {
 	Correct        bool              `json:"correct"`
+	YourAnswer     string            `json:"your_answer"`
 	CorrectAnswers map[string]string `json:"correct_answers"`
 	NextDue        time.Time         `json:"next_due"`
 	IntervalDays   int               `json:"interval_days"`

@@ -558,6 +558,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 
 	resp := models.AnswerResponse{
 		Correct:           correct,
+		YourAnswer:        req.Answer,
 		CorrectAnswers:    correctTexts,
 		ZhText:            zhWord.ZhText,
 		Pinyin:            zhWord.Pinyin,
