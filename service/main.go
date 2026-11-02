@@ -380,6 +380,7 @@ func main() {
 		r.Put("/tags/{name}", tagsH.Update)
 		r.Get("/audio/{id}", audioH.ServeAudio)
 		r.Get("/audio/component/{char}", audioH.ServeComponentAudio)
+		r.Get("/audio/text", audioH.ServeTextAudio)
 		r.Get("/mismatches", mismatchH.List)
 		r.Get("/hanzi/decompose", hanziH.Decompose)
 		r.Post("/pinyin", handlers.Pinyin)

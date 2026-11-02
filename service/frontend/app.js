@@ -421,6 +421,12 @@ function playComponentAudio(char) {
   playClip(`/api/audio/component/${encodeURIComponent(char)}`, char);
 }
 
+// playTextAudio plays TTS audio for Chinese text that is not a word, e.g. a
+// wrong typed answer (issue #638).
+function playTextAudio(zhText) {
+  playClip(`/api/audio/text?zh=${encodeURIComponent(zhText.trim())}`, zhText);
+}
+
 // Tag groups: tags with the same prefix (text before the first "-") form a
 // group; all hsk… tags are one group, tags without a prefix are the "" group.
 // Training and the word list match any tag of a group and every selected group.

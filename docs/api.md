@@ -51,6 +51,7 @@ All endpoints are under `/api` and use JSON. Except for the demo endpoints, they
 | `POST` | `/api/words/{id}/known` | Mark a word as known (`{"known": true}`) so it is never a quiz prompt, or return it to training (`{"known": false}`) |
 | `GET` | `/api/audio/{id}` | Serve cached MP3 for a Chinese word (generated on demand) |
 | `GET` | `/api/audio/component/{char}` | Serve cached MP3 for a single component character (generated on demand); files stored as `c_{hex}.mp3` |
+| `GET` | `/api/audio/text?zh=…` | Serve cached MP3 for Chinese text that is not a word, for example a wrong typed answer (generated on demand). The text must have only Chinese characters and sentence punctuation, and a maximum of 40 characters, else `400`. Files stored as `t_{sha256}.mp3` |
 | `GET` | `/api/hmm/breakdown` | Hanzi Movie Method breakdown (actor/location/room/props) for a word |
 | `GET` | `/api/tags` | List all tag names (alphabetically) |
 | `GET` | `/api/config` | Frontend feature flags (`deepl_enabled`, etc.) |
