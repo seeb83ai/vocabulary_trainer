@@ -189,6 +189,14 @@ function wrongRetypeSatisfied(zhVal, transVal, correctZh, translations, requireZ
 // requires only the field(s) the card's direction actually tested — the
 // Chinese word for transl_to_zh cards, the translation for every other
 // (zh_to_transl-family) card mode.
+// isSpeakableZh returns true when text is Chinese that TTS can read aloud: only
+// Han characters and sentence punctuation, at least one Han character, at most
+// 40 characters. Mirrors isSpeakableZh in service/handlers/audio.go (issue #638).
+function isSpeakableZh(text) {
+  const s = String(text || '').trim();
+  return [...s].length <= 40 && /\p{Script=Han}/u.test(s) && /^[\p{Script=Han}，。！？、；：,.!?]+$/u.test(s);
+}
+
 // isZhAnswerMode returns true for the modes where the user types the hanzi.
 function isZhAnswerMode(mode) {
   return mode === 'transl_to_zh' || mode === 'voice_to_zh';

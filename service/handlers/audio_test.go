@@ -273,3 +273,97 @@ func TestServeComponentAudio_RadicalUsesCanonicalFormForTTS(t *testing.T) {
 		})
 	}
 }
+
+// serveTextAudio sends GET /api/audio/text?zh=<zh> to the handler (issue #638).
+func serveTextAudio(t *testing.T, audioH *handlers.AudioHandler, zh string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	r.Use(handlers.WithUserID(2))
+	r.Get("/api/audio/text", audioH.ServeTextAudio)
+	req := httptest.NewRequest("GET", "/api/audio/text?zh="+url.QueryEscape(zh), nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestServeTextAudio_GeneratesOnceAndCaches(t *testing.T) {
+	var synthCalls []string
+	audioH := &handlers.AudioHandler{
+		Store:    openTestDB(t),
+		AudioDir: t.TempDir(),
+		Synth: func(text string) ([]byte, error) {
+			synthCalls = append(synthCalls, text)
+			return []byte("synth-mp3"), nil
+		},
+	}
+
+	for i := 0; i < 2; i++ {
+		rec := serveTextAudio(t, audioH, "这个")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request %d: want 200, got %d: %s", i, rec.Code, rec.Body.String())
+		}
+		if rec.Body.String() != "synth-mp3" {
+			t.Errorf("request %d: want synthesised audio, got %q", i, rec.Body.String())
+		}
+	}
+	if len(synthCalls) != 1 || synthCalls[0] != "这个" {
+		t.Errorf("want one synth call with 这个, got %q", synthCalls)
+	}
+}
+
+func TestServeTextAudio_SentenceWithPunctuation(t *testing.T) {
+	var synthGot string
+	audioH := &handlers.AudioHandler{
+		Store:    openTestDB(t),
+		AudioDir: t.TempDir(),
+		Synth:    func(text string) ([]byte, error) { synthGot = text; return []byte("synth-mp3"), nil },
+	}
+	rec := serveTextAudio(t, audioH, " 你好，我是学生。 ")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if synthGot != "你好，我是学生。" {
+		t.Errorf("want trimmed sentence sent to TTS, got %q", synthGot)
+	}
+}
+
+func TestServeTextAudio_RejectsNonChineseText(t *testing.T) {
+	cases := map[string]string{
+		"empty":      "",
+		"latin":      "abc",
+		"mixed":      "这a",
+		"pinyin":     "zhè",
+		"only punct": "。",
+		"path chars": "../这",
+		"too long":   strings.Repeat("这", 41),
+	}
+	for name, zh := range cases {
+		t.Run(name, func(t *testing.T) {
+			synthCalled := false
+			audioH := &handlers.AudioHandler{
+				Store:    openTestDB(t),
+				AudioDir: t.TempDir(),
+				Synth:    func(string) ([]byte, error) { synthCalled = true; return []byte("x"), nil },
+			}
+			rec := serveTextAudio(t, audioH, zh)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("want 400, got %d", rec.Code)
+			}
+			if synthCalled {
+				t.Error("TTS must not be called for rejected text")
+			}
+		})
+	}
+}
+
+func TestServeTextAudio_TTSFailure(t *testing.T) {
+	audioH := &handlers.AudioHandler{
+		Store:    openTestDB(t),
+		AudioDir: t.TempDir(),
+		Synth:    func(string) ([]byte, error) { return nil, fmt.Errorf("tts boom") },
+	}
+	rec := serveTextAudio(t, audioH, "这")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("want 503, got %d", rec.Code)
+	}
+}

@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 	"vocabulary_trainer/tts"
 
 	"github.com/go-chi/chi/v5"
@@ -109,6 +113,55 @@ func (h *AudioHandler) ServeComponentAudio(w http.ResponseWriter, r *http.Reques
 	if _, err := os.Stat(mp3Path); os.IsNotExist(err) {
 		ttsText := string(canonicalForTTS(runes[0]))
 		if err := h.generateToPath(mp3Path, ttsText); err != nil {
+			writeError(w, http.StatusServiceUnavailable, "tts unavailable")
+			return
+		}
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
+	http.ServeFile(w, r, mp3Path)
+}
+
+// maxTextAudioRunes caps the text ServeTextAudio sends to TTS: long enough for
+// a typed sentence, short enough to keep the TTS proxy from being abused.
+const maxTextAudioRunes = 40
+
+// zhSentencePunct is the punctuation a typed Chinese answer may contain.
+const zhSentencePunct = "，。！？、；：,.!?"
+
+// isSpeakableZh reports whether s is Chinese text TTS may read aloud: only
+// Han characters and sentence punctuation, with at least one Han character.
+func isSpeakableZh(s string) bool {
+	han := false
+	for _, r := range s {
+		switch {
+		case unicode.Is(unicode.Han, r):
+			han = true
+		case strings.ContainsRune(zhSentencePunct, r):
+		default:
+			return false
+		}
+	}
+	return han
+}
+
+// ServeTextAudio handles GET /api/audio/text?zh=….
+// It serves TTS audio for Chinese text that is not one of the user's words,
+// e.g. a wrong typed answer (issue #638). Files are stored as t_{sha256}.mp3,
+// so they cannot collide with word ({id}.mp3) or component (c_{hex}.mp3) files.
+func (h *AudioHandler) ServeTextAudio(w http.ResponseWriter, r *http.Request) {
+	text := strings.TrimSpace(r.URL.Query().Get("zh"))
+	if utf8.RuneCountInString(text) > maxTextAudioRunes || !isSpeakableZh(text) {
+		writeError(w, http.StatusBadRequest, "zh must be Chinese text")
+		return
+	}
+
+	sum := sha256.Sum256([]byte(text))
+	mp3Path := filepath.Join(h.AudioDir, "t_"+hex.EncodeToString(sum[:])+".mp3")
+
+	if _, err := os.Stat(mp3Path); os.IsNotExist(err) {
+		if err := h.generateToPath(mp3Path, text); err != nil {
+			log.Printf("tts generate text %q: %v", text, err)
 			writeError(w, http.StatusServiceUnavailable, "tts unavailable")
 			return
 		}

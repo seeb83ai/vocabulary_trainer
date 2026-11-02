@@ -293,10 +293,15 @@ function renderWordAnswerResult(result, answer) {
     const yourAnswerPinyin = currentCard.mode === 'transl_to_zh' && result.user_answer_pinyin
       ? ` <span class="tr-pinyin-sm">${escHtml(result.user_answer_pinyin)}</span>`
       : '';
+    // A Chinese answer can be played, also when it is not a word (issue #638).
+    const answerPlayable = isZhAnswerMode(currentCard.mode) && isSpeakableZh(answer);
     const yourAnswerHtml = isEmpty ? '' : `
         <div class="tr-box tr-box-red tr-your-answer result-your-answer">
           <div class="tr-box-label">${escHtml(t('result.yourAnswer'))}</div>
-          <div class="tr-struck">${escHtml(answer)}${yourAnswerPinyin}</div>
+          <div class="tr-word-row">
+            <div class="tr-word-main tr-struck">${escHtml(answer)}${yourAnswerPinyin}</div>
+            ${answerPlayable ? speakerButtonHTML('your-answer-play', true) : ''}
+          </div>
         </div>`;
     const { shown: cwMeanings, collapsed: cwMore } = cw
       ? groupTranslationsByLang(cw.confused_with_translations, cw.confused_with_translations_extra, langs)
@@ -370,6 +375,7 @@ function renderWordAnswerResult(result, answer) {
       wireDisclosures(breakdown);
       breakdown.querySelector('.btn-confused-play')?.addEventListener('click', playConfused);
       breakdown.querySelector('.result-inline-play')?.addEventListener('click', playWord);
+      breakdown.querySelector('.your-answer-play')?.addEventListener('click', () => playTextAudio(answer));
       show('word-breakdown');
 
       if (!isEmpty && !isZhAnswerMode(currentCard.mode)) {

@@ -1060,3 +1060,37 @@ describe('isDisambigCorrect', () => {
     expect(isDisambigCorrect('角', 'voice_to_transl', '角', tr)).toBe(false);
   });
 });
+
+// ── Play button for a wrong Chinese answer (issue #638) ───────────────────────
+// Mirrors isSpeakableZh in train-answer.js (and isSpeakableZh in
+// service/handlers/audio.go): only Han characters and sentence punctuation,
+// at least one Han character, at most 40 characters.
+
+function isSpeakableZh(text) {
+  const s = String(text || '').trim();
+  return [...s].length <= 40 && /\p{Script=Han}/u.test(s) && /^[\p{Script=Han}，。！？、；：,.!?]+$/u.test(s);
+}
+
+describe('isSpeakableZh', () => {
+  it('accepts Chinese characters', () => {
+    expect(isSpeakableZh('这')).toBe(true);
+    expect(isSpeakableZh(' 这个 ')).toBe(true);
+  });
+
+  it('accepts a sentence with punctuation', () => {
+    expect(isSpeakableZh('你好，我是学生。')).toBe(true);
+  });
+
+  it('rejects empty text, Latin letters, pinyin and punctuation only', () => {
+    expect(isSpeakableZh('')).toBe(false);
+    expect(isSpeakableZh('abc')).toBe(false);
+    expect(isSpeakableZh('这a')).toBe(false);
+    expect(isSpeakableZh('zhè')).toBe(false);
+    expect(isSpeakableZh('。')).toBe(false);
+  });
+
+  it('rejects text longer than 40 characters', () => {
+    expect(isSpeakableZh('这'.repeat(40))).toBe(true);
+    expect(isSpeakableZh('这'.repeat(41))).toBe(false);
+  });
+});
