@@ -87,6 +87,41 @@ func TestQuizNext_SentenceBlank_ServedWhenEnabledAndEligible(t *testing.T) {
 	}
 }
 
+// Issue #640: the card names the context text to show in bold, unless the
+// user turned the highlight off.
+func TestQuizNext_SentenceBlank_ContextHighlight(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		s := openTestDB(t)
+		seedSentenceScenario(t, s, 2)
+		enableSentenceBlank(t, s, 2, true, 100)
+		ctx := context.Background()
+		st, err := s.GetUserSettings(ctx, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st.SentenceHighlightEnabled = enabled
+		if err := s.UpdateUserSettings(ctx, 2, *st); err != nil {
+			t.Fatal(err)
+		}
+		r := newRouter(s)
+
+		var card models.QuizCard
+		decodeJSON(t, do(t, r, "GET", "/api/quiz/next?langs=en", nil), &card)
+		if card.CardType != "sentence" {
+			t.Fatalf("want card_type=sentence, got %q", card.CardType)
+		}
+		if !enabled {
+			if card.SentenceContextHighlight != "" {
+				t.Errorf("highlight off: want no context highlight, got %q", card.SentenceContextHighlight)
+			}
+			continue
+		}
+		if card.SentenceContextHighlight == "" || !strings.Contains(card.SentenceContext, card.SentenceContextHighlight) {
+			t.Errorf("highlight on: want a part of %q, got %q", card.SentenceContext, card.SentenceContextHighlight)
+		}
+	}
+}
+
 func TestQuizNext_SentenceBlank_NeverServedWhenDisabled(t *testing.T) {
 	s := openTestDB(t)
 	seedSentenceScenario(t, s, 2)

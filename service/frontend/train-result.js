@@ -159,12 +159,13 @@ function resultWordBlockHTML(zh, pinyin, meanings) {
     </div>`;
 }
 
-// sentenceHighlightHTML escapes the full sentence and marks the first
-// occurrence of the answer word — the same one the question screen blanked.
-function sentenceHighlightHTML(sentence, word) {
+// sentenceHighlightHTML escapes the full sentence and wraps the first
+// occurrence of the answer word in tag — the same one the question screen
+// blanked. The question screen uses <strong> for its context (issue #640).
+function sentenceHighlightHTML(sentence, word, tag = 'mark') {
   const i = word ? sentence.indexOf(word) : -1;
   if (i === -1) return escHtml(sentence);
-  return escHtml(sentence.slice(0, i)) + `<mark>${escHtml(word)}</mark>` +
+  return escHtml(sentence.slice(0, i)) + `<${tag}>${escHtml(word)}</${tag}>` +
     escHtml(sentence.slice(i + word.length));
 }
 

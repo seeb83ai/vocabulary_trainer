@@ -95,6 +95,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		ComponentCoverageThreshold       *float64 `json:"component_coverage_threshold"`
 		SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 		SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
+		SentenceHighlightEnabled         bool     `json:"sentence_highlight_enabled"`
 		AutoSubwords                     bool     `json:"auto_subwords"`
 		TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
 		AutoplayAlways                   bool     `json:"autoplay_always"`
@@ -418,6 +419,7 @@ func (h *SettingsHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		ComponentCoverageThreshold:       resolvedComponentThreshold,
 		SentenceBlankEnabled:             req.SentenceBlankEnabled,
 		SentenceBlankRatio:               req.SentenceBlankRatio,
+		SentenceHighlightEnabled:         req.SentenceHighlightEnabled,
 		AutoSubwords:                     req.AutoSubwords,
 		TranslationRankingEnabled:        req.TranslationRankingEnabled,
 		AutoplayAlways:                   req.AutoplayAlways,

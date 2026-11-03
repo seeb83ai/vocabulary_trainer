@@ -448,6 +448,7 @@ label.st-text { cursor: pointer; }
 .tr-pinyin-sm { font-size: 14px; color: #6b7280; }
 .tr-also { margin-top: 16px; font-size: 14.5px; line-height: 1.5; color: #6b7280; }
 .tr-context { margin-top: 12px; font-size: 17px; line-height: 1.5; color: #4b5563; }
+.tr-context strong { font-weight: 700; color: #111827; }
 .tr-sentence-box { margin-bottom: 14px; padding: 12px 14px; border-radius: 16px; background: #f9fafb; border: 1px solid #e5e7eb; }
 .tr-sentence-zh { font-size: 22px; line-height: 1.45; color: #111827; overflow-wrap: anywhere; }
 .tr-sentence-zh mark { background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 0 2px; }

@@ -99,6 +99,10 @@
           <label class="st-text" for="sentence-blank-ratio"><span class="st-label" data-i18n="settings.frequencyPct">Frequency (%)</span></label>
           <span class="st-stepper"><button type="button" class="st-step" data-step-for="sentence-blank-ratio" data-step="-1" aria-label="−">−</button><input type="number" id="sentence-blank-ratio" min="0" max="100" step="5" class="st-number"><button type="button" class="st-step" data-step-for="sentence-blank-ratio" data-step="1" aria-label="+">+</button></span>
         </div>
+        <div class="st-row st-row-sub" id="sentence-highlight-row">
+          <label class="st-text" for="sentence-highlight-enabled"><span class="st-label" data-i18n="settings.sentenceHighlight">Show the missing word in bold</span><span class="st-desc" data-i18n="settings.sentenceHighlightDesc">Shows the word in the full sentence that the blank asks for in bold.</span></label>
+          <span class="ui-toggle"><input type="checkbox" id="sentence-highlight-enabled"><span></span></span>
+        </div>
         <div class="st-row ">
           <label class="st-text" for="translation-ranking-enabled"><span class="st-label" data-i18n="settings.translationRanking">Hide rare translations during training</span><span class="st-desc" data-i18n="settings.translationRankingDesc">Ranks each word's translations by how common they are and only shows the most important ones on quiz cards. Rare translations are still accepted as correct answers.</span></label>
           <span class="ui-toggle"><input type="checkbox" id="translation-ranking-enabled"><span></span></span>

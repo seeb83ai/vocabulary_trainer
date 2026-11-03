@@ -239,6 +239,8 @@ async function loadSettings() {
     if (sentenceBlankEnabledEl) sentenceBlankEnabledEl.checked = !!st.sentence_blank_enabled;
     const sentenceBlankRatioEl = document.getElementById('sentence-blank-ratio');
     if (sentenceBlankRatioEl) sentenceBlankRatioEl.value = st.sentence_blank_ratio ?? 20;
+    const sentenceHighlightEl = document.getElementById('sentence-highlight-enabled');
+    if (sentenceHighlightEl) sentenceHighlightEl.checked = st.sentence_highlight_enabled !== false;
     const autoSubwordsEl = document.getElementById('auto-subwords');
     if (autoSubwordsEl) autoSubwordsEl.checked = st.auto_subwords !== false;
     const autofocusDesktopEl = document.getElementById('autofocus-desktop');
@@ -435,6 +437,7 @@ function buildModePayload() {
     ...buildRandomModePayload(),
     sentence_blank_enabled: !!(document.getElementById('sentence-blank-enabled')?.checked),
     sentence_blank_ratio:   parseInt(document.getElementById('sentence-blank-ratio')?.value || '20', 10),
+    sentence_highlight_enabled: !!(document.getElementById('sentence-highlight-enabled')?.checked),
     auto_subwords:           !!(document.getElementById('auto-subwords')?.checked),
     autoplay_always:         !!(document.getElementById('autoplay-always')?.checked),
     autofocus_desktop:       !!(document.getElementById('autofocus-desktop')?.checked),
@@ -864,6 +867,7 @@ document.querySelectorAll('.st-step').forEach(btn => {
 // Rows that only matter while their parent toggle is on are revealed by it.
 const SETTINGS_REVEALS = [
   ['sentence-blank-enabled', 'sentence-blank-ratio-row'],
+  ['sentence-blank-enabled', 'sentence-highlight-row'],
   ['translation-ranking-enabled', 'translation-hide-unranked-row'],
 ];
 function syncSettingsReveals() {

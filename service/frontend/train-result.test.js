@@ -299,10 +299,10 @@ describe('allTransTexts', () => {
 
 // ── Full sentence on the result screen (issue #557) ──────────────────────────
 
-function sentenceHighlightHTML(sentence, word) {
+function sentenceHighlightHTML(sentence, word, tag = 'mark') {
   const i = word ? sentence.indexOf(word) : -1;
   if (i === -1) return escHtml(sentence);
-  return escHtml(sentence.slice(0, i)) + `<mark>${escHtml(word)}</mark>` +
+  return escHtml(sentence.slice(0, i)) + `<${tag}>${escHtml(word)}</${tag}>` +
     escHtml(sentence.slice(i + word.length));
 }
 
@@ -325,5 +325,10 @@ describe('sentenceHighlightHTML', () => {
 
   it('escapes HTML in the sentence and the word', () => {
     expect(sentenceHighlightHTML('<b>我</b>', '我')).toBe('&lt;b&gt;<mark>我</mark>&lt;/b&gt;');
+  });
+
+  // issue #640: the question screen shows the missing word in bold.
+  it('wraps the word in another tag when one is given', () => {
+    expect(sentenceHighlightHTML('I buy milk', 'buy', 'strong')).toBe('I <strong>buy</strong> milk');
   });
 });
