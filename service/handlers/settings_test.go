@@ -1273,6 +1273,31 @@ func TestSettingsPatch_SentenceBlank(t *testing.T) {
 	}
 }
 
+// Issue #640: the bold missing word on sentence cards is on by default.
+func TestSettingsPatch_SentenceHighlight(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+
+	rec := do(t, r, "GET", "/api/settings", nil)
+	var st map[string]any
+	decodeJSON(t, rec, &st)
+	if st["sentence_highlight_enabled"] != true {
+		t.Errorf("sentence_highlight_enabled: want true by default, got %v", st["sentence_highlight_enabled"])
+	}
+
+	body := baseSettingsPatch()
+	body["sentence_highlight_enabled"] = false
+	rec = do(t, r, "PATCH", "/api/settings", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch status %d: %s", rec.Code, rec.Body.String())
+	}
+	rec2 := do(t, r, "GET", "/api/settings", nil)
+	decodeJSON(t, rec2, &st)
+	if st["sentence_highlight_enabled"] != false {
+		t.Errorf("sentence_highlight_enabled: want false after update, got %v", st["sentence_highlight_enabled"])
+	}
+}
+
 func TestSettingsPatch_SentenceBlankRatio_Invalid(t *testing.T) {
 	s := openTestDB(t)
 	r := newRouter(s)

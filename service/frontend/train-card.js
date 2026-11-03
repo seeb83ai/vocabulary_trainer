@@ -569,7 +569,8 @@ function showCard() {
     hide('translations-hint');
     hide('hmm-type-badge');
     hide('hmm-actor-hint');
-    setText('sentence-context', currentCard.sentence_context);
+    $('sentence-context').innerHTML = sentenceHighlightHTML(
+      currentCard.sentence_context || '', currentCard.sentence_context_highlight, 'strong');
     show('sentence-context');
   } else {
     hide('hmm-type-badge');

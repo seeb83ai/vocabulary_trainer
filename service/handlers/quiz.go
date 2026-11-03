@@ -146,6 +146,9 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if card != nil {
+			if !userSettings.SentenceHighlightEnabled {
+				card.SentenceContextHighlight = ""
+			}
 			writeJSON(w, http.StatusOK, *card)
 			return
 		}

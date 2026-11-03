@@ -88,6 +88,7 @@ type UserSettings struct {
 	ComponentCoverageThreshold       float64  `json:"component_coverage_threshold"`
 	SentenceBlankEnabled             bool     `json:"sentence_blank_enabled"`
 	SentenceBlankRatio               int      `json:"sentence_blank_ratio"`
+	SentenceHighlightEnabled         bool     `json:"sentence_highlight_enabled"`
 	AutoSubwords                     bool     `json:"auto_subwords"`
 	TranslationRankingEnabled        bool     `json:"translation_ranking_enabled"`
 	AutoplayAlways                   bool     `json:"autoplay_always"`
@@ -260,6 +261,10 @@ type QuizCard struct {
 	// the target word/substring replaced by "___".
 	SentenceContext string `json:"sentence_context,omitempty"`
 	SentenceBlank   string `json:"sentence_blank,omitempty"`
+	// SentenceContextHighlight is the part of SentenceContext that matches
+	// the blank (the zh word, or its translation), shown in bold; empty when
+	// no match is found or the user turned the highlight off (issue #640).
+	SentenceContextHighlight string `json:"sentence_context_highlight,omitempty"`
 	// AnswerLang is the language of the blanked side ("zh", or the language
 	// of the translation with the blank) for the input placeholder (#621).
 	AnswerLang string `json:"answer_lang,omitempty"`

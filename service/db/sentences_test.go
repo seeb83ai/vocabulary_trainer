@@ -95,6 +95,32 @@ func TestLocateTranslationBlank_NotFound(t *testing.T) {
 	}
 }
 
+// ── locateContextHighlight (issue #640) ─────────────────────────────────────
+
+func TestLocateContextHighlight(t *testing.T) {
+	cases := []struct {
+		name         string
+		context      string
+		translations []string
+		want         string
+	}{
+		{"whole word", "I buy milk every day.", []string{"milk"}, "milk"},
+		{"keeps the sentence's case", "Milk is good.", []string{"milk"}, "Milk"},
+		{"not inside another word", "Der Mann kommt.", []string{"an"}, ""},
+		{"longest match wins", "Beim letzten Mal war ich da.", []string{"Mal", "letzten Mal"}, "letzten Mal"},
+		{"earlier part-word occurrence would bold the wrong text", "Malerei, ein Mal.", []string{"Mal"}, ""},
+		{"no match", "I bought milk.", []string{"buy", "to buy"}, ""},
+		{"blank translation ignored", "I buy milk.", []string{"  ", "buy"}, "buy"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := locateContextHighlight(c.context, c.translations); got != c.want {
+				t.Errorf("locateContextHighlight(%q, %q) = %q, want %q", c.context, c.translations, got, c.want)
+			}
+		})
+	}
+}
+
 // ── findSentenceBlank ─────────────────────────────────────────────────────────
 
 func seedSentenceScenario(t *testing.T, s *Store) (wo, mai, niunai, sentence int64) {
@@ -325,6 +351,10 @@ func TestNextSentenceBlankCard_ZhBlankDirection(t *testing.T) {
 	if card.AnswerLang != "zh" {
 		t.Errorf("want answer_lang=zh, got %q", card.AnswerLang)
 	}
+	// Issue #640: the blanked word's translation is marked in the context.
+	if card.SentenceContextHighlight != "buy" {
+		t.Errorf("want context highlight %q, got %q", "buy", card.SentenceContextHighlight)
+	}
 	assertFullSentence(t, card, sentence)
 }
 
@@ -447,6 +477,10 @@ func TestNextSentenceBlankCard_TranslationBlankDirection(t *testing.T) {
 	}
 	if card.AnswerLang != "en" {
 		t.Errorf("want answer_lang=en, got %q", card.AnswerLang)
+	}
+	// Issue #640: the blanked word itself is marked in the zh sentence.
+	if card.SentenceContextHighlight != "牛奶" {
+		t.Errorf("want context highlight 牛奶, got %q", card.SentenceContextHighlight)
 	}
 	assertFullSentence(t, card, sentence)
 }

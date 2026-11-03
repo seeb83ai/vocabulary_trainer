@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"vocabulary_trainer/models"
 )
@@ -265,6 +266,43 @@ func locateTranslationBlank(sentenceTranslation string, wordTranslations []strin
 	return "", false
 }
 
+// locateContextHighlight returns the text in context that matches one of
+// translations as a whole word (case-insensitive), the longest one first, so
+// the card can show it in bold (issue #640). It returns "" when nothing
+// matches, or when an earlier occurrence of the same text sits inside another
+// word: the page bolds the first occurrence.
+func locateContextHighlight(context string, translations []string) string {
+	lower := strings.ToLower(context)
+	if len(lower) != len(context) {
+		return ""
+	}
+	isWordRune := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }
+	best := ""
+	for _, wt := range translations {
+		wt = strings.ToLower(strings.TrimSpace(wt))
+		if wt == "" || len(wt) <= len(best) {
+			continue
+		}
+		for from := 0; ; {
+			i := strings.Index(lower[from:], wt)
+			if i == -1 {
+				break
+			}
+			idx, end := from+i, from+i+len(wt)
+			before, _ := utf8.DecodeLastRuneInString(context[:idx])
+			after, _ := utf8.DecodeRuneInString(context[end:])
+			if !isWordRune(before) && !isWordRune(after) {
+				if text := context[idx:end]; strings.Index(context, text) == idx {
+					best = text
+				}
+				break
+			}
+			from = idx + 1
+		}
+	}
+	return best
+}
+
 // NextSentenceBlankCard finds the next due word reachable through an
 // eligible sentence and builds the fill-in-the-blank card for it. selectMode
 // picks the direction from the word's progress, as for a word card (issue
@@ -299,27 +337,6 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, langs [
 		}
 	}
 
-	sentenceTranslation := strings.Join(sentenceTransTexts, " · ")
-	switch mode {
-	case models.ModeTranslToZh, models.ModeMaskPinyin, models.ModeVoiceToZh:
-		return &models.QuizCard{
-			CardType:            "sentence",
-			WordID:              match.TargetWordID,
-			Mode:                models.ModeTranslToZh,
-			SentenceContext:     sentenceTranslation,
-			SentenceBlank:       strings.Replace(match.SentenceText, match.TargetText, sentenceBlankToken, 1),
-			AnswerLang:          "zh",
-			SentenceID:          match.SentenceID,
-			SentenceText:        match.SentenceText,
-			SentencePinyin:      match.SentencePinyin,
-			SentenceTranslation: sentenceTranslation,
-			DueDate:             progress.DueDate,
-			IntervalDays:        progress.IntervalDays,
-		}, nil
-	}
-
-	// Translation-blank direction: locate the blanked word's own translation
-	// as a substring of one of the sentence's translations.
 	var wordTransTexts []string
 	for _, lang := range langs {
 		texts, err := s.getTranslationTextsForZhWord(ctx, match.TargetWordID, lang)
@@ -328,21 +345,45 @@ func (s *Store) NextSentenceBlankCard(ctx context.Context, userID int64, langs [
 		}
 		wordTransTexts = append(wordTransTexts, texts...)
 	}
+
+	sentenceTranslation := strings.Join(sentenceTransTexts, " · ")
+	switch mode {
+	case models.ModeTranslToZh, models.ModeMaskPinyin, models.ModeVoiceToZh:
+		return &models.QuizCard{
+			CardType:                 "sentence",
+			WordID:                   match.TargetWordID,
+			Mode:                     models.ModeTranslToZh,
+			SentenceContext:          sentenceTranslation,
+			SentenceContextHighlight: locateContextHighlight(sentenceTranslation, wordTransTexts),
+			SentenceBlank:            strings.Replace(match.SentenceText, match.TargetText, sentenceBlankToken, 1),
+			AnswerLang:               "zh",
+			SentenceID:               match.SentenceID,
+			SentenceText:             match.SentenceText,
+			SentencePinyin:           match.SentencePinyin,
+			SentenceTranslation:      sentenceTranslation,
+			DueDate:                  progress.DueDate,
+			IntervalDays:             progress.IntervalDays,
+		}, nil
+	}
+
+	// Translation-blank direction: locate the blanked word's own translation
+	// as a substring of one of the sentence's translations.
 	for i, sentenceTrans := range sentenceTransTexts {
 		if blanked, ok := locateTranslationBlank(sentenceTrans, wordTransTexts); ok {
 			return &models.QuizCard{
-				CardType:            "sentence",
-				WordID:              match.TargetWordID,
-				Mode:                models.ModeZhToTransl,
-				SentenceContext:     match.SentenceText,
-				SentenceBlank:       blanked,
-				AnswerLang:          sentenceTransLangs[i],
-				SentenceID:          match.SentenceID,
-				SentenceText:        match.SentenceText,
-				SentencePinyin:      match.SentencePinyin,
-				SentenceTranslation: sentenceTranslation,
-				DueDate:             progress.DueDate,
-				IntervalDays:        progress.IntervalDays,
+				CardType:                 "sentence",
+				WordID:                   match.TargetWordID,
+				Mode:                     models.ModeZhToTransl,
+				SentenceContext:          match.SentenceText,
+				SentenceContextHighlight: match.TargetText,
+				SentenceBlank:            blanked,
+				AnswerLang:               sentenceTransLangs[i],
+				SentenceID:               match.SentenceID,
+				SentenceText:             match.SentenceText,
+				SentencePinyin:           match.SentencePinyin,
+				SentenceTranslation:      sentenceTranslation,
+				DueDate:                  progress.DueDate,
+				IntervalDays:             progress.IntervalDays,
 			}, nil
 		}
 	}

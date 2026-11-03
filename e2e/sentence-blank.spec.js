@@ -396,6 +396,62 @@ test.describe('Sentence-blank training mode', () => {
     await captureForPR(page, 'sentence-ambiguous-meaning');
   });
 
+  // issue #640: the full sentence shows the missing word in bold, so it is
+  // clear which word the blank asks for.
+  test('the full sentence shows the missing word in bold (issue #640)', async ({ page }) => {
+    const { idToZh } = await registerUserWithSentence(page);
+    const card = await (await page.request.get('/api/quiz/next?langs=en')).json();
+    const en = { '我': 'I', '买': 'buy', '牛奶': 'milk' }[idToZh[card.word_id]];
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#sentence-context')).toHaveText('I buy milk');
+    await expect(page.locator('#sentence-context strong')).toHaveText(en);
+    await captureForPR(page, 'sentence-highlight-translation');
+  });
+
+  test('a translation blank shows the Chinese word in bold (issue #640)', async ({ page }) => {
+    const { idToZh } = await registerUserWithSentence(page);
+    const wordID = Number(Object.keys(idToZh).find(id => idToZh[id] === '买'));
+    await page.route('**/api/quiz/next*', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        card_type: 'sentence', word_id: wordID, mode: 'zh_to_transl', answer_lang: 'en',
+        sentence_blank: 'I ___ milk', sentence_context: '我买牛奶', sentence_context_highlight: '买',
+      }),
+    }));
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#sentence-context')).toHaveText('我买牛奶');
+    await expect(page.locator('#sentence-context strong')).toHaveText('买');
+    await captureForPR(page, 'sentence-highlight-chinese');
+  });
+
+  test('no bold word when the highlight setting is off (issue #640)', async ({ page }) => {
+    await registerUserWithSentence(page);
+    const settings = await (await page.request.get('/api/settings')).json();
+    expect(settings.sentence_highlight_enabled).toBe(true);
+    await page.request.patch('/api/settings', { data: { ...settings, sentence_highlight_enabled: false } });
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await expect(page.locator('#sentence-context')).toHaveText('I buy milk');
+    await expect(page.locator('#sentence-context strong')).toHaveCount(0);
+  });
+
+  test('the highlight is a setting below fill-in-the-blank (issue #640)', async ({ page }) => {
+    await registerUserWithSentence(page);
+    await page.goto('/settings');
+    const toggle = page.locator('#sentence-highlight-enabled');
+    await expect(toggle).toBeChecked();
+    await toggle.scrollIntoViewIfNeeded();
+    await captureForPR(page, 'settings-sentence-highlight');
+    await toggle.uncheck();
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).sentence_highlight_enabled).toBe(false);
+  });
+
   test('a normal word card result shows no sentence block (issue #557)', async ({ page }) => {
     await registerUserWithSentence(page);
     const settings = await (await page.request.get('/api/settings')).json();
