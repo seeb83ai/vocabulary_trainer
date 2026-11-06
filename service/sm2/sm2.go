@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"vocabulary_trainer/models"
 )
@@ -332,7 +333,33 @@ func containsAllWords(folded, answer string) bool {
 // accepted answer by applying the optional-parens and slash/comma-split rules.
 func ExpandVariants(a string) []string { return expandVariants(a) }
 
+// The variants of a text depend only on the text, so they are cached for all
+// users. The wrong-answer lookups expand every translation of a user on each
+// wrong answer. When the cache is full, it is cleared.
+var (
+	variantMu         sync.Mutex
+	variantCache      = map[string][]string{}
+	variantCacheLimit = 200_000
+)
+
 func expandVariants(a string) []string {
+	variantMu.Lock()
+	cached, ok := variantCache[a]
+	variantMu.Unlock()
+	if ok {
+		return slices.Clone(cached)
+	}
+	out := computeVariants(a)
+	variantMu.Lock()
+	if len(variantCache) >= variantCacheLimit {
+		clear(variantCache)
+	}
+	variantCache[a] = out
+	variantMu.Unlock()
+	return slices.Clone(out)
+}
+
+func computeVariants(a string) []string {
 	seen := map[string]struct{}{}
 	add := func(s string) {
 		s = normalize(s)

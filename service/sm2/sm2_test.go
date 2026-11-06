@@ -2,6 +2,8 @@ package sm2
 
 import (
 	"reflect"
+	"slices"
+	"strconv"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
@@ -883,6 +885,39 @@ func TestExpandVariants_NoEmpty(t *testing.T) {
 	for _, v := range expandVariants("(foo) bar / baz") {
 		if v == "" {
 			t.Error("expandVariants returned an empty string")
+		}
+	}
+}
+
+// TestExpandVariants_CallerChangeDoesNotLeak checks that a caller that changes
+// the returned list does not change the next result (the results are cached).
+func TestExpandVariants_CallerChangeDoesNotLeak(t *testing.T) {
+	first := expandVariants("dog / hound")
+	for i := range first {
+		first[i] = "changed"
+	}
+	slices.Sort(first)
+	got := expandVariants("dog / hound")
+	slices.Sort(got)
+	want := []string{"dog", "dog / hound", "hound"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("expandVariants after caller change = %q, want %q", got, want)
+	}
+}
+
+// TestExpandVariants_CacheIsBounded checks that the variant cache never holds
+// more than variantCacheLimit texts.
+func TestExpandVariants_CacheIsBounded(t *testing.T) {
+	old := variantCacheLimit
+	variantCacheLimit = 3
+	t.Cleanup(func() { variantCacheLimit = old })
+	for i := 0; i < 10; i++ {
+		expandVariants("text " + strconv.Itoa(i))
+		variantMu.Lock()
+		n := len(variantCache)
+		variantMu.Unlock()
+		if n > 3 {
+			t.Fatalf("cache holds %d texts after %d calls, want at most 3", n, i+1)
 		}
 	}
 }
