@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"vocabulary_trainer/sm2"
 )
 
 type wordKey struct{ text, lang string }
@@ -24,6 +25,7 @@ type batchWriter struct {
 	noProgress bool
 
 	insWord, selWord, insSM2, insLink *sql.Stmt
+	insVariant                        *sql.Stmt
 	selRank, insWordTag               *sql.Stmt
 	selTag, insTag                    *sql.Stmt
 }
@@ -39,6 +41,7 @@ func newBatchWriter(ctx context.Context, tx *sql.Tx, userID int64) (*batchWriter
 		&w.insWordTag: `INSERT OR IGNORE INTO word_tags (word_id, tag_id) VALUES (?, ?)`,
 		&w.selTag:     `SELECT id FROM tags WHERE name = ?`,
 		&w.insTag:     `INSERT INTO tags (name) VALUES (?)`,
+		&w.insVariant: `INSERT OR IGNORE INTO translation_variants (word_id, variant) VALUES (?, ?)`,
 	} {
 		stmt, err := tx.PrepareContext(ctx, query)
 		if err != nil {
@@ -65,12 +68,20 @@ func (w *batchWriter) word(ctx context.Context, text, lang string, pinyin *strin
 	if id, ok := w.wordIDs[key]; ok {
 		return id, nil
 	}
-	if _, err := w.insWord.ExecContext(ctx, text, lang, pinyin, w.userID); err != nil {
+	res, err := w.insWord.ExecContext(ctx, text, lang, pinyin, w.userID)
+	if err != nil {
 		return 0, fmt.Errorf("upsert word: %w", err)
 	}
 	var id int64
 	if err := w.selWord.QueryRowContext(ctx, text, lang, w.userID).Scan(&id); err != nil {
 		return 0, fmt.Errorf("get word id: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 1 && lang != "zh" {
+		for _, v := range sm2.ExpandVariants(text) {
+			if _, err := w.insVariant.ExecContext(ctx, id, v); err != nil {
+				return 0, fmt.Errorf("insert translation variant: %w", err)
+			}
+		}
 	}
 	if !w.noProgress {
 		if _, err := w.insSM2.ExecContext(ctx, id); err != nil {

@@ -11,34 +11,25 @@ import (
 	"vocabulary_trainer/sm2"
 )
 
-// zhToTranslConfusionQuery finds every translation word belonging to one of
-// the user's OTHER zh words. It drives from words (filtered to the user's own
-// zh rows via idx_words_user_language) rather than scanning translations with
-// a "!=" predicate, which can't use an index and previously walked every
-// user's translation rows on each call.
-// Both queries additionally require p.first_seen_at IS NOT NULL — a word
-// that has never actually been trained (repetitions = 0, first_seen_at NULL,
-// the default state right after CreateWord/initSM2) must not be reported as
-// a confusion just because its translation text happens to match (#403).
-const zhToTranslConfusionQuery = `
-	SELECT t.zh_word_id, w.text FROM words wz
-	JOIN sm2_progress p ON p.word_id = wz.id
-	JOIN user_translations t ON t.zh_word_id = wz.id
-	JOIN words w ON w.id = t.translation_word_id
-	WHERE wz.user_id = ? AND wz.language = 'zh' AND wz.id != ? AND p.first_seen_at IS NOT NULL`
-
-// translToZhConfusionQuery is zhToTranslConfusionQuery restricted to
-// translation words in one of the given languages (for transl_to_zh
-// confusion lookups, which only consider the user's selected langs).
-// langPlaceholders is a comma-joined "?,?,..." string sized to the caller's
-// langs slice.
-func translToZhConfusionQuery(langPlaceholders string) string {
+// variantConfusionQuery finds the user's OTHER trained zh word (lowest id
+// first) with a translation that has the typed answer as one of its accepted
+// forms. It starts from the translation_variants index, so it reads only the
+// matching translations, not all of the user's. A word that has never been
+// trained (first_seen_at NULL, the state right after CreateWord/initSM2) must
+// not be reported as a confusion just because its translation text happens to
+// match (#403). CROSS JOIN keeps this join order: without statistics, SQLite
+// would otherwise loop over all of the user's words first. langFilter is ""
+// or an "AND tw.language IN (...)" clause.
+func variantConfusionQuery(langFilter string) string {
 	return `
-	SELECT t.zh_word_id, w.text FROM words wz
-	JOIN sm2_progress p ON p.word_id = wz.id
-	JOIN user_translations t ON t.zh_word_id = wz.id
-	JOIN words w ON w.id = t.translation_word_id
-	WHERE wz.user_id = ? AND wz.language = 'zh' AND w.language IN (` + langPlaceholders + `) AND wz.id != ? AND p.first_seen_at IS NOT NULL`
+	SELECT wz.id FROM translation_variants v
+	CROSS JOIN words tw ON tw.id = v.word_id
+	CROSS JOIN user_translations t ON t.translation_word_id = v.word_id
+	CROSS JOIN words wz ON wz.id = t.zh_word_id
+	CROSS JOIN sm2_progress p ON p.word_id = wz.id
+	WHERE v.variant = ? ` + langFilter + `
+	  AND wz.user_id = ? AND wz.language = 'zh' AND wz.id != ? AND p.first_seen_at IS NOT NULL
+	ORDER BY wz.id LIMIT 1`
 }
 
 // DetectConfusion checks if the user's wrong answer matches a different known word.
@@ -55,34 +46,9 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 
 	switch mode {
 	case models.ModeZhToTransl, models.ModeZhPinyinToTransl, models.ModeZhToTranslNoSound, models.ModeVoiceToTransl:
-		// Fetch all translation words for the user across ALL languages (excluding
-		// translations of the word being quizzed), then match in Go using ExpandVariants.
 		// Language-agnostic: when transl_to_zh has no translations in the selected lang
 		// it falls back to zh_to_transl, so the typed answer may be in any language.
-		// Go-level matching also handles SQLite LOWER() not folding non-ASCII (umlauts)
-		// and slash-separated alternatives (e.g. "dog / hound").
-		rows, qErr := s.db.QueryContext(ctx, zhToTranslConfusionQuery, userID, zhWordID)
-		if qErr != nil {
-			return 0, false, fmt.Errorf("lookup confusion: %w", qErr)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var zhID int64
-			var text string
-			if sErr := rows.Scan(&zhID, &text); sErr != nil {
-				return 0, false, fmt.Errorf("scan confusion: %w", sErr)
-			}
-			if !sm2.MayMatch(text, normalized) {
-				continue
-			}
-			for _, v := range sm2.ExpandVariants(text) {
-				if v == normalized {
-					_ = rows.Close()
-					return zhID, true, nil
-				}
-			}
-		}
-		return 0, false, rows.Err()
+		return s.findVariantConfusion(ctx, variantConfusionQuery(""), normalized, userID, zhWordID)
 
 	case models.ModeTranslToZh, models.ModeVoiceToZh:
 		// First: find a ZH word whose text matches the answer (user typed Chinese).
@@ -101,47 +67,36 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 			return confusedWithID, true, nil
 		}
 
-		// Second: user may have typed a translation of a different zh word.
-		// Fetch all translation words for the user (excluding current word's
-		// translations) and match in Go using ExpandVariants so that umlauts
-		// and slash-separated alternatives are handled correctly.
+		// Second: user may have typed a translation of a different zh word,
+		// in one of the selected languages.
 		if len(langs) == 0 {
 			langs = []string{"en"}
 		}
-		placeholders := make([]string, len(langs))
-		args := make([]any, 0, len(langs)+2)
-		args = append(args, userID)
-		for i, l := range langs {
-			placeholders[i] = "?"
+		args := []any{normalized}
+		for _, l := range langs {
 			args = append(args, l)
 		}
-		args = append(args, zhWordID)
-		rows, qErr := s.db.QueryContext(ctx, translToZhConfusionQuery(strings.Join(placeholders, ",")), args...)
-		if qErr != nil {
-			return 0, false, fmt.Errorf("lookup confusion translations: %w", qErr)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var zhID int64
-			var text string
-			if sErr := rows.Scan(&zhID, &text); sErr != nil {
-				return 0, false, fmt.Errorf("scan confusion: %w", sErr)
-			}
-			if !sm2.MayMatch(text, normalized) {
-				continue
-			}
-			for _, v := range sm2.ExpandVariants(text) {
-				if v == normalized {
-					_ = rows.Close()
-					return zhID, true, nil
-				}
-			}
-		}
-		return 0, false, rows.Err()
+		args = append(args, userID, zhWordID)
+		filter := "AND tw.language IN (?" + strings.Repeat(",?", len(langs)-1) + ")"
+		return s.findVariantConfusion(ctx, variantConfusionQuery(filter), args...)
 
 	default:
 		return 0, false, nil
 	}
+}
+
+// findVariantConfusion runs a variantConfusionQuery and reports the zh word it
+// found, if any.
+func (s *Store) findVariantConfusion(ctx context.Context, query string, args ...any) (int64, bool, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&id)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("lookup confusion: %w", err)
+	}
+	return id, true, nil
 }
 
 // TranslationPinyins returns, for each of texts, the sorted pinyins of the
@@ -158,37 +113,31 @@ func (s *Store) TranslationPinyins(ctx context.Context, userID int64, texts []st
 	if len(wanted) == 0 {
 		return nil, nil
 	}
-	wantedList := make([]string, 0, len(wanted))
+	args := []any{}
 	for w := range wanted {
-		wantedList = append(wantedList, w)
+		args = append(args, w)
 	}
+	args = append(args, userID)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT wz.pinyin, w.text FROM words wz
-		JOIN user_translations t ON t.zh_word_id = wz.id
-		JOIN words w ON w.id = t.translation_word_id
-		WHERE wz.user_id = ? AND wz.language = 'zh' AND wz.pinyin IS NOT NULL AND wz.pinyin != ''`, userID)
+		SELECT v.variant, wz.pinyin FROM translation_variants v
+		CROSS JOIN user_translations t ON t.translation_word_id = v.word_id
+		CROSS JOIN words wz ON wz.id = t.zh_word_id
+		WHERE v.variant IN (?`+strings.Repeat(",?", len(wanted)-1)+`)
+		  AND wz.user_id = ? AND wz.language = 'zh' AND wz.pinyin IS NOT NULL AND wz.pinyin != ''`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("translation pinyins: %w", err)
 	}
 	defer rows.Close()
 	seen := map[string]map[string]bool{}
 	for rows.Next() {
-		var pinyin, text string
-		if err := rows.Scan(&pinyin, &text); err != nil {
+		var variant, pinyin string
+		if err := rows.Scan(&variant, &pinyin); err != nil {
 			return nil, fmt.Errorf("scan translation pinyins: %w", err)
 		}
-		if !sm2.MayMatchAny(text, wantedList) {
-			continue
+		if seen[variant] == nil {
+			seen[variant] = map[string]bool{}
 		}
-		for _, v := range sm2.ExpandVariants(text) {
-			if !wanted[v] {
-				continue
-			}
-			if seen[v] == nil {
-				seen[v] = map[string]bool{}
-			}
-			seen[v][pinyin] = true
-		}
+		seen[variant][pinyin] = true
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("translation pinyins: %w", err)

@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 	"vocabulary_trainer/models"
 )
@@ -295,71 +294,11 @@ func splitOutsideParens(s string) []string {
 	return parts
 }
 
-// MayMatch is a cheap pre-check for ExpandVariants: it reports false only when
-// none of text's variants can equal answer, which must already be normalized
-// (NormalizeAnswer). Normalizing only removes characters or turns them into
-// spaces, so every word of a variant is part of the lowercased text.
-func MayMatch(text, answer string) bool {
-	return containsAllWords(foldForMatch(text), answer)
-}
-
-// MayMatchAny reports whether MayMatch(text, a) is true for at least one of
-// answers. It folds text only once, so it is much faster than calling MayMatch
-// for each answer.
-func MayMatchAny(text string, answers []string) bool {
-	folded := foldForMatch(text)
-	for _, a := range answers {
-		if containsAllWords(folded, a) {
-			return true
-		}
-	}
-	return false
-}
-
-func foldForMatch(text string) string {
-	return apostropheVariants.Replace(fullwidthToHalfwidth.Replace(strings.ToLower(text)))
-}
-
-func containsAllWords(folded, answer string) bool {
-	for w := range strings.FieldsSeq(answer) {
-		if !strings.Contains(folded, w) {
-			return false
-		}
-	}
-	return true
-}
-
 // ExpandVariants returns all valid answer strings derived from a single
 // accepted answer by applying the optional-parens and slash/comma-split rules.
 func ExpandVariants(a string) []string { return expandVariants(a) }
 
-// The variants of a text depend only on the text, so they are cached for all
-// users. The wrong-answer lookups expand every translation of a user on each
-// wrong answer. When the cache is full, it is cleared.
-var (
-	variantMu         sync.Mutex
-	variantCache      = map[string][]string{}
-	variantCacheLimit = 200_000
-)
-
 func expandVariants(a string) []string {
-	variantMu.Lock()
-	cached, ok := variantCache[a]
-	variantMu.Unlock()
-	if ok {
-		return slices.Clone(cached)
-	}
-	out := computeVariants(a)
-	variantMu.Lock()
-	if len(variantCache) >= variantCacheLimit {
-		clear(variantCache)
-	}
-	variantCache[a] = out
-	variantMu.Unlock()
-	return slices.Clone(out)
-}
-
-func computeVariants(a string) []string {
 	seen := map[string]struct{}{}
 	add := func(s string) {
 		s = normalize(s)

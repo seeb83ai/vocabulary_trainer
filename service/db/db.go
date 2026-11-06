@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 	"vocabulary_trainer/models"
+	"vocabulary_trainer/sm2"
 
 	_ "modernc.org/sqlite"
 )
@@ -115,15 +116,24 @@ func parseDateTime(s string) time.Time {
 // upsertWord inserts a word for the given user if it doesn't exist and returns its ID.
 func upsertWord(ctx context.Context, tx *sql.Tx, text, lang string, pinyin *string, userID int64) (int64, error) {
 	text = strings.TrimSpace(text)
-	if _, err := tx.ExecContext(ctx,
+	res, err := tx.ExecContext(ctx,
 		`INSERT OR IGNORE INTO words (text, language, pinyin, user_id) VALUES (?, ?, ?, ?)`,
-		text, lang, pinyin, userID); err != nil {
+		text, lang, pinyin, userID)
+	if err != nil {
 		return 0, fmt.Errorf("upsert word: %w", err)
 	}
 	var id int64
 	if err := tx.QueryRowContext(ctx,
 		`SELECT id FROM words WHERE text = ? AND language = ? AND user_id = ?`, text, lang, userID).Scan(&id); err != nil {
 		return 0, fmt.Errorf("get word id: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 1 && lang != "zh" {
+		for _, v := range sm2.ExpandVariants(text) {
+			if _, err := tx.ExecContext(ctx,
+				`INSERT OR IGNORE INTO translation_variants (word_id, variant) VALUES (?, ?)`, id, v); err != nil {
+				return 0, fmt.Errorf("insert translation variant: %w", err)
+			}
+		}
 	}
 	return id, nil
 }

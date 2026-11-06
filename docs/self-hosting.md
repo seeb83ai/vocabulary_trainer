@@ -78,6 +78,8 @@ sudo nginx -t && sudo systemctl reload nginx
 
 Running `make release` is enough to build the binary, deploy it, and restart the service.
 
+The first start after the upgrade to the `translation_variants` table (November 2026) takes longer one time. The server then stores the answer forms of every translation (about 10–20 seconds on a Raspberry Pi for 100,000 translations).
+
 ### Backups
 
 The database is a single SQLite file, so backups are simple. The project provides a scheduled nightly backup with retention:

@@ -1045,26 +1045,24 @@ func TestMarkConfusionsShownInGame_DoesNotAffectOtherModesRow(t *testing.T) {
 	}
 }
 
-// TestDetectConfusion_QueriesDriveFromUsersWords locks in the query shape
-// fix: the zh_to_transl and transl_to_zh confusion lookups must drive from
-// the user's own zh words (an indexed seek on words(user_id, language) —
-// see idx_words_user_language) rather than filtering the whole translations
-// table with a "!=" predicate, which can't use an index and previously
-// scanned every user's translation rows on every wrong answer. It runs
-// EXPLAIN QUERY PLAN against the exact query strings DetectConfusion uses,
-// so a future change back to the old shape fails this test.
-func TestDetectConfusion_QueriesDriveFromUsersWords(t *testing.T) {
+// TestDetectConfusion_QueriesDriveFromVariantIndex locks in the query shape:
+// the zh_to_transl and transl_to_zh confusion lookups must start with a seek
+// on translation_variants(variant), so a wrong answer reads only the
+// translations with that form instead of every translation of the user. It
+// runs EXPLAIN QUERY PLAN against the exact query strings DetectConfusion
+// uses, so a change to a scan fails this test.
+func TestDetectConfusion_QueriesDriveFromVariantIndex(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 
-	assertUsesWordsUserLanguageIndex := func(t *testing.T, query string, args ...any) {
+	assertStartsWithVariantIndex := func(t *testing.T, query string, args ...any) {
 		t.Helper()
 		rows, err := s.db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+query, args...)
 		if err != nil {
 			t.Fatalf("explain query plan: %v", err)
 		}
 		defer rows.Close()
-		var sawIndexedWords bool
+		var details []string
 		for rows.Next() {
 			var id, parent, notUsed int
 			var detail string
@@ -1072,20 +1070,23 @@ func TestDetectConfusion_QueriesDriveFromUsersWords(t *testing.T) {
 				t.Fatalf("scan explain row: %v", err)
 			}
 			t.Logf("plan: %s", detail)
-			if strings.Contains(detail, "wz") && strings.Contains(detail, "idx_words_user_language") {
-				sawIndexedWords = true
-			}
+			details = append(details, detail)
 		}
 		if err := rows.Err(); err != nil {
 			t.Fatalf("explain rows: %v", err)
 		}
-		if !sawIndexedWords {
-			t.Error("want the query to seek the user's zh words via idx_words_user_language, got a different plan")
+		if len(details) == 0 || !strings.Contains(details[0], "idx_translation_variants_variant") {
+			t.Errorf("want the plan to start with a seek on idx_translation_variants_variant, got %q", details)
+		}
+		for _, d := range details {
+			if strings.HasPrefix(d, "SCAN") {
+				t.Errorf("want no full scan, got %q", d)
+			}
 		}
 	}
 
-	assertUsesWordsUserLanguageIndex(t, zhToTranslConfusionQuery, int64(2), int64(1))
-	assertUsesWordsUserLanguageIndex(t, translToZhConfusionQuery("?"), int64(2), "en", int64(1))
+	assertStartsWithVariantIndex(t, variantConfusionQuery(""), "dog", int64(2), int64(1))
+	assertStartsWithVariantIndex(t, variantConfusionQuery("AND tw.language IN (?)"), "dog", "en", int64(2), int64(1))
 }
 
 // TestGetRecentMismatches_BlockedByWordShownInGame covers issue #558: a pair
@@ -1177,6 +1178,8 @@ func TestTranslationPinyins(t *testing.T) {
 
 // seedLargeVocabulary gives user 2 n trained zh words with five German
 // translations each, made of common short words, like a real vocabulary.
+// Four of five words are library references (the translations belong to the
+// library word), the fifth is the user's own word.
 func seedLargeVocabulary(b *testing.B, s *Store, n int) int64 {
 	b.Helper()
 	vocab := []string{"in", "an", "sein", "sagen", "Mond", "Monat", "Zeit", "gehen", "kommen", "Haus",
@@ -1186,33 +1189,42 @@ func seedLargeVocabulary(b *testing.B, s *Store, n int) int64 {
 		b.Fatal(err)
 	}
 	defer tx.Rollback()
-	var firstID int64
-	for i := 0; i < n; i++ {
-		res, err := tx.Exec(`INSERT INTO words (text, language, pinyin, user_id) VALUES (?, 'zh', ?, 2)`,
-			"词"+strings.Repeat("一", i%7)+string(rune(0x4E00+i)), "ci")
+	insert := func(q string, args ...any) int64 {
+		res, err := tx.Exec(q, args...)
 		if err != nil {
 			b.Fatal(err)
 		}
 		id, _ := res.LastInsertId()
+		return id
+	}
+	var firstID int64
+	for i := 0; i < n; i++ {
+		zh := "词" + strings.Repeat("一", i%7) + string(rune(0x4E00+i))
+		owner := int64(LibraryUserID)
+		if i%5 == 0 {
+			owner = 2
+		}
+		glossOwner := insert(`INSERT INTO words (text, language, pinyin, user_id) VALUES (?, 'zh', 'ci', ?)`, zh, owner)
+		id := glossOwner
+		if owner != 2 {
+			id = insert(`INSERT INTO words (text, language, pinyin, user_id, library_word_id) VALUES (?, 'zh', 'ci', 2, ?)`, zh, glossOwner)
+		}
 		if firstID == 0 {
 			firstID = id
 		}
-		if _, err := tx.Exec(`INSERT INTO sm2_progress (word_id, first_seen_at) VALUES (?, CURRENT_TIMESTAMP)`, id); err != nil {
-			b.Fatal(err)
-		}
+		insert(`INSERT INTO sm2_progress (word_id, first_seen_at) VALUES (?, CURRENT_TIMESTAMP)`, id)
 		for k := 0; k < 5; k++ {
 			text := vocab[(i+k)%len(vocab)] + " (etw.) " + vocab[(i*7+k)%len(vocab)] + " " + strconv.Itoa(i)
-			res, err := tx.Exec(`INSERT INTO words (text, language, user_id) VALUES (?, 'de', 2)`, text)
-			if err != nil {
-				b.Fatal(err)
-			}
-			tid, _ := res.LastInsertId()
-			if _, err := tx.Exec(`INSERT INTO translations (zh_word_id, translation_word_id, source) VALUES (?, ?, 'cedict')`, id, tid); err != nil {
-				b.Fatal(err)
-			}
+			tid := insert(`INSERT INTO words (text, language, user_id) VALUES (?, 'de', ?)`, text, owner)
+			insert(`INSERT INTO translations (zh_word_id, translation_word_id, source) VALUES (?, ?, 'cedict')`, glossOwner, tid)
 		}
 	}
 	if err := tx.Commit(); err != nil {
+		b.Fatal(err)
+	}
+	// The rows above are plain SQL inserts, so fill their variants as a
+	// server start does.
+	if err := Migrate(s.db); err != nil {
 		b.Fatal(err)
 	}
 	return firstID
