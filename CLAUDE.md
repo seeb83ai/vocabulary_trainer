@@ -192,6 +192,11 @@ individual rows in `schema_migrations` on first run after the upgrade.
 - Answer normalisation lives in `service/sm2/sm2.go` (`normalize`, `expandVariants`, `CheckAnswer`).
   Rules applied in order: lowercase + trim whitespace → strip trailing sentence punctuation (`。.！!？?`) →
   strip optional parenthesised segments → split on `/` or `,` for alternatives.
+- `translation_variants` stores the `expandVariants` forms of every translation word, with an index on the form.
+  The wrong-answer lookups (`DetectConfusion`, `TranslationPinyins`) use it instead of reading all translations.
+  `upsertWord` and the batch writer add the forms for a new translation word; `db.Migrate` fills them for words
+  inserted with plain SQL (CLI tools, migrations). If you change the answer rules in `sm2`, add a migration that
+  rebuilds the table (`TestTranslationVariants_RulesUnchanged` fails as a reminder).
 - Static frontend files are embedded in the binary via `//go:embed frontend` (from `service/main.go`). No separate build step.
 - The import tools (`service/cmd/import`, `service/cmd/import-hsk`) call `db.Migrate()` for schema setup and can run
   independently of the main server.

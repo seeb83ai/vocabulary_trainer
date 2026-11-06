@@ -2,8 +2,6 @@ package sm2
 
 import (
 	"reflect"
-	"slices"
-	"strconv"
 	"testing"
 	"time"
 	"vocabulary_trainer/models"
@@ -889,39 +887,6 @@ func TestExpandVariants_NoEmpty(t *testing.T) {
 	}
 }
 
-// TestExpandVariants_CallerChangeDoesNotLeak checks that a caller that changes
-// the returned list does not change the next result (the results are cached).
-func TestExpandVariants_CallerChangeDoesNotLeak(t *testing.T) {
-	first := expandVariants("dog / hound")
-	for i := range first {
-		first[i] = "changed"
-	}
-	slices.Sort(first)
-	got := expandVariants("dog / hound")
-	slices.Sort(got)
-	want := []string{"dog", "dog / hound", "hound"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("expandVariants after caller change = %q, want %q", got, want)
-	}
-}
-
-// TestExpandVariants_CacheIsBounded checks that the variant cache never holds
-// more than variantCacheLimit texts.
-func TestExpandVariants_CacheIsBounded(t *testing.T) {
-	old := variantCacheLimit
-	variantCacheLimit = 3
-	t.Cleanup(func() { variantCacheLimit = old })
-	for i := 0; i < 10; i++ {
-		expandVariants("text " + strconv.Itoa(i))
-		variantMu.Lock()
-		n := len(variantCache)
-		variantMu.Unlock()
-		if n > 3 {
-			t.Fatalf("cache holds %d texts after %d calls, want at most 3", n, i+1)
-		}
-	}
-}
-
 // ── Quality boundary ──────────────────────────────────────────────────────────
 
 func TestUpdate_Quality3TreatedAsCorrect(t *testing.T) {
@@ -1451,81 +1416,6 @@ func TestOneCharDiff(t *testing.T) {
 		got, want, ok := OneCharDiff(c.answer, c.word)
 		if got != c.got || want != c.want || ok != c.ok {
 			t.Errorf("OneCharDiff(%q, %q) = %q, %q, %v; want %q, %q, %v", c.answer, c.word, got, want, ok, c.got, c.want, c.ok)
-		}
-	}
-}
-
-// ── MayMatch ──────────────────────────────────────────────────────────────────
-
-// TestMayMatch_KeepsEveryVariant checks that MayMatch never rejects a text for
-// an answer that is one of its expanded variants.
-func TestMayMatch_KeepsEveryVariant(t *testing.T) {
-	texts := []string{
-		"to eat",
-		"Übung (S)",
-		"Höhe",
-		"to put (sb, sth) in",
-		"dog / hound",
-		"lesen, vorlesen (V)",
-		"Don’t worry",
-		"Wie heißt sie？",
-		"well…then",
-		"U.S.A.",
-		"abc(x)def",
-		"to (be) eat",
-		"（Anzahl） mal",
-		"Bsp.: 我是中國人。 我是中国人。 -- Ich bin Chinese.",
-		"  SPACES   inside  ",
-	}
-	for _, text := range texts {
-		for _, v := range ExpandVariants(text) {
-			if !MayMatch(text, v) {
-				t.Errorf("MayMatch(%q, %q) = false, want true", text, v)
-			}
-		}
-	}
-}
-
-func TestMayMatch_RejectsUnrelatedText(t *testing.T) {
-	cases := []struct{ text, answer string }{
-		{"to eat", "drink"},
-		{"Mond (S)", "in"},
-		{"to put (sb, sth) in", "to take"},
-	}
-	for _, c := range cases {
-		if MayMatch(c.text, c.answer) {
-			t.Errorf("MayMatch(%q, %q) = true, want false", c.text, c.answer)
-		}
-	}
-}
-
-// TestMayMatchAny checks that MayMatchAny is true exactly when MayMatch is
-// true for at least one of the answers.
-func TestMayMatchAny(t *testing.T) {
-	cases := []struct {
-		text    string
-		answers []string
-		want    bool
-	}{
-		{"Mond (S)", []string{"in", "sagen", "mond"}, true},
-		{"Mond (S)", []string{"in", "sagen"}, false},
-		{"to put (sb, sth) in", []string{"to take", "put in"}, true},
-		{"Don’t worry", []string{"don't worry"}, true},
-		{"Wie heißt sie？", []string{"wie heißt sie?"}, true},
-		{"Übung (S)", []string{"übung"}, true},
-		{"to eat", nil, false},
-		{"to eat", []string{""}, true},
-	}
-	for _, c := range cases {
-		if got := MayMatchAny(c.text, c.answers); got != c.want {
-			t.Errorf("MayMatchAny(%q, %q) = %v, want %v", c.text, c.answers, got, c.want)
-		}
-		any := false
-		for _, a := range c.answers {
-			any = any || MayMatch(c.text, a)
-		}
-		if any != c.want {
-			t.Errorf("MayMatch over %q for %q = %v, test case wants %v", c.answers, c.text, any, c.want)
 		}
 	}
 }
