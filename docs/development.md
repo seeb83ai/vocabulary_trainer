@@ -47,6 +47,12 @@ The [file map in CLAUDE.md](../CLAUDE.md#file-map) describes every file. Archite
 | `make test` | Go + JS |
 | `make test-all` | Go + JS + E2E |
 
+The wrong-answer lookups scan all translations of a user. Two benchmarks measure them with 10,000 words. Run them before and after you change `DetectConfusion` or `TranslationPinyins`:
+
+```bash
+cd service && go test ./db -run '^$' -bench 'TranslationPinyins|DetectConfusion' -benchtime 10x
+```
+
 ## Screenshots
 
 `make screenshots-readme` regenerates the images in `images/` (used by the README). It drives a real browser through Playwright against a seeded local server. The demo data (words, 190 days of history, confusions) comes from `e2e-screenshots/seed.js`.

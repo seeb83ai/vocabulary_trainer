@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1171,5 +1172,81 @@ func TestTranslationPinyins(t *testing.T) {
 	want := map[string][]string{"he": {"tā"}, "she": {"tā", "tāmen"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("TranslationPinyins = %q, want %q", got, want)
+	}
+}
+
+// seedLargeVocabulary gives user 2 n trained zh words with five German
+// translations each, made of common short words, like a real vocabulary.
+func seedLargeVocabulary(b *testing.B, s *Store, n int) int64 {
+	b.Helper()
+	vocab := []string{"in", "an", "sein", "sagen", "Mond", "Monat", "Zeit", "gehen", "kommen", "Haus",
+		"groß", "klein", "essen", "trinken", "Schatten", "bewölkt", "dunkel", "geheim", "weiblich", "Yin"}
+	tx, err := s.db.Begin()
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer tx.Rollback()
+	var firstID int64
+	for i := 0; i < n; i++ {
+		res, err := tx.Exec(`INSERT INTO words (text, language, pinyin, user_id) VALUES (?, 'zh', ?, 2)`,
+			"词"+strings.Repeat("一", i%7)+string(rune(0x4E00+i)), "ci")
+		if err != nil {
+			b.Fatal(err)
+		}
+		id, _ := res.LastInsertId()
+		if firstID == 0 {
+			firstID = id
+		}
+		if _, err := tx.Exec(`INSERT INTO sm2_progress (word_id, first_seen_at) VALUES (?, CURRENT_TIMESTAMP)`, id); err != nil {
+			b.Fatal(err)
+		}
+		for k := 0; k < 5; k++ {
+			text := vocab[(i+k)%len(vocab)] + " (etw.) " + vocab[(i*7+k)%len(vocab)] + " " + strconv.Itoa(i)
+			res, err := tx.Exec(`INSERT INTO words (text, language, user_id) VALUES (?, 'de', 2)`, text)
+			if err != nil {
+				b.Fatal(err)
+			}
+			tid, _ := res.LastInsertId()
+			if _, err := tx.Exec(`INSERT INTO translations (zh_word_id, translation_word_id, source) VALUES (?, ?, 'cedict')`, id, tid); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		b.Fatal(err)
+	}
+	return firstID
+}
+
+// BenchmarkTranslationPinyins measures the one-word homophone lookup on a
+// voice_to_transl wrong answer: a one-word answer against a single character
+// with many one-word meanings gives many texts to look up.
+func BenchmarkTranslationPinyins(b *testing.B) {
+	s := openTestDB(b)
+	seedLargeVocabulary(b, s, 10000)
+	ctx := context.Background()
+	var texts []string
+	for _, m := range []string{"Mond", "Monat", "Mondschein", "monatlich", "Luna", "Mondkalender",
+		"Yue", "Mondgöttin", "Mondphase", "Vollmond", "Neumond", "Mondjahr"} {
+		texts = append(texts, "sagen", m)
+	}
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := s.TranslationPinyins(ctx, 2, texts); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkDetectConfusion measures the mix-up lookup on a wrong answer.
+func BenchmarkDetectConfusion(b *testing.B) {
+	s := openTestDB(b)
+	firstID := seedLargeVocabulary(b, s, 10000)
+	ctx := context.Background()
+	b.ResetTimer()
+	for b.Loop() {
+		if _, _, err := s.DetectConfusion(ctx, 2, firstID, "no such meaning", models.ModeVoiceToTransl, []string{"de"}); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
