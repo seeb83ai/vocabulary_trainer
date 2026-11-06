@@ -299,9 +299,29 @@ func splitOutsideParens(s string) []string {
 // (NormalizeAnswer). Normalizing only removes characters or turns them into
 // spaces, so every word of a variant is part of the lowercased text.
 func MayMatch(text, answer string) bool {
-	text = apostropheVariants.Replace(fullwidthToHalfwidth.Replace(strings.ToLower(text)))
-	for _, w := range strings.Fields(answer) {
-		if !strings.Contains(text, w) {
+	return containsAllWords(foldForMatch(text), answer)
+}
+
+// MayMatchAny reports whether MayMatch(text, a) is true for at least one of
+// answers. It folds text only once, so it is much faster than calling MayMatch
+// for each answer.
+func MayMatchAny(text string, answers []string) bool {
+	folded := foldForMatch(text)
+	for _, a := range answers {
+		if containsAllWords(folded, a) {
+			return true
+		}
+	}
+	return false
+}
+
+func foldForMatch(text string) string {
+	return apostropheVariants.Replace(fullwidthToHalfwidth.Replace(strings.ToLower(text)))
+}
+
+func containsAllWords(folded, answer string) bool {
+	for w := range strings.FieldsSeq(answer) {
+		if !strings.Contains(folded, w) {
 			return false
 		}
 	}

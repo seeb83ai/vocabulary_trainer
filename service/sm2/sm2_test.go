@@ -1463,3 +1463,34 @@ func TestMayMatch_RejectsUnrelatedText(t *testing.T) {
 		}
 	}
 }
+
+// TestMayMatchAny checks that MayMatchAny is true exactly when MayMatch is
+// true for at least one of the answers.
+func TestMayMatchAny(t *testing.T) {
+	cases := []struct {
+		text    string
+		answers []string
+		want    bool
+	}{
+		{"Mond (S)", []string{"in", "sagen", "mond"}, true},
+		{"Mond (S)", []string{"in", "sagen"}, false},
+		{"to put (sb, sth) in", []string{"to take", "put in"}, true},
+		{"Don’t worry", []string{"don't worry"}, true},
+		{"Wie heißt sie？", []string{"wie heißt sie?"}, true},
+		{"Übung (S)", []string{"übung"}, true},
+		{"to eat", nil, false},
+		{"to eat", []string{""}, true},
+	}
+	for _, c := range cases {
+		if got := MayMatchAny(c.text, c.answers); got != c.want {
+			t.Errorf("MayMatchAny(%q, %q) = %v, want %v", c.text, c.answers, got, c.want)
+		}
+		any := false
+		for _, a := range c.answers {
+			any = any || MayMatch(c.text, a)
+		}
+		if any != c.want {
+			t.Errorf("MayMatch over %q for %q = %v, test case wants %v", c.answers, c.text, any, c.want)
+		}
+	}
+}

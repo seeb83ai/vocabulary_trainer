@@ -158,6 +158,10 @@ func (s *Store) TranslationPinyins(ctx context.Context, userID int64, texts []st
 	if len(wanted) == 0 {
 		return nil, nil
 	}
+	wantedList := make([]string, 0, len(wanted))
+	for w := range wanted {
+		wantedList = append(wantedList, w)
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT wz.pinyin, w.text FROM words wz
 		JOIN user_translations t ON t.zh_word_id = wz.id
@@ -173,14 +177,7 @@ func (s *Store) TranslationPinyins(ctx context.Context, userID int64, texts []st
 		if err := rows.Scan(&pinyin, &text); err != nil {
 			return nil, fmt.Errorf("scan translation pinyins: %w", err)
 		}
-		mayMatch := false
-		for w := range wanted {
-			if sm2.MayMatch(text, w) {
-				mayMatch = true
-				break
-			}
-		}
-		if !mayMatch {
+		if !sm2.MayMatchAny(text, wantedList) {
 			continue
 		}
 		for _, v := range sm2.ExpandVariants(text) {
