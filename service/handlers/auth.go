@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -13,7 +12,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 	"vocabulary_trainer/db"
@@ -90,19 +88,21 @@ func RequireAdmin(store *db.Store) func(http.Handler) http.Handler {
 // AuthHandler handles login/logout/registration and provides middleware.
 type AuthHandler struct {
 	store         authStore
-	secret        []byte // HMAC signing key, generated at startup
+	secret        []byte // seals the settings-key cookie (SESSION_SECRET)
 	emailSender   *email.Sender
 	appURL        string
 	secureCookies bool // set Secure flag on cookies (true unless APP_ENV=dev)
-	// sessionCache caches per-user sessions-invalidated-at cutoffs so session
-	// validation avoids a DB lookup on every request. Invalidated on password change.
-	sessionCache *invalidationCache
+	// sessionCache caches validated session tokens so session validation
+	// avoids a DB lookup on every request. Cleared on logout and password change.
+	sessionCache *sessionCache
+	// now is the clock for session expiry; tests replace it.
+	now func() time.Time
 	// PwnedPasswordsURL is the HIBP range API used to block leaked passwords
 	// on registration and password change. Empty turns the check off.
 	PwnedPasswordsURL string
 }
 
-// sessionCacheTTL bounds how long a stale invalidation cutoff may be served.
+// sessionCacheTTL bounds how long a cached session is served without a DB check.
 const sessionCacheTTL = 10 * time.Second
 
 // NewAuthHandler creates an AuthHandler backed by the given store.
@@ -110,8 +110,9 @@ const sessionCacheTTL = 10 * time.Second
 // auto-logs-in the new user immediately.
 //
 // appURL is used to build email verification links (e.g. "https://example.com").
-// secretHex is an optional hex-encoded 32-byte HMAC key (SESSION_SECRET env var).
-// If empty, a random key is generated — sessions will not survive server restarts.
+// secretHex is an optional hex-encoded 32-byte key (SESSION_SECRET env var) that
+// seals the settings-key cookie. If empty, a random key is generated — saved API
+// keys cannot be read after a server restart until the user logs in again.
 func NewAuthHandler(store *db.Store, emailSender *email.Sender, appURL, secretHex string) (*AuthHandler, error) {
 	return NewAuthHandlerWithEnv(store, emailSender, appURL, secretHex, "")
 }
@@ -139,7 +140,8 @@ func NewAuthHandlerWithEnv(store *db.Store, emailSender *email.Sender, appURL, s
 		emailSender:   emailSender,
 		appURL:        appURL,
 		secureCookies: !strings.EqualFold(appEnv, "dev"),
-		sessionCache:  newInvalidationCache(sessionCacheTTL),
+		sessionCache:  newSessionCache(sessionCacheTTL),
+		now:           time.Now,
 	}, nil
 }
 
@@ -258,17 +260,12 @@ func (a *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Successful authentication clears the failure budget.
 	_ = a.store.ResetFailedLogins(r.Context(), user.ID)
 
-	token := a.mintToken(user.ID)
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   a.secureCookies,
-		MaxAge:   int(sessionTTL.Seconds()),
-	})
-	a.setSettingsKeyCookie(w, r, user.ID, req.Password)
+	token, err := a.startSession(w, r, user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	a.setSettingsKeyCookie(w, r, user.ID, req.Password, token)
 	_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditLogin, ip, "")
 	redirect := "/train"
 	if user.Role == "admin" {
@@ -359,17 +356,12 @@ func (a *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("Registration (no SMTP): user %d (%s) auto-verified", userID, req.Email)
-		sessionToken := a.mintToken(user.ID)
-		http.SetCookie(w, &http.Cookie{
-			Name:     cookieName,
-			Value:    sessionToken,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteStrictMode,
-			Secure:   a.secureCookies,
-			MaxAge:   int(sessionTTL.Seconds()),
-		})
-		a.setSettingsKeyCookie(w, r, user.ID, req.Password)
+		sessionToken, err := a.startSession(w, r, user.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		a.setSettingsKeyCookie(w, r, user.ID, req.Password, sessionToken)
 		writeJSON(w, http.StatusOK, map[string]any{"auto_login": true, "redirect": "/train"})
 		return
 	}
@@ -410,16 +402,11 @@ func (a *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = a.store.RecordAuditLog(r.Context(), user.ID, db.AuditEmailVerified, ClientIP(r), "")
 
-	sessionToken := a.mintToken(user.ID)
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    sessionToken,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   a.secureCookies,
-		MaxAge:   int(sessionTTL.Seconds()),
-	})
+	if _, err := a.startSession(w, r, user.ID); err != nil {
+		log.Printf("Error: start session after email verification: %v", err)
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
 	http.Redirect(w, r, "/train", http.StatusFound)
 }
 
@@ -476,29 +463,23 @@ func (a *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	// Drop the cached invalidation cutoff so the freshly-bumped value is read
-	// immediately and older tokens are rejected without waiting for the TTL.
-	a.sessionCache.invalidate(userID)
+	// UpdateUserPassword deleted all sessions of the user, including other
+	// devices and any stolen cookie. Drop them from the cache too, so they
+	// are rejected at once and not only after the cache TTL.
+	a.sessionCache.invalidateUser(userID)
 
-	// Re-encrypt API keys with the new derived key.
-	if err := a.reencryptAPIKeys(w, r, userID, req.NewPassword); err != nil {
+	// Start a fresh session so the current browser stays logged in.
+	token, err := a.startSession(w, r, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Re-encrypt API keys with the new derived key, bound to the new session.
+	if err := a.reencryptAPIKeys(w, r, userID, req.NewPassword, token); err != nil {
 		log.Printf("Warning: re-encrypt API keys for user %d: %v", userID, err)
 		// Non-fatal: keys become inaccessible until user re-saves them.
 	}
-
-	// Mint a fresh session cookie so the current browser stays logged in.
-	// Any older token (e.g. an exfiltrated cookie) is rejected because it
-	// predates sessions_invalidated_at, which UpdateUserPassword bumped.
-	token := a.mintToken(userID)
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   a.secureCookies,
-		MaxAge:   int(sessionTTL.Seconds()),
-	})
 
 	_ = a.store.RecordAuditLog(r.Context(), userID, db.AuditPasswordChange, ClientIP(r), "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -513,86 +494,68 @@ func AuthStatus(a *AuthHandler) http.HandlerFunc {
 
 // Logout handles POST /api/logout.
 func (a *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie(cookieName); err == nil {
+		a.sessionCache.invalidate(c.Value)
+		if err := a.store.DeleteSession(r.Context(), c.Value); err != nil {
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
 	if uid := UserIDFromContext(r.Context()); uid > 0 {
 		_ = a.store.RecordAuditLog(r.Context(), uid, db.AuditLogout, ClientIP(r), "")
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	})
-	http.SetCookie(w, &http.Cookie{
-		Name:     settingsKeyCookie,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	})
+	a.setCookie(w, cookieName, "", -1)
+	a.setCookie(w, settingsKeyCookie, "", -1)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// mintToken creates a signed token: "userID:unixNano:hmac". Nanosecond
-// resolution is required so that password-change session invalidation
-// remains correct when the new cookie is minted in the same second as
-// the password change.
-func (a *AuthHandler) mintToken(userID int64) string {
-	uid := strconv.FormatInt(userID, 10)
-	ts := strconv.FormatInt(time.Now().UnixNano(), 10)
-	payload := uid + ":" + ts
-	sig := a.sign(payload)
-	return payload + ":" + sig
+// setCookie writes an auth cookie. Login and logout use the same attributes,
+// so the browser clears exactly the cookie it stored.
+func (a *AuthHandler) setCookie(w http.ResponseWriter, name, value string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   a.secureCookies,
+		MaxAge:   maxAge,
+	})
 }
 
-// sessionUserID validates the session cookie and returns the user ID it encodes.
+// startSession creates a server-side session for userID, sets the session
+// cookie and returns the session token. The token is 256 bits from
+// crypto/rand; the DB stores only its SHA-256 (see db.CreateSession).
+func (a *AuthHandler) startSession(w http.ResponseWriter, r *http.Request, userID int64) (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate session token: %w", err)
+	}
+	token := base64.RawURLEncoding.EncodeToString(b)
+	if err := a.store.CreateSession(r.Context(), userID, token, a.now().Add(sessionTTL)); err != nil {
+		return "", err
+	}
+	a.setCookie(w, cookieName, token, int(sessionTTL.Seconds()))
+	return token, nil
+}
+
+// sessionUserID looks up the session cookie on the server and returns the
+// user ID of the session. Revoked (logout, password change), expired and
+// unknown tokens are rejected. The lookup is by SHA-256 of the token in the
+// DB, so no secret-dependent byte comparison happens in Go.
 func (a *AuthHandler) sessionUserID(r *http.Request) (int64, bool) {
 	c, err := r.Cookie(cookieName)
-	if err != nil {
+	if err != nil || c.Value == "" {
 		return 0, false
 	}
-	lastColon := strings.LastIndex(c.Value, ":")
-	if lastColon < 0 {
-		return 0, false
-	}
-	payload, sig := c.Value[:lastColon], c.Value[lastColon+1:]
-	if !hmac.Equal([]byte(a.sign(payload)), []byte(sig)) {
-		return 0, false
-	}
-	parts := strings.SplitN(payload, ":", 2)
-	if len(parts) != 2 {
-		return 0, false
-	}
-	userID, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	ts, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	mintedAt := time.Unix(0, ts)
-	if time.Since(mintedAt) >= sessionTTL {
-		return 0, false
-	}
-	// Reject tokens issued before the user's last password change. The cutoff is
-	// served from a short-TTL cache so this isn't a per-request DB lookup; it is
-	// invalidated immediately on password change.
-	cut, err := a.sessionCache.lookup(userID, time.Now(), func() (time.Time, error) {
-		return a.store.GetSessionsInvalidatedAt(r.Context(), userID)
+	now := a.now()
+	userID, expiresAt, err := a.sessionCache.lookup(c.Value, now, func() (int64, time.Time, error) {
+		return a.store.GetSessionUserID(r.Context(), c.Value, now)
 	})
-	if err == nil && !cut.IsZero() {
-		if mintedAt.UTC().Before(cut) {
-			return 0, false
-		}
+	if err != nil || userID == 0 || !now.Before(expiresAt) {
+		return 0, false
 	}
 	return userID, true
-}
-
-func (a *AuthHandler) sign(data string) string {
-	mac := hmac.New(sha256.New, a.secret)
-	mac.Write([]byte(data))
-	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // isValidEmail does a minimal sanity check: contains exactly one "@" with
@@ -617,15 +580,15 @@ func deriveSettingsKey(password, saltHex string) ([]byte, error) {
 	return pbkdf2.Key([]byte(password), salt, 100_000, 32, sha256.New), nil
 }
 
-// sealKey AES-GCM-encrypts a 32-byte derived key with the server secret.
-// Returns standard base64.
-// SealKey encrypts derivedKey with secret using AES-GCM and returns a base64 string.
+// SealKey AES-GCM-encrypts a 32-byte derived key with the server secret and
+// returns standard base64. The session token is the associated data, so the
+// sealed key opens only together with that session's cookie.
 // Exported so tests can round-trip without using the auth handler.
-func SealKey(secret, derivedKey []byte) (string, error) {
-	return sealKey(secret, derivedKey)
+func SealKey(secret, derivedKey []byte, sessionToken string) (string, error) {
+	return sealKey(secret, derivedKey, sessionToken)
 }
 
-func sealKey(secret, derivedKey []byte) (string, error) {
+func sealKey(secret, derivedKey []byte, sessionToken string) (string, error) {
 	block, err := aes.NewCipher(secret[:32])
 	if err != nil {
 		return "", err
@@ -638,13 +601,13 @@ func sealKey(secret, derivedKey []byte) (string, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
-	ct := gcm.Seal(nonce, nonce, derivedKey, nil)
+	ct := gcm.Seal(nonce, nonce, derivedKey, []byte(sessionToken))
 	return base64.StdEncoding.EncodeToString(ct), nil
 }
 
-// OpenSettingsKey decodes the settings_key cookie value and decrypts it.
-// Exported so SettingsHandler and translate/LLM handlers can call it.
-func OpenSettingsKey(secret []byte, sealed string) ([]byte, error) {
+// OpenSettingsKey decodes the settings_key cookie value and decrypts it. It
+// fails unless sessionToken is the session the key was sealed for.
+func OpenSettingsKey(secret []byte, sealed, sessionToken string) ([]byte, error) {
 	ct, err := base64.StdEncoding.DecodeString(sealed)
 	if err != nil {
 		return nil, fmt.Errorf("decode sealed key: %w", err)
@@ -661,7 +624,21 @@ func OpenSettingsKey(secret []byte, sealed string) ([]byte, error) {
 	if len(ct) < ns {
 		return nil, fmt.Errorf("ciphertext too short")
 	}
-	return gcm.Open(nil, ct[:ns], ct[ns:], nil)
+	return gcm.Open(nil, ct[:ns], ct[ns:], []byte(sessionToken))
+}
+
+// settingsKeyFromRequest opens the request's settings-key cookie with the
+// request's session cookie as associated data.
+func settingsKeyFromRequest(secret []byte, r *http.Request) ([]byte, error) {
+	c, err := r.Cookie(settingsKeyCookie)
+	if err != nil {
+		return nil, err
+	}
+	sess, err := r.Cookie(cookieName)
+	if err != nil {
+		return nil, err
+	}
+	return OpenSettingsKey(secret, c.Value, sess.Value)
 }
 
 // EncryptAPIKey AES-GCM-encrypts a plaintext API key with the derived key.
@@ -729,8 +706,8 @@ func MaskKey(plaintext string) string {
 
 // setSettingsKeyCookie derives the per-user encryption key from the plaintext
 // password + their stored salt, seals it with the server secret, and writes a
-// HttpOnly cookie.
-func (a *AuthHandler) setSettingsKeyCookie(w http.ResponseWriter, r *http.Request, userID int64, password string) {
+// HttpOnly cookie bound to sessionToken.
+func (a *AuthHandler) setSettingsKeyCookie(w http.ResponseWriter, r *http.Request, userID int64, password, sessionToken string) {
 	_, salt, _, _, err := a.store.GetUserSettingsRaw(r.Context(), userID)
 	if err != nil || salt == "" {
 		return
@@ -739,24 +716,18 @@ func (a *AuthHandler) setSettingsKeyCookie(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return
 	}
-	sealed, err := sealKey(a.secret, derivedKey)
+	sealed, err := sealKey(a.secret, derivedKey, sessionToken)
 	if err != nil {
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     settingsKeyCookie,
-		Value:    sealed,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   a.secureCookies,
-		MaxAge:   int(sessionTTL.Seconds()),
-	})
+	a.setCookie(w, settingsKeyCookie, sealed, int(sessionTTL.Seconds()))
 }
 
 // reencryptAPIKeys re-derives the settings key from the new password and
-// re-encrypts any stored API keys. Called after a successful password change.
-func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, userID int64, newPassword string) error {
+// re-encrypts any stored API keys. Called after a successful password change;
+// the old key is opened with the request's (old) session, the new key is
+// sealed for newSessionToken.
+func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, userID int64, newPassword, newSessionToken string) error {
 	_, salt, deeplEnc, llmEnc, err := a.store.GetUserSettingsRaw(r.Context(), userID)
 	if err != nil {
 		return err
@@ -766,13 +737,7 @@ func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, u
 	}
 
 	// Get old derived key from the existing settings_key cookie.
-	oldDerivedKey, cookieErr := func() ([]byte, error) {
-		c, err := r.Cookie(settingsKeyCookie)
-		if err != nil {
-			return nil, err
-		}
-		return OpenSettingsKey(a.secret, c.Value)
-	}()
+	oldDerivedKey, cookieErr := settingsKeyFromRequest(a.secret, r)
 
 	newDerivedKey, err := deriveSettingsKey(newPassword, salt)
 	if err != nil {
@@ -805,18 +770,10 @@ func (a *AuthHandler) reencryptAPIKeys(w http.ResponseWriter, r *http.Request, u
 	}
 
 	// Always issue the new settings-key cookie.
-	sealed, err := sealKey(a.secret, newDerivedKey)
+	sealed, err := sealKey(a.secret, newDerivedKey, newSessionToken)
 	if err != nil {
 		return err
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     settingsKeyCookie,
-		Value:    sealed,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   a.secureCookies,
-		MaxAge:   int(sessionTTL.Seconds()),
-	})
+	a.setCookie(w, settingsKeyCookie, sealed, int(sessionTTL.Seconds()))
 	return nil
 }

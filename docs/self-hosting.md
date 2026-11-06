@@ -78,6 +78,10 @@ sudo nginx -t && sudo systemctl reload nginx
 
 Running `make release` is enough to build the binary, deploy it, and restart the service.
 
+### Upgrade to server-side sessions
+
+The release that adds the `sessions` table logs out all users one time. The old signed cookies are not in the table, so the server rejects them with `401`. Users log in again. Personal API keys stay readable after the new login. You do not have to do anything else.
+
 ### Backups
 
 The database is a single SQLite file, so backups are simple. The project provides a scheduled nightly backup with retention:

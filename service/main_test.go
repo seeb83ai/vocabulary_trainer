@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func TestNewServer_HasTimeouts(t *testing.T) {
@@ -173,6 +175,61 @@ func TestCreditsLicenseLinksAreEmbedded(t *testing.T) {
 	for _, m := range links {
 		if _, err := fs.Stat(frontendFS, "frontend/licenses/"+m[1]); err != nil {
 			t.Errorf("credits.html links /licenses/%s, but the file is not embedded: %v", m[1], err)
+		}
+	}
+}
+
+// Directory listings expose every file; static directories without an
+// index.html must answer 404.
+func TestStaticFileServer_NoDirectoryListing(t *testing.T) {
+	sub, err := fs.Sub(frontendFS, "frontend")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := http.FileServer(http.FS(noDirListingFS{sub}))
+	for _, p := range []string{"/landing/", "/landing/teasers/", "/landing/teasers", "/landing/teasers/010-training/", "/licenses/"} {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s: want 404, got %d", p, rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), "<a href=") {
+			t.Errorf("GET %s: response contains a directory listing", p)
+		}
+	}
+	for _, p := range []string{"/landing/teasers/010-training/10-chinese_pinyin_visible.png", "/app.css"} {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("GET %s: want 200, got %d", p, rec.Code)
+		}
+	}
+}
+
+// chi adds the same method twice to Allow when a static route and the "/*"
+// catch-all both match the path.
+func TestMethodNotAllowed_AllowHeaderHasNoDuplicates(t *testing.T) {
+	r := chi.NewRouter()
+	r.MethodNotAllowed(methodNotAllowed(r))
+	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {})
+	r.Post("/api/thing", func(w http.ResponseWriter, r *http.Request) {})
+	r.Get("/api/thing", func(w http.ResponseWriter, r *http.Request) {})
+	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {})
+
+	cases := map[string][]string{
+		"/settings":  {"GET"},
+		"/api/thing": {"GET", "POST"},
+		"/app.css":   {"GET"},
+	}
+	for path, want := range cases {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest("DELETE", path, nil))
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("DELETE %s: want 405, got %d", path, rec.Code)
+		}
+		got := rec.Header().Values("Allow")
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("DELETE %s: Allow = %v, want %v", path, got, want)
 		}
 	}
 }
