@@ -47,9 +47,10 @@ type Client interface {
 
 // NewClientFromConfig creates an LLM client from explicit config (for per-user keys).
 // For the "local" provider, localURL overrides LOCAL_LLM_URL; the model falls back
-// to the LOCAL_LLM_MODEL env var.
-// Returns nil if provider is unrecognised or the key/URL is empty.
-func NewClientFromConfig(provider, apiKey, localURL string) Client {
+// to the LOCAL_LLM_MODEL env var. A user's localURL must be on allowed or be a
+// public address (see ValidateLocalURL).
+// Returns nil if provider is unrecognised, the key/URL is empty or the URL is not allowed.
+func NewClientFromConfig(provider, apiKey, localURL string, allowed AllowedHosts) Client {
 	switch provider {
 	case "openai":
 		if apiKey == "" {
@@ -75,16 +76,18 @@ func NewClientFromConfig(provider, apiKey, localURL string) Client {
 		if url == "" || model == "" {
 			return nil
 		}
-		// A per-user localURL is untrusted input: validate it and dial through
-		// a client that refuses internal addresses (SSRF guard). When url comes
-		// from the operator-set LOCAL_LLM_URL env var it is trusted and may be
-		// loopback (e.g. a local Ollama), so only enforce on user-supplied URLs.
+		// A per-user localURL is untrusted input: it must be on the operator's
+		// allowlist or public, is checked again here (not only when saved),
+		// and is fetched with a client that follows no redirects and, for a
+		// non-allowlisted URL, refuses internal addresses at connect time
+		// (SSRF guard). When url comes from the operator-set LOCAL_LLM_URL env
+		// var it is trusted and may be loopback (e.g. a local Ollama).
 		client := http.DefaultClient
 		if localURL != "" {
-			if err := ValidateExternalURL(localURL); err != nil {
+			if err := ValidateLocalURL(localURL, allowed); err != nil {
 				return nil
 			}
-			client = safeOutboundClient()
+			client = userURLClient(allowed.Allows(localURL))
 		}
 		return &localClient{baseURL: url, model: model, apiKey: apiKey, httpClient: client}
 	}
@@ -375,6 +378,10 @@ func (c *geminiClient) Generate(ctx context.Context, req Request) (string, error
 // Required env vars: LOCAL_LLM_URL, LOCAL_LLM_MODEL
 // Optional env var:  LOCAL_LLM_API_KEY  (bearer token; some setups require it)
 
+// maxLocalResponseBytes caps the response read from a local LLM server, so a
+// hostile server cannot exhaust the memory of the host.
+const maxLocalResponseBytes = 1 << 20
+
 type localClient struct {
 	baseURL    string
 	model      string
@@ -414,7 +421,13 @@ func (c *localClient) Generate(_ context.Context, req Request) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxLocalResponseBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("local: read response: %w", err)
+	}
+	if len(raw) > maxLocalResponseBytes {
+		return "", fmt.Errorf("local: response larger than %d bytes", maxLocalResponseBytes)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("local: status %d: %s", resp.StatusCode, truncateBody(raw))
 	}

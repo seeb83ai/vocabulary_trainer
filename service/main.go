@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -173,6 +174,25 @@ func main() {
 	}
 
 	settingsH := handlers.NewSettingsHandler(store, authH.Secret())
+	llmAllowedHosts, err := llm.ParseAllowedHosts(os.Getenv("LLM_ALLOWED_HOSTS"))
+	if err != nil {
+		log.Fatalf("LLM_ALLOWED_HOSTS: %v", err)
+	}
+	settingsH.LLMAllowedHosts = llmAllowedHosts
+	if v := os.Getenv("LLM_USER_LOCAL_ENABLED"); v != "" {
+		enabled, err := strconv.ParseBool(v)
+		if err != nil {
+			log.Fatalf("LLM_USER_LOCAL_ENABLED: want true or false, got %q", v)
+		}
+		settingsH.UserLocalLLM = enabled
+	}
+	if !settingsH.UserLocalLLM {
+		log.Printf("Local LLM provider for users: off (set LLM_USER_LOCAL_ENABLED=true to let users set their own LLM URL)")
+	} else if len(llmAllowedHosts) == 0 {
+		log.Printf("Local LLM provider for users: on, public URLs only (set LLM_ALLOWED_HOSTS to allow LAN servers)")
+	} else {
+		log.Printf("Local LLM provider for users: on, public URLs and LLM_ALLOWED_HOSTS=%s", os.Getenv("LLM_ALLOWED_HOSTS"))
+	}
 
 	translateH := &handlers.TranslateHandler{Store: store, SettingsHandler: settingsH}
 	if key := os.Getenv("DEEPL_API_KEY"); key != "" {
@@ -287,6 +307,7 @@ func main() {
 	githubIssueIPLimiter := handlers.NewRateLimiter(githubIssuePerMin, time.Minute)
 
 	r := chi.NewRouter()
+	r.MethodNotAllowed(methodNotAllowed(r))
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(handlers.SecurityHeaders)
@@ -451,7 +472,7 @@ func main() {
 	}
 
 	initTemplates(sub)
-	fileServer := http.FileServer(http.FS(sub))
+	fileServer := http.FileServer(http.FS(noDirListingFS{sub}))
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		serveFileFromFS(w, r, sub, "index.html")
@@ -626,4 +647,45 @@ func serveFileFromFS(w http.ResponseWriter, r *http.Request, fsys fs.FS, name st
 	}
 	f.Close()
 	http.ServeFileFS(w, r, fsys, name)
+}
+
+// noDirListingFS hides directories that have no index.html, so
+// http.FileServer answers 404 instead of an auto-generated listing.
+type noDirListingFS struct{ fs.FS }
+
+func (f noDirListingFS) Open(name string) (fs.File, error) {
+	file, err := f.FS.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	if info.IsDir() {
+		if _, err := fs.Stat(f.FS, path.Join(name, "index.html")); err != nil {
+			file.Close()
+			return nil, fs.ErrNotExist
+		}
+	}
+	return file, nil
+}
+
+// methodNotAllowed answers 405 with each allowed method once in Allow. chi's
+// default handler repeats a method when a static route and the "/*"
+// catch-all both match the path.
+func methodNotAllowed(routes chi.Routes) http.HandlerFunc {
+	methods := []string{
+		http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodOptions, http.MethodConnect, http.MethodTrace,
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		for _, m := range methods {
+			if routes.Match(chi.NewRouteContext(), m, r.URL.Path) {
+				w.Header().Add("Allow", m)
+			}
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }

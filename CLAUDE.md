@@ -216,6 +216,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `service/db/db.go` | `Store`, `Open`, `Close`, `parseDateTime`, `upsertWord`, `initSM2` |
 | `service/db/migrate.go` | Version-based schema migrations (`Migrate()`, `migrations` slice) |
 | `service/db/users.go` | User CRUD, email verification, password update, user settings |
+| `service/db/sessions.go` | Server-side sessions (`CreateSession`, `GetSessionUserID`, `DeleteSession`); stores only the SHA-256 of the token; `UpdateUserPassword` deletes all sessions of the user |
 | `service/db/words.go` | Word CRUD, translation links, `GetNextCard`, `tierFilter`, `tagFilterSQL` (tag groups: OR in a group, AND between groups), `validSortExprs` |
 | `service/db/tags.go` | Tag management — `GetAllTags`, `GetTagDetails`, `UpsertTagMeta`, `GetImportableSourceTags` |
 | `service/db/quiz.go` | Core SM-2 progress — `GetSM2Progress`, `UpdateSM2Progress`, `GetStats`, prev-state, `SharesTranslation` |

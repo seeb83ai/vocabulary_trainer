@@ -9,7 +9,7 @@ All configuration is read from environment variables (or a `.env` file). Copy `.
 | `PORT` | `8080` | HTTP port |
 | `DB_PATH` | `data/vocab.db` | SQLite database file |
 | `APP_ENV` | `production` | `dev` relaxes the security defaults (see below) |
-| `SESSION_SECRET` | – | Session cookie key, required in production (`openssl rand -hex 32`) |
+| `SESSION_SECRET` | – | Key that seals the settings-key cookie (personal API keys), required in production (`openssl rand -hex 32`) |
 | `APP_URL` | `http://localhost:$PORT` | Public URL, used in verification emails |
 | `MAX_NEW_WORDS` | `5` | Daily new-word cap for new accounts |
 | `AUDIO_DIR` | next to the DB | Cache for generated TTS MP3 files |
@@ -19,6 +19,8 @@ All configuration is read from environment variables (or a `.env` file). Copy `.
 | `RATE_LIMIT_*`, `MAX_BODY_BYTES`, `CSV_MAX_*` | see below | [Production hardening](#production-hardening) |
 | `DEEPL_API_KEY`, `DEEPL_TARGET_LANGUAGE`, `DEEPL_API_BASE_URL` | – | [DeepL translation](#auto-translate-free-dictionary-lookup--deepl) |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `LOCAL_LLM_*` | – | [LLM features](#llm-scene-and-sentence-generation) |
+| `LLM_USER_LOCAL_ENABLED` | `false` | `true` lets users select the *Local* LLM provider with their own URL ([details](#local-llm-url-per-user)) |
+| `LLM_ALLOWED_HOSTS` | – | Comma-separated `host:port` list of non-public LLM servers that users may set as their local LLM URL ([details](#local-llm-url-per-user)) |
 | `GITHUB_TOKEN`, `GITHUB_ISSUE_*`, `GITHUB_ASSETS_BRANCH`, `GITHUB_API_BASE_URL` | – | [In-app issue reporting](#in-app-issue-reporting-github) |
 | `HIBP_API_URL` | `https://api.pwnedpasswords.com/range/` | [Leaked-password check](#leaked-passwords-have-i-been-pwned); `off` turns it off |
 | `IMPRESSUM_NAME`, `IMPRESSUM_ADDRESS`, `IMPRESSUM_EMAIL`, `IMPRESSUM_PHONE` | – | Legal notice at `/impressum` |
@@ -27,6 +29,21 @@ All configuration is read from environment variables (or a `.env` file). Copy `.
 ## Accounts and authentication
 
 Every page and API endpoint, except the landing page, the demo quiz and login/registration, requires a session. The app redirects unauthenticated page requests to `/login`. Unauthenticated API requests receive `401 Unauthorized`. Sessions expire after 24 hours.
+
+### Sessions
+
+The server stores the sessions in the `sessions` table:
+
+- The `vocab_session` cookie holds a random token of 256 bits (`crypto/rand`). It does not hold the user ID.
+- The table stores only the SHA-256 of the token. A copy of the database does not give usable cookies.
+- The server checks the session on each request. A short in-process cache (10 s) keeps the database load low. Logout and password change clear the cache at once.
+- **Logout** deletes the session of this browser. Other devices stay logged in.
+- **Password change** deletes all sessions of the user, on all devices. The browser that changed the password gets a new session.
+- A session expires on the server 24 hours after login, also when the browser keeps the cookie.
+
+The cookies are `HttpOnly`, `SameSite=Strict`, `Path=/` and, in production, `Secure`. Logout clears them with the same attributes.
+
+The `vocab_settings_key` cookie holds the key that decrypts your personal DeepL and LLM API keys. The app derives this key from your password (PBKDF2-SHA256) at login. It then seals the key with AES-GCM under `SESSION_SECRET`, with the session token as associated data. The browser cannot read the key. The key works only together with the session it was made for, so it stops working after logout. The database stores the API keys only in encrypted form. To decrypt them, you need the database, `SESSION_SECRET` and the cookie of a live session.
 
 Users register with an email address. When SMTP is configured, the app sends a verification email with a link to `APP_URL`. The first migration can create an admin and a regular account from `ADMIN_EMAIL`/`ADMIN_PASSWORD` and `USER_EMAIL`/`USER_PASSWORD`.
 
@@ -84,7 +101,9 @@ The HTTP server runs with read, write, and idle timeouts, so a slow or stalled c
 
 The web client has its own timeouts. A request stops after 15 seconds. Slow calls (DeepL translation, LLM scene and sentence generation, CSV upload, subword backfill and issue reports) stop after 60 seconds, the server's write timeout. When a request stops, the page shows "The server did not answer. Try again." and you can try again. A button stays disabled while its request runs, so a second tap does not send the request again. When you change a filter or a search before the last result arrives, the page shows only the newest result.
 
-The app sets a strict `Content-Security-Policy` header on every response, along with `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()`. Configure HTTPS at the reverse proxy — see `deploy/nginx.conf`, which also sets `Strict-Transport-Security`.
+The app sets a strict `Content-Security-Policy` header on every response, along with `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `X-XSS-Protection: 0`, `Referrer-Policy: strict-origin-when-cross-origin`, and `Permissions-Policy: geolocation=(), microphone=(), camera=()`. Do not set these headers again in the reverse proxy: two different values (for example `X-XSS-Protection: 1; mode=block`) conflict. Configure HTTPS at the reverse proxy — see `deploy/nginx.conf`, which sets only `Strict-Transport-Security`.
+
+The static file server does not show directory listings. A directory without an `index.html` returns `404`.
 
 Always deploy behind a reverse proxy, for example nginx, that sets `X-Real-IP` to the real client address. Rate limiting reads the client IP from that header. Do not expose the binary directly to the internet. The app deliberately never trusts the spoofable `X-Forwarded-For` header, so a directly-exposed binary would rate-limit on `RemoteAddr` only.
 
@@ -150,6 +169,33 @@ LOCAL_LLM_API_KEY=                     # optional bearer token (e.g. LM Studio)
 You must set both `LOCAL_LLM_URL` and `LOCAL_LLM_MODEL` to activate the local provider. The server must expose an OpenAI-compatible chat completions endpoint at `POST /v1/chat/completions`. This works with [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), [LocalAI](https://localai.io), vLLM, and any other OpenAI-compatible server.
 
 When you configure a local model, it takes precedence over any cloud API keys that are also present. If the local server is unreachable, or returns an error when the app requests a scene, the app tries the next configured provider automatically. No restart is required.
+
+### Local LLM URL per user
+
+By default, users cannot select the *Local* LLM provider. The server, not the browser, sends the LLM requests. With a URL that a user chooses, any user could make your server send requests to any host on the internet, for example for anonymous requests or port scans. Settings does not show *Local* and `PUT /api/settings/api-keys` rejects it with `400`. The server ignores *Local* settings that a user saved before. The operator's own `LOCAL_LLM_URL` stays available.
+
+To let users set their own LLM URL in **Settings → API keys**, set:
+
+```bash
+LLM_USER_LOCAL_ENABLED=true
+```
+
+A *Local* provider counts as a personal key only with the user's own URL. Without one, the user gets the operator's LLM and needs a plus account, as without a personal key.
+
+To prevent server-side request forgery (SSRF) against services on the server host or in its network, the app then accepts only:
+
+- a public `http(s)` address, or
+- a `host:port` that the operator lists in `LLM_ALLOWED_HOSTS`.
+
+```bash
+LLM_ALLOWED_HOSTS=192.168.0.50:1234,lmstudio.lan:443   # LAN LLM servers users may use
+```
+
+Each entry needs a port. A URL without a port uses 80 (`http`) or 443 (`https`). Allow only the port of the LLM server, not the whole host. The app rejects a list entry that is not valid and does not start.
+
+For a URL that is not on the list, the app resolves the host name and rejects the URL if one of the addresses is not public: loopback, private, link-local, CGNAT (`100.64.0.0/10`), `0.0.0.0/8`, reserved ranges, IPv4-mapped IPv6, NAT64, 6to4 and Teredo. It checks the URL when you save it and again on each request. At connect time it checks the address again, so DNS rebinding does not work. The app does not follow redirects, stops a request after 2 minutes, and reads at most 1 MiB of the response. The user sees only "LLM request failed", never the upstream response or the connection error.
+
+The operator's `LOCAL_LLM_URL` is trusted and has none of these limits.
 
 ## Text-to-speech (TTS)
 

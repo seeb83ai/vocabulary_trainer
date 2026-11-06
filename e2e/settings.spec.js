@@ -837,3 +837,37 @@ test.describe('Settings – Keyboard auto-focus', () => {
     await expect(page.locator('[data-testid="toast"]')).toBeVisible();
   });
 });
+
+// The server lets users point LLM requests at their own "local" server only
+// when the operator turns on LLM_USER_LOCAL_ENABLED (off by default, SSRF).
+test.describe('Settings – Local LLM provider', () => {
+  test.use({ storageState: 'e2e/.auth/user.json' });
+
+  test('is not offered when the server does not allow it (default)', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.locator('body')).toHaveAttribute('data-settings-loaded', 'true');
+    const provider = page.locator('#llm-provider');
+    await expect(provider.locator('option[value="openai"]')).toHaveCount(1);
+    await expect(provider.locator('option[value="local"]')).toHaveCount(0);
+    await expect(page.locator('#llm-local-url-row')).toBeHidden();
+    await provider.scrollIntoViewIfNeeded();
+    await captureForPR(page, 'settings-llm-local-disabled');
+  });
+
+  test('is offered with the URL field when the server allows it', async ({ page }) => {
+    await page.route('**/api/settings', async route => {
+      if (route.request().method() !== 'GET') return route.continue();
+      const res = await route.fetch();
+      const body = await res.json();
+      await route.fulfill({ response: res, json: { ...body, llm_local_allowed: true } });
+    });
+    await page.goto('/settings');
+    await expect(page.locator('body')).toHaveAttribute('data-settings-loaded', 'true');
+    const provider = page.locator('#llm-provider');
+    await expect(provider.locator('option[value="local"]')).toHaveCount(1);
+    await provider.selectOption('local');
+    await expect(page.locator('#llm-local-url-row')).toBeVisible();
+    await provider.scrollIntoViewIfNeeded();
+    await captureForPR(page, 'settings-llm-local-enabled');
+  });
+});

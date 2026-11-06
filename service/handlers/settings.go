@@ -15,6 +15,13 @@ import (
 type SettingsHandler struct {
 	store  settingsStore
 	secret []byte
+	// LLMAllowedHosts (LLM_ALLOWED_HOSTS) lists the non-public host:port
+	// endpoints users may set as their local LLM URL.
+	LLMAllowedHosts llm.AllowedHosts
+	// UserLocalLLM (LLM_USER_LOCAL_ENABLED) lets users select the "local"
+	// LLM provider. Off by default: the server would send requests to a URL
+	// that the user chooses.
+	UserLocalLLM bool
 }
 
 // NewSettingsHandler creates a SettingsHandler.
@@ -31,6 +38,7 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.populateMaskedKeys(st, salt, deeplEnc, llmEnc, r)
+	st.LLMLocalAllowed = h.UserLocalLLM
 	writeJSON(w, http.StatusOK, st)
 }
 
@@ -543,21 +551,25 @@ func (h *SettingsHandler) PutAPIKeys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// A user-supplied local LLM URL is an outbound request target: reject
-	// internal/non-public addresses to prevent SSRF before storing it.
+	// internal/non-public addresses that the operator did not allow, to
+	// prevent SSRF, before storing it. It is checked again on every use.
 	req.LLMLocalURL = strings.TrimSpace(req.LLMLocalURL)
+	if req.LLMProvider == "local" && !h.UserLocalLLM {
+		writeError(w, http.StatusBadRequest, "the local LLM provider is disabled on this server")
+		return
+	}
 	if req.LLMProvider == "local" && req.LLMLocalURL != "" {
-		if err := llm.ValidateExternalURL(req.LLMLocalURL); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid llm_local_url: must be a public http(s) address")
+		if err := llm.ValidateLocalURL(req.LLMLocalURL, h.LLMAllowedHosts); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid llm_local_url: must be a public http(s) address or a host allowed by the server admin")
 			return
 		}
 	}
 
-	c, err := r.Cookie(settingsKeyCookie)
-	if err != nil {
+	if _, err := r.Cookie(settingsKeyCookie); err != nil {
 		writeError(w, http.StatusBadRequest, "settings key not available — please log out and log in again")
 		return
 	}
-	derivedKey, err := OpenSettingsKey(h.secret, c.Value)
+	derivedKey, err := settingsKeyFromRequest(h.secret, r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "settings key invalid — please log out and log in again")
 		return
@@ -587,17 +599,33 @@ func (h *SettingsHandler) PutAPIKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.populateMaskedKeys(st, salt, newDeeplEnc, newLLMEnc, r)
+	st.LLMLocalAllowed = h.UserLocalLLM
 	writeJSON(w, http.StatusOK, st)
+}
+
+// UserLLMClient returns the user's personal LLM client, or nil when the user
+// has none. "local" counts only when the server allows it (UserLocalLLM) and
+// the user set their own URL: without one it would be the operator's
+// LOCAL_LLM_URL, which a dummy key must not unlock without a plus account.
+func (h *SettingsHandler) UserLLMClient(r *http.Request, userID int64) llm.Client {
+	_, provider, key, localURL := h.UserAPIKeys(r, userID)
+	switch provider {
+	case "":
+		return nil
+	case "local":
+		if !h.UserLocalLLM || localURL == "" {
+			return nil
+		}
+		return llm.NewClientFromConfig(provider, key, localURL, h.LLMAllowedHosts)
+	default:
+		return llm.NewClientFromConfig(provider, key, "", nil)
+	}
 }
 
 // UserAPIKeys decrypts and returns the user's plain-text API keys.
 // Returns empty strings if no key is stored or the settings cookie is missing.
 func (h *SettingsHandler) UserAPIKeys(r *http.Request, userID int64) (deeplKey, llmProvider, llmKey, llmLocalURL string) {
-	c, err := r.Cookie(settingsKeyCookie)
-	if err != nil {
-		return
-	}
-	derivedKey, err := OpenSettingsKey(h.secret, c.Value)
+	derivedKey, err := settingsKeyFromRequest(h.secret, r)
 	if err != nil {
 		return
 	}
@@ -619,21 +647,17 @@ func (h *SettingsHandler) UserAPIKeys(r *http.Request, userID int64) (deeplKey, 
 func (h *SettingsHandler) populateMaskedKeys(st *models.UserSettings, salt, deeplEnc, llmEnc string, r *http.Request) {
 	if deeplEnc != "" {
 		st.DeeplKeySet = true
-		if c, err := r.Cookie(settingsKeyCookie); err == nil {
-			if dk, err := OpenSettingsKey(h.secret, c.Value); err == nil {
-				if pt, err := DecryptAPIKey(dk, deeplEnc); err == nil {
-					st.DeeplKeyMasked = MaskKey(pt)
-				}
+		if dk, err := settingsKeyFromRequest(h.secret, r); err == nil {
+			if pt, err := DecryptAPIKey(dk, deeplEnc); err == nil {
+				st.DeeplKeyMasked = MaskKey(pt)
 			}
 		}
 	}
 	if llmEnc != "" {
 		st.LLMKeySet = true
-		if c, err := r.Cookie(settingsKeyCookie); err == nil {
-			if dk, err := OpenSettingsKey(h.secret, c.Value); err == nil {
-				if pt, err := DecryptAPIKey(dk, llmEnc); err == nil {
-					st.LLMKeyMasked = MaskKey(pt)
-				}
+		if dk, err := settingsKeyFromRequest(h.secret, r); err == nil {
+			if pt, err := DecryptAPIKey(dk, llmEnc); err == nil {
+				st.LLMKeyMasked = MaskKey(pt)
 			}
 		}
 	}

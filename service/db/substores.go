@@ -202,7 +202,9 @@ type UserStore interface {
 	CreateUser(ctx context.Context, email, passwordHash, verificationToken string, expiresAt time.Time) (int64, error)
 	SetUserEmailVerified(ctx context.Context, token string) (*models.User, error)
 	UpdateUserPassword(ctx context.Context, userID int64, passwordHash string) error
-	GetSessionsInvalidatedAt(ctx context.Context, userID int64) (time.Time, error)
+	CreateSession(ctx context.Context, userID int64, token string, expiresAt time.Time) error
+	GetSessionUserID(ctx context.Context, token string, now time.Time) (int64, time.Time, error)
+	DeleteSession(ctx context.Context, token string) error
 	GetUserSettings(ctx context.Context, userID int64) (*models.UserSettings, error)
 	GetUserSettingsRaw(ctx context.Context, userID int64) (settings *models.UserSettings, salt, deeplEnc, llmEnc string, err error)
 	UpdateUserSettings(ctx context.Context, userID int64, st models.UserSettings) error

@@ -171,9 +171,9 @@ func (h *TranslateHandler) Config(deeplConfigured, llmConfigured bool) http.Hand
 		userDeeplSet := false
 		userLLMSet := false
 		if h.SettingsHandler != nil {
-			dk, _, lk, _ := h.SettingsHandler.UserAPIKeys(r, userID)
+			dk, _, _, _ := h.SettingsHandler.UserAPIKeys(r, userID)
 			userDeeplSet = dk != ""
-			userLLMSet = lk != ""
+			userLLMSet = h.SettingsHandler.UserLLMClient(r, userID) != nil
 		}
 
 		writeJSON(w, http.StatusOK, map[string]bool{
