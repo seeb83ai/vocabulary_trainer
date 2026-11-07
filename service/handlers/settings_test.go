@@ -1,9 +1,12 @@
 package handlers_test
 
 import (
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"vocabulary_trainer/llm"
 	"vocabulary_trainer/models"
 )
 
@@ -68,15 +71,10 @@ func TestGetSettings_Defaults(t *testing.T) {
 // PutAPIKeys must reject a local LLM URL that points at an internal address
 // (SSRF guard) before doing anything else.
 func TestPutAPIKeys_RejectsInternalLLMURL(t *testing.T) {
-	s := openTestDB(t)
-	r := newRouter(s)
+	r := newSessionRouterWithLLMHosts(t, nil)
+	d := loginDevice(t, r)
 
-	body := map[string]any{
-		"llm_provider":  "local",
-		"llm_local_url": "http://169.254.169.254/latest/meta-data/",
-		"llm_key":       "x",
-	}
-	rec := do(t, r, http.MethodPut, "/api/settings/api-keys", body)
+	rec := putLocalLLM(t, r, d, "http://169.254.169.254/latest/meta-data/", "x")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("want 400 for internal llm_local_url, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -1847,5 +1845,36 @@ func TestPutUILang_Invalid(t *testing.T) {
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("ui_lang=%q: want 400, got %d: %s", lang, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+// A normal user may not point the server's LLM requests at internal
+// services (SSRF). Only hosts the operator lists in LLM_ALLOWED_HOSTS may be
+// non-public.
+func TestPutAPIKeys_LocalLLMURL_OnlyPublicOrAllowlisted(t *testing.T) {
+	allowed, err := llm.ParseAllowedHosts("192.168.0.50:1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newSessionRouterWithLLMHosts(t, allowed)
+	d := loginDevice(t, r)
+	put := func(u string) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(map[string]string{"llm_provider": "local", "llm_local_url": u})
+		return d.do(t, r, http.MethodPut, "/api/settings/api-keys", string(body))
+	}
+
+	for _, u := range []string{
+		"http://127.0.0.1:8332",
+		"http://localhost",
+		"http://192.168.0.242",
+		"http://[::1]:8080",
+		"http://192.168.0.50:8332", // allowlisted host, but not this port
+	} {
+		if rec := put(u); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: want 400, got %d: %s", u, rec.Code, rec.Body)
+		}
+	}
+	if rec := put("http://192.168.0.50:1234"); rec.Code != http.StatusOK {
+		t.Errorf("allowlisted URL: want 200, got %d: %s", rec.Code, rec.Body)
 	}
 }

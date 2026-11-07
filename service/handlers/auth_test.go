@@ -416,44 +416,24 @@ func TestLogin_CookieSameSiteStrict(t *testing.T) {
 	}
 }
 
-// TestSession_TamperedSameLengthSignatureDenied verifies that a signature
-// flipped in place (same length, one byte different) is rejected. This
-// guards against the case where HMAC verification short-circuits on the
-// first differing byte — a timing-attack vector. The behaviour must be
-// identical regardless of where the tamper occurs.
-func TestSession_TamperedSameLengthSignatureDenied(t *testing.T) {
+// TestSession_TamperedSameLengthTokenDenied verifies that a token changed in
+// place (same length, one character different) is rejected.
+func TestSession_TamperedSameLengthTokenDenied(t *testing.T) {
 	r := newAuthRouter(t)
 	loginRec := loginReq(t, r, "me@example.de", "I learn zh")
 	cookie := sessionCookie(t, loginRec)
 
-	// Cookie format: userID:timestamp:hex_hmac — find the last ':' and flip
-	// the first byte of the HMAC. Keep total length identical.
 	v := cookie.Value
-	last := -1
-	for i := len(v) - 1; i >= 0; i-- {
-		if v[i] == ':' {
-			last = i
-			break
-		}
+	var flipped byte = 'a'
+	if v[0] == 'a' {
+		flipped = 'b'
 	}
-	if last < 0 || last >= len(v)-1 {
-		t.Fatalf("unexpected cookie format: %q", v)
-	}
-	first := v[last+1]
-	// Flip to a different hex digit so total length stays the same.
-	var flipped byte = '0'
-	if first == '0' {
-		flipped = '1'
-	}
-	mutated := v[:last+1] + string(flipped) + v[last+2:]
-	if len(mutated) != len(v) {
-		t.Fatalf("mutation changed length: %d vs %d", len(mutated), len(v))
-	}
+	mutated := string(flipped) + v[1:]
 
 	rec := doWithCookie(t, r, "GET", "/api/protected",
 		&http.Cookie{Name: cookie.Name, Value: mutated})
 	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("want 401 for same-length tampered signature, got %d", rec.Code)
+		t.Errorf("want 401 for same-length tampered token, got %d", rec.Code)
 	}
 }
 
@@ -800,16 +780,19 @@ func TestSealOpenSettingsKey_RoundTrip(t *testing.T) {
 	for i := range derived {
 		derived[i] = byte(i + 50)
 	}
-	sealed, err := handlers.SealKey(secret, derived)
+	sealed, err := handlers.SealKey(secret, derived, "session-a")
 	if err != nil {
 		t.Fatalf("SealKey: %v", err)
 	}
-	got, err := handlers.OpenSettingsKey(secret, sealed)
+	got, err := handlers.OpenSettingsKey(secret, sealed, "session-a")
 	if err != nil {
 		t.Fatalf("OpenSettingsKey: %v", err)
 	}
 	if string(got) != string(derived) {
 		t.Errorf("round-trip failed: want %v, got %v", derived, got)
+	}
+	if _, err := handlers.OpenSettingsKey(secret, sealed, "session-b"); err == nil {
+		t.Error("OpenSettingsKey with another session token must fail")
 	}
 }
 

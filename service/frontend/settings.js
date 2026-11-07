@@ -312,7 +312,12 @@ async function loadSettings() {
       if (el) { el.textContent = t('settings.currentKeyStatus', { masked: st.llm_key_masked }); el.classList.remove('hidden'); }
     }
     const providerEl = document.getElementById('llm-provider');
-    if (providerEl && st.llm_provider) {
+    // The server offers the "local" provider only when the operator allows
+    // user-set LLM URLs (LLM_USER_LOCAL_ENABLED).
+    if (providerEl && !st.llm_local_allowed) {
+      providerEl.querySelector('option[value="local"]')?.remove();
+    }
+    if (providerEl && st.llm_provider && (st.llm_provider !== 'local' || st.llm_local_allowed)) {
       providerEl.value = st.llm_provider;
       toggleLocalURLRow(st.llm_provider);
     }

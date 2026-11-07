@@ -246,13 +246,10 @@ func (h *LLMHandler) clientFor(w http.ResponseWriter, r *http.Request) (llm.Clie
 	client := h.Client
 	hasUserKey := false
 	if h.SettingsHandler != nil {
-		_, provider, userKey, localURL := h.SettingsHandler.UserAPIKeys(r, userID)
-		if provider != "" && (userKey != "" || provider == "local") {
-			if uc := llm.NewClientFromConfig(provider, userKey, localURL); uc != nil {
-				client = uc
-			}
+		if uc := h.SettingsHandler.UserLLMClient(r, userID); uc != nil {
+			client = uc
+			hasUserKey = true
 		}
-		hasUserKey = provider != "" && userKey != ""
 	}
 	if client == nil {
 		writeError(w, http.StatusServiceUnavailable, "LLM not configured")

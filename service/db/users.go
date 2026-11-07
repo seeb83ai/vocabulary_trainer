@@ -116,14 +116,15 @@ func (s *Store) SetUserEmailVerified(ctx context.Context, token string) (*models
 }
 
 // UpdateUserPassword replaces the password hash for the given user and
-// stamps sessions_invalidated_at to "now" with sub-second precision, so
-// any session token minted before this call is rejected by the auth
-// middleware (and a token minted immediately afterwards remains valid).
+// deletes all of the user's sessions in the same transaction, so a session
+// opened before the change (e.g. a stolen cookie) stops working at once.
 func (s *Store) UpdateUserPassword(ctx context.Context, userID int64, passwordHash string) error {
-	now := time.Now().UTC().Format("2006-01-02 15:04:05.000000000")
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET password_hash = ?, sessions_invalidated_at = ? WHERE id = ?`,
-		passwordHash, now, userID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, passwordHash, userID)
 	if err != nil {
 		return fmt.Errorf("update password: %w", err)
 	}
@@ -131,23 +132,10 @@ func (s *Store) UpdateUserPassword(ctx context.Context, userID int64, passwordHa
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	return nil
-}
-
-// GetSessionsInvalidatedAt returns the timestamp before which session
-// tokens for this user are no longer valid. Returns zero-time if the
-// column is unset (no password change has happened yet).
-func (s *Store) GetSessionsInvalidatedAt(ctx context.Context, userID int64) (time.Time, error) {
-	var ts string
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COALESCE(sessions_invalidated_at, '') FROM users WHERE id = ?`, userID).Scan(&ts)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("get sessions_invalidated_at: %w", err)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("revoke sessions: %w", err)
 	}
-	if ts == "" {
-		return time.Time{}, nil
-	}
-	return parseDateTime(ts), nil
+	return tx.Commit()
 }
 
 // ensureUserSettings creates a user_settings row with defaults if one does not

@@ -122,7 +122,7 @@ func main() {
 		return claudeCLI(context.Background(), *claudeBin, *model, *effort, system, user)
 	}
 	if *claudeBin == "" {
-		client := llm.NewClientFromConfig("anthropic", os.Getenv("ANTHROPIC_API_KEY"), "")
+		client := llm.NewClientFromConfig("anthropic", os.Getenv("ANTHROPIC_API_KEY"), "", nil)
 		if client == nil {
 			log.Fatal("ANTHROPIC_API_KEY environment variable is required (or use -claude-cli claude)")
 		}
