@@ -1,5 +1,5 @@
 # Stage 1: Build
-FROM golang:1.25-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 WORKDIR /app/service
 
@@ -16,7 +16,7 @@ RUN go run ./cmd/gen-landing
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vocab-trainer .
 
 # Stage 2: Runtime
-FROM alpine:3.19
+FROM alpine:3.22
 
 RUN apk add --no-cache ca-certificates && \
     mkdir -p /data
