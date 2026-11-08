@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version-file: service/go.mod
           cache: true
           cache-dependency-path: service/go.sum
 
@@ -96,7 +96,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version-file: service/go.mod
           cache: true
           cache-dependency-path: service/go.sum
 
@@ -122,7 +122,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version-file: service/go.mod
           cache: true
           cache-dependency-path: service/go.sum
 
@@ -162,7 +162,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version-file: service/go.mod
           cache: true
           cache-dependency-path: service/go.sum
 
