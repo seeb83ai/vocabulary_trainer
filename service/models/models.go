@@ -360,6 +360,9 @@ type AnswerResponse struct {
 	LeechLapses int `json:"leech_lapses,omitempty"`
 	// NeedsReview tells the result screen that the word is flagged for review.
 	NeedsReview bool `json:"needs_review,omitempty"`
+	// ComponentDefinitions (lang → definition) are set when the word is also
+	// a component and its definition adds a meaning (issue #651).
+	ComponentDefinitions map[string]string `json:"component_definitions,omitempty"`
 }
 
 // TranslationSources, when present, parallels Translations[lang] index-for-index:

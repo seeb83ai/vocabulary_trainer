@@ -1142,7 +1142,9 @@ func TestQuizNext_UsesUserPrimaryLang(t *testing.T) {
 	}
 }
 
-func TestQuizNext_ComponentCard_IsAlsoWord_True(t *testing.T) {
+// Issue #651: a component that is also a word of the user is not served;
+// the word card comes instead.
+func TestQuizNext_ComponentThatIsAlsoWord_ServesWordCard(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
 	if err := s.SeedHanziDecompositionForTest(ctx, "女", "woman"); err != nil {
@@ -1166,11 +1168,11 @@ func TestQuizNext_ComponentCard_IsAlsoWord_True(t *testing.T) {
 	}
 	var card map[string]any
 	decodeJSON(t, rec, &card)
-	if card["card_type"] != "component" {
-		t.Fatalf("want card_type=component, got %v", card["card_type"])
+	if card["card_type"] == "component" {
+		t.Fatalf("want the word card, got a component card")
 	}
-	if v, _ := card["is_also_word"].(bool); !v {
-		t.Error("want is_also_word=true when component character is also a word")
+	if id, _ := card["word_id"].(float64); id == 0 {
+		t.Errorf("want a word card with word_id, got %v", card)
 	}
 }
 

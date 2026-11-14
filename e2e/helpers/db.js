@@ -160,8 +160,9 @@ export function getWordDueDate(email, zhText) {
  * @param {string} email
  * @param {string} character
  * @param {string} definition
+ * @param {string} [dueOffset] SQLite datetime modifier for the due date
  */
-export function seedDueComponent(email, character, definition) {
+export function seedDueComponent(email, character, definition, dueOffset = '-1 minute') {
   const db = new DatabaseSync(getDbPath());
   try {
     db.exec('PRAGMA busy_timeout = 5000');
@@ -173,7 +174,7 @@ export function seedDueComponent(email, character, definition) {
         SELECT 1 FROM hanzi_decomposition_translation WHERE character = ? AND lang = 'EN' AND user_id IS NULL)`)
       .run(character, definition, character);
     db.prepare(`INSERT OR REPLACE INTO component_progress (user_id, character, due_date)
-      VALUES (?, ?, datetime('now', '-1 minute'))`).run(userRow.id, character);
+      VALUES (?, ?, datetime('now', ?))`).run(userRow.id, character, dueOffset);
   } finally {
     db.close();
   }

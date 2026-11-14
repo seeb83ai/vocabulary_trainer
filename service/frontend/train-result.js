@@ -93,6 +93,7 @@ function moreInfoCountLabel(info) {
   if (info.meanings.length) parts.push(info.meanings.length === 1 ? t('moreInfo.oneMeaning') : t('moreInfo.meanings', { n: info.meanings.length }));
   if (info.measureWords.length) parts.push(t('moreInfo.measureWord'));
   if (info.examples.length) parts.push(info.examples.length === 1 ? t('moreInfo.oneExample') : t('moreInfo.examples', { n: info.examples.length }));
+  if (info.componentMeanings?.length) parts.push(t('moreInfo.component'));
   return parts.join(' · ');
 }
 
@@ -112,13 +113,19 @@ function moreInfoBlocksHTML(info) {
   for (const ex of info.examples) {
     html += `<div><div class="tr-eyebrow-sm">${escHtml(t('moreInfo.example'))}</div><div class="tr-example-zh font-hanzi">${escHtml(ex.zh)}</div>${ex.tr ? `<div class="tr-example-tr">${escHtml(ex.tr)}</div>` : ''}</div>`;
   }
+  const comp = info.componentMeanings || [];
+  if (comp.length) {
+    html += `<div><div class="tr-eyebrow-sm">${escHtml(t('moreInfo.componentMeanings'))}</div>${comp.map(c =>
+      `<div class="tr-more-block-text"><span class="tr-def-lang">${escHtml(c.lang)}</span> ${escHtml(c.text)}</div>`).join('')}</div>`;
+  }
   return html;
 }
 
 // moreInfoBoxHTML renders the folded grey "More info" box for the collapsed
-// translations of a word; `id` prefixes the toggle/body element IDs.
-function moreInfoBoxHTML(collapsed, id) {
-  const info = splitMoreInfo(collapsed);
+// translations of a word and its component meanings (see componentMeanings);
+// `id` prefixes the toggle/body element IDs.
+function moreInfoBoxHTML(collapsed, id, compMeanings = []) {
+  const info = { ...splitMoreInfo(collapsed), componentMeanings: compMeanings };
   const count = moreInfoCountLabel(info);
   if (!count) return '';
   return `<div class="tr-more">
@@ -264,13 +271,14 @@ function renderWordAnswerResult(result, answer) {
   // the folded "More info" box (issue #431/#432/#433).
   const { shown: meanings, collapsed: moreTexts } =
     groupTranslationsByLang(result.translations, result.translations_extra, langs);
+  const compMeanings = componentMeanings(result.component_definitions, langs);
   const pinyin = result.pinyin || '';
   const playWord = () => playAudio(currentCard.word_id, result.zh_text);
 
   const renderCorrect = () => {
     setResultHead('correct');
     renderResultSentence(result.zh_text);
-    breakdown.innerHTML = resultWordBlockHTML(result.zh_text, pinyin, meanings) + moreInfoBoxHTML(moreTexts, 'result-more-info');
+    breakdown.innerHTML = resultWordBlockHTML(result.zh_text, pinyin, meanings) + moreInfoBoxHTML(moreTexts, 'result-more-info', compMeanings);
     wireDisclosures(breakdown);
     breakdown.querySelector('.result-inline-play')?.addEventListener('click', playWord);
     show('word-breakdown');
@@ -371,7 +379,7 @@ function renderWordAnswerResult(result, answer) {
       } else {
         setResultHead('wrong');
         breakdown.innerHTML = resultWordBlockHTML(result.zh_text, pinyin, meanings) +
-          moreInfoBoxHTML(moreTexts, 'result-more-info') + yourAnswerHtml;
+          moreInfoBoxHTML(moreTexts, 'result-more-info', compMeanings) + yourAnswerHtml;
       }
       wireDisclosures(breakdown);
       breakdown.querySelector('.btn-confused-play')?.addEventListener('click', playConfused);
