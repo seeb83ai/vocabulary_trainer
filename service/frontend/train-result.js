@@ -115,8 +115,8 @@ function moreInfoBlocksHTML(info) {
   }
   const comp = info.componentMeanings || [];
   if (comp.length) {
-    html += `<div><div class="tr-eyebrow-sm">${escHtml(t('moreInfo.componentMeanings'))}</div><div class="tr-defs">${comp.map(c =>
-      `<div class="tr-def"><span class="tr-def-lang">${escHtml(c.lang)}</span><span class="tr-def-text">${escHtml(c.text)}</span></div>`).join('')}</div></div>`;
+    html += `<div><div class="tr-eyebrow-sm">${escHtml(t('moreInfo.componentMeanings'))}</div>${comp.map(c =>
+      `<div class="tr-more-block-text"><span class="tr-def-lang">${escHtml(c.lang)}</span> ${escHtml(c.text)}</div>`).join('')}</div>`;
   }
   return html;
 }
