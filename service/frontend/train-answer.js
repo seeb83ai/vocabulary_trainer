@@ -337,6 +337,13 @@ function splitMoreInfo(texts) {
   return { meanings, measureWords, examples };
 }
 
+// componentMeanings lists the component definitions of a word that is also
+// a component (issue #651), in the order of langs, for the "More info" box.
+function componentMeanings(defs, langs) {
+  if (!defs) return [];
+  return (langs || []).filter(lang => defs[lang]).map(lang => ({ lang, text: defs[lang] }));
+}
+
 // markTypedMeaning flags which of a word's meanings the user typed — the
 // mix-up screen highlights it in the other word's meaning list.
 function markTypedMeaning(meanings, typed) {

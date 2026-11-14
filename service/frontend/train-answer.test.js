@@ -1094,3 +1094,27 @@ describe('isSpeakableZh', () => {
     expect(isSpeakableZh('这'.repeat(41))).toBe(false);
   });
 });
+
+// ── Component meanings in "More info" (issue #651) ──────────────────────────
+// Inlined from train-answer.js.
+function componentMeanings(defs, langs) {
+  if (!defs) return [];
+  return (langs || []).filter(lang => defs[lang]).map(lang => ({ lang, text: defs[lang] }));
+}
+
+describe('componentMeanings', () => {
+  it('lists the definitions in the order of the languages', () => {
+    expect(componentMeanings({ en: 'more; to experience', de: 'mehr' }, ['de', 'en'])).toEqual([
+      { lang: 'de', text: 'mehr' },
+      { lang: 'en', text: 'more; to experience' },
+    ]);
+  });
+
+  it('skips languages without a definition', () => {
+    expect(componentMeanings({ en: 'more' }, ['de', 'en'])).toEqual([{ lang: 'en', text: 'more' }]);
+  });
+
+  it('returns nothing without definitions', () => {
+    expect(componentMeanings(undefined, ['en'])).toEqual([]);
+  });
+});

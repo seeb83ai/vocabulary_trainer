@@ -19,7 +19,7 @@ Per-user, per-entry scheduling state that drives spaced repetition. Governs the 
 The initial drill period for a newly introduced vocabulary entry. Cards in the learning phase appear at short retry intervals (minutes, not days). A card graduates from the learning phase after 3 correct answers in a row; wrong answers reset the streak. Tracked by the `learning_new_word` flag on `sm2_progress`.
 
 **Component**
-A hanzi radical or sub-character part shown during vocabulary entry introduction as a memory aid. Components help users memorise characters by breaking them into recognisable parts. They are not independently quizzed — the primary learnable unit is always the vocabulary entry (the zh word), not its components.
+A hanzi radical or sub-character part shown during vocabulary entry introduction as a memory aid. Components help users memorise characters by breaking them into recognisable parts. Components have their own SM-2 progress (`component_progress`) and their own quiz cards. A character that is also a zh vocabulary entry of the user is trained only as the vocabulary entry: the component quiz skips it, and the entry accepts the component definitions as answers.
 
 **Tag**
 A user-defined organisational label (e.g. `HSK1`, `food`, `travel`) attached to vocabulary entries. Tags filter which entries appear in training and on the vocabulary list. Tags are purely organisational — they never affect SM-2 scheduling parameters or quiz difficulty.

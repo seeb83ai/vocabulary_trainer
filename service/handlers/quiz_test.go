@@ -1194,6 +1194,77 @@ func TestQuizAnswer_EllipsisEquivalence(t *testing.T) {
 	}
 }
 
+// Issue #651: a word that is also a component of the user accepts the
+// component definitions as answers. Without the component, it does not.
+func TestQuizAnswer_AcceptsComponentDefinitionOfSameCharacter(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+	id := seedWord(t, s, "更", "gèng", []string{"more"})
+	if err := s.SeedHanziDecompositionForTest(ctx, "更", "even more; to experience"); err != nil {
+		t.Fatalf("seed hanzi: %v", err)
+	}
+
+	answer := func() bool {
+		rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+			"word_id": id, "mode": "zh_to_transl", "answer": "to experience",
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var resp models.AnswerResponse
+		decodeJSON(t, rec, &resp)
+		return resp.Correct
+	}
+
+	if answer() {
+		t.Error("without a component, the hanzi definition must not be accepted")
+	}
+	s.InsertComponentProgressForTest(ctx, int64(2), "更", time.Now())
+	if !answer() {
+		t.Error("with the component, the component definition should be accepted")
+	}
+}
+
+// Issue #651: the result shows the component definitions of the same
+// character when they add a meaning the word does not have.
+func TestQuizAnswer_ReturnsComponentDefinitionsThatDiffer(t *testing.T) {
+	s := openTestDB(t)
+	r := newRouter(s)
+	ctx := context.Background()
+	gengID := seedWord(t, s, "更", "gèng", []string{"more"})
+	kouID := seedWord(t, s, "口", "kǒu", []string{"mouth"})
+	for char, def := range map[string]string{"更": "more; to experience", "口": "mouth"} {
+		if err := s.SeedHanziDecompositionForTest(ctx, char, def); err != nil {
+			t.Fatalf("seed hanzi: %v", err)
+		}
+		s.InsertComponentProgressForTest(ctx, int64(2), char, time.Now())
+	}
+
+	for _, tc := range []struct {
+		name string
+		id   int64
+		want string
+	}{
+		{"adds a meaning", gengID, "more; to experience"},
+		{"same meanings", kouID, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := do(t, r, "POST", "/api/quiz/answer", map[string]any{
+				"word_id": tc.id, "mode": "transl_to_zh", "answer": "x",
+			})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("answer: want 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var resp models.AnswerResponse
+			decodeJSON(t, rec, &resp)
+			if got := resp.ComponentDefinitions["en"]; got != tc.want {
+				t.Errorf("component_definitions[en] = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestQuizAnswer_ReturnsCheckedAnswer: the result screen shows the answer the
 // server checked, not the answer field, which can change while the request
 // runs.

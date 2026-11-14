@@ -270,6 +270,11 @@ func initComponentsForWord(ctx context.Context, q querier, userID int64, zhText 
 	return nil
 }
 
+// notAlsoWordSQL keeps out components whose character is also a zh word of
+// the user: the word is trained instead (issue #651).
+const notAlsoWordSQL = `NOT EXISTS (SELECT 1 FROM words w
+		WHERE w.user_id = cp.user_id AND w.language = 'zh' AND w.text = cp.character)`
+
 // componentCard is the internal representation (includes definitions per lang for answer checking).
 type componentCard struct {
 	Character   string
@@ -312,6 +317,7 @@ func (s *Store) GetNextComponentCard(ctx context.Context, userID int64, langs []
 		WHERE cp.user_id = ?
 		  AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation
 		              WHERE character = cp.character AND lang IN (` + strings.Join(langPlaceholders, ",") + `) AND definition != '')
+		  AND ` + notAlsoWordSQL + `
 		  %s
 		ORDER BY cp.due_date ASC
 		LIMIT 1`
@@ -834,6 +840,7 @@ func (s *Store) GetComponentCountByDueDate(ctx context.Context, userID int64) ([
 	FROM component_progress cp
 	WHERE cp.user_id = ?
 	  AND cp.first_seen_date IS NOT NULL
+	  AND ` + notAlsoWordSQL + `
 	  AND date(cp.due_date) <= date('now', '+30 days')
 	GROUP BY bucket_date
 	ORDER BY bucket_date`
@@ -876,6 +883,7 @@ func (s *Store) GetComponentCounts(ctx context.Context, userID int64, langs []st
 		 WHERE cp.user_id = ?
 		   AND EXISTS (SELECT 1 FROM hanzi_decomposition_translation
 		               WHERE character = cp.character AND lang IN (`+strings.Join(placeholders, ",")+`) AND definition != '')
+		   AND `+notAlsoWordSQL+`
 		   AND cp.due_date < date('now', '+1 day')`,
 		args...,
 	).Scan(&dueToday)
@@ -883,7 +891,7 @@ func (s *Store) GetComponentCounts(ctx context.Context, userID int64, langs []st
 		return 0, 0, fmt.Errorf("get component due count: %w", err)
 	}
 	err = s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM component_progress WHERE user_id = ?`,
+		`SELECT COUNT(*) FROM component_progress cp WHERE cp.user_id = ? AND `+notAlsoWordSQL,
 		userID,
 	).Scan(&total)
 	if err != nil {

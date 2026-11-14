@@ -393,6 +393,36 @@ func (h *QuizHandler) Next(w http.ResponseWriter, r *http.Request) {
 }
 
 // Answer processes a submitted answer and updates SM-2 progress.
+// componentDefinitionsForWord returns the component definitions (lang →
+// definition) of a word's text when the user also has it as a component, or
+// nil.
+func (h *QuizHandler) componentDefinitionsForWord(ctx context.Context, zhText string, langs []string) (map[string]string, error) {
+	userID := UserIDFromContext(ctx)
+	isComponent, err := h.Store.IsComponentForUser(ctx, userID, zhText)
+	if err != nil || !isComponent {
+		return nil, err
+	}
+	return h.Store.GetComponentDefinitions(ctx, userID, zhText, langs)
+}
+
+// componentDefinitionsThatDiffer keeps the component definitions that have at
+// least one meaning not in the word's translations of the same language.
+func componentDefinitionsThatDiffer(defs map[string]string, translations map[string][]string) map[string]string {
+	var out map[string]string
+	for lang, def := range defs {
+		for _, part := range strings.FieldsFunc(def, func(r rune) bool { return r == ';' || r == ',' }) {
+			if strings.TrimSpace(part) != "" && !sm2.CheckAnswer(part, translations[lang]) {
+				if out == nil {
+					out = map[string]string{}
+				}
+				out[lang] = def
+				break
+			}
+		}
+	}
+	return out
+}
+
 func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	var req models.AnswerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -456,6 +486,22 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	correct := sm2.CheckAnswer(req.Answer, correctTexts)
+
+	// A word that is also a component is trained as the word only, so it
+	// accepts the component definitions too (issue #651).
+	componentDefs, err := h.componentDefinitionsForWord(r.Context(), zhWord.ZhText, langs)
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	if !correct && req.Mode != models.ModeTranslToZh && req.Mode != models.ModeVoiceToZh {
+		for _, def := range componentDefs {
+			if sm2.CheckComponentAnswer(req.Answer, def) {
+				correct = true
+				break
+			}
+		}
+	}
 
 	progress, err := h.Store.GetSM2Progress(r.Context(), req.WordID)
 	if err != nil {
@@ -579,6 +625,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 		LeechLapses:       leechLapses,
 		NeedsReview:       zhWord.NeedsReview,
 	}
+	resp.ComponentDefinitions = componentDefinitionsThatDiffer(componentDefs, zhWord.Translations)
 
 	if sceneText, err := h.Store.GetHMMSceneText(r.Context(), req.WordID); err != nil {
 		log.Printf("answer: GetHMMSceneText word %d: %v", req.WordID, err)

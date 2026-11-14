@@ -350,6 +350,7 @@ individual rows in `schema_migrations` on first run after the upgrade.
 | `e2e/audio-stop.spec.js` | Browser tests: audio that still loads does not play on the next card; a second tap on play while the clip loads plays it only once (issue #620) |
 | `e2e/answer-audio.spec.js` | Browser tests: 🔊 button next to a wrong Chinese answer that is not a vocabulary word (`/api/audio/text`), no button for a Latin answer (issue #638) |
 | `e2e/submitted-answer.spec.js` | Browser tests: the result screen shows the answer the server checked (`your_answer`), not text typed while the answer is checked (component card, word card, landing-page demo) |
+| `e2e/word-is-component.spec.js` | Browser tests: a character that is a word and a component is trained only as the word, the word accepts the component definitions, *More info* shows the component meanings (issue #651) |
 | `e2e/mismatches.spec.js` | Browser tests: component-vs-word mismatch detection UI, mismatches page rendering |
 | `e2e/credits.spec.js` | Browser tests: landing footer and Settings link to `/credits`, sources with licenses, license text opens, page language |
 | `e2e-screenshots/capture.spec.js` | On-demand (`make screenshots-readme`): regenerates the 10 README images in `images/` |

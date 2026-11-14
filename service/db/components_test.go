@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -986,8 +987,9 @@ func TestGetNextComponentCard_ReturnsDueCard(t *testing.T) {
 // TestGetNextComponentCard_SkipsNewComponentAlreadyKnownAsWord covers issue
 // #448: a component must not get its own "new component" introduction when
 // a same-text zh word is already introduced (known) for this user. The
-// component should be silently promoted to "seen" (first_seen_date set) so
-// it still enters normal review rotation, rather than being shown as new.
+// component is silently promoted to "seen" (first_seen_date set). Since issue
+// #651 it is not served while the word exists; the promotion matters when the
+// word is deleted later.
 func TestGetNextComponentCard_SkipsNewComponentAlreadyKnownAsWord(t *testing.T) {
 	s := openTestDB(t)
 	ctx := context.Background()
@@ -999,15 +1001,33 @@ func TestGetNextComponentCard_SkipsNewComponentAlreadyKnownAsWord(t *testing.T) 
 	id := seedWord(t, s, "口", "kǒu", []string{"mouth"})
 	markWordTrained(t, s, id)
 
+	if _, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, nil); err != nil {
+		t.Fatalf("GetNextComponentCard: %v", err)
+	}
+	var firstSeen sql.NullString
+	if err := s.db.QueryRow(`SELECT first_seen_date FROM component_progress WHERE user_id = 2 AND character = '口'`).Scan(&firstSeen); err != nil {
+		t.Fatalf("read first_seen_date: %v", err)
+	}
+	if !firstSeen.Valid {
+		t.Error("expected the component colliding with a known word to be promoted to seen (first_seen_date set), got NULL")
+	}
+}
+
+// Issue #651: a character that is also a zh word of the user is trained as
+// the word only. The component is never served, even when it is more overdue.
+func TestGetNextComponentCard_SkipsComponentThatIsAlsoAWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "更", "even more; to experience")
+	s.InsertComponentProgressForTest(ctx, int64(2), "更", time.Now().Add(-48*time.Hour))
+	seedWord(t, s, "更", "gèng", []string{"more"})
+
 	card, err := s.GetNextComponentCard(ctx, int64(2), []string{"en"}, nil)
 	if err != nil {
 		t.Fatalf("GetNextComponentCard: %v", err)
 	}
-	if card == nil {
-		t.Fatal("want a card, got nil")
-	}
-	if card.Progress.FirstSeenDate == nil {
-		t.Error("expected the component colliding with a known word to be promoted to seen (FirstSeenDate set), got nil")
+	if card != nil {
+		t.Errorf("want no component card for a character that is also a word, got %q", card.Character)
 	}
 }
 
@@ -1092,6 +1112,34 @@ func TestGetComponentCounts_ReturnsCorrectCounts(t *testing.T) {
 	}
 	if total != 1 {
 		t.Errorf("want total=1, got %d", total)
+	}
+}
+
+// Issue #651: a component that is also a zh word is not trained, so it is
+// not counted as due or in training either.
+func TestGetComponentCounts_SkipsComponentThatIsAlsoAWord(t *testing.T) {
+	s := openTestDB(t)
+	ctx := context.Background()
+	seedHanziDef(t, s, "更", "even more")
+	seedHanziTranslation(t, s, "更", "en", "even more")
+	s.InsertComponentProgressForTest(ctx, int64(2), "更", time.Now().Add(-24*time.Hour))
+	s.db.Exec(`UPDATE component_progress SET first_seen_date = date('now') WHERE character = '更' AND user_id = 2`)
+	seedWord(t, s, "更", "gèng", []string{"more"})
+
+	due, total, err := s.GetComponentCounts(ctx, int64(2), []string{"en"})
+	if err != nil {
+		t.Fatalf("GetComponentCounts: %v", err)
+	}
+	if due != 0 || total != 0 {
+		t.Errorf("want due=0 total=0, got due=%d total=%d", due, total)
+	}
+
+	dates, err := s.GetComponentCountByDueDate(ctx, int64(2))
+	if err != nil {
+		t.Fatalf("GetComponentCountByDueDate: %v", err)
+	}
+	if len(dates) != 0 {
+		t.Errorf("want no due-date buckets, got %+v", dates)
 	}
 }
 
