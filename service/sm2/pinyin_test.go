@@ -167,3 +167,29 @@ func TestSamePinyin(t *testing.T) {
 		}
 	}
 }
+
+// TestPinyinInCard covers issue #655: a word sounds like a part of a card when
+// its pinyin is the same as a run of the card's syllables.
+func TestPinyinInCard(t *testing.T) {
+	cases := []struct {
+		part, card string
+		want       bool
+	}{
+		{"tā", "tā yǒu háizi", true},
+		{"háizi", "tā yǒu háizi", true},
+		{"hái zi", "tā yǒu háizi", true},
+		{"yǒuhái", "tā yǒu hái zi", true},
+		{"kuài", "kuài", true},
+		{"ài", "kuài", false}, // part of a syllable only
+		{"nǐ", "tā yǒu háizi", false},
+		{"ta", "tā yǒu háizi", false},
+		{"", "tā", false},
+		{"tā", "", false},
+		{"tā", "Tā yǒu háizi.", true},
+	}
+	for _, c := range cases {
+		if got := PinyinInCard(c.part, c.card); got != c.want {
+			t.Errorf("PinyinInCard(%q, %q) = %v, want %v", c.part, c.card, got, c.want)
+		}
+	}
+}

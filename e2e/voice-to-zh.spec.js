@@ -46,6 +46,19 @@ async function addKnownWords(page, words) {
   }
 }
 
+// addTrainedKnownWords adds words that were trained once (so they count as a
+// mix-up) but are never a quiz prompt.
+async function addTrainedKnownWords(page, words) {
+  for (const w of words) {
+    const res = await page.request.post('/api/words', {
+      data: { zh_text: w.zh, pinyin: w.pinyin, translations: { en: w.en }, tags: [], start_training: true },
+    });
+    expect(res.ok()).toBeTruthy();
+    const known = await page.request.post(`/api/words/${(await res.json()).id}/known`, { data: { known: true } });
+    expect(known.ok()).toBeTruthy();
+  }
+}
+
 async function nextCard(page, mode, ids) {
   const res = await page.request.get(`/api/quiz/next?mode=${mode}&langs=en`);
   expect(res.ok()).toBeTruthy();
@@ -186,6 +199,45 @@ test.describe('Voice → Chinese (issue #571)', () => {
     await page.locator('#disambig-input').fill(word.en[0]);
     await page.locator('#disambig-form button[type="submit"]').click();
     await expect(page.locator('#result-icon')).toHaveText('Correct', { timeout: 5_000 });
+  });
+
+  // Issue #655: on a Voice → Translation card for 段 duàn, "fast" (爱 ài, 快
+  // kuài) is a normal wrong answer, although 快 sounds like 块 kuài, which also
+  // means "piece". On a 块 card, the box shows 快, the word with the same sound.
+  test('Voice → Translation: a meaning of words with other pinyin is a normal wrong answer', async ({ page }) => {
+    await setupUser(page, 'voice_to_transl', [{ zh: '段', pinyin: 'duàn', en: ['section', 'piece'] }]);
+    await addTrainedKnownWords(page, [
+      { zh: '块', pinyin: 'kuài', en: ['piece'] },
+      { zh: '爱', pinyin: 'ài', en: ['love', 'fast'] },
+      { zh: '快', pinyin: 'kuài', en: ['fast'] },
+    ]);
+    await page.route('**/api/audio/**', route => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) }));
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await submit(page, 'fast');
+
+    await expect(page.locator('#result-icon')).toHaveText('Not quite');
+    await expect(page.locator('#disambig-input')).toHaveCount(0);
+    await expect(page.locator('#result-area')).not.toContainText('爱');
+    await expect(page.locator('#result-area')).not.toContainText('快');
+  });
+
+  test('Voice → Translation: the box shows the word with the same sound', async ({ page }) => {
+    await setupUser(page, 'voice_to_transl', [{ zh: '块', pinyin: 'kuài', en: ['piece'] }]);
+    await addTrainedKnownWords(page, [
+      { zh: '爱', pinyin: 'ài', en: ['love', 'fast'] },
+      { zh: '快', pinyin: 'kuài', en: ['fast'] },
+    ]);
+    await page.route('**/api/audio/**', route => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) }));
+
+    await page.goto('/train');
+    await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
+    await submit(page, 'fast');
+
+    await expect(page.locator('#result-icon')).toHaveText('Same sound, other word');
+    await expect(page.locator('#result-area')).toContainText('快');
+    await expect(page.locator('#result-area')).not.toContainText('爱');
   });
 
   test('a wrong word with other pinyin is a normal wrong answer', async ({ page }) => {

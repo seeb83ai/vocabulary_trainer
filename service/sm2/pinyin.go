@@ -163,6 +163,23 @@ func SamePinyin(a, b string) bool {
 	return na != "" && na == norm(b)
 }
 
+// PinyinInCard reports whether part has the same pinyin and tones as a run of
+// the space-separated syllables or words of card, e.g. "tā" or "háizi" in
+// "tā yǒu háizi", but not "ài" in "kuài" (issue #655).
+func PinyinInCard(part, card string) bool {
+	fields := strings.Fields(card)
+	for i := range fields {
+		run := ""
+		for _, f := range fields[i:] {
+			run += f
+			if SamePinyin(part, run) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // TranslationEqualsPinyin reports whether a translation is only the word's
 // pinyin, ignoring case, tones, spaces and parenthesised parts — e.g. the
 // surname gloss "Nan (Eig, Fam)" for 南 nán (issues #464/#481).

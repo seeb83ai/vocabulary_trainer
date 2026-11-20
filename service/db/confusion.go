@@ -21,7 +21,7 @@ import (
 // the default state right after CreateWord/initSM2) must not be reported as
 // a confusion just because its translation text happens to match (#403).
 const zhToTranslConfusionQuery = `
-	SELECT t.zh_word_id, w.text FROM words wz
+	SELECT t.zh_word_id, w.text, COALESCE(wz.pinyin, '') FROM words wz
 	JOIN sm2_progress p ON p.word_id = wz.id
 	JOIN user_translations t ON t.zh_word_id = wz.id
 	JOIN words w ON w.id = t.translation_word_id
@@ -61,6 +61,17 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		// it falls back to zh_to_transl, so the typed answer may be in any language.
 		// Go-level matching also handles SQLite LOWER() not folding non-ASCII (umlauts)
 		// and slash-separated alternatives (e.g. "dog / hound").
+		// On voice_to_transl only a word with the card's pinyin counts: the user
+		// heard the sound (issue #655).
+		var cardPinyin string
+		if mode == models.ModeVoiceToTransl {
+			if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(pinyin, '') FROM words WHERE id = ?`, zhWordID).Scan(&cardPinyin); err != nil {
+				if err == sql.ErrNoRows {
+					return 0, false, nil
+				}
+				return 0, false, fmt.Errorf("lookup confusion pinyin: %w", err)
+			}
+		}
 		rows, qErr := s.db.QueryContext(ctx, zhToTranslConfusionQuery, userID, zhWordID)
 		if qErr != nil {
 			return 0, false, fmt.Errorf("lookup confusion: %w", qErr)
@@ -68,9 +79,12 @@ func (s *Store) DetectConfusion(ctx context.Context, userID, zhWordID int64, ans
 		defer rows.Close()
 		for rows.Next() {
 			var zhID int64
-			var text string
-			if sErr := rows.Scan(&zhID, &text); sErr != nil {
+			var text, pinyin string
+			if sErr := rows.Scan(&zhID, &text, &pinyin); sErr != nil {
 				return 0, false, fmt.Errorf("scan confusion: %w", sErr)
+			}
+			if mode == models.ModeVoiceToTransl && !sm2.SamePinyin(pinyin, cardPinyin) {
+				continue
 			}
 			if !sm2.MayMatch(text, normalized) {
 				continue

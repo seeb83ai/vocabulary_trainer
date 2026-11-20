@@ -1107,9 +1107,10 @@ func TestQuizAnswer_VoiceOneDiffHomophone(t *testing.T) {
 		homophone    bool
 	}{
 		{models.ModeVoiceToTransl, "He has a child", true},
-		{models.ModeVoiceToTransl, "you has a child", false}, // other pinyin
-		{models.ModeVoiceToTransl, "it has a child", false},  // "it" is no word of the user
-		{models.ModeVoiceToTransl, "he has a dog", false},    // two words differ
+		{models.ModeVoiceToTransl, "you has a child", false},   // other pinyin
+		{models.ModeVoiceToTransl, "it has a child", false},    // "it" is no word of the user
+		{models.ModeVoiceToTransl, "he has a dog", false},      // two words differ
+		{models.ModeVoiceToTransl, "child has a child", false}, // 孩子 is in the card, but not in place of "she"
 		{models.ModeVoiceToZh, "他有孩子", true},
 		{models.ModeVoiceToZh, "它有孩子", true}, // 它 from the dictionary
 		{models.ModeVoiceToZh, "你有孩子", false},
@@ -1205,7 +1206,9 @@ func TestQuizAnswer_VoiceToTranslHomophone(t *testing.T) {
 // TestQuizAnswer_VoiceToTranslHomophoneOfCard covers issue #655: on a
 // voice_to_transl card, a one-word answer is a homophone only when a word with
 // that meaning sounds like the card word, not like another word that shares a
-// meaning with the card (段 duàn and 块 kuài are both "piece", 快 is kuài).
+// meaning with the card (段 duàn and 块 kuài are both "piece", 快 is kuài). The
+// "you typed" box shows the word with the same sound, and no box is shown for
+// a word with other pinyin.
 func TestQuizAnswer_VoiceToTranslHomophoneOfCard(t *testing.T) {
 	s := openTestDB(t)
 	duan := seedWord(t, s, "段", "duàn", []string{"section", "piece"})
@@ -1215,12 +1218,14 @@ func TestQuizAnswer_VoiceToTranslHomophoneOfCard(t *testing.T) {
 	r := newRouter(s)
 
 	cases := []struct {
-		wordID    int64
-		answer    string
-		homophone bool
+		wordID       int64
+		answer       string
+		homophone    bool
+		confusedWith string
 	}{
-		{duan, "fast", false},
-		{kuai, "fast", true},
+		{duan, "fast", false, ""},
+		{duan, "love", false, ""},
+		{kuai, "fast", true, "快"},
 	}
 	for _, c := range cases {
 		rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
@@ -1234,6 +1239,13 @@ func TestQuizAnswer_VoiceToTranslHomophoneOfCard(t *testing.T) {
 		if resp.Correct || resp.Homophone != c.homophone {
 			t.Errorf("word %d %q: want correct=false homophone=%v, got correct=%v homophone=%v",
 				c.wordID, c.answer, c.homophone, resp.Correct, resp.Homophone)
+		}
+		got := ""
+		if resp.ConfusedWith != nil {
+			got = resp.ConfusedWith.ConfusedWithText
+		}
+		if got != c.confusedWith {
+			t.Errorf("word %d %q: want confused_with %q, got %q", c.wordID, c.answer, c.confusedWith, got)
 		}
 	}
 }
