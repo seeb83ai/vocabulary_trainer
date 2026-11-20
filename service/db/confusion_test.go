@@ -149,8 +149,10 @@ func TestDetectConfusion_SameWord_NotFound(t *testing.T) {
 // fires for the zh_to_transl variant modes (no-sound / voice-only prompt),
 // which are scored identically to zh_to_transl in Answer but were previously
 // missing from DetectConfusion's mode switch (issue #333).
+// voice_to_transl only finds a word with the same pinyin, see
+// TestDetectConfusion_VoiceToTransl_SameSoundOnly (issue #655).
 func TestDetectConfusion_ZhToTranslVariants_Found(t *testing.T) {
-	for _, mode := range []string{models.ModeZhToTranslNoSound, models.ModeVoiceToTransl} {
+	for _, mode := range []string{models.ModeZhToTranslNoSound} {
 		t.Run(mode, func(t *testing.T) {
 			s := openTestDB(t)
 			shoeID := seedWord(t, s, "鞋", "xié", []string{"Schuh"})
@@ -1248,5 +1250,39 @@ func BenchmarkDetectConfusion(b *testing.B) {
 		if _, _, err := s.DetectConfusion(ctx, 2, firstID, "no such meaning", models.ModeVoiceToTransl, []string{"de"}); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// TestDetectConfusion_VoiceToTransl_SameSoundOnly covers issue #655: on a
+// voice_to_transl card only a word with the card's pinyin is a confusion, and
+// it is preferred over an earlier word with the same meaning and other sound.
+func TestDetectConfusion_VoiceToTransl_SameSoundOnly(t *testing.T) {
+	s := openTestDB(t)
+	duan := seedWord(t, s, "段", "duàn", []string{"section"})
+	kuaiPiece := seedWord(t, s, "块", "kuài", []string{"piece"})
+	markWordTrained(t, s, seedWord(t, s, "爱", "ài", []string{"love", "fast"}))
+	kuaiFast := seedWord(t, s, "快", "kuài", []string{"fast"})
+	markWordTrained(t, s, kuaiFast)
+	ctx := context.Background()
+
+	got, found, err := s.DetectConfusion(ctx, int64(2), kuaiPiece, "fast", models.ModeVoiceToTransl, []string{"en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || got != kuaiFast {
+		t.Errorf("块 card: want 快 (%d), got found=%v id=%d", kuaiFast, found, got)
+	}
+
+	if _, found, err := s.DetectConfusion(ctx, int64(2), duan, "fast", models.ModeVoiceToTransl, []string{"en"}); err != nil {
+		t.Fatal(err)
+	} else if found {
+		t.Error("段 card: a meaning of words with other pinyin must not be a confusion")
+	}
+
+	// Other modes still find a word with other pinyin.
+	if _, found, err := s.DetectConfusion(ctx, int64(2), duan, "fast", models.ModeZhToTransl, []string{"en"}); err != nil {
+		t.Fatal(err)
+	} else if !found {
+		t.Error("zh_to_transl: want a confusion")
 	}
 }
