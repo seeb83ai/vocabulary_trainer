@@ -474,6 +474,10 @@ function renderWordAnswerResult(result, answer) {
       if (isVoiceTransl) {
         questionWord.innerHTML = `<span class="tr-recap-row"><span class="font-hanzi">${escHtml(result.zh_text)}</span>${speakerButtonHTML('result-question-play', true)}</span>`;
         questionWord.querySelector('.result-question-play').addEventListener('click', playWord);
+      } else if (currentCard.mode === 'voice_to_zh') {
+        // The sound is the question: offer it again next to the meaning (issue #645).
+        questionWord.innerHTML = `<span class="tr-recap-row"><span>${escHtml(meaning)}</span>${speakerButtonHTML('result-question-play', true)}</span>`;
+        questionWord.querySelector('.result-question-play').addEventListener('click', playWord);
       } else {
         questionWord.textContent = meaning;
       }

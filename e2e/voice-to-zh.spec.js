@@ -76,13 +76,15 @@ test.describe('Voice → Chinese (issue #571)', () => {
     await expect(page.locator('#result-icon')).toHaveText('Correct');
   });
 
-  test('a homophone shows the meaning and lets the user type again', async ({ page }) => {
+  // Issue #645: the homophone screen also has a replay button for the word.
+  test('a homophone shows the meaning and a replay button and lets the user type again', async ({ page }) => {
     const ids = await setupUser(page, 'voice_to_zh', [
       { zh: '他', pinyin: 'tā', en: ['he'] },
       { zh: '她', pinyin: 'tā', en: ['she'] },
     ]);
     const word = await nextCard(page, 'voice_to_zh', ids);
     const other = word.zh === '他' ? '她' : '他';
+    await page.route('**/api/audio/**', route => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: Buffer.alloc(0) }));
 
     await page.goto('/train');
     await expect(page.locator('#card-area')).toBeVisible({ timeout: 12_000 });
@@ -90,8 +92,14 @@ test.describe('Voice → Chinese (issue #571)', () => {
 
     await expect(page.locator('#result-icon')).toHaveText('Same sound, other word');
     await expect(page.locator('#result-question')).toContainText(word.en[0]);
+    await expect(page.locator('#result-question')).not.toContainText(word.zh);
+    await expect(page.locator('#result-question .result-question-play')).toBeVisible();
     await expect(page.locator('#disambig-input')).toBeVisible();
     await captureForPR(page, 'train-voice-to-zh-homophone');
+
+    const audio = page.waitForRequest(req => req.url().includes('/api/audio/'));
+    await page.locator('#result-question .result-question-play').click();
+    await audio;
 
     await page.locator('#disambig-input').fill(word.zh);
     await page.locator('#disambig-form button[type="submit"]').click();
