@@ -13,6 +13,6 @@
     "@playwright/test": "1.65.1",
     "@vitest/coverage-v8": "^5.0.5",
     "jsdom": "^31.0.1",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }
