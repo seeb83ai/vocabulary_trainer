@@ -1202,6 +1202,42 @@ func TestQuizAnswer_VoiceToTranslHomophone(t *testing.T) {
 	}
 }
 
+// TestQuizAnswer_VoiceToTranslHomophoneOfCard covers issue #655: on a
+// voice_to_transl card, a one-word answer is a homophone only when a word with
+// that meaning sounds like the card word, not like another word that shares a
+// meaning with the card (段 duàn and 块 kuài are both "piece", 快 is kuài).
+func TestQuizAnswer_VoiceToTranslHomophoneOfCard(t *testing.T) {
+	s := openTestDB(t)
+	duan := seedWord(t, s, "段", "duàn", []string{"section", "piece"})
+	kuai := seedWord(t, s, "块", "kuài", []string{"piece"})
+	markWordTrained(t, s, seedWord(t, s, "爱", "ài", []string{"love", "fast"}))
+	markWordTrained(t, s, seedWord(t, s, "快", "kuài", []string{"fast"}))
+	r := newRouter(s)
+
+	cases := []struct {
+		wordID    int64
+		answer    string
+		homophone bool
+	}{
+		{duan, "fast", false},
+		{kuai, "fast", true},
+	}
+	for _, c := range cases {
+		rec := do(t, r, "POST", "/api/quiz/answer", models.AnswerRequest{
+			WordID: c.wordID, Mode: models.ModeVoiceToTransl, Answer: c.answer, Langs: []string{"en"},
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%d %s: want 200, got %d: %s", c.wordID, c.answer, rec.Code, rec.Body)
+		}
+		var resp models.AnswerResponse
+		decodeJSON(t, rec, &resp)
+		if resp.Correct || resp.Homophone != c.homophone {
+			t.Errorf("word %d %q: want correct=false homophone=%v, got correct=%v homophone=%v",
+				c.wordID, c.answer, c.homophone, resp.Correct, resp.Homophone)
+		}
+	}
+}
+
 func TestQuizAcceptCorrect_VoiceToZh(t *testing.T) {
 	s := openTestDB(t)
 	id := seedWord(t, s, "他", "tā", []string{"he"})

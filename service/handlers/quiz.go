@@ -680,7 +680,7 @@ func (h *QuizHandler) Answer(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if req.Mode == models.ModeVoiceToTransl && !resp.Homophone {
-			resp.Homophone = h.isOneWordHomophone(r.Context(), req.Answer, correctTexts)
+			resp.Homophone = h.isOneWordHomophone(r.Context(), req.Answer, correctTexts, derefPinyin(zhWord.Pinyin))
 		}
 	}
 
@@ -771,8 +771,10 @@ func (h *QuizHandler) zhPinyin(ctx context.Context, text string) string {
 // isOneWordHomophone reports whether the typed meaning differs from one of the
 // correct translations in exactly one word, and the typed and the correct word
 // are translations of the user's words with the same pinyin and tones, e.g.
-// "he has a child" for "she has a child" (他/她 tā, issue #628).
-func (h *QuizHandler) isOneWordHomophone(ctx context.Context, answer string, translations []string) bool {
+// "he has a child" for "she has a child" (他/她 tā, issue #628). A one-word
+// answer is the whole card, so its pinyin is compared with cardPinyin
+// (issue #655).
+func (h *QuizHandler) isOneWordHomophone(ctx context.Context, answer string, translations []string, cardPinyin string) bool {
 	pairs := sm2.OneWordDiffs(answer, translations)
 	if len(pairs) == 0 {
 		return false
@@ -786,9 +788,14 @@ func (h *QuizHandler) isOneWordHomophone(ctx context.Context, answer string, tra
 		log.Printf("answer: TranslationPinyins: %v", err)
 		return false
 	}
+	oneWord := len(strings.Fields(answer)) == 1
 	for _, p := range pairs {
+		wants := pinyins[p[1]]
+		if oneWord {
+			wants = []string{cardPinyin}
+		}
 		for _, typed := range pinyins[p[0]] {
-			for _, want := range pinyins[p[1]] {
+			for _, want := range wants {
 				if sm2.SamePinyin(typed, want) {
 					return true
 				}
