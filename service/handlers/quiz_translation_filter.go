@@ -126,13 +126,17 @@ type translationCandidate struct {
 // long gloss is unlikely to be the most useful translation to show first
 // (issue #450) — but a tier that is entirely long entries still gets shown;
 // length only reorders within a tier, it never lets one tier jump ahead of
-// another. Relative order within each group is otherwise preserved
+// another. Example sentences and measure words (isNoiseTranslation) are no
+// translations: they always go to extra and take no slot (issue #658).
+// Relative order within each group is otherwise preserved
 // (stable) so results don't jitter across calls with identical rank/source
 // data.
 func filterTranslationsForDisplay(candidates []translationCandidate, maxShown int, hideUnranked bool, userLast bool) (shown []string, extra []string) {
-	var user, unranked, ranked []translationCandidate
+	var user, unranked, ranked, annotations []translationCandidate
 	for _, c := range candidates {
 		switch {
+		case isNoiseTranslation(c.Text):
+			annotations = append(annotations, c)
 		case c.Source != "cedict":
 			user = append(user, c)
 		case !c.Rank.Valid && !hideUnranked:
@@ -174,7 +178,7 @@ func filterTranslationsForDisplay(candidates []translationCandidate, maxShown in
 	}
 
 	shown = candidateTexts(ordered[:maxShown])
-	extra = candidateTexts(ordered[maxShown:])
+	extra = candidateTexts(append(ordered[maxShown:], annotations...))
 	return shown, extra
 }
 

@@ -116,6 +116,21 @@ func TestFilterTranslationsForDisplay(t *testing.T) {
 			userLast:   true,
 			wantShown:  []string{"common", "short", "this is a very long translation phrase"},
 		},
+		{
+			// An example sentence or a measure word is no translation: the
+			// frontend moves it to "More info", so it must not take a slot of
+			// the cap and push a real translation out (issue #658).
+			name: "annotations do not count against cap",
+			candidates: []translationCandidate{
+				userCand("ausleihen"), rankedCand("ausborgen (V)", 29000), rankedCand("verleihen (V)", 8900),
+				rankedCand("Bsp.: 我去圖書館借書。 我去图书馆借书。 -- Ich gehe in die Bibliothek.", 3716),
+				rankedCand("ZEW: 本", 10), unrankedCand("CL:本[ben3]"),
+			},
+			maxShown:  3,
+			userLast:  true,
+			wantShown: []string{"verleihen (V)", "ausborgen (V)", "ausleihen"},
+			wantExtra: []string{"Bsp.: 我去圖書館借書。 我去图书馆借书。 -- Ich gehe in die Bibliothek.", "ZEW: 本", "CL:本[ben3]"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
