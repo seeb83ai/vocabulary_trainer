@@ -241,29 +241,55 @@ func (s *Store) findSentenceBlank(ctx context.Context, userID int64, tags []stri
 	return best, nil
 }
 
-// locateTranslationBlank looks for any of wordTranslations as a
-// case-insensitive substring of sentenceTranslation and, if found, returns
-// sentenceTranslation with that substring replaced by the blank token. A match
-// that leaves no other word next to the blank does not count.
+// locateTranslationBlank looks for any of wordTranslations as a whole word
+// (case-insensitive) in sentenceTranslation and, if found, returns
+// sentenceTranslation with that word replaced by the blank token. A match
+// inside another word does not count (issue #659), and neither does a match
+// that leaves no other word next to the blank.
 func locateTranslationBlank(sentenceTranslation string, wordTranslations []string) (blanked string, found bool) {
-	lower := strings.ToLower(sentenceTranslation)
 	for _, wt := range wordTranslations {
-		wt = strings.TrimSpace(wt)
+		wt = strings.ToLower(strings.TrimSpace(wt))
 		if wt == "" {
 			continue
 		}
-		idx := strings.Index(lower, strings.ToLower(wt))
+		idx := wholeWordIndex(sentenceTranslation, wt)
 		if idx == -1 {
 			continue
 		}
 		// Keep at least one other word next to the blank (issue #621).
 		rest := sentenceTranslation[:idx] + sentenceTranslation[idx+len(wt):]
-		if !strings.ContainsFunc(rest, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }) {
+		if !strings.ContainsFunc(rest, isWordRune) {
 			continue
 		}
 		return sentenceTranslation[:idx] + sentenceBlankToken + sentenceTranslation[idx+len(wt):], true
 	}
 	return "", false
+}
+
+func isWordRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }
+
+// wholeWordIndex returns the byte index of the first occurrence of lowerWord
+// in text (case-insensitive) with no letter or digit directly before or after
+// it, or -1. It returns -1 when lowercasing changes the byte length of text,
+// because the index would then not fit text.
+func wholeWordIndex(text, lowerWord string) int {
+	lower := strings.ToLower(text)
+	if len(lower) != len(text) {
+		return -1
+	}
+	for from := 0; ; {
+		i := strings.Index(lower[from:], lowerWord)
+		if i == -1 {
+			return -1
+		}
+		idx, end := from+i, from+i+len(lowerWord)
+		before, _ := utf8.DecodeLastRuneInString(text[:idx])
+		after, _ := utf8.DecodeRuneInString(text[end:])
+		if !isWordRune(before) && !isWordRune(after) {
+			return idx
+		}
+		from = idx + 1
+	}
 }
 
 // locateContextHighlight returns the text in context that matches one of
@@ -272,32 +298,18 @@ func locateTranslationBlank(sentenceTranslation string, wordTranslations []strin
 // matches, or when an earlier occurrence of the same text sits inside another
 // word: the page bolds the first occurrence.
 func locateContextHighlight(context string, translations []string) string {
-	lower := strings.ToLower(context)
-	if len(lower) != len(context) {
-		return ""
-	}
-	isWordRune := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }
 	best := ""
 	for _, wt := range translations {
 		wt = strings.ToLower(strings.TrimSpace(wt))
 		if wt == "" || len(wt) <= len(best) {
 			continue
 		}
-		for from := 0; ; {
-			i := strings.Index(lower[from:], wt)
-			if i == -1 {
-				break
-			}
-			idx, end := from+i, from+i+len(wt)
-			before, _ := utf8.DecodeLastRuneInString(context[:idx])
-			after, _ := utf8.DecodeRuneInString(context[end:])
-			if !isWordRune(before) && !isWordRune(after) {
-				if text := context[idx:end]; strings.Index(context, text) == idx {
-					best = text
-				}
-				break
-			}
-			from = idx + 1
+		idx := wholeWordIndex(context, wt)
+		if idx == -1 {
+			continue
+		}
+		if text := context[idx : idx+len(wt)]; strings.Index(context, text) == idx {
+			best = text
 		}
 	}
 	return best

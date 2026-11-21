@@ -95,6 +95,40 @@ func TestLocateTranslationBlank_NotFound(t *testing.T) {
 	}
 }
 
+func TestLocateTranslationBlank_SkipsMatchInsideWord(t *testing.T) {
+	// Issue #659: "Sohn" must not blank the "sohn" in "Schwiegersohn".
+	blanked, ok := locateTranslationBlank("Der Schwiegersohn schenkt dem Sohn ein Handy.", []string{"Sohn"})
+	if !ok || blanked != "Der Schwiegersohn schenkt dem ___ ein Handy." {
+		t.Errorf("got %q, ok=%v", blanked, ok)
+	}
+}
+
+func TestLocateTranslationBlank_OnlyInsideWord(t *testing.T) {
+	_, ok := locateTranslationBlank("Der Schwiegersohn schenkt ihr ein Handy.", []string{"Sohn"})
+	if ok {
+		t.Error("expected no match when the translation is only part of another word")
+	}
+}
+
+func TestLocateTranslationBlank_WholeWordAtEdges(t *testing.T) {
+	blanked, ok := locateTranslationBlank("Milch, bitte", []string{"milch"})
+	if !ok || blanked != "___, bitte" {
+		t.Errorf("got %q, ok=%v", blanked, ok)
+	}
+	blanked, ok = locateTranslationBlank("Ich trinke Milch.", []string{"milch"})
+	if !ok || blanked != "Ich trinke ___." {
+		t.Errorf("got %q, ok=%v", blanked, ok)
+	}
+}
+
+func TestLocateTranslationBlank_UmlautBoundary(t *testing.T) {
+	// "ä" is a letter: "Bär" must not match inside "Bärchen".
+	_, ok := locateTranslationBlank("Das Bärchen schläft.", []string{"Bär"})
+	if ok {
+		t.Error("expected no match inside a word that continues with a letter")
+	}
+}
+
 // ── locateContextHighlight (issue #640) ─────────────────────────────────────
 
 func TestLocateContextHighlight(t *testing.T) {
