@@ -26,6 +26,8 @@ test.describe('Credits and licenses (signed out)', () => {
     await expect(cedict).toContainText('CC BY-SA 4.0');
     await expect(page.locator('[data-credit="handedict"]')).toContainText('CC BY-SA 2.0 DE');
     await expect(page.locator('[data-credit="frequencywords"]')).toContainText('CC BY-SA 4.0');
+    // The English and German lists have about 50,000 words (issue #658).
+    await expect(page.locator('[data-credit="frequencywords"]')).toContainText('about 50,000 English and German entries');
     await expect(page.locator('[data-credit="makemeahanzi"]')).toContainText('LGPL-3.0');
     await expect(page.locator('[data-credit="chartjs"]')).toContainText('MIT');
     await expect(page.locator('[data-credit="noto-sans-sc"]')).toContainText('OFL-1.1');
@@ -45,6 +47,7 @@ test.describe('Credits and licenses (signed out)', () => {
     await page.goto('/credits');
     await page.locator('#lang-select').selectOption('de');
     await expect(page.locator('#credits-title')).toHaveText('Quellen und Lizenzen');
+    await expect(page.locator('[data-credit="frequencywords"]')).toContainText('etwa 50.000 englische und deutsche Einträge');
     await captureForPR(page, 'credits-page-german');
 
     await page.locator('#lang-select').selectOption('zh');
