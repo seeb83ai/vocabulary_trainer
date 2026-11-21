@@ -9,13 +9,13 @@ import (
 	"strings"
 )
 
-// frequencyDataEN/DE are 8,000-entry English/German word-frequency lists
-// (word<TAB>rank per line, rank 1 = most frequent), derived from
-// hermitdave/FrequencyWords (MIT license,
-// https://github.com/hermitdave/FrequencyWords), content/2018/en/en_50k.txt
+// frequencyDataEN/DE are English/German word-frequency lists (word<TAB>rank
+// per line, rank 1 = most frequent), derived from hermitdave/FrequencyWords
+// (https://github.com/hermitdave/FrequencyWords), content/2018/en/en_50k.txt
 // and content/2018/de/de_50k.txt (OpenSubtitles-2018-based corpora) —
-// filtered to alphabetic entries, deduplicated, and truncated to the top
-// 8,000 by frequency. Same shape as the existing zh frequencyData in
+// filtered to alphabetic entries and deduplicated (about 47,000 en and 49,000
+// de words). Until v20261121120000 they were truncated to the top 8,000.
+// Same shape as the existing zh frequencyData in
 // v20260826120000_add_word_frequency.go.
 //
 //go:embed frequency_data_en.txt
@@ -88,6 +88,13 @@ func importWordFrequencyLang(db *sql.DB) error {
 }
 
 func importFrequencyLangData(tx *sql.Tx, data, lang string) error {
+	stmt, err := tx.Prepare(
+		`INSERT INTO word_frequency_lang (word, lang, rank) VALUES (?, ?, ?)
+		 ON CONFLICT(word, lang) DO UPDATE SET rank = excluded.rank`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
 	scanner := bufio.NewScanner(strings.NewReader(data))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -103,8 +110,8 @@ func importFrequencyLangData(tx *sql.Tx, data, lang string) error {
 		if word == "" || convErr != nil {
 			continue
 		}
-		if err := upsertWordFrequencyLang(tx, word, lang, rank); err != nil {
-			return err
+		if _, err := stmt.Exec(word, lang, rank); err != nil {
+			return fmt.Errorf("upsert word_frequency_lang %q/%s: %w", word, lang, err)
 		}
 	}
 	return scanner.Err()

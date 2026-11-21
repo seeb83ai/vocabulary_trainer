@@ -18,7 +18,7 @@ func TestComputeTranslationRank(t *testing.T) {
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO word_frequency_lang (word, lang, rank) VALUES
-		 ('hello', 'en', 5), ('world', 'en', 50), ('rare', 'en', 7000)
+		 ('hello', 'en', 5), ('world', 'en', 50), ('rare', 'en', 7000), ('v', 'en', 6000)
 		 ON CONFLICT(word, lang) DO UPDATE SET rank = excluded.rank`,
 	); err != nil {
 		t.Fatalf("seed word_frequency_lang: %v", err)
@@ -37,6 +37,10 @@ func TestComputeTranslationRank(t *testing.T) {
 		{"unmatched words ignored when others match", "en", "hello xyzzy", true, 5},
 		{"fully unmatched phrase is unranked", "en", "xyzzy plugh", false, 0},
 		{"case-insensitive lookup", "en", "HELLO", true, 5},
+		// A HanDeDict tag such as "(V)" is no word of the gloss (issue #658).
+		{"parenthesised tag ignored", "en", "hello (V)", true, 5},
+		{"parenthesised explanation ignored", "en", "(rare usage) world", true, 50},
+		{"only parentheses uses full text", "en", "(rare)", true, 7000},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

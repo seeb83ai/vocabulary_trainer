@@ -3,8 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
-	"strings"
-	"unicode"
+	dbmigrate "vocabulary_trainer/db/migrate"
 )
 
 // computeTranslationRank scores an automatically-derived translation gloss by
@@ -14,7 +13,7 @@ import (
 // (unranked) only when none of the gloss's words matched at all.
 func computeTranslationRank(ctx context.Context, tx *sql.Tx, lang, text string) (sql.NullInt64, error) {
 	var worst sql.NullInt64
-	for _, word := range splitFrequencyWords(text) {
+	for _, word := range dbmigrate.FrequencyWords(text) {
 		var rank int64
 		err := tx.QueryRowContext(ctx,
 			`SELECT rank FROM word_frequency_lang WHERE word = ? AND lang = ?`, word, lang,
@@ -62,13 +61,4 @@ func linkTranslation(ctx context.Context, tx *sql.Tx, transID, zhID int64, lang,
 		`INSERT OR IGNORE INTO translations (translation_word_id, zh_word_id, source, rank) VALUES (?, ?, ?, ?)`,
 		transID, zhID, source, rank)
 	return err
-}
-
-// splitFrequencyWords lowercases text and splits it into individual words on
-// anything that isn't a letter or apostrophe (so "to be able to" -> ["to",
-// "be", "able", "to"], "don't" stays one word).
-func splitFrequencyWords(text string) []string {
-	return strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
-		return !unicode.IsLetter(r) && r != '\''
-	})
 }
